@@ -32,9 +32,10 @@ class VideoViewModel(
     private val repository: VideoRepository,
     private val heartbeat: HeartbeatReporter,
     private val bvid: String,
+    startPositionMs: Long = 0L,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(VideoUiState())
+    private val _state = MutableStateFlow(VideoUiState(resumePositionMs = startPositionMs.coerceAtLeast(0L)))
     val state: StateFlow<VideoUiState> = _state.asStateFlow()
 
     private var playbackJob: Job? = null

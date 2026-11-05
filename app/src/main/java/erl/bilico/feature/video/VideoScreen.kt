@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -65,10 +66,11 @@ import kotlinx.coroutines.delay
 fun VideoScreen(
     container: AppContainer,
     bvid: String,
+    startPositionMs: Long = 0L,
     onBack: () -> Unit,
 ) {
-    val viewModel: VideoViewModel = viewModel(key = "video-$bvid") {
-        VideoViewModel(container.video, container.heartbeat, bvid)
+    val viewModel: VideoViewModel = viewModel(key = "video-$bvid-$startPositionMs") {
+        VideoViewModel(container.video, container.heartbeat, bvid, startPositionMs)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -79,6 +81,8 @@ fun VideoScreen(
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var qualityDialogVisible by remember { mutableStateOf(false) }
+    var speedDialogVisible by remember { mutableStateOf(false) }
+    var speed by rememberSaveable { mutableFloatStateOf(1f) }
 
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
@@ -129,12 +133,17 @@ fun VideoScreen(
             )
         }
         player.setMediaSource(mediaSource)
+        player.setPlaybackSpeed(speed)
         val resumeAt = state.resumePositionMs
         player.prepare()
         if (resumeAt > 0L) {
             player.seekTo(resumeAt)
         }
         player.playWhenReady = true
+    }
+
+    LaunchedEffect(speed) {
+        player.setPlaybackSpeed(speed)
     }
 
     LaunchedEffect(player) {
@@ -214,6 +223,7 @@ fun VideoScreen(
                     isBuffering = state.isPlaybackLoading || isBuffering,
                     errorMessage = state.playbackError ?: playerError,
                     qualityLabel = state.qualityLabel(),
+                    speed = speed,
                     fullscreen = fullscreen,
                     onPlayPause = {
                         if (player.isPlaying) player.pause() else player.play()
@@ -221,6 +231,7 @@ fun VideoScreen(
                     onSeek = { player.seekTo(it) },
                     onToggleFullscreen = { fullscreen = !fullscreen },
                     onQualityClick = { qualityDialogVisible = true },
+                    onSpeedClick = { speedDialogVisible = true },
                     onBack = {
                         if (fullscreen) fullscreen = false else onBack()
                     },
@@ -280,6 +291,17 @@ fun VideoScreen(
                 color = Color.White,
             )
         }
+    }
+
+    if (speedDialogVisible) {
+        SpeedDialog(
+            active = speed,
+            onSelect = { value ->
+                speed = value
+                speedDialogVisible = false
+            },
+            onDismiss = { speedDialogVisible = false },
+        )
     }
 
     val source = state.source

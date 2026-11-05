@@ -64,11 +64,13 @@ internal fun VideoPlayer(
     isBuffering: Boolean,
     errorMessage: String?,
     qualityLabel: String?,
+    speed: Float,
     fullscreen: Boolean,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onToggleFullscreen: () -> Unit,
     onQualityClick: () -> Unit,
+    onSpeedClick: () -> Unit,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -179,8 +181,13 @@ internal fun VideoPlayer(
                 )
                 Spacer(Modifier.weight(1f))
                 ControlLabel(
+                    text = speedLabel(speed),
+                    onClick = onSpeedClick,
+                )
+                ControlLabel(
                     text = qualityLabel ?: "清晰度",
                     onClick = onQualityClick,
+                    modifier = Modifier.padding(start = 8.dp),
                 )
                 ControlLabel(
                     text = if (fullscreen) "退出" else "全屏",
@@ -317,6 +324,67 @@ internal fun QualityDialog(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+internal val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+internal fun speedLabel(speed: Float): String = when (speed) {
+    0.5f -> "0.5x"
+    0.75f -> "0.75x"
+    1f -> "倍速"
+    1.25f -> "1.25x"
+    1.5f -> "1.5x"
+    2f -> "2.0x"
+    else -> "${speed}x"
+}
+
+@Composable
+internal fun SpeedDialog(
+    active: Float,
+    onSelect: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(COUITheme.colorScheme.surfaceContainer)
+                .padding(vertical = 10.dp),
+        ) {
+            Text(
+                text = "播放倍速",
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                style = COUITheme.textStyles.footnote1,
+                color = COUITheme.colorScheme.onSurfaceSecondary,
+            )
+            PLAYBACK_SPEEDS.forEach { option ->
+                val selected = option == active
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(option) }
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = speedLabel(option).replace("倍速", "正常"),
+                        modifier = Modifier.weight(1f),
+                        style = COUITheme.textStyles.body1,
+                        color = if (selected) {
+                            COUITheme.colorScheme.primary
+                        } else {
+                            COUITheme.colorScheme.onSurface
+                        },
+                    )
                 }
             }
         }
