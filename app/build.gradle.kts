@@ -79,10 +79,10 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.navigation.compose)
 
     implementation(libs.coui.ui)
     implementation(libs.coui.icons)
+    implementation(libs.coui.preference)
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
