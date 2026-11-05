@@ -33,9 +33,8 @@ import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.CoverImage
-import erl.bilico.ui.components.LoadingBox
-import erl.bilico.ui.components.MessageState
-import io.github.suqi8.coui.kmp.basic.Button
+import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.components.LoadingState
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -48,23 +47,23 @@ internal fun VideoInfoTab(
     selectedCid: Long,
     onRetry: () -> Unit,
     onSelectPart: (Int) -> Unit,
+    onOpenUser: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when {
-        detail == null && isLoading -> LoadingBox(modifier)
+        detail == null && isLoading -> LoadingState(modifier)
 
-        detail == null -> MessageState(
+        detail == null -> ErrorState(
             message = error ?: "视频加载失败",
             modifier = modifier,
-            action = {
-                Button(onClick = onRetry) { Text("重试") }
-            },
+            onRetry = onRetry,
         )
 
         else -> InfoContent(
             detail = detail,
             selectedCid = selectedCid,
             onSelectPart = onSelectPart,
+            onOpenUser = onOpenUser,
             modifier = modifier,
         )
     }
@@ -75,6 +74,7 @@ private fun InfoContent(
     detail: VideoDetail,
     selectedCid: Long,
     onSelectPart: (Int) -> Unit,
+    onOpenUser: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var descExpanded by rememberSaveable(detail.bvid) { mutableStateOf(false) }
@@ -104,7 +104,13 @@ private fun InfoContent(
         }
 
         item(key = "up") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(enabled = detail.upMid > 0L) { onOpenUser(detail.upMid) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 CoverImage(
                     url = Formatters.sizedImageUrl(detail.upFace, avatarPx, avatarPx),
                     modifier = Modifier

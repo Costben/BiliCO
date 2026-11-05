@@ -54,6 +54,9 @@ import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
+import erl.bilico.ui.NavState
+import erl.bilico.ui.Route
+import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
@@ -65,9 +68,9 @@ import kotlinx.coroutines.delay
 @Composable
 fun VideoScreen(
     container: AppContainer,
+    nav: NavState,
     bvid: String,
     startPositionMs: Long = 0L,
-    onBack: () -> Unit,
 ) {
     val viewModel: VideoViewModel = viewModel(key = "video-$bvid-$startPositionMs") {
         VideoViewModel(container.video, container.heartbeat, bvid, startPositionMs)
@@ -202,7 +205,7 @@ fun VideoScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(COUITheme.colorScheme.background),
+            .background(pageContainerColor()),
     ) {
         Column(
             modifier = Modifier
@@ -233,7 +236,7 @@ fun VideoScreen(
                     onQualityClick = { qualityDialogVisible = true },
                     onSpeedClick = { speedDialogVisible = true },
                     onBack = {
-                        if (fullscreen) fullscreen = false else onBack()
+                        if (fullscreen) fullscreen = false else nav.pop()
                     },
                     onRetry = viewModel::load,
                     modifier = Modifier.fillMaxSize(),
@@ -259,6 +262,7 @@ fun VideoScreen(
                             onSelectPart = { index ->
                                 viewModel.selectPart(index, player.currentPosition)
                             },
+                            onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
                             modifier = Modifier.fillMaxSize(),
                         )
 
@@ -268,6 +272,9 @@ fun VideoScreen(
                                 CommentTab(
                                     container = container,
                                     oid = aid,
+                                    onOpenUser = { mid ->
+                                        if (mid > 0L) nav.push(Route.Space(mid))
+                                    },
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }

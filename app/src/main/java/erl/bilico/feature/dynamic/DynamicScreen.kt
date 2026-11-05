@@ -1,52 +1,56 @@
 package erl.bilico.feature.dynamic
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.di.AppContainer
-import erl.bilico.ui.components.LoadingBox
-import erl.bilico.ui.components.MessageState
-import io.github.suqi8.coui.kmp.basic.Button
-import io.github.suqi8.coui.kmp.basic.Scaffold
-import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
+import erl.bilico.ui.NavState
+import erl.bilico.ui.Route
+import erl.bilico.ui.components.EmptyState
+import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.components.FullPageRefreshHoldMillis
+import erl.bilico.ui.components.FullPageRefreshTexts
+import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.SegmentCapsule
+import erl.bilico.ui.components.navBottomPadding
+import erl.bilico.ui.pageContainerColor
+import io.github.suqi8.coui.kmp.basic.FullPagePullToRefresh
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.TextButton
+import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
+import io.github.suqi8.coui.kmp.basic.rememberFullPagePullToRefreshState
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 @Composable
 fun DynamicScreen(
     container: AppContainer,
-    onOpenVideo: (String) -> Unit,
-    onOpenMe: () -> Unit,
+    nav: NavState,
+    topInset: Dp,
 ) {
     val viewModel: DynamicViewModel = viewModel {
         DynamicViewModel(container.dynamic, container.session)
@@ -59,26 +63,27 @@ fun DynamicScreen(
 
     var viewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
 
-    Scaffold(topBar = { SmallTopAppBar(title = "动态") }) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            if (!loggedIn) {
-                MessageState(
-                    message = "登录后查看动态",
-                    modifier = Modifier.fillMaxSize(),
-                    action = {
-                        Button(onClick = onOpenMe) { Text("去登录") }
-                    },
-                )
-            } else {
-                DynamicContent(
-                    state = state,
-                    viewModel = viewModel,
-                    onOpenVideo = onOpenVideo,
-                    onOpenImage = { images, index -> viewer = images to index },
-                )
-            }
+    if (!loggedIn) {
+        Box(Modifier.fillMaxSize()) {
+            EmptyState(
+                text = "登录后查看动态",
+                modifier = Modifier.fillMaxSize(),
+                action = {
+                    TextButton(text = "去登录", onClick = { nav.popToMe() })
+                },
+            )
         }
+        return
     }
+
+    DynamicContent(
+        state = state,
+        viewModel = viewModel,
+        topInset = topInset,
+        onOpenUser = { nav.push(Route.Space(it)) },
+        onOpenVideo = { nav.push(Route.Video(it)) },
+        onOpenImage = { images, index -> viewer = images to index },
+    )
 
     viewer?.let { (images, index) ->
         DynamicImageViewer(
@@ -93,11 +98,14 @@ fun DynamicScreen(
 private fun DynamicContent(
     state: DynamicUiState,
     viewModel: DynamicViewModel,
+    topInset: Dp,
+    onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
 ) {
     val listState = rememberLazyListState()
-
+    val scope = rememberCoroutineScope()
+    val pullState = rememberFullPagePullToRefreshState()
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .distinctUntilChanged()
@@ -109,100 +117,86 @@ private fun DynamicContent(
             }
     }
 
+    val segmentTop = topInset + 8.dp
+
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            FilterRow(filter = state.filter, onSelect = viewModel::setFilter)
-            Box(Modifier.fillMaxSize()) {
-                when {
-                    state.isInitialLoading -> LoadingBox()
-                    state.items.isEmpty() && state.error != null -> MessageState(
-                        message = state.error.orEmpty(),
-                        modifier = Modifier.fillMaxSize(),
-                        action = {
-                            Button(onClick = viewModel::refresh) { Text("重试") }
-                        },
-                    )
-                    state.items.isEmpty() -> MessageState(
-                        message = "暂时没有动态",
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    else -> PullToRefreshBox(
-                        isRefreshing = state.isRefreshing,
-                        onRefresh = viewModel::refresh,
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
-                        ) {
-                            items(state.items, key = { it.id }) { item ->
-                                DynamicCard(
-                                    item = item,
-                                    onOpenVideo = onOpenVideo,
-                                    onOpenImage = onOpenImage,
-                                )
+        FullPagePullToRefresh(
+            isRefreshing = state.isRefreshing,
+            onRefresh = { scope.launch { viewModel.refresh() } },
+            modifier = Modifier.fillMaxSize(),
+            state = pullState,
+            contentPadding = PaddingValues(top = segmentTop),
+            colors = fullPagePullToRefreshColors(backgroundColor = pageContainerColor()),
+            refreshTexts = FullPageRefreshTexts,
+            completeHoldDurationMillis = FullPageRefreshHoldMillis,
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    top = segmentTop + 40.dp,
+                    end = 12.dp,
+                    bottom = 66.dp + navBottomPadding(),
+                ),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (state.items.isEmpty()) {
+                    item(key = "state") {
+                        when {
+                            state.isInitialLoading -> LoadingState()
+                            state.error != null -> ErrorState(state.error.orEmpty()) {
+                                scope.launch { viewModel.refresh() }
                             }
+
+                            else -> EmptyState("暂时没有动态")
+                        }
+                    }
+                }
+                items(
+                    items = state.items,
+                    key = { it.id },
+                    contentType = { "dynamic-card" },
+                ) { item ->
+                    DynamicCard(
+                        item = item,
+                        onOpenUser = onOpenUser,
+                        onOpenVideo = onOpenVideo,
+                        onOpenImage = onOpenImage,
+                    )
+                }
+                if (state.items.isNotEmpty()) {
+                    item(key = "footer") {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             if (state.isLoadingMore) {
-                                item(key = "loading-more") {
-                                    Box(
-                                        Modifier.fillMaxWidth().height(56.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.height(20.dp),
-                                            color = COUITheme.colorScheme.primary,
-                                            strokeWidth = 2.dp,
-                                        )
-                                    }
-                                }
+                                LoadingState()
+                            } else {
+                                Text(
+                                    text = "没有更多了",
+                                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(vertical = 16.dp),
+                                )
                             }
                         }
                     }
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun FilterRow(
-    filter: DynamicFeedType,
-    onSelect: (DynamicFeedType) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(COUITheme.colorScheme.surface)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(
-            label = "全部",
-            active = filter == DynamicFeedType.ALL,
-            onClick = { onSelect(DynamicFeedType.ALL) },
-        )
-        FilterChip(
-            label = "视频",
-            active = filter == DynamicFeedType.VIDEO,
-            onClick = { onSelect(DynamicFeedType.VIDEO) },
+        // 分段胶囊浮在列表上方，和顶栏玻璃同一层，不随内容滚动。
+        SegmentCapsule(
+            labels = FILTERS.map { it.second },
+            selectedIndex = FILTERS.indexOfFirst { it.first == state.filter }.coerceAtLeast(0),
+            onSelect = { index -> viewModel.setFilter(FILTERS[index].first) },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = segmentTop),
         )
     }
 }
 
-@Composable
-private fun FilterChip(label: String, active: Boolean, onClick: () -> Unit) {
-    Text(
-        text = label,
-        modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                if (active) COUITheme.colorScheme.primary else COUITheme.colorScheme.surfaceVariant,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 5.dp),
-        style = COUITheme.textStyles.footnote1,
-        color = if (active) COUITheme.colorScheme.onPrimary else COUITheme.colorScheme.onSurfaceSecondary,
-    )
-}
+private val FILTERS = listOf(
+    DynamicFeedType.ALL to "全部",
+    DynamicFeedType.VIDEO to "视频",
+)

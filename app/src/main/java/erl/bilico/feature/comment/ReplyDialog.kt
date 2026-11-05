@@ -44,7 +44,7 @@ import erl.bilico.data.model.Comment
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.ui.components.CoverImage
-import erl.bilico.ui.components.MessageState
+import erl.bilico.ui.components.ErrorState
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -165,20 +165,10 @@ internal fun ReplyDialog(
                         CircularProgressIndicator(size = 22.dp)
                     }
 
-                    items.isEmpty() && error != null -> MessageState(
+                    items.isEmpty() && error != null -> ErrorState(
                         message = error.orEmpty(),
                         modifier = Modifier.fillMaxSize(),
-                        action = {
-                            Text(
-                                text = "重试",
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable { loadNext() }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                                style = COUITheme.textStyles.footnote1,
-                                color = COUITheme.colorScheme.primary,
-                            )
-                        },
+                        onRetry = { loadNext() },
                     )
 
                     else -> LazyColumn(

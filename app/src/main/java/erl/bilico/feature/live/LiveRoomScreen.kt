@@ -49,18 +49,19 @@ import erl.bilico.data.model.LiveRoomDetail
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.video.QualityDialog
+import erl.bilico.ui.NavState
+import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.FullscreenEffect
-import erl.bilico.ui.components.LoadingBox
-import erl.bilico.ui.components.MessageState
-import io.github.suqi8.coui.kmp.basic.Button
+import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 @Composable
 fun LiveRoomScreen(
     container: AppContainer,
+    nav: NavState,
     roomId: Long,
-    onBack: () -> Unit,
 ) {
     val viewModel: LiveRoomViewModel = viewModel(key = "live-$roomId") {
         LiveRoomViewModel(container.live, roomId)
@@ -132,7 +133,7 @@ fun LiveRoomScreen(
         )
     }
 
-    Box(Modifier.fillMaxSize().background(COUITheme.colorScheme.background)) {
+    Box(Modifier.fillMaxSize().background(pageContainerColor())) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -153,7 +154,7 @@ fun LiveRoomScreen(
                     onToggleFullscreen = { fullscreen = !fullscreen },
                     onQualityClick = { qualityDialogVisible = true },
                     onBack = {
-                        if (fullscreen) fullscreen = false else onBack()
+                        if (fullscreen) fullscreen = false else nav.pop()
                     },
                     onRetry = viewModel::retryPlayback,
                     modifier = Modifier.fillMaxSize(),
@@ -170,13 +171,12 @@ fun LiveRoomScreen(
                         .padding(16.dp),
                 ) {
                     when {
-                        state.isLoading -> LoadingBox(Modifier.height(160.dp))
-                        state.error != null -> MessageState(
+                        state.isLoading -> LoadingState(Modifier.height(160.dp))
+                        state.error != null -> ErrorState(
                             message = state.error.orEmpty(),
-                            action = {
-                                Button(onClick = viewModel::load) { Text("重试") }
-                            },
+                            onRetry = viewModel::load,
                         )
+
                         else -> state.detail?.let { LiveRoomInfo(it) }
                     }
                 }

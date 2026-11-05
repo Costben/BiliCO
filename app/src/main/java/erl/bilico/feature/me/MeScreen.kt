@@ -1,139 +1,173 @@
 package erl.bilico.feature.me
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
 import erl.bilico.data.model.Account
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.login.LoginContent
 import erl.bilico.feature.login.LoginViewModel
-import io.github.suqi8.coui.kmp.basic.Button
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Scaffold
-import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
+import erl.bilico.ui.NavState
+import erl.bilico.ui.Route
+import erl.bilico.ui.components.Avatar
+import erl.bilico.ui.components.ConfirmDialog
+import erl.bilico.ui.components.navBottomPadding
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.ChevronForward
+import io.github.suqi8.coui.kmp.preference.ArrowPreference
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.launch
 
 @Composable
 fun MeScreen(
     container: AppContainer,
-    onOpenHistory: () -> Unit,
+    nav: NavState,
+    topInset: Dp,
 ) {
     val account by container.session.account.collectAsStateWithLifecycle()
+    val current = account
+    var confirmLogout by remember { mutableStateOf(false) }
 
-    Scaffold(topBar = { SmallTopAppBar(title = "我的") }) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            val current = account
-            if (current == null) {
-                val loginViewModel: LoginViewModel = viewModel {
-                    LoginViewModel(container.session)
-                }
-                val loginState by loginViewModel.state.collectAsStateWithLifecycle()
-                DisposableEffect(loginViewModel) {
-                    onDispose { loginViewModel.stop() }
-                }
-                LoginContent(state = loginState, onRefresh = loginViewModel::refreshQr)
-            } else {
-                AccountContent(
-                    account = current,
-                    onOpenHistory = onOpenHistory,
-                    onLogout = {
-                        container.scope.launch { container.session.logout() }
-                    },
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            top = topInset + 12.dp,
+            end = 12.dp,
+            bottom = 66.dp + navBottomPadding(),
+        ),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (current == null) {
+            item(key = "login") { LoginSection(container) }
+        } else {
+            item(key = "profile") { ProfileCard(current) }
+        }
+
+        item(key = "entries") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                insideMargin = PaddingValues(0.dp),
+            ) {
+                ArrowPreference(
+                    title = "历史记录",
+                    cardListPosition = CardListPosition.Head,
+                    onClick = { nav.push(Route.History) },
+                )
+                ArrowPreference(
+                    title = "收藏夹",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { nav.push(Route.Favorites) },
+                )
+                ArrowPreference(
+                    title = "稍后再看",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { nav.push(Route.WatchLater) },
+                )
+                ArrowPreference(
+                    title = "关注",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { nav.push(Route.Following) },
+                )
+                ArrowPreference(
+                    title = "设置",
+                    cardListPosition = CardListPosition.Tail,
+                    onClick = { nav.push(Route.Settings) },
                 )
             }
         }
+
+        if (current != null) {
+            item(key = "logout") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    insideMargin = PaddingValues(0.dp),
+                ) {
+                    ArrowPreference(
+                        title = "退出登录",
+                        cardListPosition = CardListPosition.None,
+                        onClick = { confirmLogout = true },
+                    )
+                }
+            }
+        }
+    }
+
+    if (confirmLogout) {
+        ConfirmDialog(
+            title = "退出登录",
+            message = "会清除本地保存的 Cookie，下次需要重新扫码登录。",
+            confirmText = "退出",
+            onDismiss = { confirmLogout = false },
+            onConfirm = {
+                confirmLogout = false
+                container.scope.launch { container.session.logout() }
+            },
+        )
     }
 }
 
 @Composable
-private fun AccountContent(
-    account: Account,
-    onOpenHistory: () -> Unit,
-    onLogout: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+private fun LoginSection(container: AppContainer) {
+    val loginViewModel: LoginViewModel = viewModel {
+        LoginViewModel(container.session)
+    }
+    val loginState by loginViewModel.state.collectAsStateWithLifecycle()
+    DisposableEffect(loginViewModel) {
+        onDispose { loginViewModel.stop() }
+    }
+    LoginContent(state = loginState, onRefresh = loginViewModel::refreshQr)
+}
+
+@Composable
+private fun ProfileCard(account: Account) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
     ) {
-        AsyncImage(
-            model = Formatters.normalizeImageUrl(account.face),
-            contentDescription = "头像",
-            modifier = Modifier.size(84.dp).clip(CircleShape),
-            contentScale = ContentScale.Crop,
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        Text(text = account.name, style = COUITheme.textStyles.title3)
-
-        Spacer(Modifier.height(4.dp))
-
-        Text(
-            text = "UID ${account.mid}",
-            style = COUITheme.textStyles.footnote2,
-            color = COUITheme.colorScheme.onSurfaceSecondary,
-            textAlign = TextAlign.Center,
-        )
-
-        Spacer(Modifier.height(28.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(COUITheme.colorScheme.surfaceVariant)
-                .clickable(onClick = onOpenHistory)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "历史记录",
-                modifier = Modifier.weight(1f),
-                style = COUITheme.textStyles.body2,
-            )
-            Icon(
-                imageVector = COUIIcons.ChevronForward,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = COUITheme.colorScheme.onSurfaceSecondary,
-            )
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        Button(
-            onClick = onLogout,
-        ) {
-            Text("退出登录")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val avatarUrl = remember(account.face) {
+                Formatters.sizedImageUrl(account.face, 168, 168)
+            }
+            Avatar(url = avatarUrl, size = 56.dp)
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(
+                    text = account.name,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = COUITheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = "UID ${account.mid}",
+                    fontSize = 12.sp,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                )
+            }
         }
     }
 }

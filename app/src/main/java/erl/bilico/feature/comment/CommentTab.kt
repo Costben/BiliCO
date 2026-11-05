@@ -39,9 +39,9 @@ import erl.bilico.data.model.Comment
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.ui.components.CoverImage
-import erl.bilico.ui.components.LoadingBox
-import erl.bilico.ui.components.MessageState
-import io.github.suqi8.coui.kmp.basic.Button
+import erl.bilico.ui.components.EmptyState
+import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.components.LoadingState
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 fun CommentTab(
     container: AppContainer,
     oid: Long,
+    onOpenUser: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: CommentViewModel = viewModel(key = "comment-$oid") {
@@ -73,17 +74,13 @@ fun CommentTab(
 
     Box(modifier) {
         when {
-            state.isLoading && state.items.isEmpty() -> LoadingBox()
+            state.isLoading && state.items.isEmpty() -> LoadingState()
 
-            state.items.isEmpty() -> MessageState(
-                message = state.error ?: "还没有评论",
-                modifier = Modifier.fillMaxSize(),
-                action = if (state.error != null) {
-                    { Button(onClick = viewModel::refresh) { Text("重试") } }
-                } else {
-                    null
-                },
-            )
+            state.items.isEmpty() -> if (state.error != null) {
+                ErrorState(state.error.orEmpty(), onRetry = viewModel::refresh)
+            } else {
+                EmptyState("还没有评论")
+            }
 
             else -> LazyColumn(
                 state = listState,
@@ -102,6 +99,7 @@ fun CommentTab(
                     CommentRow(
                         comment = comment,
                         onOpenReplies = { replyTarget = it },
+                        onOpenUser = onOpenUser,
                     )
                 }
                 when {
@@ -153,24 +151,31 @@ fun CommentTab(
 private fun CommentRow(
     comment: Comment,
     onOpenReplies: (Comment) -> Unit,
+    onOpenUser: (Long) -> Unit,
 ) {
     var expanded by remember(comment.id) { mutableStateOf(false) }
     val density = LocalDensity.current
     val avatarPx = with(density) { 36.dp.roundToPx() }
+    val openUser = remember(comment.mid, onOpenUser) {
+        { if (comment.mid > 0L) onOpenUser(comment.mid) }
+    }
 
     Row(modifier = Modifier.fillMaxWidth()) {
         CoverImage(
             url = Formatters.sizedImageUrl(comment.avatar, avatarPx, avatarPx),
             modifier = Modifier
                 .size(36.dp)
-                .clip(CircleShape),
+                .clip(CircleShape)
+                .clickable(onClick = openUser),
         )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = comment.userName,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .clickable(onClick = openUser),
                     style = COUITheme.textStyles.footnote1,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
