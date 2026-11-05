@@ -8,6 +8,7 @@ data class FeedVideo(
     val cover: String,
     val upName: String,
     val upMid: Long,
+    val upFace: String = "",
     val playCount: Long,
     val durationSec: Int,
     val playCountText: String,
@@ -69,6 +70,7 @@ data class Comment(
     val content: String,
     val like: Int,
     val replyCount: Int,
+    val mid: Long = 0L,
     val replies: List<Comment> = emptyList(),
 )
 
@@ -109,6 +111,7 @@ data class DynamicVideoCard(
 data class DynamicItemUi(
     val id: String,
     val kind: DynamicKind,
+    val authorMid: Long = 0L,
     val authorName: String,
     val authorFace: String,
     val timeSec: Long,
@@ -158,6 +161,64 @@ data class LivePlayback(
     val isHls: Boolean,
     val qualities: List<QualityOption>,
     val activeQuality: Int,
+)
+
+// ---------- 搜索 / 空间 / 收藏 / 关注 ----------
+
+data class SearchVideo(
+    val bvid: String,
+    val title: String,
+    val cover: String,
+    val author: String,
+    val upMid: Long,
+    val playText: String,
+    val durationText: String,
+    val pubdateText: String,
+)
+
+data class SearchUser(
+    val mid: Long,
+    val name: String,
+    val face: String,
+    val sign: String,
+    val fansText: String,
+    val videoCountText: String,
+)
+
+data class SpaceProfile(
+    val mid: Long,
+    val name: String,
+    val face: String,
+    val sign: String,
+    val followersText: String,
+    val followingText: String,
+    val likesText: String,
+)
+
+/** 空间投稿、收藏夹内容、稍后再看、历史共用的一张视频条目。 */
+data class LibraryVideo(
+    val bvid: String,
+    val title: String,
+    val cover: String,
+    val upName: String,
+    val playText: String = "",
+    val durationText: String = "",
+    val durationSec: Int = 0,
+    val progressSec: Int = 0,
+)
+
+data class FavoriteFolder(
+    val mediaId: Long,
+    val title: String,
+    val cover: String,
+    val countText: String,
+)
+
+data class FollowingUser(
+    val mid: Long,
+    val name: String,
+    val face: String,
+    val sign: String,
 )
 
 data class QrLogin(

@@ -137,6 +137,7 @@ class CommentRepository(
         content = content.message,
         like = like,
         replyCount = maxOf(count, rcount),
+        mid = mid,
         replies = replies.orEmpty().map { it.toComment() },
     )
 }

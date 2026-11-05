@@ -55,6 +55,7 @@ class FeedRepository(
             cover = Formatters.normalizeImageUrl(cover),
             upName = owner?.name.orEmpty(),
             upMid = owner?.mid ?: 0L,
+            upFace = Formatters.normalizeImageUrl(owner?.face),
             playCount = viewCount,
             durationSec = duration ?: 0,
             playCountText = Formatters.formatStat(viewCount),

@@ -29,6 +29,19 @@ object Formatters {
         }
     }
 
+    /** 接口里的时长是 "12:34" / "1:02:03" 文本，统一换成秒。 */
+    fun parseDurationText(text: String): Int {
+        if (text.isBlank()) return 0
+        val parts = text.trim().split(':')
+        if (parts.any { it.toIntOrNull() == null }) return 0
+        return when (parts.size) {
+            3 -> parts[0].toInt() * 3600 + parts[1].toInt() * 60 + parts[2].toInt()
+            2 -> parts[0].toInt() * 60 + parts[1].toInt()
+            1 -> parts[0].toInt()
+            else -> 0
+        }
+    }
+
     fun formatTimeAgo(timestampSeconds: Long): String {
         if (timestampSeconds <= 0L) return ""
         val zone = ZoneId.systemDefault()
@@ -71,8 +84,44 @@ object Formatters {
         return "$normalized@${widthPx}w.webp"
     }
 
-    /** 观看时间：今天 / 昨天 / 月-日（跨年补年份）。 */
-    fun formatViewDate(timestampSeconds: Long): String {
+    private val ENTITY = Regex("&(#[xX]?[0-9a-fA-F]+|[a-zA-Z]+);")
+
+    private val NAMED_ENTITIES = mapOf(
+        "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'",
+        "nbsp" to " ", "ensp" to " ", "emsp" to " ", "hellip" to "…",
+        "mdash" to "—", "ndash" to "–", "ldquo" to "“", "rdquo" to "”",
+        "lsquo" to "‘", "rsquo" to "’", "middot" to "·", "times" to "×",
+    )
+
+    /** 搜索与空间接口的文本是 HTML 转义过的，个别字段还转义了两层。 */
+    fun decodeHtmlEntities(raw: String): String {
+        if (!raw.contains('&')) return raw
+        var text = raw
+        repeat(3) {
+            val decoded = ENTITY.replace(text) { match ->
+                val body = match.groupValues[1]
+                when {
+                    body.startsWith("#x") || body.startsWith("#X") ->
+                        codePoint(body.drop(2).toIntOrNull(16)) ?: match.value
+
+                    body.startsWith("#") ->
+                        codePoint(body.drop(1).toIntOrNull()) ?: match.value
+
+                    else -> NAMED_ENTITIES[body] ?: match.value
+                }
+            }
+            if (decoded == text) return text
+            text = decoded
+        }
+        return text
+    }
+
+    private fun codePoint(value: Int?): String? {
+        if (value == null || value <= 0 || value > 0x10FFFF) return null
+        return runCatching { String(Character.toChars(value)) }.getOrNull()
+    }
+
+    /** 观看时间：今天 / 昨天 / 月-日（跨年补年份）。 */    fun formatViewDate(timestampSeconds: Long): String {
         if (timestampSeconds <= 0L) return ""
         val zone = ZoneId.systemDefault()
         val viewed = Instant.ofEpochSecond(timestampSeconds).atZone(zone)

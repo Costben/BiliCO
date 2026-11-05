@@ -5,12 +5,18 @@ import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.TokenRefreshHelper
 import erl.bilico.data.repository.CommentRepository
 import erl.bilico.data.repository.DynamicRepository
+import erl.bilico.data.repository.FavoriteRepository
 import erl.bilico.data.repository.FeedRepository
 import erl.bilico.data.repository.HeartbeatReporter
 import erl.bilico.data.repository.HistoryRepository
 import erl.bilico.data.repository.LiveRepository
+import erl.bilico.data.repository.RelationRepository
+import erl.bilico.data.repository.SearchRepository
+import erl.bilico.data.repository.SpaceRepository
 import erl.bilico.data.repository.VideoRepository
+import erl.bilico.data.repository.WatchLaterRepository
 import erl.bilico.data.session.SessionRepository
+import erl.bilico.data.settings.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,4 +55,16 @@ class AppContainer(context: Context) {
     val history = HistoryRepository(client.api, client.buvid)
 
     val live = LiveRepository(client.api, client.wbi, client.buvid)
+
+    val settings = SettingsRepository(appContext, scope)
+
+    val search = SearchRepository(client.api, client.wbi, client.buvid)
+
+    val space = SpaceRepository(client.api, client.wbi, client.buvid)
+
+    val favorites = FavoriteRepository(client.api, client.buvid)
+
+    val watchLater = WatchLaterRepository(client.api, client.buvid)
+
+    val relations = RelationRepository(client.api, client.buvid)
 }

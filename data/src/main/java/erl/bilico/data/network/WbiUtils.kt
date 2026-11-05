@@ -36,11 +36,15 @@ object WbiUtils {
 
     /**
      * 返回的 Map 中 Value 保持原始状态，由 Retrofit 编码；签名使用编码后的值。
+     *
+     * 空间类接口还要带一组播放器指纹参数，缺了会被判 风控校验失败(-352)；
+     * 别的接口对多余参数敏感，所以默认不加。
      */
     fun sign(
         params: Map<String, String>,
         imgKey: String,
         subKey: String,
+        includeRiskFingerprint: Boolean = false,
     ): Map<String, String> {
         val mixinKey = getMixinKey(imgKey + subKey)
         val currTime = System.currentTimeMillis() / 1000
@@ -50,6 +54,9 @@ object WbiUtils {
             rawParams[key] = filterIllegalChars(value)
         }
         rawParams["wts"] = currTime.toString()
+        if (includeRiskFingerprint) {
+            rawParams.putAll(RISK_FINGERPRINT)
+        }
 
         val queryBuilder = StringBuilder()
         for (key in rawParams.keys.sorted()) {
@@ -61,4 +68,14 @@ object WbiUtils {
         rawParams["w_rid"] = md5(queryBuilder.toString() + mixinKey)
         return rawParams
     }
+
+    /** 网页端播放器上报的渲染指纹，空间接口按它判断请求是不是真浏览器。 */
+    private val RISK_FINGERPRINT = mapOf(
+        "dm_img_list" to "[]",
+        "dm_img_str" to "V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ",
+        "dm_cover_img_str" to
+            "QU5HTEUgKE5WSURJQSwgTlZJRElBIEdlRm9yY2UgR1RYIDEwNjAgNkdCIERpcmVjdDNEMTEg" +
+            "dnNfNV8wIHBzXzVfMCwgRDNEMTEp",
+        "dm_img_inter" to """{"ds":[],"wh":[0,0,0],"of":[0,0,0]}""",
+    )
 }

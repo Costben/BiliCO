@@ -104,8 +104,14 @@ class VideoRepository(
         }
 
     private fun PlayUrlData.toSource(targetQn: Int): PlaybackSource {
+        val dashVideoIds = dash?.video.orEmpty()
+            .filter { it.baseUrl.isNotBlank() }
+            .map { it.id }
+            .toSet()
         val qualities = buildList {
             supportFormats.orEmpty().forEach { format ->
+                // 未登录时接口仍会列出全部清晰度，只保留真的拿到流的那几档
+                if (dashVideoIds.isNotEmpty() && format.quality !in dashVideoIds) return@forEach
                 add(
                     QualityOption(
                         quality = format.quality,
@@ -117,6 +123,7 @@ class VideoRepository(
             }
             if (isEmpty()) {
                 acceptQuality.forEachIndexed { index, quality ->
+                    if (dashVideoIds.isNotEmpty() && quality !in dashVideoIds) return@forEachIndexed
                     add(QualityOption(quality, acceptDescription.getOrNull(index).orEmpty()))
                 }
             }

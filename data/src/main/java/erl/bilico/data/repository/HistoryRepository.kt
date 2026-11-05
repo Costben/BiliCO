@@ -47,7 +47,7 @@ class HistoryRepository(
                     .orEmpty()
                 HistoryItem(
                     bvid = page.bvid,
-                    title = entry.title,
+                    title = Formatters.decodeHtmlEntities(entry.title),
                     cover = Formatters.normalizeImageUrl(cover),
                     upName = entry.authorName,
                     viewAtSec = entry.viewAt,

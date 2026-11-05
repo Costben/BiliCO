@@ -94,6 +94,7 @@ class DynamicRepository(
         return DynamicItemUi(
             id = "$depth:${idStr.ifBlank { fallbackId }}",
             kind = kind,
+            authorMid = author?.mid ?: 0L,
             authorName = author?.name.orEmpty(),
             authorFace = Formatters.normalizeImageUrl(author?.face),
             timeSec = author?.pubTs ?: 0L,
