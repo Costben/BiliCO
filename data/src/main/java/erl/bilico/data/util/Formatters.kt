@@ -63,4 +63,28 @@ object Formatters {
         if (normalized.isEmpty() || widthPx <= 0 || heightPx <= 0) return normalized
         return "$normalized@${widthPx}w_${heightPx}h_1c.webp"
     }
+
+    /** 只限宽度不裁切，用于全屏看图。 */
+    fun widthImageUrl(url: String?, widthPx: Int): String {
+        val normalized = normalizeImageUrl(url)
+        if (normalized.isEmpty() || widthPx <= 0) return normalized
+        return "$normalized@${widthPx}w.webp"
+    }
+
+    /** 观看时间：今天 / 昨天 / 月-日（跨年补年份）。 */
+    fun formatViewDate(timestampSeconds: Long): String {
+        if (timestampSeconds <= 0L) return ""
+        val zone = ZoneId.systemDefault()
+        val viewed = Instant.ofEpochSecond(timestampSeconds).atZone(zone)
+        val now = Instant.now().atZone(zone)
+        val days = ChronoUnit.DAYS.between(viewed.toLocalDate(), now.toLocalDate())
+        return when {
+            days <= 0L -> "今天"
+            days == 1L -> "昨天"
+            viewed.year == now.year ->
+                java.time.format.DateTimeFormatter.ofPattern("MM-dd").format(viewed)
+
+            else -> java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").format(viewed)
+        }
+    }
 }

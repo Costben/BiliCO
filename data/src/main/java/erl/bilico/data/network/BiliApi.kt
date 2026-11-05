@@ -1,6 +1,12 @@
 package erl.bilico.data.network
 
 import erl.bilico.data.model.BaseResponse
+import erl.bilico.data.model.DynamicFeedResponse
+import erl.bilico.data.model.HistoryResponse
+import erl.bilico.data.model.LiveListResponse
+import erl.bilico.data.model.LivePlayUrlResponse
+import erl.bilico.data.model.LiveRoomDetailResponse
+import erl.bilico.data.model.LiveRoomInfoResponse
 import erl.bilico.data.model.NavResponse
 import erl.bilico.data.model.PlayUrlResponse
 import erl.bilico.data.model.QrCodeResponse
@@ -49,6 +55,24 @@ interface BiliApi {
 
     @POST("x/internal/gaia-gateway/ExClimbWuzhi")
     suspend fun activateBuvid(@retrofit2.http.Body payload: Map<String, String>): BaseResponse
+
+    @GET("x/polymer/web-dynamic/v1/feed/all")
+    suspend fun dynamicFeed(@QueryMap params: Map<String, String>): DynamicFeedResponse
+
+    @GET("x/web-interface/history/cursor")
+    suspend fun history(@QueryMap params: Map<String, String>): HistoryResponse
+
+    @GET("https://api.live.bilibili.com/room/v3/area/getRoomList")
+    suspend fun liveRooms(@QueryMap params: Map<String, String>): LiveListResponse
+
+    @GET("https://api.live.bilibili.com/room/v1/Room/get_info")
+    suspend fun liveRoomInfo(@Query("room_id") roomId: Long): LiveRoomInfoResponse
+
+    @GET("https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByRoom")
+    suspend fun liveRoomDetail(@Query("room_id") roomId: Long): LiveRoomDetailResponse
+
+    @GET("https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo")
+    suspend fun livePlayUrl(@QueryMap params: Map<String, String>): LivePlayUrlResponse
 }
 
 interface PassportApi {

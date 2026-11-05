@@ -4,8 +4,11 @@ import android.content.Context
 import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.TokenRefreshHelper
 import erl.bilico.data.repository.CommentRepository
+import erl.bilico.data.repository.DynamicRepository
 import erl.bilico.data.repository.FeedRepository
 import erl.bilico.data.repository.HeartbeatReporter
+import erl.bilico.data.repository.HistoryRepository
+import erl.bilico.data.repository.LiveRepository
 import erl.bilico.data.repository.VideoRepository
 import erl.bilico.data.session.SessionRepository
 import kotlinx.coroutines.CoroutineScope
@@ -40,4 +43,10 @@ class AppContainer(context: Context) {
     val comments = CommentRepository(client.api, client.wbi, client.buvid)
 
     val heartbeat = HeartbeatReporter(client.api, session)
+
+    val dynamic = DynamicRepository(client.api, client.buvid)
+
+    val history = HistoryRepository(client.api, client.buvid)
+
+    val live = LiveRepository(client.api, client.wbi, client.buvid)
 }
