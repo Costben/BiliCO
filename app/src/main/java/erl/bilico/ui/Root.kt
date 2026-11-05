@@ -1,0 +1,445 @@
+package erl.bilico.ui
+
+import android.os.Build
+import android.view.RoundedCorner
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
+import androidx.compose.ui.zIndex
+import erl.bilico.di.AppContainer
+import erl.bilico.feature.dynamic.DynamicScreen
+import erl.bilico.feature.favorite.FavoriteFolderScreen
+import erl.bilico.feature.favorite.FavoriteFoldersScreen
+import erl.bilico.feature.following.FollowingScreen
+import erl.bilico.feature.feed.FeedScreen
+import erl.bilico.feature.history.HistoryScreen
+import erl.bilico.feature.live.LiveListScreen
+import erl.bilico.feature.live.LiveRoomScreen
+import erl.bilico.feature.me.MeScreen
+import erl.bilico.feature.search.SearchScreen
+import erl.bilico.feature.settings.SettingsScreen
+import erl.bilico.feature.space.SpaceScreen
+import erl.bilico.feature.video.VideoScreen
+import erl.bilico.feature.watchlater.WatchLaterScreen
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import io.github.suqi8.coui.kmp.squircle.addSquircleRect
+import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.COUIPopupHost
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** 手势要拉过这里才算「已经落回卡片」，松手即走；再弹回来会像 bug。 */
+private const val LandedProgress = 0.2f
+
+@Composable
+fun BiliCoRoot(container: AppContainer) {
+    val nav = remember { NavState() }
+    val scope = rememberCoroutineScope()
+    SideEffect { nav.attach(scope) }
+
+    // 搜索框带着焦点跳页时，输入法的候选栏会浮在新页面上；每次切页都清一次焦点。
+    val focusManager = LocalFocusManager.current
+    androidx.compose.runtime.LaunchedEffect(nav.stack.size) { focusManager.clearFocus(force = true) }
+
+    BiliCoPredictiveBackHandler(nav)
+
+    // 弹窗宿主采这块 backdrop：没有它，COUI 的玻璃面板会退回不透明底色。
+    val rootBackdrop = rememberLayerBackdrop()
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val widthPx = constraints.maxWidth.toFloat()
+        val screenCorner = rememberScreenCornerRadius()
+        val cornerShape = remember(screenCorner) { SquircleShape(screenCorner) }
+        val pageSurface = pageContainerColor()
+
+        // backdrop 只挂在这一层：整栈内容录一次就够，逐页各录一次是白费。
+        Box(Modifier.fillMaxSize().layerBackdropIf(BlurEffectsEnabled, rootBackdrop)) {
+            Box(Modifier.fillMaxSize().background(pageSurface))
+            nav.stack.forEachIndexed { index, entry ->
+                key(entry.id) {
+                    RouteLayer(
+                        entry = entry,
+                        index = index,
+                        lastIndex = nav.stack.lastIndex,
+                        widthPx = widthPx,
+                        screenCorner = screenCorner,
+                        nav = nav,
+                        container = container,
+                    )
+                }
+            }
+        }
+        // 窗口缩小时四角会露出窗口底色，补一层页面底色，只画在超级椭圆外侧。
+        Box(
+            Modifier
+                .fillMaxSize()
+                .zIndex(3f)
+                .drawBehind {
+                    if (nav.stack.all { it.progress.value >= 1f }) return@drawBehind
+                    val cut = when (val outline = cornerShape.createOutline(size, layoutDirection, this)) {
+                        is Outline.Generic -> outline.path
+                        is Outline.Rounded -> Path().apply { addRoundRect(outline.roundRect) }
+                        else -> return@drawBehind
+                    }
+                    clipPath(cut, ClipOp.Difference) { drawRect(pageSurface) }
+                },
+        )
+
+        // 弹窗宿主：COUI 的 OverlayDialog 只往 LocalDialogStates 里登记，没有这个宿主就什么都不画。
+        Box(Modifier.fillMaxSize().zIndex(5f)) {
+            CompositionLocalProvider(
+                LocalBackdrop provides if (BlurEffectsEnabled) rootBackdrop else null,
+            ) {
+                COUIPopupHost()
+            }
+        }
+    }
+}
+
+/** 页面跟着手指往回收的返回动画；根页面不注册，交给系统播退回桌面的动画。 */
+@Composable
+fun BiliCoPredictiveBackHandler(nav: NavState) {
+    PredictiveBackHandler(enabled = nav.stack.size > 1) { events ->
+        val entry = nav.stack.lastOrNull()
+        if (entry == null || nav.stack.size <= 1) {
+            events.collect { }
+            return@PredictiveBackHandler
+        }
+        if (entry.exiting) {
+            events.collect { }
+            return@PredictiveBackHandler
+        }
+
+        var lastProgress = 1f
+        var moved = false
+        entry.previewing = true
+        // 快照是点卡片时录的，现在重录一次，页面交回去的是卡片此时此刻的样子。
+        entry.origin?.let { it.refreshKey++ }
+        try {
+            events.collect { event ->
+                val value = (1f - event.progress).coerceIn(0f, 1f)
+                if (value < 0.98f) moved = true
+                lastProgress = value
+                entry.progress.snapTo(value)
+                if (entry.expand) entry.fade.snapTo(value)
+            }
+            if (lastProgress <= 0.02f && moved) {
+                nav.completePredictivePop(entry)
+            } else {
+                nav.pop()
+            }
+        } catch (cancelled: CancellationException) {
+            // 已经落回卡片了：系统把这叫取消，但没什么可预览的，直接走。
+            if (lastProgress <= LandedProgress && moved) {
+                nav.completePredictivePop(entry)
+                return@PredictiveBackHandler
+            }
+            // 松手太早：让页面顺着手指弹回去。
+            withContext(NonCancellable) {
+                coroutineScope {
+                    launch {
+                        entry.progress.animateTo(1f, tween(180, easing = ExpandEasing))
+                    }
+                    if (entry.expand) {
+                        launch {
+                            entry.fade.animateTo(1f, tween(180, easing = LinearEasing))
+                        }
+                    }
+                }
+                entry.previewing = false
+            }
+            throw cancelled
+        }
+    }
+}
+
+@Composable
+private fun RouteLayer(
+    entry: NavEntry,
+    index: Int,
+    lastIndex: Int,
+    widthPx: Float,
+    screenCorner: Dp,
+    nav: NavState,
+    container: AppContainer,
+) {
+    // 只在图层和绘制块里读，手势进行时失效的是图层，不会重组整页。
+    val progress: () -> Float = { entry.progress.value }
+    val isTop = index == lastIndex
+    val belowTop = index == lastIndex - 1
+    val top = nav.stack.lastOrNull()
+    val topProgress: () -> Float = { top?.progress?.value ?: 1f }
+    // 展开页自己画生长，宿主别再从右边推它。
+    val slide = top != null && !top.expand
+    val cornerShape = remember(screenCorner) { SquircleShape(screenCorner) }
+
+    val layer = Modifier
+        .fillMaxSize()
+        .zIndex(if (isTop) 2f else 1f)
+        .then(
+            if (isTop) {
+                // 吃掉空白处的点击，别漏到下面那页；拖动仍然交给可滚动内容。
+                Modifier.pointerInput(Unit) { detectTapGestures { } }
+            } else {
+                Modifier
+            }
+        )
+        .graphicsLayer {
+            if (slide) {
+                translationX = when {
+                    isTop -> (1f - progress()) * widthPx
+                    belowTop -> -topProgress() * widthPx / RouteParallaxDivisor
+                    else -> 0f
+                }
+                // 路径裁剪每帧都要光栅化一张蒙版，只有页面真的在移动时才需要。
+                if (progress() < 1f || topProgress() < 1f) {
+                    shape = cornerShape
+                    clip = true
+                } else {
+                    clip = false
+                }
+            }
+        }
+
+    val transition = remember(entry) {
+        RouteTransition(
+            progress = progress,
+            exiting = { entry.exiting || entry.previewing },
+        )
+    }
+
+    CompositionLocalProvider(LocalRouteTransition provides transition) {
+        Box(layer) {
+            if (entry.expand) {
+                ExpandLayer(entry, screenCorner, progress, { entry.fade.value }) {
+                    RouteContent(entry.route, nav, container)
+                }
+            } else {
+                RouteContent(entry.route, nav, container)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpandLayer(
+    entry: NavEntry,
+    screenCorner: Dp,
+    progress: () -> Float,
+    fade: () -> Float,
+    content: @Composable () -> Unit,
+) {
+    val origin = entry.origin ?: return
+    val bounds = origin.bounds ?: return
+    val density = LocalDensity.current
+    val statusBarTop = with(density) {
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
+    }
+    val surface = pageContainerColor()
+    val exiting = entry.exiting || entry.previewing
+    // 退场时框在 LandedProgress 之前就落回卡片，手指停在末尾时看到的就是松手后的样子。
+    fun frameProgress(p: Float): Float =
+        if (exiting) ((p - LandedProgress) / (1f - LandedProgress)).coerceIn(0f, 1f) else p
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .drawBehind {
+                // 只有页面盖上来时才压暗下面那层；退场时下面正是用户要回去的页面。
+                if (!exiting) {
+                    drawRect(Color.Black, alpha = 0.3f * progress())
+                }
+            }
+            .graphicsLayer {
+                val p = frameProgress(progress())
+                val left = lerp(bounds.left, 0f, p)
+                val top = lerp(bounds.top, 0f, p)
+                val width = lerp(bounds.width, size.width, p)
+                val height = lerp(bounds.height, size.height, p)
+                val scale = if (size.width > 0f && width > 0f) width / size.width else 1f
+                transformOrigin = TransformOrigin(0f, 0f)
+                translationX = left
+                translationY = top
+                scaleX = scale
+                scaleY = scale
+                val radius = lerp(
+                    origin.cornerRadius.toPx(),
+                    screenCorner.toPx(),
+                    p,
+                ) / scale
+                if (p < 1f) {
+                    shape = ExpandShape(height / scale, radius)
+                    clip = true
+                } else {
+                    clip = false
+                }
+            }
+            // 卡片画在框自己的图层里，跟着框走，也会被框裁住。
+            .drawWithContent {
+                val p = frameProgress(progress())
+                // 退场时卡片在这两点之间淡回来，交叉淡入而不是留一段空白：
+                // 手势可以让框停在任何位置，留空就会一直露出底色。
+                val cardAlpha = if (exiting) {
+                    ((0.4f - p) / 0.32f).coerceIn(0f, 1f)
+                } else {
+                    1f - (fade() / 0.25f).coerceIn(0f, 1f)
+                }
+                drawContent()
+                val layerSize = origin.layer.size
+                if (cardAlpha > 0f && layerSize.width > 0 && layerSize.height > 0 && bounds.width > 0f) {
+                    // 只按宽度缩放、锚在左上角：卡片保持自己的比例，快照比卡片高就被框裁掉。
+                    val k = size.width / bounds.width
+                    withTransform({ scale(k, k, pivot = Offset.Zero) }) {
+                        clipRect(0f, 0f, bounds.width, bounds.height) {
+                            drawIntoCanvas { canvas ->
+                                canvas.saveLayer(
+                                    Rect(0f, 0f, bounds.width, bounds.height),
+                                    Paint().apply { alpha = cardAlpha },
+                                )
+                                drawRect(surface, size = bounds.size)
+                                drawLayer(origin.layer)
+                                canvas.restore()
+                            }
+                        }
+                    }
+                }
+            }
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(surface)
+                .graphicsLayer {
+                    // 让位给淡回来的卡片，两者总有一个盖住框，不露底色。
+                    val p = frameProgress(progress())
+                    alpha = if (exiting) {
+                        1f - ((0.4f - p) / 0.32f).coerceIn(0f, 1f)
+                    } else {
+                        1f
+                    }
+                }
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val f = fade()
+                        val p = frameProgress(progress())
+                        alpha = if (exiting) 1f else ((f - 0.25f) / 0.3f).coerceIn(0f, 1f)
+                        translationY = -statusBarTop * (1f - p)
+                    }
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
+    when (route) {
+        Route.Main -> MainShell(nav, container)
+        Route.Search -> SearchScreen(nav, container)
+        is Route.Video -> VideoScreen(
+            container = container,
+            nav = nav,
+            bvid = route.bvid,
+            startPositionMs = route.startSec * 1000,
+        )
+
+        is Route.LiveRoom -> LiveRoomScreen(container, nav, route.roomId)
+        is Route.Space -> SpaceScreen(nav, container, route.mid)
+        Route.History -> HistoryScreen(container, nav)
+        Route.Favorites -> FavoriteFoldersScreen(container, nav)
+        is Route.FavoriteFolder -> FavoriteFolderScreen(container, nav, route.mediaId, route.title)
+        Route.WatchLater -> WatchLaterScreen(container, nav)
+        Route.Following -> FollowingScreen(container, nav)
+        Route.Settings -> SettingsScreen(container, nav)
+    }
+}
+
+private class ExpandShape(
+    private val heightPx: Float,
+    private val radiusPx: Float,
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val height = heightPx.coerceIn(0f, size.height)
+        // 和静止时的框同一个超级椭圆，最后一段才不会从屏幕圆角上脱开。
+        val path = Path()
+        path.addSquircleRect(
+            width = size.width,
+            height = height,
+            cornerRadius = radiusPx,
+        )
+        return Outline.Generic(path)
+    }
+}
+
+@Composable
+private fun rememberScreenCornerRadius(): Dp {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    return remember(context, density) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching {
+                val radius = context.display
+                    ?.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)
+                    ?.radius ?: 0
+                with(density) { radius.toDp() }
+            }.getOrDefault(0.dp)
+        } else {
+            0.dp
+        }
+    }
+}
