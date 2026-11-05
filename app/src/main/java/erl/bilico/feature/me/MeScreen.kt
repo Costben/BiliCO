@@ -1,14 +1,19 @@
 package erl.bilico.feature.me
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -27,14 +32,20 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.login.LoginContent
 import erl.bilico.feature.login.LoginViewModel
 import io.github.suqi8.coui.kmp.basic.Button
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Scaffold
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.ChevronForward
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.launch
 
 @Composable
-fun MeScreen(container: AppContainer) {
+fun MeScreen(
+    container: AppContainer,
+    onOpenHistory: () -> Unit,
+) {
     val account by container.session.account.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { SmallTopAppBar(title = "我的") }) { padding ->
@@ -52,6 +63,7 @@ fun MeScreen(container: AppContainer) {
             } else {
                 AccountContent(
                     account = current,
+                    onOpenHistory = onOpenHistory,
                     onLogout = {
                         container.scope.launch { container.session.logout() }
                     },
@@ -64,6 +76,7 @@ fun MeScreen(container: AppContainer) {
 @Composable
 private fun AccountContent(
     account: Account,
+    onOpenHistory: () -> Unit,
     onLogout: () -> Unit,
 ) {
     Column(
@@ -92,6 +105,30 @@ private fun AccountContent(
         )
 
         Spacer(Modifier.height(28.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(COUITheme.colorScheme.surfaceVariant)
+                .clickable(onClick = onOpenHistory)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "历史记录",
+                modifier = Modifier.weight(1f),
+                style = COUITheme.textStyles.body2,
+            )
+            Icon(
+                imageVector = COUIIcons.ChevronForward,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = COUITheme.colorScheme.onSurfaceSecondary,
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
 
         Button(
             onClick = onLogout,
