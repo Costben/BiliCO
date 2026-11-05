@@ -46,6 +46,8 @@ class FeedRepository(
     private fun RecommendItem.toFeedVideo(): FeedVideo? {
         val videoBvid = bvid?.takeIf { it.isNotBlank() } ?: return null
         val cover = pic?.takeIf { it.isNotBlank() } ?: return null
+        val viewCount = stat?.view ?: 0L
+        val seconds = (duration ?: 0).toLong().coerceAtLeast(0L)
         return FeedVideo(
             bvid = videoBvid,
             aid = id,
@@ -53,8 +55,10 @@ class FeedRepository(
             cover = Formatters.normalizeImageUrl(cover),
             upName = owner?.name.orEmpty(),
             upMid = owner?.mid ?: 0L,
-            playCount = stat?.view ?: 0L,
+            playCount = viewCount,
             durationSec = duration ?: 0,
+            playCountText = Formatters.formatStat(viewCount),
+            durationText = Formatters.formatDuration(seconds),
         )
     }
 }

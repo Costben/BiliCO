@@ -10,6 +10,8 @@ data class FeedVideo(
     val upMid: Long,
     val playCount: Long,
     val durationSec: Int,
+    val playCountText: String,
+    val durationText: String,
 )
 
 data class VideoPart(
@@ -81,6 +83,81 @@ data class Account(
     val mid: Long,
     val name: String,
     val face: String,
+)
+
+enum class DynamicKind {
+    VIDEO,
+    IMAGES,
+    TEXT,
+    FORWARD,
+    UNSUPPORTED,
+}
+
+data class DynamicImage(
+    val url: String,
+    val width: Int,
+    val height: Int,
+)
+
+data class DynamicVideoCard(
+    val bvid: String,
+    val title: String,
+    val cover: String,
+    val durationText: String,
+)
+
+data class DynamicItemUi(
+    val id: String,
+    val kind: DynamicKind,
+    val authorName: String,
+    val authorFace: String,
+    val timeSec: Long,
+    val pubTimeText: String,
+    val content: String,
+    val images: List<DynamicImage> = emptyList(),
+    val video: DynamicVideoCard? = null,
+    val forward: DynamicItemUi? = null,
+    val forwardCount: Int = 0,
+    val commentCount: Int = 0,
+    val likeCount: Int = 0,
+)
+
+data class HistoryItem(
+    val bvid: String,
+    val title: String,
+    val cover: String,
+    val upName: String,
+    val viewAtSec: Long,
+    val progressSec: Int,
+    val durationSec: Int,
+)
+
+data class LiveRoomItem(
+    val roomId: Long,
+    val title: String,
+    val cover: String,
+    val anchor: String,
+    val online: Long,
+    val areaName: String,
+)
+
+data class LiveRoomDetail(
+    val roomId: Long,
+    val title: String,
+    val cover: String,
+    val anchorName: String,
+    val anchorFace: String,
+    val online: Long,
+    val description: String,
+    val areaName: String,
+    val isLive: Boolean,
+)
+
+data class LivePlayback(
+    val url: String,
+    val isHls: Boolean,
+    val qualities: List<QualityOption>,
+    val activeQuality: Int,
 )
 
 data class QrLogin(

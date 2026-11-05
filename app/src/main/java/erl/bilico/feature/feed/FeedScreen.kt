@@ -57,6 +57,13 @@ fun FeedScreen(
     val viewModel: FeedViewModel = viewModel { FeedViewModel(container.feed) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val density = LocalDensity.current
+    // 封面按控件尺寸请求，并限制上限：1240px 宽的屏上 900px 已足够清晰，解码量少一半。
+    val coverWidthPx = remember(screenWidthDp, density) {
+        with(density) { (screenWidthDp.dp - 24.dp).roundToPx() }.coerceAtMost(900)
+    }
+    val coverHeightPx = coverWidthPx * 9 / 16
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -95,8 +102,17 @@ fun FeedScreen(
                         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        items(state.items, key = { it.bvid }) { video ->
-                            FeedCard(video = video, onClick = { onOpenVideo(video.bvid) })
+                        items(
+                            items = state.items,
+                            key = { it.bvid },
+                            contentType = { "feed-card" },
+                        ) { video ->
+                            FeedCard(
+                                video = video,
+                                coverWidthPx = coverWidthPx,
+                                coverHeightPx = coverHeightPx,
+                                onOpenVideo = onOpenVideo,
+                            )
                         }
                         if (state.isLoadingMore) {
                             item(key = "loading-more") {
@@ -119,14 +135,14 @@ fun FeedScreen(
 @Composable
 private fun FeedCard(
     video: FeedVideo,
-    onClick: () -> Unit,
+    coverWidthPx: Int,
+    coverHeightPx: Int,
+    onOpenVideo: (String) -> Unit,
 ) {
-    val screenWidthDp = LocalConfiguration.current.screenWidthDp
-    val density = LocalDensity.current
-    val coverUrl = remember(video.cover, screenWidthDp, density) {
-        val widthPx = with(density) { (screenWidthDp.dp - 24.dp).roundToPx() }
-        Formatters.sizedImageUrl(video.cover, widthPx, widthPx * 9 / 16)
+    val coverUrl = remember(video.cover, coverWidthPx, coverHeightPx) {
+        Formatters.sizedImageUrl(video.cover, coverWidthPx, coverHeightPx)
     }
+    val onClick = remember(video.bvid, onOpenVideo) { { onOpenVideo(video.bvid) } }
 
     Column(
         modifier = Modifier
@@ -140,9 +156,9 @@ private fun FeedCard(
                 .clip(RoundedCornerShape(12.dp)),
         ) {
             CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
-            if (video.durationSec > 0) {
+            if (video.durationText.isNotBlank()) {
                 Text(
-                    text = Formatters.formatDuration(video.durationSec.toLong()),
+                    text = video.durationText,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(6.dp)
@@ -177,7 +193,7 @@ private fun FeedCard(
                 modifier = Modifier.weight(1f, fill = false),
             )
             Text(
-                text = " · ${Formatters.formatStat(video.playCount)}播放",
+                text = " · ${video.playCountText}播放",
                 style = COUITheme.textStyles.footnote2,
                 color = COUITheme.colorScheme.onSurfaceSecondary,
             )
