@@ -3,7 +3,6 @@ package erl.bilico.feature.feed
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
@@ -35,8 +34,8 @@ fun FeedScreen(
     pagerState: PagerState,
     refreshTick: Int,
 ) {
-    val recommendState = rememberLazyListState()
-    val rankingState = rememberLazyListState()
+    val recommendState = rememberLazyGridState()
+    val rankingState = rememberLazyGridState()
     val bangumiState = rememberLazyGridState()
     val segmentTop = topInset + 8.dp
 
@@ -95,6 +94,9 @@ fun FeedScreen(
 
 /** 分段胶囊占掉的一条高度；列表和下拉刷新都要把它让出来。 */
 internal val FeedSegmentRowHeight = 44.dp
+
+/** 推荐与排行榜的列数：竖屏一律两列，和番剧榜对齐。 */
+internal const val FeedColumns = 2
 
 /** 推荐 tab 的三个分段标题。 */
 internal val FEED_SEGMENTS = listOf("推荐", "排行榜", "番剧")

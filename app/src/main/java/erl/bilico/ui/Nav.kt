@@ -6,6 +6,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -67,7 +68,7 @@ class ExpandOrigin(
     var refreshKey by mutableIntStateOf(0)
 
     /** 卡片所在的列表。返回时用它把行挪出浮动栏，落点才不会被栏压住。 */
-    var listState: LazyListState? = null
+    var listState: RowScrollState? = null
 
     /** 浮在 [listState] 上方的栏，它的下沿就是卡片要让开的线。 */
     var topBar: TopBarBounds? = null
@@ -78,6 +79,26 @@ class ExpandOrigin(
     /** 栏自身的材质往下多画的像素。 */
     var clearancePx: Float = 0f
 }
+
+/**
+ * 卡片所在列表的取用面：单列是 [LazyListState]，双列是 [LazyGridState]。
+ * 返回落点只用得到「这行还在不在屏幕上」和「滚一点」，两边各自实现一份。
+ */
+@Stable
+class RowScrollState(
+    val visibleKeys: () -> List<Any?>,
+    val scrollBy: suspend (Float) -> Float,
+)
+
+fun LazyListState.asRowScrollState(): RowScrollState = RowScrollState(
+    visibleKeys = { layoutInfo.visibleItemsInfo.map { it.key } },
+    scrollBy = { scrollBy(it) },
+)
+
+fun LazyGridState.asRowScrollState(): RowScrollState = RowScrollState(
+    visibleKeys = { layoutInfo.visibleItemsInfo.map { it.key } },
+    scrollBy = { scrollBy(it) },
+)
 
 @Composable
 fun rememberExpandOrigin(cornerRadius: Dp = 17.dp): ExpandOrigin {
@@ -254,7 +275,7 @@ class NavState {
 }
 
 /** 把 [origin] 指到它所在的列表与浮动栏上，返回时才能把那行挪出栏底。 */
-fun ExpandOrigin.attachToRow(listState: LazyListState?, rowKey: Any?, topBar: TopBarBounds?) {
+fun ExpandOrigin.attachToRow(listState: RowScrollState?, rowKey: Any?, topBar: TopBarBounds?) {
     this.listState = listState
     this.rowKey = rowKey
     this.topBar = topBar
@@ -276,9 +297,7 @@ internal suspend fun alignCardBelowBar(origin: ExpandOrigin?) {
         val line = bar.bottom
         if (line <= 0f) return
         // 刷新可能已经把这行从列表里换掉，旧矩形会把列表滚到不知道哪里去。
-        val onScreen = origin.rowKey?.let { key ->
-            state.layoutInfo.visibleItemsInfo.any { it.key == key }
-        } ?: false
+        val onScreen = origin.rowKey?.let { key -> state.visibleKeys().any { it == key } } ?: false
         if (!onScreen) return
         val top = origin.bounds?.top ?: return
         val delta = line + origin.clearancePx - top

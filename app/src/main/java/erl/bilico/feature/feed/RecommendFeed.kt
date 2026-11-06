@@ -1,12 +1,16 @@
 package erl.bilico.feature.feed
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -14,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -27,6 +32,8 @@ import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.TitleRowHeight
+import erl.bilico.ui.asRowScrollState
+import erl.bilico.ui.attachToRow
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.FullPageRefreshHoldMillis
@@ -50,7 +57,7 @@ internal fun RecommendFeed(
     container: AppContainer,
     nav: NavState,
     topInset: Dp,
-    listState: LazyListState,
+    listState: LazyGridState,
     active: Boolean,
     onCollapse: (Float) -> Unit,
     refreshTick: Int,
@@ -64,7 +71,7 @@ internal fun RecommendFeed(
     val titleHeightPx = with(density) { TitleRowHeight.toPx() }
 
     val coverWidthPx = remember(screenWidthDp, density) {
-        with(density) { (screenWidthDp.dp - 48.dp).roundToPx() }.coerceAtMost(900)
+        with(density) { ((screenWidthDp.dp - 34.dp) / 2f - 24.dp).roundToPx() }.coerceAtMost(600)
     }
     val coverHeightPx = coverWidthPx * 9 / 16
 
@@ -74,7 +81,7 @@ internal fun RecommendFeed(
         snapshotFlow {
             val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
             if (first == null || first.index > 0) titleHeightPx
-            else (-first.offset).toFloat().coerceIn(0f, titleHeightPx)
+            else (-first.offset.y).toFloat().coerceIn(0f, titleHeightPx)
         }
             .distinctUntilChanged()
             .collect(onCollapse)
@@ -108,8 +115,9 @@ internal fun RecommendFeed(
         refreshTexts = FullPageRefreshTexts,
         completeHoldDurationMillis = FullPageRefreshHoldMillis,
     ) {
-        LazyColumn(
+        LazyVerticalGrid(
             state = listState,
+            columns = GridCells.Fixed(FeedColumns),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 12.dp,
@@ -117,17 +125,20 @@ internal fun RecommendFeed(
                 end = 12.dp,
                 bottom = 66.dp + navBottomPadding(),
             ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (state.items.isEmpty()) {
-                item(key = "state") {
-                    when {
-                        state.isInitialLoading -> LoadingState()
-                        state.error != null -> ErrorState(state.error.orEmpty()) {
-                            scope.launch { viewModel.refresh() }
-                        }
+                item(key = "state", span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth()) {
+                        when {
+                            state.isInitialLoading -> LoadingState()
+                            state.error != null -> ErrorState(state.error.orEmpty()) {
+                                scope.launch { viewModel.refresh() }
+                            }
 
-                        else -> EmptyState("暂时没有推荐内容")
+                            else -> EmptyState("暂时没有推荐内容")
+                        }
                     }
                 }
             }
@@ -139,9 +150,7 @@ internal fun RecommendFeed(
                 val origin = rememberExpandOrigin()
                 val topBar = LocalTopBarBounds.current
                 SideEffect {
-                    origin.listState = listState
-                    origin.rowKey = video.bvid
-                    origin.topBar = topBar
+                    origin.attachToRow(listState.asRowScrollState(), video.bvid, topBar)
                 }
                 FeedCard(
                     video = video,
@@ -152,16 +161,18 @@ internal fun RecommendFeed(
                 )
             }
             if (state.items.isNotEmpty()) {
-                item(key = "footer") {
-                    if (state.isLoadingMore) {
-                        LoadingState()
-                    } else {
-                        Text(
-                            text = "没有更多了",
-                            color = COUITheme.colorScheme.onSurfaceSecondary,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(vertical = 16.dp),
-                        )
+                item(key = "footer", span = { GridItemSpan(maxLineSpan) }) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        if (state.isLoadingMore) {
+                            LoadingState()
+                        } else {
+                            Text(
+                                text = "没有更多了",
+                                color = COUITheme.colorScheme.onSurfaceSecondary,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(vertical = 16.dp),
+                            )
+                        }
                     }
                 }
             }

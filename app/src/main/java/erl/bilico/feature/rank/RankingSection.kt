@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -34,10 +36,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.feed.FeedCard
+import erl.bilico.feature.feed.FeedColumns
 import erl.bilico.feature.feed.FeedSegmentRowHeight
 import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.NavState
+import erl.bilico.ui.asRowScrollState
+import erl.bilico.ui.attachToRow
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
@@ -62,7 +67,7 @@ fun RankingSection(
     container: AppContainer,
     nav: NavState,
     topInset: Dp,
-    listState: LazyListState,
+    listState: LazyGridState,
     active: Boolean,
     onCollapse: (Float) -> Unit,
     refreshTick: Int,
@@ -74,7 +79,7 @@ fun RankingSection(
     val density = LocalDensity.current
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val coverWidthPx = remember(screenWidthDp, density) {
-        with(density) { (screenWidthDp.dp - 48.dp).roundToPx() }.coerceAtMost(900)
+        with(density) { ((screenWidthDp.dp - 34.dp) / 2f - 24.dp).roundToPx() }.coerceAtMost(600)
     }
     val coverHeightPx = coverWidthPx * 9 / 16
     val titleHeightPx = with(density) { TitleRowHeight.toPx() }
@@ -93,7 +98,7 @@ fun RankingSection(
         snapshotFlow {
             val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
             if (first == null || first.index > 0) titleHeightPx
-            else (-first.offset).toFloat().coerceIn(0f, titleHeightPx)
+            else (-first.offset.y).toFloat().coerceIn(0f, titleHeightPx)
         }
             .distinctUntilChanged()
             .collect(onCollapse)
@@ -116,8 +121,9 @@ fun RankingSection(
         refreshTexts = FullPageRefreshTexts,
         completeHoldDurationMillis = FullPageRefreshHoldMillis,
     ) {
-        LazyColumn(
+        LazyVerticalGrid(
             state = listState,
+            columns = GridCells.Fixed(FeedColumns),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 12.dp,
@@ -125,9 +131,10 @@ fun RankingSection(
                 end = 12.dp,
                 bottom = 66.dp + navBottomPadding(),
             ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item(key = "sections") {
+            item(key = "sections", span = { GridItemSpan(maxLineSpan) }) {
                 RankingTabs(
                     selected = state.section,
                     onSelect = viewModel::select,
@@ -135,7 +142,7 @@ fun RankingSection(
             }
 
             if (state.items.isEmpty()) {
-                item(key = "state") {
+                item(key = "state", span = { GridItemSpan(maxLineSpan) }) {
                     when {
                         state.isLoading -> LoadingState()
                         state.error != null -> ErrorState(state.error.orEmpty()) {
@@ -155,9 +162,7 @@ fun RankingSection(
                 val origin = rememberExpandOrigin()
                 val topBar = LocalTopBarBounds.current
                 SideEffect {
-                    origin.listState = listState
-                    origin.rowKey = video.bvid
-                    origin.topBar = topBar
+                    origin.attachToRow(listState.asRowScrollState(), video.bvid, topBar)
                 }
                 FeedCard(
                     video = video,
