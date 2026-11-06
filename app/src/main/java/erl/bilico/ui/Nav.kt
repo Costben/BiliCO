@@ -114,6 +114,9 @@ sealed interface Route {
     data object WatchLater : Route
     data object Following : Route
     data object Settings : Route
+    data class Pgc(val seasonId: Long, val epId: Long = 0L) : Route
+    data object Messages : Route
+    data object BangumiFollow : Route
 }
 
 class NavEntry(
