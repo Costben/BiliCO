@@ -28,6 +28,7 @@ class PgcRepository(
     private val api: BiliApi,
     private val wbi: WbiKeyManager,
     private val buvid: BuvidManager,
+    private val session: erl.bilico.data.session.SessionRepository,
 ) {
     suspend fun detail(seasonId: Long, epId: Long = 0L): Result<BangumiDetail> =
         withContext(Dispatchers.IO) {
@@ -88,7 +89,22 @@ class PgcRepository(
                     metaText = meta,
                     episodes = episodes,
                     seasons = seasons,
+                    followed = (season.userStatus?.follow ?: 0) == 1,
                 )
+            }
+        }
+
+    suspend fun setFollow(seasonId: Long, follow: Boolean): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                buvid.ensure()
+                val csrf = session.csrf()
+                require(csrf.isNotBlank()) { "登录后可用" }
+                val fields = mapOf("season_id" to seasonId.toString(), "csrf" to csrf)
+                val response = if (follow) api.followBangumi(fields) else api.unfollowBangumi(fields)
+                if (response.code != 0) {
+                    error(response.message.ifBlank { "追番操作失败(${response.code})" })
+                }
             }
         }
 

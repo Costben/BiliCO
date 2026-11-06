@@ -5,8 +5,11 @@ import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.BangumiDetail
 import erl.bilico.data.model.BangumiEpisode
 import erl.bilico.data.model.PlaybackSource
+import erl.bilico.data.repository.HeartbeatReporter
 import erl.bilico.data.repository.PgcRepository
+import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.settings.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,11 +27,16 @@ data class PgcUiState(
     val playbackError: String? = null,
     val activeQuality: Int = 0,
     val requestedQuality: Int = 80,
+    val resumePositionMs: Long = 0,
+    val followed: Boolean = false,
+    val followBusy: Boolean = false,
     val message: String? = null,
 )
 
 class PgcViewModel(
     private val repository: PgcRepository,
+    private val heartbeat: HeartbeatReporter,
+    private val session: SessionRepository,
     private val settings: SettingsRepository,
     private val seasonId: Long,
     private val epId: Long,
@@ -38,6 +46,8 @@ class PgcViewModel(
     val state: StateFlow<PgcUiState> = _state.asStateFlow()
 
     private var playbackJob: Job? = null
+    private var startTs = 0L
+    private var lastHeartbeatAt = 0L
 
     val currentEpisode: BangumiEpisode?
         get() = _state.value.detail?.episodes?.getOrNull(_state.value.selectedEpIndex)
@@ -63,7 +73,12 @@ class PgcViewModel(
                         0
                     }
                     _state.update {
-                        it.copy(detail = detail, isLoading = false, selectedEpIndex = index)
+                        it.copy(
+                            detail = detail,
+                            isLoading = false,
+                            selectedEpIndex = index,
+                            followed = detail.followed,
+                        )
                     }
                     loadPlayback(
                         episode = detail.episodes[index],
@@ -80,24 +95,99 @@ class PgcViewModel(
         }
     }
 
-    fun selectEpisode(index: Int, positionMs: Long = 0L) {
+    fun selectEpisode(index: Int) {
         val detail = _state.value.detail ?: return
         val episode = detail.episodes.getOrNull(index) ?: return
         if (index == _state.value.selectedEpIndex) return
         _state.update { it.copy(selectedEpIndex = index) }
-        loadPlayback(episode, _state.value.requestedQuality, notifyDowngrade = false, positionMs)
+        loadPlayback(episode, _state.value.requestedQuality, notifyDowngrade = false, positionMs = 0L)
+    }
+
+    fun toggleFollow() {
+        val detail = _state.value.detail ?: return
+        if (!session.isLoggedIn()) {
+            _state.update { it.copy(message = "登录后可用") }
+            return
+        }
+        if (_state.value.followBusy) return
+        val target = !_state.value.followed
+        _state.update { it.copy(followBusy = true) }
+        viewModelScope.launch {
+            repository.setFollow(detail.seasonId, target)
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            followed = target,
+                            message = if (target) "已追番" else "已取消追番",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _state.update { it.copy(message = error.message ?: "操作失败") }
+                }
+            _state.update { it.copy(followBusy = false) }
+        }
     }
 
     fun selectQuality(qn: Int, positionMs: Long) {
         val current = _state.value
         if (qn == current.activeQuality) return
         val episode = currentEpisode ?: return
-        loadPlayback(episode, qn, notifyDowngrade = true, positionMs)
+        loadPlayback(episode, qn, notifyDowngrade = true, positionMs.coerceAtLeast(0L))
     }
 
     fun retryPlayback() {
         val episode = currentEpisode ?: return
         loadPlayback(episode, _state.value.requestedQuality, notifyDowngrade = false, 0L)
+    }
+
+    fun markPlaybackStarted() {
+        startTs = System.currentTimeMillis() / 1000
+        lastHeartbeatAt = 0L
+    }
+
+    fun reportHeartbeat(playedSec: Long, isPlaying: Boolean) {
+        val detail = _state.value.detail ?: return
+        val episode = currentEpisode ?: return
+        if (!isPlaying || startTs <= 0L || episode.cid <= 0L) return
+        val now = System.currentTimeMillis()
+        if (now - lastHeartbeatAt < HEARTBEAT_INTERVAL_MS) return
+        lastHeartbeatAt = now
+        viewModelScope.launch {
+            heartbeat.report(
+                bvid = episode.bvid,
+                aid = episode.aid,
+                cid = episode.cid,
+                playedTimeSec = playedSec,
+                realPlayedTimeSec = playedSec,
+                startTsSec = startTs,
+                epid = episode.epId,
+                sid = detail.seasonId,
+                videoType = 4,
+                subType = 1,
+            )
+        }
+    }
+
+    fun flushHeartbeat(playedSec: Long, externalScope: CoroutineScope) {
+        val detail = _state.value.detail ?: return
+        val episode = currentEpisode ?: return
+        val ts = startTs
+        if (episode.cid <= 0L || ts <= 0L || playedSec <= 0L) return
+        externalScope.launch {
+            heartbeat.report(
+                bvid = episode.bvid,
+                aid = episode.aid,
+                cid = episode.cid,
+                playedTimeSec = playedSec,
+                realPlayedTimeSec = playedSec,
+                startTsSec = ts,
+                epid = episode.epId,
+                sid = detail.seasonId,
+                videoType = 4,
+                subType = 1,
+            )
+        }
     }
 
     fun consumeMessage() {
@@ -121,6 +211,7 @@ class PgcViewModel(
                 isPlaybackLoading = true,
                 playbackError = null,
                 requestedQuality = qn,
+                resumePositionMs = positionMs,
             )
         }
         playbackJob = viewModelScope.launch {
@@ -161,4 +252,8 @@ class PgcViewModel(
     private fun qualityLabel(source: PlaybackSource, qn: Int): String =
         source.qualities.firstOrNull { it.quality == qn }?.label?.takeIf { it.isNotBlank() }
             ?: "${qn}P"
+
+    private companion object {
+        const val HEARTBEAT_INTERVAL_MS = 15_000L
+    }
 }

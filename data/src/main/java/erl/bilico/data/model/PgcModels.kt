@@ -32,7 +32,13 @@ data class PgcSeason(
     val styles: List<String>? = null,
     @SerialName("season_title") val seasonTitle: String = "",
     @SerialName("season_type_name") val seasonTypeName: String = "",
+    @SerialName("user_status") val userStatus: PgcUserStatus? = null,
     val total: Int = 0,
+)
+
+@Serializable
+data class PgcUserStatus(
+    val follow: Int = 0,
 )
 
 @Serializable
@@ -177,6 +183,7 @@ data class BangumiDetail(
     val metaText: String,
     val episodes: List<BangumiEpisode>,
     val seasons: List<BangumiSeasonRef>,
+    val followed: Boolean = false,
 )
 
 /** 番剧排行、追番列表共用的一张卡片。 */

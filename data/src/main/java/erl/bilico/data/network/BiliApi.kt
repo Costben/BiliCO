@@ -164,6 +164,14 @@ interface BiliApi {
     @GET("x/space/bangumi/follow/list")
     suspend fun bangumiFollow(@QueryMap params: Map<String, String>): BangumiFollowResponse
 
+    @FormUrlEncoded
+    @POST("pgc/web/follow/add")
+    suspend fun followBangumi(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
+    @POST("pgc/web/follow/del")
+    suspend fun unfollowBangumi(@FieldMap fields: Map<String, String>): BaseResponse
+
     // ---------- 排行榜 ----------
 
     @GET("x/web-interface/ranking/v2")

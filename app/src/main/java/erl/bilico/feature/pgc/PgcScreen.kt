@@ -81,6 +81,8 @@ fun PgcScreen(
     val viewModel: PgcViewModel = viewModel(key = "pgc-$seasonId-$epId") {
         PgcViewModel(
             repository = container.pgc,
+            heartbeat = container.heartbeat,
+            session = container.session,
             settings = container.settings,
             seasonId = seasonId,
             epId = epId,
@@ -119,6 +121,9 @@ fun PgcScreen(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
+                if (playbackState == Player.STATE_READY) {
+                    viewModel.markPlaybackStarted()
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -127,6 +132,7 @@ fun PgcScreen(
         }
         player.addListener(listener)
         onDispose {
+            viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
             player.removeListener(listener)
             player.release()
         }
@@ -167,7 +173,11 @@ fun PgcScreen(
         }
         player.setMediaSource(mediaSource)
         player.setPlaybackSpeed(speed)
+        val resumeAt = state.resumePositionMs
         player.prepare()
+        if (resumeAt > 0L) {
+            player.seekTo(resumeAt)
+        }
         player.playWhenReady = true
     }
 
@@ -179,6 +189,7 @@ fun PgcScreen(
         while (true) {
             positionMs = player.currentPosition.coerceAtLeast(0L)
             durationMs = player.duration.coerceAtLeast(0L)
+            viewModel.reportHeartbeat(positionMs / 1000, player.isPlaying)
             danmakuController.onPosition(positionMs)
             delay(500)
         }
@@ -299,9 +310,12 @@ fun PgcScreen(
                             isLoading = state.isLoading,
                             error = state.error,
                             selectedEpIndex = state.selectedEpIndex,
+                            followed = state.followed,
+                            onToggleFollow = viewModel::toggleFollow,
                             onRetry = viewModel::load,
                             onSelectEpisode = { index ->
-                                viewModel.selectEpisode(index, player.currentPosition)
+                                viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                                viewModel.selectEpisode(index)
                             },
                             onSelectSeason = { id -> nav.push(Route.Pgc(id, 0L)) },
                             modifier = Modifier.fillMaxSize(),

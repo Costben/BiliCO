@@ -43,6 +43,8 @@ internal fun PgcInfoTab(
     isLoading: Boolean,
     error: String?,
     selectedEpIndex: Int,
+    followed: Boolean,
+    onToggleFollow: () -> Unit,
     onRetry: () -> Unit,
     onSelectEpisode: (Int) -> Unit,
     onSelectSeason: (Long) -> Unit,
@@ -60,6 +62,8 @@ internal fun PgcInfoTab(
         else -> PgcInfoContent(
             detail = detail,
             selectedEpIndex = selectedEpIndex,
+            followed = followed,
+            onToggleFollow = onToggleFollow,
             onSelectEpisode = onSelectEpisode,
             onSelectSeason = onSelectSeason,
             modifier = modifier,
@@ -71,6 +75,8 @@ internal fun PgcInfoTab(
 private fun PgcInfoContent(
     detail: BangumiDetail,
     selectedEpIndex: Int,
+    followed: Boolean,
+    onToggleFollow: () -> Unit,
     onSelectEpisode: (Int) -> Unit,
     onSelectSeason: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -83,11 +89,39 @@ private fun PgcInfoContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "title") {
-            Text(
-                text = detail.title,
-                style = COUITheme.textStyles.title3,
-                fontWeight = FontWeight.Medium,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = detail.title,
+                    modifier = Modifier.weight(1f),
+                    style = COUITheme.textStyles.title3,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = if (followed) "已追番" else "追番",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            if (followed) {
+                                COUITheme.colorScheme.surfaceContainer
+                            } else {
+                                COUITheme.colorScheme.primary
+                            },
+                        )
+                        .clickable(onClick = onToggleFollow)
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (followed) {
+                        COUITheme.colorScheme.onSurfaceSecondary
+                    } else {
+                        androidx.compose.ui.graphics.Color.White
+                    },
+                )
+            }
         }
 
         if (detail.score.isNotBlank() || detail.viewsText.isNotBlank()) {

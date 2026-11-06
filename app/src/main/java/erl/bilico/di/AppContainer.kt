@@ -75,7 +75,7 @@ class AppContainer(context: Context) {
 
     val danmaku = DanmakuRepository(client.api, client.buvid)
 
-    val pgc = PgcRepository(client.api, client.wbi, client.buvid)
+    val pgc = PgcRepository(client.api, client.wbi, client.buvid, session)
 
     val ranking = RankingRepository(client.api, client.wbi, client.buvid)
 
