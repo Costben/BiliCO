@@ -3,7 +3,6 @@ package erl.bilico.feature.feed
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -28,27 +27,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import coil3.compose.AsyncImage
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.Avatar
+import erl.bilico.ui.components.CouiMenuItem
+import erl.bilico.ui.components.CouiPopupMenu
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -163,7 +157,7 @@ internal fun StatLabel(icon: ImageVector, text: String) {
     }
 }
 
-/** UP 主行右侧的三个点：点开在图标下方浮出一小块菜单。 */
+/** UP 主行右侧的三个点：COUI 的玻璃弹层菜单，稍后再看与分享。 */
 @Composable
 internal fun MoreMenu(
     onWatchLater: () -> Unit,
@@ -171,12 +165,6 @@ internal fun MoreMenu(
 ) {
     val scheme = COUITheme.colorScheme
     var expanded by remember { mutableStateOf(false) }
-    val menuOffset = with(LocalDensity.current) { 26.dp.roundToPx() }
-    // 主题里的容器色都带透明度，直接铺会透出底图；先压到页面底色上，再提亮一档浮起来
-    val panelColor = remember(scheme.surfaceContainerHigh, scheme.background) {
-        Color.White.copy(alpha = 0.06f)
-            .compositeOver(scheme.surfaceContainerHigh.compositeOver(scheme.background))
-    }
 
     Box {
         Box(
@@ -199,50 +187,15 @@ internal fun MoreMenu(
             )
         }
 
-        if (expanded) {
-            Popup(
-                alignment = Alignment.TopEnd,
-                offset = IntOffset(0, menuOffset),
-                onDismissRequest = { expanded = false },
-                properties = PopupProperties(focusable = true),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .width(120.dp)
-                        .dropShadow(
-                            shape = RoundedCornerShape(14.dp),
-                            shadow = Shadow(radius = 10.dp, color = Color.Black, alpha = 0.16f),
-                        )
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(panelColor)
-                        .border(1.dp, scheme.dividerLine, RoundedCornerShape(14.dp))
-                        .padding(vertical = 4.dp),
-                ) {
-                    MenuRow("稍后再看") {
-                        expanded = false
-                        onWatchLater()
-                    }
-                    MenuRow("分享") {
-                        expanded = false
-                        onShare()
-                    }
-                }
-            }
-        }
+        CouiPopupMenu(
+            show = expanded,
+            onDismiss = { expanded = false },
+            items = listOf(
+                CouiMenuItem("稍后再看", onWatchLater),
+                CouiMenuItem("分享", onShare),
+            ),
+        )
     }
-}
-
-@Composable
-private fun MenuRow(label: String, onClick: () -> Unit) {
-    Text(
-        text = label,
-        fontSize = 14.sp,
-        color = COUITheme.colorScheme.onSurface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-    )
 }
 
 internal fun shareVideo(context: Context, video: FeedVideo) {

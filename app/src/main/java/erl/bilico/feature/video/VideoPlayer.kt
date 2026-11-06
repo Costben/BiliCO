@@ -1,7 +1,6 @@
 package erl.bilico.feature.video
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,22 +33,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import erl.bilico.data.model.QualityOption
 import erl.bilico.data.util.Formatters
+import erl.bilico.ui.components.CouiMenuItem
+import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.FullscreenExitIcon
 import erl.bilico.ui.components.FullscreenIcon
 import erl.bilico.ui.components.PiliGlyph
@@ -387,54 +383,18 @@ private fun PlayerMoreMenu(
     onShare: (() -> Unit)?,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val menuOffset = with(LocalDensity.current) { 44.dp.roundToPx() }
 
     Box {
         PlayerIconButton(COUIIcons.More, "更多", onClick = { expanded = true })
-        if (expanded) {
-            Popup(
-                alignment = Alignment.TopEnd,
-                offset = IntOffset(0, menuOffset),
-                onDismissRequest = { expanded = false },
-                properties = PopupProperties(focusable = true),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .width(124.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xF2202020))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
-                        .padding(vertical = 4.dp),
-                ) {
-                    onWatchLater?.let { action ->
-                        PlayerMenuRow("稍后再看") {
-                            expanded = false
-                            action()
-                        }
-                    }
-                    onShare?.let { action ->
-                        PlayerMenuRow("分享") {
-                            expanded = false
-                            action()
-                        }
-                    }
-                }
-            }
-        }
+        CouiPopupMenu(
+            show = expanded,
+            onDismiss = { expanded = false },
+            items = buildList {
+                onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
+                onShare?.let { add(CouiMenuItem("分享", it)) }
+            },
+        )
     }
-}
-
-@Composable
-private fun PlayerMenuRow(label: String, onClick: () -> Unit) {
-    Text(
-        text = label,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        style = COUITheme.textStyles.body2,
-        color = Color.White,
-    )
 }
 
 @Composable
