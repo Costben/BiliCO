@@ -2,7 +2,15 @@ package erl.bilico.feature.video
 
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -108,12 +116,17 @@ fun VideoScreen(
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     // 用户主动退出全屏、而手机还横着时，先锁竖屏，等手机真的竖过来再交还给传感器。
     var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
+    var lastManualActionTime by remember { mutableLongStateOf(0L) }
+    var manualEnterAwaitingLandscape by remember { mutableStateOf(false) }
     val applyFullscreen: (Boolean) -> Unit = { value ->
+        lastManualActionTime = SystemClock.uptimeMillis()
         if (value) {
             manualFullscreenExit = false
+            manualEnterAwaitingLandscape = true
             fullscreen = true
         } else {
             manualFullscreenExit = true
+            manualEnterAwaitingLandscape = false
             fullscreen = false
         }
     }
@@ -178,33 +191,14 @@ fun VideoScreen(
         autoPip = autoPip,
     )
 
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                isBuffering = playbackState == Player.STATE_BUFFERING
-                if (playbackState == Player.STATE_READY) {
-                    viewModel.markPlaybackStarted()
-                } else if (playbackState == Player.STATE_ENDED) {
-                    viewModel.flushHeartbeat(player.duration.coerceAtLeast(0L) / 1000, container.scope)
-                    viewModel.playNextPart()
-                }
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                playerError = error.message ?: "播放失败"
-            }
-        }
-        player.addListener(listener)
-        onDispose {
-            viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-            player.removeListener(listener)
-            player.release()
-        }
-    }
+    BindPlayerEvents(
+        player = player,
+        viewModel = viewModel,
+        container = container,
+        onPlayingChanged = { isPlaying = it },
+        onBufferingChanged = { isBuffering = it },
+        onError = { playerError = it },
+    )
 
     LaunchedEffect(state.selectedCid, state.detail?.aid) {
         val cid = state.selectedCid
@@ -284,17 +278,32 @@ fun VideoScreen(
         onDispose { }
     }
 
-    // 手机横过来就进全屏；只有「横屏转回竖屏」才退出，竖屏本身不构成退出的理由，
-    // 否则手势上滑进全屏会被这条立刻抹掉。
+    // 手机横过来就进全屏；只有「横屏转回竖屏」才退出。
+    // 手势或按钮手动触发全屏后，享受冷却与物理朝向豁免保护，防止手机还没转过来就被强行切回。
     val deviceLandscape = rememberDeviceLandscape(autoRotateMode)
     var wasLandscape by remember { mutableStateOf(deviceLandscape) }
-    LaunchedEffect(deviceLandscape, manualFullscreenExit) {
+    LaunchedEffect(deviceLandscape, manualFullscreenExit, manualEnterAwaitingLandscape) {
         if (inPipMode) return@LaunchedEffect
-        if (deviceLandscape && !manualFullscreenExit) {
-            if (!fullscreen) fullscreen = true
-        } else if (!deviceLandscape && wasLandscape) {
-            if (manualFullscreenExit) manualFullscreenExit = false
-            if (fullscreen) fullscreen = false
+        val now = SystemClock.uptimeMillis()
+        val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
+
+        if (deviceLandscape) {
+            if (manualEnterAwaitingLandscape) {
+                manualEnterAwaitingLandscape = false
+            }
+            if (manualFullscreenExit && !inCooldown) {
+                manualFullscreenExit = false
+            }
+            if (!manualFullscreenExit && !inCooldown) {
+                if (!fullscreen) fullscreen = true
+            }
+        } else {
+            if (manualFullscreenExit) {
+                manualFullscreenExit = false
+            }
+            if (wasLandscape && !inCooldown && !manualEnterAwaitingLandscape) {
+                if (fullscreen) fullscreen = false
+            }
         }
         wasLandscape = deviceLandscape
     }
@@ -321,11 +330,20 @@ fun VideoScreen(
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
     val fullViewport = fullscreen || inPipMode
     val configuration = LocalConfiguration.current
-    val playerHeight = if (fullViewport) {
+    val targetPlayerHeight = if (fullViewport) {
         configuration.screenHeightDp.dp
     } else {
         minOf(configuration.screenWidthDp.dp * 9f / 16f, configuration.screenHeightDp.dp * 0.7f)
     }
+    // ColorOS 17 专属视频转屏动画：450ms 配合 COUIMoveEaseInterpolator (0.3f, 0.0f, 0.1f, 1.0f)
+    val playerHeight by animateDpAsState(
+        targetValue = targetPlayerHeight,
+        animationSpec = tween(
+            durationMillis = COLOROS_VIDEO_ROTATE_DURATION_MS,
+            easing = ColorOSMoveEase,
+        ),
+        label = "coloros_player_height",
+    )
 
     val message = state.message
     if (message != null) {
@@ -436,84 +454,93 @@ fun VideoScreen(
                 )
             }
 
-            if (!fullViewport) {
-                VideoDetailBar(
-                    selected = tab,
-                    onSelect = { tab = it },
-                    pager = detailPager,
-                    danmakuEnabled = danmakuEnabled,
-                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                    composing = danmakuComposing,
-                    draft = danmakuDraft,
-                    onDraftChange = { danmakuDraft = it },
-                    onComposingChange = {
-                        danmakuComposing = it
-                        if (!it) danmakuDraft = ""
-                    },
-                    onSend = sendDanmaku,
-                )
+            AnimatedVisibility(
+                visible = !fullViewport,
+                enter = fadeIn(tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase)) +
+                    slideInVertically(tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase)) { it / 4 },
+                exit = fadeOut(tween(COLOROS_VIDEO_ALPHA_DURATION_MS, easing = ColorOSEase)) +
+                    slideOutVertically(tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase)) { it / 4 },
+                modifier = Modifier.weight(1f),
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    VideoDetailBar(
+                        selected = tab,
+                        onSelect = { tab = it },
+                        pager = detailPager,
+                        danmakuEnabled = danmakuEnabled,
+                        onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                        composing = danmakuComposing,
+                        draft = danmakuDraft,
+                        onDraftChange = { danmakuDraft = it },
+                        onComposingChange = {
+                            danmakuComposing = it
+                            if (!it) danmakuDraft = ""
+                        },
+                        onSend = sendDanmaku,
+                    )
 
-                HorizontalPager(
-                    state = detailPager,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .navigationBarsPadding(),
-                    beyondViewportPageCount = 0,
-                    key = { DETAIL_PAGES[it] },
-                ) { page ->
-                    when (page) {
-                        0 -> VideoInfoTab(
-                            detail = state.detail,
-                            isLoading = state.isLoading,
-                            error = state.error,
-                            selectedCid = state.selectedCid,
-                            onRetry = viewModel::load,
-                            onSelectPart = { index ->
-                                viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-                                viewModel.selectPart(index, player.currentPosition)
-                            },
-                            onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
-                            onOpenVideo = { next -> nav.push(Route.Video(next)) },
-                            related = state.related,
-                            container = container,
-                            liked = state.liked,
-                            coined = state.coined,
-                            favorited = state.favorited,
-                            following = state.following,
-                            onLike = viewModel::toggleLike,
-                            onCoin = { coinDialogVisible = true },
-                            onFavorite = {
-                                if (!container.session.isLoggedIn()) {
-                                    viewModel.showLoginHint()
-                                } else {
-                                    scope.launch {
-                                        container.favorites.folders(container.session.mid())
-                                            .onSuccess { favoriteFolders = it }
-                                            .onFailure {
-                                                viewModel.showMessage(
-                                                    it.message ?: "收藏夹加载失败",
-                                                )
-                                            }
+                    HorizontalPager(
+                        state = detailPager,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .navigationBarsPadding(),
+                        beyondViewportPageCount = 0,
+                        key = { DETAIL_PAGES[it] },
+                    ) { page ->
+                        when (page) {
+                            0 -> VideoInfoTab(
+                                detail = state.detail,
+                                isLoading = state.isLoading,
+                                error = state.error,
+                                selectedCid = state.selectedCid,
+                                onRetry = viewModel::load,
+                                onSelectPart = { index ->
+                                    viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                                    viewModel.selectPart(index, player.currentPosition)
+                                },
+                                onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                                onOpenVideo = { next -> nav.push(Route.Video(next)) },
+                                related = state.related,
+                                container = container,
+                                liked = state.liked,
+                                coined = state.coined,
+                                favorited = state.favorited,
+                                following = state.following,
+                                onLike = viewModel::toggleLike,
+                                onCoin = { coinDialogVisible = true },
+                                onFavorite = {
+                                    if (!container.session.isLoggedIn()) {
+                                        viewModel.showLoginHint()
+                                    } else {
+                                        scope.launch {
+                                            container.favorites.folders(container.session.mid())
+                                                .onSuccess { favoriteFolders = it }
+                                                .onFailure {
+                                                    viewModel.showMessage(
+                                                        it.message ?: "收藏夹加载失败",
+                                                    )
+                                                }
+                                        }
                                     }
-                                }
-                            },
-                            onWatchLater = viewModel::addToWatchLater,
-                            onFollow = viewModel::toggleFollow,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                                },
+                                onWatchLater = viewModel::addToWatchLater,
+                                onFollow = viewModel::toggleFollow,
+                                modifier = Modifier.fillMaxSize(),
+                            )
 
-                        else -> {
-                            val aid = state.detail?.aid ?: 0L
-                            if (aid > 0L) {
-                                CommentTab(
-                                    container = container,
-                                    oid = aid,
-                                    onOpenUser = { mid ->
-                                        if (mid > 0L) nav.push(Route.Space(mid))
-                                    },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
+                            else -> {
+                                val aid = state.detail?.aid ?: 0L
+                                if (aid > 0L) {
+                                    CommentTab(
+                                        container = container,
+                                        oid = aid,
+                                        onOpenUser = { mid ->
+                                            if (mid > 0L) nav.push(Route.Space(mid))
+                                        },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
                             }
                         }
                     }
@@ -521,77 +548,39 @@ fun VideoScreen(
             }
         }
 
-        if (message != null && !inPipMode) {
-            Text(
-                text = message,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 96.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xCC000000))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                style = COUITheme.textStyles.footnote1,
-                color = Color.White,
-            )
-        }
+        VideoMessageToast(message = message, inPipMode = inPipMode)
     }
 
-    if (speedDialogVisible) {
-        SpeedDialog(
-            active = speed,
-            onSelect = { value ->
-                speed = value
-                speedDialogVisible = false
-            },
-            onDismiss = { speedDialogVisible = false },
-        )
-    }
-
-    if (subtitleDialogVisible) {
-        SubtitleDialog(
-            tracks = subtitleController.tracks,
-            selectedKey = subtitleController.selectedTrackKey,
-            onSelect = { key ->
-                subtitleController.selectTrack(key)
-                subtitleDialogVisible = false
-            },
-            onDismiss = { subtitleDialogVisible = false },
-        )
-    }
-
-    if (coinDialogVisible) {
-        CoinDialog(
-            remaining = (2 - state.coined).coerceIn(1, 2),
-            onSelect = { count ->
-                coinDialogVisible = false
-                viewModel.coin(count)
-            },
-            onDismiss = { coinDialogVisible = false },
-        )
-    }
-
-    favoriteFolders?.let { folders ->
-        FavoriteFolderDialog(
-            folders = folders,
-            onSelect = { mediaId ->
-                favoriteFolders = null
-                viewModel.favorite(mediaId)
-            },
-            onDismiss = { favoriteFolders = null },
-        )
-    }
-
-    val source = state.source
-    if (qualityDialogVisible && source != null) {
-        QualityDialog(
-            qualities = source.qualities,
-            activeQuality = state.activeQuality,
-            onSelect = { qn ->
-                qualityDialogVisible = false
-                viewModel.selectQuality(qn, player.currentPosition)
-            },
-            onDismiss = { qualityDialogVisible = false },
-        )
-    }
+    VideoScreenDialogs(
+        speedDialogVisible = speedDialogVisible,
+        speed = speed,
+        onSpeedChange = { value ->
+            speed = value
+            speedDialogVisible = false
+        },
+        onDismissSpeed = { speedDialogVisible = false },
+        subtitleDialogVisible = subtitleDialogVisible,
+        subtitleController = subtitleController,
+        onDismissSubtitle = { subtitleDialogVisible = false },
+        coinDialogVisible = coinDialogVisible,
+        coined = state.coined,
+        onSelectCoin = { count ->
+            coinDialogVisible = false
+            viewModel.coin(count)
+        },
+        onDismissCoin = { coinDialogVisible = false },
+        favoriteFolders = favoriteFolders,
+        onSelectFavorite = { mediaId ->
+            favoriteFolders = null
+            viewModel.favorite(mediaId)
+        },
+        onDismissFavorite = { favoriteFolders = null },
+        qualityDialogVisible = qualityDialogVisible,
+        state = state,
+        onSelectQuality = { qn ->
+            qualityDialogVisible = false
+            viewModel.selectQuality(qn, player.currentPosition)
+        },
+        onDismissQuality = { qualityDialogVisible = false },
+    )
 }
