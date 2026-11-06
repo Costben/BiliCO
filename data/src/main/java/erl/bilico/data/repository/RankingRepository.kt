@@ -27,6 +27,7 @@ class RankingRepository(
             response.data?.list.orEmpty().mapNotNull { item ->
                 if (item.bvid.isBlank()) return@mapNotNull null
                 val view = item.stat?.view ?: 0L
+                val danmaku = item.stat?.danmaku ?: 0L
                 FeedVideo(
                     bvid = item.bvid,
                     aid = item.aid,
@@ -36,8 +37,10 @@ class RankingRepository(
                     upMid = item.owner?.mid ?: 0L,
                     upFace = Formatters.normalizeImageUrl(item.owner?.face),
                     playCount = view,
+                    danmaku = danmaku,
                     durationSec = item.duration,
                     playCountText = Formatters.formatStat(view),
+                    danmakuText = Formatters.formatStat(danmaku),
                     durationText = Formatters.formatDuration(item.duration.toLong()),
                 )
             }

@@ -71,7 +71,7 @@ internal fun RecommendFeed(
     val titleHeightPx = with(density) { TitleRowHeight.toPx() }
 
     val coverWidthPx = remember(screenWidthDp, density) {
-        with(density) { ((screenWidthDp.dp - 34.dp) / 2f - 24.dp).roundToPx() }.coerceAtMost(600)
+        with(density) { ((screenWidthDp.dp - 34.dp) / 2f).roundToPx() }.coerceAtMost(600)
     }
     val coverHeightPx = coverWidthPx * 9 / 16
 
@@ -158,6 +158,7 @@ internal fun RecommendFeed(
                     coverHeightPx = coverHeightPx,
                     modifier = Modifier.expandOrigin(origin),
                     onOpen = { nav.push(Route.Video(video.bvid), origin) },
+                    onWatchLater = rememberWatchLaterAction(container, video),
                 )
             }
             if (state.items.isNotEmpty()) {

@@ -10,8 +10,10 @@ data class FeedVideo(
     val upMid: Long,
     val upFace: String = "",
     val playCount: Long,
+    val danmaku: Long = 0,
     val durationSec: Int,
     val playCountText: String,
+    val danmakuText: String = "",
     val durationText: String,
 )
 

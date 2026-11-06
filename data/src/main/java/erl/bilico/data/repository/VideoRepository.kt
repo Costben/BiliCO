@@ -123,8 +123,10 @@ class VideoRepository(
                         upMid = item.owner.mid,
                         upFace = Formatters.normalizeImageUrl(item.owner.face),
                         playCount = item.stat.view,
+                        danmaku = item.stat.danmaku,
                         durationSec = item.duration,
                         playCountText = Formatters.formatStat(item.stat.view),
+                        danmakuText = Formatters.formatStat(item.stat.danmaku),
                         durationText = Formatters.formatDuration(seconds),
                     )
                 }

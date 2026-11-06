@@ -57,8 +57,10 @@ class FeedRepository(
             upMid = owner?.mid ?: 0L,
             upFace = Formatters.normalizeImageUrl(owner?.face),
             playCount = viewCount,
+            danmaku = stat?.danmaku ?: 0L,
             durationSec = duration ?: 0,
             playCountText = Formatters.formatStat(viewCount),
+            danmakuText = Formatters.formatStat(stat?.danmaku ?: 0L),
             durationText = Formatters.formatDuration(seconds),
         )
     }

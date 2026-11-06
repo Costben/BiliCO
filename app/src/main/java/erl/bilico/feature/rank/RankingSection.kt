@@ -38,6 +38,7 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.feed.FeedCard
 import erl.bilico.feature.feed.FeedColumns
 import erl.bilico.feature.feed.FeedSegmentRowHeight
+import erl.bilico.feature.feed.rememberWatchLaterAction
 import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.NavState
@@ -79,7 +80,7 @@ fun RankingSection(
     val density = LocalDensity.current
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val coverWidthPx = remember(screenWidthDp, density) {
-        with(density) { ((screenWidthDp.dp - 34.dp) / 2f - 24.dp).roundToPx() }.coerceAtMost(600)
+        with(density) { ((screenWidthDp.dp - 34.dp) / 2f).roundToPx() }.coerceAtMost(600)
     }
     val coverHeightPx = coverWidthPx * 9 / 16
     val titleHeightPx = with(density) { TitleRowHeight.toPx() }
@@ -170,6 +171,7 @@ fun RankingSection(
                     coverHeightPx = coverHeightPx,
                     modifier = Modifier.expandOrigin(origin),
                     onOpen = { nav.push(Route.Video(video.bvid), origin) },
+                    onWatchLater = rememberWatchLaterAction(container, video),
                 )
             }
         }
