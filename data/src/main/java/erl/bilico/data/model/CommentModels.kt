@@ -56,11 +56,13 @@ data class ReplyPagination(
 data class ReplyItem(
     val rpid: Long = 0,
     val root: Long = 0,
+    val parent: Long = 0,
     val oid: Long = 0,
     val mid: Long = 0,
     val count: Int = 0,
     val rcount: Int = 0,
     val like: Int = 0,
+    val action: Int = 0,
     val ctime: Long = 0,
     val member: ReplyMember = ReplyMember(),
     val content: ReplyContent = ReplyContent(),
@@ -91,10 +93,31 @@ data class ReplyContent(
 @Serializable
 data class ReplyEmote(
     val url: String = "",
+    val meta: ReplyEmoteMeta? = null,
+)
+
+@Serializable
+data class ReplyEmoteMeta(
+    val size: Int = 1,
 )
 
 @Serializable
 data class ReplyUpAction(
     val like: Boolean = false,
     val reply: Boolean = false,
+)
+
+@Serializable
+data class AddReplyResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: AddReplyData? = null,
+)
+
+@Serializable
+data class AddReplyData(
+    val rpid: Long = 0,
+    val root: Long = 0,
+    val parent: Long = 0,
+    val reply: ReplyItem? = null,
 )

@@ -1,5 +1,6 @@
 package erl.bilico.data.network
 
+import erl.bilico.data.model.AddReplyResponse
 import erl.bilico.data.model.BangumiFollowResponse
 import erl.bilico.data.model.BaseResponse
 import erl.bilico.data.model.DynamicFeedResponse
@@ -76,6 +77,14 @@ interface BiliApi {
 
     @GET("x/v2/reply/reply")
     suspend fun subComments(@QueryMap params: Map<String, String>): ReplyResponse
+
+    @FormUrlEncoded
+    @POST("x/v2/reply/add")
+    suspend fun addComment(@FieldMap fields: Map<String, String>): AddReplyResponse
+
+    @FormUrlEncoded
+    @POST("x/v2/reply/action")
+    suspend fun likeComment(@FieldMap fields: Map<String, String>): BaseResponse
 
     @FormUrlEncoded
     @POST("x/click-interface/web/heartbeat")

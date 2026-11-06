@@ -62,17 +62,25 @@ data class PlaybackSource(
     val lastPlayCid: Long = 0L,
 )
 
+data class EmoteImage(
+    val url: String,
+    val large: Boolean = false,
+)
+
 data class Comment(
     val id: Long,
     val rootId: Long,
+    val parentId: Long = 0L,
     val userName: String,
     val avatar: String,
     val level: Int,
     val timeSec: Long,
     val content: String,
     val like: Int,
+    val liked: Boolean = false,
     val replyCount: Int,
     val mid: Long = 0L,
+    val emotes: Map<String, EmoteImage> = emptyMap(),
     val replies: List<Comment> = emptyList(),
 )
 
