@@ -25,9 +25,10 @@ data class DynamicUiState(
 class DynamicViewModel(
     private val repository: DynamicRepository,
     private val session: SessionRepository,
+    filter: DynamicFeedType = DynamicFeedType.ALL,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(DynamicUiState())
+    private val _state = MutableStateFlow(DynamicUiState(filter = filter))
     val state: StateFlow<DynamicUiState> = _state.asStateFlow()
 
     private var offset = ""

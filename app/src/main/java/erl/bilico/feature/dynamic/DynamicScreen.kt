@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,22 +57,23 @@ fun DynamicScreen(
     topInset: Dp,
     filterIndex: Int,
     onFilterSelect: (Int) -> Unit,
+    pagerState: PagerState,
     onCollapse: (Float) -> Unit,
 ) {
-    val viewModel: DynamicViewModel = viewModel {
-        DynamicViewModel(container.dynamic, container.session)
-    }
-    val state by viewModel.state.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
     val loggedIn = account != null
-
-    LaunchedEffect(loggedIn) { viewModel.onLoginStateChanged(loggedIn) }
-    // 筛选由顶栏的分段胶囊驱动，这里只负责把它落到数据层。
-    LaunchedEffect(filterIndex) {
-        viewModel.setFilter(DynamicFilters.getOrElse(filterIndex) { DynamicFilters.first() }.first)
-    }
-
     var viewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
+
+    // 点胶囊翻页；滑完一页再把选中态写回去。
+    // 回写必须等翻页停稳：动画途中 currentPage 会先经过中间那页，写回去会把动画打断在半路。
+    LaunchedEffect(filterIndex) {
+        if (pagerState.settledPage != filterIndex) pagerState.animateScrollToPage(filterIndex)
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect(onFilterSelect)
+    }
 
     if (!loggedIn) {
         Box(Modifier.fillMaxSize()) {
@@ -85,22 +88,40 @@ fun DynamicScreen(
         return
     }
 
-    DynamicContent(
-        state = state,
-        viewModel = viewModel,
-        topInset = topInset,
-        onCollapse = onCollapse,
-        onOpenUser = { nav.push(Route.Space(it)) },
-        onOpenVideo = { nav.push(Route.Video(it)) },
-        onOpenImage = { images, index -> viewer = images to index },
-        onOpenContent = { card ->
-            if (card.articleId > 0L) {
-                nav.push(Route.Article(card.articleId, card.title))
-            } else if (card.dynamicId.isNotBlank()) {
-                nav.push(Route.Opus(card.dynamicId, card.title))
+    Box(Modifier.fillMaxSize()) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 1,
+            key = { DynamicFilters[it].second },
+        ) { page ->
+            val filter = DynamicFilters[page].first
+            // 每个筛选一份自己的列表：滑到对面那页时内容已经加载好，不会先空一下再重新拉。
+            val viewModel: DynamicViewModel = viewModel(key = "dynamic-${filter.name}") {
+                DynamicViewModel(container.dynamic, container.session, filter)
             }
-        },
-    )
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            LaunchedEffect(loggedIn) { viewModel.onLoginStateChanged(loggedIn) }
+
+            DynamicContent(
+                state = state,
+                viewModel = viewModel,
+                topInset = topInset,
+                active = pagerState.settledPage == page,
+                onCollapse = onCollapse,
+                onOpenUser = { nav.push(Route.Space(it)) },
+                onOpenVideo = { nav.push(Route.Video(it)) },
+                onOpenImage = { images, index -> viewer = images to index },
+                onOpenContent = { card ->
+                    if (card.articleId > 0L) {
+                        nav.push(Route.Article(card.articleId, card.title))
+                    } else if (card.dynamicId.isNotBlank()) {
+                        nav.push(Route.Opus(card.dynamicId, card.title))
+                    }
+                },
+            )
+        }
+    }
 
     viewer?.let { (images, index) ->
         DynamicImageViewer(
@@ -116,6 +137,7 @@ private fun DynamicContent(
     state: DynamicUiState,
     viewModel: DynamicViewModel,
     topInset: Dp,
+    active: Boolean,
     onCollapse: (Float) -> Unit,
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
@@ -127,8 +149,9 @@ private fun DynamicContent(
     val pullState = rememberFullPagePullToRefreshState()
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
 
-    // 和推荐流同一套折叠规则：翻过第一条就收起，回到顶部才展开。
-    LaunchedEffect(listState) {
+    // 和推荐流同一套折叠规则：翻过第一条就收起，回到顶部才展开。只有自己是当前页时才上报。
+    LaunchedEffect(listState, active) {
+        if (!active) return@LaunchedEffect
         snapshotFlow {
             val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
             if (first == null || first.index > 0) titleHeightPx
@@ -137,7 +160,8 @@ private fun DynamicContent(
             .distinctUntilChanged()
             .collect(onCollapse)
     }
-    LaunchedEffect(listState) {
+    LaunchedEffect(listState, active) {
+        if (!active) return@LaunchedEffect
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .distinctUntilChanged()
             .collect { lastVisible ->

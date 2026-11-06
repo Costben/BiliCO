@@ -109,6 +109,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
     var segment by rememberSaveable { mutableIntStateOf(0) }
     // 翻页状态提到外壳：分段胶囊要跟着 pager 连续移动，不能等切完页再动。
     val feedPager = rememberPagerState(initialPage = segment, pageCount = { FEED_SEGMENTS.size })
+    val dynamicPager = rememberPagerState(initialPage = dynamicFilterIndex, pageCount = { DynamicFilters.size })
 
     // 标题行的折叠量只在这里算一次：顶栏和分段胶囊读同一个值，滚动时才不会各折各的。
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
@@ -162,6 +163,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 topInset = topBarHeight,
                                 filterIndex = dynamicFilterIndex,
                                 onFilterSelect = { dynamicFilterIndex = it },
+                                pagerState = dynamicPager,
                                 onCollapse = { dynamicCollapse = it },
                             )
 
@@ -199,6 +201,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     dynamicFilterIndex = dynamicFilterIndex,
                     onDynamicFilter = { dynamicFilterIndex = it },
                     pager = feedPager,
+                    dynamicPager = dynamicPager,
                     bounds = topBarBounds,
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
                 )
@@ -229,6 +232,7 @@ private fun MainTopBar(
     dynamicFilterIndex: Int,
     onDynamicFilter: (Int) -> Unit,
     pager: PagerState,
+    dynamicPager: PagerState,
     bounds: TopBarBounds,
     modifier: Modifier = Modifier,
 ) {
@@ -262,6 +266,7 @@ private fun MainTopBar(
                 dynamicFilterIndex = dynamicFilterIndex,
                 onDynamicFilter = onDynamicFilter,
                 pager = pager,
+                dynamicPager = dynamicPager,
             )
         }
     }
@@ -279,6 +284,7 @@ private fun BarContent(
     dynamicFilterIndex: Int,
     onDynamicFilter: (Int) -> Unit,
     pager: PagerState,
+    dynamicPager: PagerState,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
     Column(
@@ -332,7 +338,7 @@ private fun BarContent(
                 ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TabActions(tab, nav)
+
             }
         }
 
@@ -355,7 +361,8 @@ private fun BarContent(
                     labels = capsuleLabels,
                     selectedIndex = if (tab == 0) segment else dynamicFilterIndex,
                     onSelect = if (tab == 0) onSegment else onDynamicFilter,
-                    pager = if (tab == 0) pager else null,
+                    // 两个 tab 的胶囊都跟着各自的 pager 走，拖动时指示块贴住手指。
+                    pager = if (tab == 0) pager else dynamicPager,
                 )
             }
         }
