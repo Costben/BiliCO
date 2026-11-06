@@ -81,6 +81,7 @@ data class CommentPage(
     val total: Int,
 )
 
+@kotlinx.serialization.Serializable
 data class Account(
     val mid: Long,
     val name: String,

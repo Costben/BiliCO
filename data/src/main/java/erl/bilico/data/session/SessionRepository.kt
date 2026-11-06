@@ -80,8 +80,8 @@ class SessionRepository(
             val data = response.data
             if (response.code == 0 && data != null && data.isLogin && data.mid > 0L) {
                 val account = Account(mid = data.mid, name = data.uname, face = data.face)
-                persistAccount(account)
                 _account.value = account
+                runCatching { persistAccount(account) }
                 account
             } else {
                 if (response.code == -101) clearSession()
