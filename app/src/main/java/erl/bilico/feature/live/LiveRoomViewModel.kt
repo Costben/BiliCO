@@ -21,6 +21,8 @@ data class LiveRoomUiState(
     val playbackError: String? = null,
     val requestedQuality: Int = 10000,
     val activeQuality: Int = 0,
+    /** 每次成功取流加一：地址可能一模一样，靠它让播放器重新 prepare。 */
+    val playbackGeneration: Int = 0,
 )
 
 class LiveRoomViewModel(
@@ -79,6 +81,7 @@ class LiveRoomViewModel(
                             playback = playback,
                             isPlaybackLoading = false,
                             activeQuality = playback.activeQuality,
+                            playbackGeneration = it.playbackGeneration + 1,
                         )
                     }
                 }

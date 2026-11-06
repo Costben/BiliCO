@@ -157,10 +157,18 @@ data class LiveRoomDetail(
 )
 
 data class LivePlayback(
-    val url: String,
-    val isHls: Boolean,
+    /** 同一直播间按偏好排好序的多条线路，第一条失败就换下一条。 */
+    val candidates: List<LiveCandidate>,
     val qualities: List<QualityOption>,
     val activeQuality: Int,
+) {
+    val url: String get() = candidates.first().url
+    val isHls: Boolean get() = candidates.first().isHls
+}
+
+data class LiveCandidate(
+    val url: String,
+    val isHls: Boolean,
 )
 
 // ---------- 搜索 / 空间 / 收藏 / 关注 ----------

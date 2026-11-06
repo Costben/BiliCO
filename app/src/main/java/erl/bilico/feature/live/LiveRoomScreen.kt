@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -37,14 +38,18 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
+import android.util.Log
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import coil3.compose.AsyncImage
+import erl.bilico.data.model.LiveCandidate
 import erl.bilico.data.model.LiveRoomDetail
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
@@ -75,6 +80,36 @@ fun LiveRoomScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
+    var errorEvent by remember { mutableStateOf<PlaybackException?>(null) }
+    var candidateIndex by remember { mutableIntStateOf(0) }
+    var refetched by remember { mutableIntStateOf(0) }
+
+    fun mediaSourceFor(candidate: LiveCandidate): MediaSource {
+        val headers = container.client.mediaRequestHeaders().toMutableMap().apply {
+            put("Referer", "https://live.bilibili.com/")
+            put("Origin", "https://live.bilibili.com")
+        }
+        val dataSourceFactory = OkHttpDataSource.Factory(container.client.mediaClient())
+            .setDefaultRequestProperties(headers)
+        return if (candidate.isHls) {
+            HlsMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(MediaItem.fromUri(candidate.url))
+        } else {
+            ProgressiveMediaSource.Factory(
+                dataSourceFactory,
+                DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true),
+            ).createMediaSource(MediaItem.fromUri(candidate.url))
+        }
+    }
+
+    fun prepareCandidate(candidate: LiveCandidate) {
+        playerError = null
+        player.setMediaSource(mediaSourceFor(candidate))
+        player.prepare()
+        // 直播从最新位置起播，避免一进房就落后到窗口外。
+        player.seekToDefaultPosition()
+        player.playWhenReady = true
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -84,10 +119,11 @@ fun LiveRoomScreen(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
+                if (playbackState == Player.STATE_READY) refetched = 0
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                playerError = error.message ?: "播放失败"
+                errorEvent = error
             }
         }
         player.addListener(listener)
@@ -97,27 +133,43 @@ fun LiveRoomScreen(
         }
     }
 
-    LaunchedEffect(state.playback) {
+    LaunchedEffect(state.playback, state.playbackGeneration) {
         val playback = state.playback ?: return@LaunchedEffect
-        playerError = null
-        val headers = container.client.mediaRequestHeaders().toMutableMap().apply {
-            put("Referer", "https://live.bilibili.com/")
-            put("Origin", "https://live.bilibili.com")
+        candidateIndex = 0
+        prepareCandidate(playback.candidates.first())
+    }
+
+    // 换线路：403/404/5xx 或网络错误时按候选表顺延，全试完再重取一次地址（token 可能过期）。
+    LaunchedEffect(errorEvent) {
+        val error = errorEvent ?: return@LaunchedEffect
+        errorEvent = null
+        val playback = state.playback
+        val failed = playback?.candidates?.getOrNull(candidateIndex)
+        Log.w(
+            "BiliLive",
+            "player error code=${error.errorCode} name=${error.errorCodeName} " +
+                "http=${httpStatus(error)} index=$candidateIndex/${playback?.candidates?.size} " +
+                "url=${failed?.url?.take(120)}",
+            error,
+        )
+        if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+            player.prepare()
+            player.seekToDefaultPosition()
+            player.playWhenReady = true
+            return@LaunchedEffect
         }
-        val dataSourceFactory = OkHttpDataSource.Factory(container.client.mediaClient())
-            .setDefaultRequestProperties(headers)
-        val mediaSource = if (playback.isHls) {
-            HlsMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(playback.url))
-        } else {
-            ProgressiveMediaSource.Factory(
-                dataSourceFactory,
-                DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true),
-            ).createMediaSource(MediaItem.fromUri(playback.url))
+        val next = playback?.candidates?.getOrNull(candidateIndex + 1)
+        if (next != null) {
+            candidateIndex += 1
+            prepareCandidate(next)
+            return@LaunchedEffect
         }
-        player.setMediaSource(mediaSource)
-        player.prepare()
-        player.playWhenReady = true
+        if (refetched < 1) {
+            refetched += 1
+            viewModel.retryPlayback()
+            return@LaunchedEffect
+        }
+        playerError = error.message ?: "播放失败"
     }
 
     FullscreenEffect(fullscreen)
@@ -260,4 +312,14 @@ private fun playerStatus(state: LiveRoomUiState): String {
     val playback = state.playback ?: return "加载中"
     val label = playback.qualities.firstOrNull { it.quality == state.activeQuality }?.label
     return label?.takeIf { it.isNotBlank() } ?: "直播中"
+}
+
+/** 从异常链里掏出 HTTP 状态码，日志里能直接看出是 403 还是超时。 */
+private fun httpStatus(error: PlaybackException): Int? {
+    var cause: Throwable? = error.cause
+    while (cause != null) {
+        if (cause is HttpDataSource.InvalidResponseCodeException) return cause.responseCode
+        cause = cause.cause
+    }
+    return null
 }

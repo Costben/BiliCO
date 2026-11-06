@@ -1,5 +1,6 @@
 package erl.bilico.data.repository
 
+import erl.bilico.data.model.LiveCandidate
 import erl.bilico.data.model.LivePlayUrlData
 import erl.bilico.data.model.LivePlayback
 import erl.bilico.data.model.LiveQuality
@@ -136,29 +137,49 @@ class LiveRepository(
             }
         }
 
+    /**
+     * 旧项目 LivePlaybackPolicy.resolveLivePlayback 的做法：把接口给的所有线路摊平成一个有序候选表，
+     * 播放失败时按顺序换下一条。这里同样先排 HLS（fmp4 优先、avc 优先），再排 FLV。
+     */
     private fun LivePlayUrlData.toPlayback(requestedQn: Int): LivePlayback {
         val qualities = qualitiesOf()
         val streams = playurlInfo?.playurl?.stream.orEmpty()
-        val hls = streams.firstOrNull { it.protocolName == "http_hls" }
-        val stream = hls ?: streams.firstOrNull { it.protocolName == "http_stream" }
-        if (stream != null) {
-            val url = stream.pickUrl()
-            if (url != null) {
-                return LivePlayback(
-                    url = url,
-                    isHls = stream === hls,
-                    qualities = qualities,
-                    activeQuality = stream.pickQuality() ?: currentQuality.takeIf { it > 0 } ?: requestedQn,
-                )
+        val ordered = streams.sortedBy { if (it.protocolName == "http_hls") 0 else 1 }
+        val candidates = ArrayList<LiveCandidate>()
+        for (stream in ordered) {
+            val isHls = stream.protocolName == "http_hls"
+            val formats = stream.format.filter { it.codec.isNotEmpty() }
+                .sortedBy { if (it.formatName == "fmp4") 0 else 1 }
+            for (format in formats) {
+                val codecs = format.codec.filter { it.baseUrl.isNotBlank() }
+                    .sortedBy { if (it.codecName == "avc") 0 else 1 }
+                for (codec in codecs) {
+                    for (urlInfo in codec.urlInfo) {
+                        if (urlInfo.host.isBlank()) continue
+                        val url = urlInfo.host + codec.baseUrl + urlInfo.extra
+                        if (candidates.none { it.url == url }) {
+                            candidates += LiveCandidate(url, isHls)
+                        }
+                    }
+                }
             }
         }
-        val flv = durl.firstOrNull { it.url.isNotBlank() }?.url
-            ?: error("没有可播放的直播流")
+        durl.forEach { part ->
+            if (part.url.isNotBlank() && candidates.none { it.url == part.url }) {
+                candidates += LiveCandidate(part.url, isHls = false)
+            }
+        }
+        if (candidates.isEmpty()) error("没有可播放的直播流")
+        val first = candidates.first()
+        val activeQuality = if (first.isHls) {
+            streams.firstOrNull { it.protocolName == "http_hls" }?.pickQuality()
+        } else {
+            null
+        } ?: currentQuality.takeIf { it > 0 } ?: requestedQn
         return LivePlayback(
-            url = flv,
-            isHls = false,
+            candidates = candidates,
             qualities = qualities,
-            activeQuality = currentQuality.takeIf { it > 0 } ?: requestedQn,
+            activeQuality = activeQuality,
         )
     }
 
@@ -176,17 +197,6 @@ class LiveRepository(
             .filter { accepted.isEmpty() || it.qn in accepted }
             .distinctBy { it.qn }
             .map { QualityOption(quality = it.qn, label = it.desc) }
-    }
-
-    /** HLS 优先 fmp4，回落 ts；编码优先 AVC，兼容性最好。 */
-    private fun LiveStream.pickUrl(): String? {
-        val formats = format.filter { it.codec.isNotEmpty() }
-        val preferred = formats.firstOrNull { it.formatName == "fmp4" } ?: formats.firstOrNull()
-            ?: return null
-        val codecs = preferred.codec.filter { it.baseUrl.isNotBlank() }
-        val codec = codecs.firstOrNull { it.codecName == "avc" } ?: codecs.firstOrNull() ?: return null
-        val urlInfo = codec.urlInfo.firstOrNull { it.host.isNotBlank() } ?: return null
-        return urlInfo.host + codec.baseUrl + urlInfo.extra
     }
 
     private fun LiveStream.pickQuality(): Int? {
