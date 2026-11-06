@@ -52,7 +52,7 @@ class AppContainer(context: Context) {
 
     val video = VideoRepository(client.api, client.wbi, client.buvid, session)
 
-    val comments = CommentRepository(client.api, client.wbi, client.buvid)
+    val comments = CommentRepository(client.api, client.wbi, client.buvid, session)
 
     val heartbeat = HeartbeatReporter(client.api, session)
 

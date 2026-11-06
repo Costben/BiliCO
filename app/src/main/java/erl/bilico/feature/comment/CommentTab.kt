@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,6 +30,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,11 +43,19 @@ import erl.bilico.di.AppContainer
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.components.InputDialog
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
+
+private sealed interface ComposeTarget {
+    data object Main : ComposeTarget
+    data class Reply(val root: Comment) : ComposeTarget
+}
 
 @Composable
 fun CommentTab(
@@ -53,13 +63,15 @@ fun CommentTab(
     oid: Long,
     onOpenUser: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    type: Int = 1,
 ) {
-    val viewModel: CommentViewModel = viewModel(key = "comment-$oid") {
-        CommentViewModel(container.comments, oid)
+    val viewModel: CommentViewModel = viewModel(key = "comment-$type-$oid") {
+        CommentViewModel(container.comments, oid, type)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
-    var replyTarget by remember { mutableStateOf<Comment?>(null) }
+    var dialogRoot by remember { mutableStateOf<Comment?>(null) }
+    var composeTarget by remember { mutableStateOf<ComposeTarget?>(null) }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -72,77 +84,170 @@ fun CommentTab(
             }
     }
 
-    Box(modifier) {
-        when {
-            state.isLoading && state.items.isEmpty() -> LoadingState()
+    Column(modifier) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            when {
+                state.isLoading && state.items.isEmpty() -> LoadingState()
 
-            state.items.isEmpty() -> if (state.error != null) {
-                ErrorState(state.error.orEmpty(), onRetry = viewModel::refresh)
-            } else {
-                EmptyState("还没有评论")
+                state.items.isEmpty() -> if (state.error != null) {
+                    ErrorState(state.error.orEmpty(), onRetry = viewModel::refresh)
+                } else {
+                    EmptyState("还没有评论")
+                }
+
+                else -> LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    item(key = "header") {
+                        Text(
+                            text = "评论 ${Formatters.formatStat(state.total.toLong())}",
+                            style = COUITheme.textStyles.body1,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    items(state.items, key = { it.id }) { comment ->
+                        CommentRow(
+                            comment = comment,
+                            onLike = {
+                                if (!container.session.isLoggedIn()) {
+                                    viewModel.showMessage("请先登录")
+                                } else {
+                                    viewModel.toggleLike(comment)
+                                }
+                            },
+                            onReply = {
+                                if (!container.session.isLoggedIn()) {
+                                    viewModel.showMessage("请先登录")
+                                } else {
+                                    composeTarget = ComposeTarget.Reply(comment)
+                                }
+                            },
+                            onOpenReplies = { dialogRoot = it },
+                            onOpenUser = onOpenUser,
+                        )
+                    }
+                    when {
+                        state.isLoadingMore -> item(key = "more") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    size = 18.dp,
+                                )
+                            }
+                        }
+
+                        state.isEnd -> item(key = "end") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "没有更多评论了",
+                                    style = COUITheme.textStyles.footnote2,
+                                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            else -> LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item(key = "header") {
-                    Text(
-                        text = "评论 ${Formatters.formatStat(state.total.toLong())}",
-                        style = COUITheme.textStyles.body1,
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
-                items(state.items, key = { it.id }) { comment ->
-                    CommentRow(
-                        comment = comment,
-                        onOpenReplies = { replyTarget = it },
-                        onOpenUser = onOpenUser,
-                    )
-                }
-                when {
-                    state.isLoadingMore -> item(key = "more") {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                size = 18.dp,
-                            )
-                        }
-                    }
+            state.message?.let { toast ->
+                Text(
+                    text = toast,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xCC000000))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    style = COUITheme.textStyles.footnote1,
+                    color = Color.White,
+                )
+            }
+        }
 
-                    state.isEnd -> item(key = "end") {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "没有更多评论了",
-                                style = COUITheme.textStyles.footnote2,
-                                color = COUITheme.colorScheme.onSurfaceSecondary,
-                            )
+        HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(COUITheme.colorScheme.background)
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(COUITheme.colorScheme.surfaceVariant)
+                    .clickable {
+                        if (!container.session.isLoggedIn()) {
+                            viewModel.showMessage("请先登录")
+                        } else {
+                            composeTarget = ComposeTarget.Main
                         }
                     }
-                }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+            ) {
+                Text(
+                    text = if (state.isSending) "正在发送评论…" else "发一条友善的评论…",
+                    style = COUITheme.textStyles.footnote1,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                )
             }
         }
     }
 
-    val target = replyTarget
-    if (target != null) {
+    when (val target = composeTarget) {
+        ComposeTarget.Main -> InputDialog(
+            title = "发表评论",
+            hint = "发一条友善的评论",
+            confirmText = "发送",
+            onDismiss = { composeTarget = null },
+            onConfirm = { text ->
+                composeTarget = null
+                viewModel.postComment(text)
+            },
+        )
+
+        is ComposeTarget.Reply -> InputDialog(
+            title = "回复 @${target.root.userName}",
+            hint = "写回复",
+            confirmText = "发送",
+            onDismiss = { composeTarget = null },
+            onConfirm = { text ->
+                composeTarget = null
+                viewModel.postReply(target.root, text)
+            },
+        )
+
+        null -> Unit
+    }
+
+    val root = dialogRoot
+    if (root != null) {
         ReplyDialog(
             container = container,
             oid = oid,
-            comment = target,
-            onDismiss = { replyTarget = null },
+            comment = state.items.firstOrNull { it.id == root.id } ?: root,
+            type = type,
+            onSubReplyAdded = { created -> viewModel.onSubReplyAdded(root.id, created) },
+            onDismiss = { dialogRoot = null },
         )
     }
 }
@@ -150,6 +255,8 @@ fun CommentTab(
 @Composable
 private fun CommentRow(
     comment: Comment,
+    onLike: () -> Unit,
+    onReply: () -> Unit,
     onOpenReplies: (Comment) -> Unit,
     onOpenUser: (Long) -> Unit,
 ) {
@@ -203,26 +310,57 @@ private fun CommentRow(
 
             Spacer(Modifier.height(4.dp))
 
-            Text(
-                text = comment.content.ifBlank { "[图片评论]" },
+            RichCommentText(
+                content = comment.content,
+                emotes = comment.emotes,
                 modifier = Modifier.clickable { expanded = !expanded },
                 style = COUITheme.textStyles.body2,
                 maxLines = if (expanded) Int.MAX_VALUE else 8,
-                overflow = TextOverflow.Ellipsis,
             )
 
             Spacer(Modifier.height(6.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (comment.like > 0) {
-                    Text(
-                        text = "赞 ${Formatters.formatStat(comment.like.toLong())}",
-                        style = COUITheme.textStyles.footnote2,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                    )
-                    Spacer(Modifier.width(16.dp))
+                val likeLabel = when {
+                    comment.liked && comment.like > 0 ->
+                        "已赞 ${Formatters.formatStat(comment.like.toLong())}"
+                    comment.liked -> "已赞"
+                    comment.like > 0 -> "赞 ${Formatters.formatStat(comment.like.toLong())}"
+                    else -> "赞"
                 }
+                Text(
+                    text = likeLabel,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (comment.liked) {
+                                COUITheme.colorScheme.primary.copy(alpha = 0.14f)
+                            } else {
+                                Color.Transparent
+                            },
+                        )
+                        .clickable(onClick = onLike)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    style = COUITheme.textStyles.footnote2,
+                    fontWeight = if (comment.liked) FontWeight.Medium else FontWeight.Normal,
+                    color = if (comment.liked) {
+                        COUITheme.colorScheme.primary
+                    } else {
+                        COUITheme.colorScheme.onSurfaceSecondary
+                    },
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "回复",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onReply)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    style = COUITheme.textStyles.footnote2,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                )
                 if (comment.replyCount > 0) {
+                    Spacer(Modifier.width(12.dp))
                     Text(
                         text = "查看 ${comment.replyCount} 条回复",
                         modifier = Modifier.clickable { onOpenReplies(comment) },
@@ -244,12 +382,13 @@ private fun CommentRow(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     comment.replies.take(2).forEach { reply ->
-                        Text(
-                            text = "${reply.userName}：${reply.content}",
+                        RichCommentText(
+                            content = reply.content,
+                            emotes = reply.emotes,
+                            prefixUserName = reply.userName,
                             style = COUITheme.textStyles.footnote1,
                             color = COUITheme.colorScheme.onSurface,
                             maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     if (comment.replyCount > comment.replies.take(2).size) {
