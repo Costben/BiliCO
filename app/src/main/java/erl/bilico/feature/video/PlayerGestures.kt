@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.BrightnessIcon
 import erl.bilico.ui.components.FullscreenExitIcon
@@ -60,17 +61,8 @@ private enum class DragMode {
     FULLSCREEN,
 }
 
-/** 竖直方向整体快过这个速度（px/ms）的，按「甩一下」算全屏手势，不再改亮度音量。 */
-private const val FlingSpeedPxPerMs = 2.0f
-
-/** 竖向手势至少先走满播放区的这个比例，才开始判速度。 */
-private const val FlingDecideTravel = 0.08f
-
-/** 或者按下超过这么久，也当慢拖处理，直接进亮度音量。 */
-private const val FlingDecideTimeoutMs = 260L
-
-/** 全屏手势要甩过播放区的这个比例才算数，避免误触。 */
-private const val FullscreenSwipeTravel = 0.1f
+/** 滑动超过这个距离（dp）判定进入全屏意图。 */
+private val FullscreenThresholdDp = 32.dp
 
 @Composable
 internal fun PlayerGestureLayer(
@@ -178,19 +170,16 @@ internal fun PlayerGestureLayer(
                         totalDy += delta.y
 
                         if (activeMode == DragMode.NONE) {
-                            if (abs(totalDx) > slop || abs(totalDy) > slop) {
-                                val elapsedMs = (change.uptimeMillis - down.uptimeMillis)
-                                    .coerceAtLeast(1L)
-                                // 竖向先走够一段距离再判速度：刚越过 slop 的那几毫秒
-                                // 速度噪声极大，拿它判「甩」几乎必然误判成全屏。
-                                val undecidedVertical = abs(totalDx) < abs(totalDy) &&
-                                    abs(totalDy) < height * FlingDecideTravel &&
-                                    elapsedMs < FlingDecideTimeoutMs
-                                val fling = abs(totalDy) / elapsedMs > FlingSpeedPxPerMs
-                                activeMode = when {
-                                    undecidedVertical -> DragMode.NONE
+                            val dx = abs(totalDx)
+                            val dy = abs(totalDy)
+                            if (dx > slop || dy > slop) {
+                                val isHorizontal = dx > dy * 1.25f
+                                val isVertical = dy > dx * 1.25f
+                                val leftBoundary = width / 3f
+                                val rightBoundary = width * 2f / 3f
 
-                                    abs(totalDx) >= abs(totalDy) -> {
+                                activeMode = when {
+                                    isHorizontal -> {
                                         if (currentDuration > 0L) {
                                             seekBaseMs = currentPosition.coerceIn(0L, currentDuration)
                                             seekPreviewMs = seekBaseMs
@@ -200,29 +189,40 @@ internal fun PlayerGestureLayer(
                                         }
                                     }
 
-                                    fling -> DragMode.FULLSCREEN
+                                    isVertical -> {
+                                        when {
+                                            down.position.x < leftBoundary -> {
+                                                startBrightness = readWindowBrightness(activity, context)
+                                                levelFraction = startBrightness
+                                                lastStep = -1
+                                                DragMode.BRIGHTNESS
+                                            }
 
-                                    down.position.x < width * 0.5f -> {
-                                        startBrightness = readWindowBrightness(activity, context)
-                                        levelFraction = startBrightness
-                                        lastStep = -1
-                                        DragMode.BRIGHTNESS
+                                            down.position.x > rightBoundary -> {
+                                                val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                                startVolume = (curVol.toFloat() / maxVol).coerceIn(0f, 1f)
+                                                levelFraction = startVolume
+                                                lastStep = -1
+                                                DragMode.VOLUME
+                                            }
+
+                                            else -> {
+                                                fullscreenIntent = 0
+                                                DragMode.FULLSCREEN
+                                            }
+                                        }
                                     }
 
-                                    else -> {
-                                        val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                        startVolume = (curVol.toFloat() / maxVol).coerceIn(0f, 1f)
-                                        levelFraction = startVolume
-                                        lastStep = -1
-                                        DragMode.VOLUME
-                                    }
+                                    else -> DragMode.NONE
                                 }
-                                dragMode = activeMode
-                                // 不把累计位移清零，只记基线：判定前已经走掉的那段距离
-                                // 不该再作用到音量/亮度上，否则一判定就跳一截。
-                                baseDx = totalDx
-                                baseDy = totalDy
-                                change.consume()
+
+                                if (activeMode != DragMode.NONE) {
+                                    dragMode = activeMode
+                                    // 记录基准位移，后续调节只算判定后的相对增量
+                                    baseDx = totalDx
+                                    baseDy = totalDy
+                                    change.consume()
+                                }
                             }
                         } else {
                             change.consume()
@@ -262,10 +262,18 @@ internal fun PlayerGestureLayer(
                                 }
 
                                 DragMode.FULLSCREEN -> {
-                                    fullscreenIntent = when {
-                                        totalDy < -height * FullscreenSwipeTravel -> 1
-                                        totalDy > height * FullscreenSwipeTravel -> -1
+                                    val travelY = totalDy - baseDy
+                                    val thresholdPx = with(density) { FullscreenThresholdDp.toPx() }
+                                    val nextIntent = when {
+                                        travelY < -thresholdPx -> 1   // 上滑：进全屏
+                                        travelY > thresholdPx -> -1  // 下滑：退全屏
                                         else -> 0
+                                    }
+                                    if (nextIntent != fullscreenIntent) {
+                                        fullscreenIntent = nextIntent
+                                        if (nextIntent != 0 && currentHapticEnabled) {
+                                            haptic(CouiHapticEffect.Short)
+                                        }
                                     }
                                 }
 
@@ -325,42 +333,55 @@ internal fun PlayerGestureLayer(
                 }
             }
 
-            // 亮度贴左半边、音量贴右半边，各自落在自己那半的中间。
+            // 亮度贴左 1/3，音量贴右 1/3，各自居中显示
             DragMode.BRIGHTNESS, DragMode.VOLUME -> {
                 val isBrightness = dragMode == DragMode.BRIGHTNESS
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .fillMaxWidth(0.5f)
+                        .fillMaxWidth(0.333f)
                         .align(if (isBrightness) Alignment.CenterStart else Alignment.CenterEnd),
                     contentAlignment = Alignment.Center,
                 ) {
-                    LevelIndicator(isBrightness = isBrightness, fraction = levelFraction)
+                    LevelIndicator(
+                        isBrightness = isBrightness,
+                        fraction = levelFraction,
+                        isCompact = !currentFullscreen,
+                    )
                 }
             }
 
             DragMode.FULLSCREEN -> {
-                // 全屏里能做的只有下滑退出，非全屏里只有上滑进入，提示按当前状态给，不跟甩的方向走。
                 val isExit = currentFullscreen
+                val isCompact = !currentFullscreen
                 val icon = if (isExit) FullscreenExitIcon else FullscreenIcon
+                val text = when {
+                    isExit && fullscreenIntent == -1 -> "松开退出全屏"
+                    isExit -> "下滑退出全屏"
+                    fullscreenIntent == 1 -> "松开进入全屏"
+                    else -> "上滑进入全屏"
+                }
                 Column(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(RoundedCornerShape(if (isCompact) 14.dp else 18.dp))
                         .background(Color(0xCC000000))
-                        .padding(horizontal = 22.dp, vertical = 18.dp),
+                        .padding(
+                            horizontal = if (isCompact) 16.dp else 22.dp,
+                            vertical = if (isCompact) 10.dp else 16.dp,
+                        ),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp),
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        modifier = Modifier.size(30.dp),
+                        modifier = Modifier.size(if (isCompact) 22.dp else 28.dp),
                         tint = Color.White,
                     )
                     Text(
-                        text = if (isExit) "下滑退出全屏" else "上滑进入全屏",
-                        style = COUITheme.textStyles.footnote1,
+                        text = text,
+                        style = if (isCompact) COUITheme.textStyles.footnote2 else COUITheme.textStyles.footnote1,
                         color = Color.White,
                     )
                 }
@@ -379,29 +400,39 @@ private const val BrightnessSteps = 20
 private fun LevelIndicator(
     isBrightness: Boolean,
     fraction: Float,
+    isCompact: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val percent = (fraction * 100).roundToInt().coerceIn(0, 100)
+    val cardWidth = if (isCompact) 40.dp else 54.dp
+    val cardPaddingH = if (isCompact) 8.dp else 10.dp
+    val cardPaddingV = if (isCompact) 8.dp else 14.dp
+    val itemSpacing = if (isCompact) 4.dp else 8.dp
+    val iconSize = if (isCompact) 16.dp else 20.dp
+    val trackWidth = if (isCompact) 4.dp else 5.dp
+    val trackHeight = if (isCompact) 44.dp else 96.dp
+    val cornerRadius = if (isCompact) 12.dp else 18.dp
+
     Column(
         modifier = modifier
-            .width(58.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .width(cardWidth)
+            .clip(RoundedCornerShape(cornerRadius))
             .background(Color(0xCC000000))
-            .padding(horizontal = 12.dp, vertical = 14.dp),
+            .padding(horizontal = cardPaddingH, vertical = cardPaddingV),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(itemSpacing),
     ) {
         Icon(
             imageVector = if (isBrightness) BrightnessIcon else VolumeIcon,
             contentDescription = if (isBrightness) "亮度" else "音量",
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(iconSize),
             tint = Color.White,
         )
         Box(
             modifier = Modifier
-                .width(6.dp)
-                .height(108.dp)
-                .clip(RoundedCornerShape(3.dp))
+                .width(trackWidth)
+                .height(trackHeight)
+                .clip(RoundedCornerShape(trackWidth / 2))
                 .background(Color.White.copy(alpha = 0.22f)),
             contentAlignment = Alignment.BottomCenter,
         ) {
@@ -409,14 +440,20 @@ private fun LevelIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(fraction.coerceIn(0f, 1f))
-                    .clip(RoundedCornerShape(3.dp))
+                    .clip(RoundedCornerShape(trackWidth / 2))
                     .background(COUITheme.colorScheme.primary),
             )
         }
         Text(
             text = "$percent%",
-            style = COUITheme.textStyles.footnote2,
+            style = if (isCompact) {
+                COUITheme.textStyles.footnote2.copy(fontSize = 10.sp, lineHeight = 12.sp)
+            } else {
+                COUITheme.textStyles.footnote2
+            },
+            fontWeight = FontWeight.Medium,
             color = Color.White,
+            maxLines = 1,
         )
     }
 }
