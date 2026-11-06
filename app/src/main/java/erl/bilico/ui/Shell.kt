@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.dynamic.DynamicFilters
 import erl.bilico.feature.dynamic.DynamicScreen
 import erl.bilico.feature.feed.FEED_SEGMENTS
 import erl.bilico.feature.feed.FeedScreen
@@ -90,7 +91,7 @@ private val AvatarSize = 32.dp
 /** 底栏三格的总宽：三格各 50dp、两处间距 8dp、左右内边距各 12dp，加起来 190dp。 */
 private val BottomBarWidth = 190.dp
 
-/** 推荐页的标题行才会跟着列表折起来，其余页面固定一条。 */
+/** 推荐与动态的标题行会跟着列表折起来，直播页固定一条。 */
 private val tabTitles = listOf("推荐", "动态", "直播", "我的")
 
 @Composable
@@ -103,6 +104,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val topBarHeight = pinnedHeight(TitleRowHeight)
     var feedCollapse by remember { mutableFloatStateOf(0f) }
     var dynamicCollapse by remember { mutableFloatStateOf(0f) }
+    var dynamicFilterIndex by rememberSaveable { mutableIntStateOf(0) }
     val account by container.session.account.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableIntStateOf(0) }
     // 翻页状态提到外壳：分段胶囊要跟着 pager 连续移动，不能等切完页再动。
@@ -158,6 +160,8 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 container = container,
                                 nav = nav,
                                 topInset = topBarHeight,
+                                filterIndex = dynamicFilterIndex,
+                                onFilterSelect = { dynamicFilterIndex = it },
                                 onCollapse = { dynamicCollapse = it },
                             )
 
@@ -192,6 +196,8 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     onAvatarClick = { nav.setTab(3) },
                     segment = segment,
                     onSegment = { segment = it },
+                    dynamicFilterIndex = dynamicFilterIndex,
+                    onDynamicFilter = { dynamicFilterIndex = it },
                     pager = feedPager,
                     bounds = topBarBounds,
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
@@ -220,6 +226,8 @@ private fun MainTopBar(
     onAvatarClick: () -> Unit,
     segment: Int,
     onSegment: (Int) -> Unit,
+    dynamicFilterIndex: Int,
+    onDynamicFilter: (Int) -> Unit,
     pager: PagerState,
     bounds: TopBarBounds,
     modifier: Modifier = Modifier,
@@ -251,6 +259,8 @@ private fun MainTopBar(
                 onAvatarClick = onAvatarClick,
                 segment = segment,
                 onSegment = onSegment,
+                dynamicFilterIndex = dynamicFilterIndex,
+                onDynamicFilter = onDynamicFilter,
                 pager = pager,
             )
         }
@@ -266,6 +276,8 @@ private fun BarContent(
     onAvatarClick: () -> Unit,
     segment: Int,
     onSegment: (Int) -> Unit,
+    dynamicFilterIndex: Int,
+    onDynamicFilter: (Int) -> Unit,
     pager: PagerState,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
@@ -325,7 +337,13 @@ private fun BarContent(
         }
 
         // 分段胶囊画在顶栏这一层：盖在玻璃之上才不会随折叠一起被模糊掉。
-        if (tab == 0) {
+        // 推荐 tab 的胶囊跟着 pager 连续移动，动态 tab 的筛选只有点击切换。
+        val capsuleLabels = when (tab) {
+            0 -> FEED_SEGMENTS
+            1 -> DynamicFilters.map { it.second }
+            else -> null
+        }
+        if (capsuleLabels != null) {
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -334,10 +352,10 @@ private fun BarContent(
                 contentAlignment = Alignment.TopCenter,
             ) {
                 SegmentCapsule(
-                    labels = FEED_SEGMENTS,
-                    selectedIndex = segment,
-                    onSelect = onSegment,
-                    pager = pager,
+                    labels = capsuleLabels,
+                    selectedIndex = if (tab == 0) segment else dynamicFilterIndex,
+                    onSelect = if (tab == 0) onSegment else onDynamicFilter,
+                    pager = if (tab == 0) pager else null,
                 )
             }
         }

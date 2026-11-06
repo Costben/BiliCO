@@ -37,7 +37,6 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.FullPageRefreshHoldMillis
 import erl.bilico.ui.components.FullPageRefreshTexts
 import erl.bilico.ui.components.LoadingState
-import erl.bilico.ui.components.SegmentCapsule
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.FullPagePullToRefresh
@@ -54,6 +53,8 @@ fun DynamicScreen(
     container: AppContainer,
     nav: NavState,
     topInset: Dp,
+    filterIndex: Int,
+    onFilterSelect: (Int) -> Unit,
     onCollapse: (Float) -> Unit,
 ) {
     val viewModel: DynamicViewModel = viewModel {
@@ -64,6 +65,10 @@ fun DynamicScreen(
     val loggedIn = account != null
 
     LaunchedEffect(loggedIn) { viewModel.onLoginStateChanged(loggedIn) }
+    // 筛选由顶栏的分段胶囊驱动，这里只负责把它落到数据层。
+    LaunchedEffect(filterIndex) {
+        viewModel.setFilter(DynamicFilters.getOrElse(filterIndex) { DynamicFilters.first() }.first)
+    }
 
     var viewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
 
@@ -211,19 +216,11 @@ private fun DynamicContent(
             }
         }
 
-        // 分段胶囊浮在列表上方，和顶栏玻璃同一层，不随内容滚动。
-        SegmentCapsule(
-            labels = FILTERS.map { it.second },
-            selectedIndex = FILTERS.indexOfFirst { it.first == state.filter }.coerceAtLeast(0),
-            onSelect = { index -> viewModel.setFilter(FILTERS[index].first) },
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = segmentTop),
-        )
     }
 }
 
-private val FILTERS = listOf(
+/** 动态页顶部的筛选分段；胶囊画在顶栏那一层，所以这份表外壳也要用。 */
+internal val DynamicFilters = listOf(
     DynamicFeedType.ALL to "全部",
     DynamicFeedType.VIDEO to "视频",
 )
