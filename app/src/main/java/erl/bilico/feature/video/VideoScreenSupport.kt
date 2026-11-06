@@ -19,6 +19,8 @@ internal fun VideoUiState.qualityLabel(): String? {
     return active?.label?.takeIf { it.isNotBlank() } ?: "${activeQuality}P"
 }
 
+internal val DETAIL_PAGES = listOf("info", "comment")
+
 internal fun Context.findActivity(): Activity? {
     var current: Context? = this
     while (current is ContextWrapper) {
@@ -36,15 +38,21 @@ internal fun Context.findActivity(): Activity? {
  * 竖屏时把手机转横（自动横屏）和全屏里把手机转回竖屏（自动退出）都能认出来。
  */
 @Composable
-internal fun rememberDeviceLandscape(): Boolean {
+internal fun rememberDeviceLandscape(mode: Int): Boolean {
+    if (mode == 0) return false
     val context = LocalContext.current
     var landscape by remember { mutableStateOf(false) }
-    DisposableEffect(context) {
+    DisposableEffect(context, mode) {
         val listener = object : OrientationEventListener(context) {
             override fun onOrientationChanged(orientation: Int) {
                 if (orientation == ORIENTATION_UNKNOWN) return
-                // 0 度是竖屏，90 / 270 是横屏；只认这两段正负 35 度，中间的空档留给竖屏。
-                val next = orientation in 55..125 || orientation in 235..305
+                val delta = when (mode) {
+                    1 -> 15 // 迟钝防误触：75..105 / 255..285
+                    2 -> 25 // 标准：65..115 / 245..295
+                    else -> 35 // 灵敏：55..125 / 235..305
+                }
+                val next = orientation in (90 - delta)..(90 + delta) ||
+                    orientation in (270 - delta)..(270 + delta)
                 if (next != landscape) landscape = next
             }
         }

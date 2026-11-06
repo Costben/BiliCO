@@ -4,6 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.media.AudioManager
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -72,6 +75,8 @@ internal fun PlayerGestureLayer(
     longPressSpeedValue: Float,
     fullscreen: Boolean,
     hapticEnabled: Boolean,
+    volumeBrightnessEnabled: Boolean,
+    fullscreenHintEnabled: Boolean,
     onTap: () -> Unit,
     onDoubleTap: () -> Unit,
     onLongPressSpeedChange: (Boolean) -> Unit,
@@ -93,6 +98,8 @@ internal fun PlayerGestureLayer(
     val currentLongPressActive by rememberUpdatedState(longPressSpeedActive)
     val currentFullscreen by rememberUpdatedState(fullscreen)
     val currentHapticEnabled by rememberUpdatedState(hapticEnabled)
+    val currentVolBrightEnabled by rememberUpdatedState(volumeBrightnessEnabled)
+    val currentHintEnabled by rememberUpdatedState(fullscreenHintEnabled)
     val currentOnTap by rememberUpdatedState(onTap)
     val currentOnDoubleTap by rememberUpdatedState(onDoubleTap)
     val currentOnLongPress by rememberUpdatedState(onLongPressSpeedChange)
@@ -105,6 +112,8 @@ internal fun PlayerGestureLayer(
     var levelFraction by remember { mutableFloatStateOf(0f) }
     /** 全屏手势的方向：1 上滑进全屏，-1 下滑退全屏，0 还没甩够。 */
     var fullscreenIntent by remember { mutableIntStateOf(0) }
+    /** 触发切换后短暂淡入淡出的提示：true = 进入全屏，false = 退出全屏，null = 不显示。 */
+    var triggeredFullscreenHint by remember { mutableStateOf<Boolean?>(null) }
 
     Box(
         modifier = modifier
@@ -192,18 +201,26 @@ internal fun PlayerGestureLayer(
                                     isVertical -> {
                                         when {
                                             down.position.x < leftBoundary -> {
-                                                startBrightness = readWindowBrightness(activity, context)
-                                                levelFraction = startBrightness
-                                                lastStep = -1
-                                                DragMode.BRIGHTNESS
+                                                if (!currentVolBrightEnabled) {
+                                                    DragMode.NONE
+                                                } else {
+                                                    startBrightness = readWindowBrightness(activity, context)
+                                                    levelFraction = startBrightness
+                                                    lastStep = -1
+                                                    DragMode.BRIGHTNESS
+                                                }
                                             }
 
                                             down.position.x > rightBoundary -> {
-                                                val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                                startVolume = (curVol.toFloat() / maxVol).coerceIn(0f, 1f)
-                                                levelFraction = startVolume
-                                                lastStep = -1
-                                                DragMode.VOLUME
+                                                if (!currentVolBrightEnabled) {
+                                                    DragMode.NONE
+                                                } else {
+                                                    val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                                    startVolume = (curVol.toFloat() / maxVol).coerceIn(0f, 1f)
+                                                    levelFraction = startVolume
+                                                    lastStep = -1
+                                                    DragMode.VOLUME
+                                                }
                                             }
 
                                             else -> {
@@ -285,8 +302,14 @@ internal fun PlayerGestureLayer(
                     when (activeMode) {
                         DragMode.SEEK -> if (currentDuration > 0L) currentOnSeek(seekPreviewMs)
                         DragMode.FULLSCREEN -> when (fullscreenIntent) {
-                            1 -> if (!currentFullscreen) currentOnFullscreen(true)
-                            -1 -> if (currentFullscreen) currentOnFullscreen(false)
+                            1 -> if (!currentFullscreen) {
+                                currentOnFullscreen(true)
+                                if (currentHintEnabled) triggeredFullscreenHint = true
+                            }
+                            -1 -> if (currentFullscreen) {
+                                currentOnFullscreen(false)
+                                if (currentHintEnabled) triggeredFullscreenHint = false
+                            }
                             else -> Unit
                         }
 
@@ -297,6 +320,13 @@ internal fun PlayerGestureLayer(
                 }
             },
     ) {
+        androidx.compose.runtime.LaunchedEffect(triggeredFullscreenHint) {
+            if (triggeredFullscreenHint != null) {
+                kotlinx.coroutines.delay(1200)
+                triggeredFullscreenHint = null
+            }
+        }
+
         if (longPressSpeedActive) {
             Text(
                 text = "倍速播放中 ${longPressSpeedValue}x",
@@ -351,43 +381,39 @@ internal fun PlayerGestureLayer(
                 }
             }
 
-            DragMode.FULLSCREEN -> {
-                val isExit = currentFullscreen
-                val isCompact = !currentFullscreen
-                val icon = if (isExit) FullscreenExitIcon else FullscreenIcon
-                val text = when {
-                    isExit && fullscreenIntent == -1 -> "松开退出全屏"
-                    isExit -> "下滑退出全屏"
-                    fullscreenIntent == 1 -> "松开进入全屏"
-                    else -> "上滑进入全屏"
-                }
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .clip(RoundedCornerShape(if (isCompact) 14.dp else 18.dp))
-                        .background(Color(0xCC000000))
-                        .padding(
-                            horizontal = if (isCompact) 16.dp else 22.dp,
-                            vertical = if (isCompact) 10.dp else 16.dp,
-                        ),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp),
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(if (isCompact) 22.dp else 28.dp),
-                        tint = Color.White,
-                    )
-                    Text(
-                        text = text,
-                        style = if (isCompact) COUITheme.textStyles.footnote2 else COUITheme.textStyles.footnote1,
-                        color = Color.White,
-                    )
-                }
-            }
+            DragMode.FULLSCREEN, DragMode.NONE -> Unit
+        }
 
-            DragMode.NONE -> Unit
+        // 仅在成功触发进入/退出全屏后短暂淡入淡出，拖动过程中保持画面干净无遮挡
+        AnimatedVisibility(
+            visible = triggeredFullscreenHint != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            val isEnter = triggeredFullscreenHint == true
+            val icon = if (isEnter) FullscreenIcon else FullscreenExitIcon
+            val text = if (isEnter) "已进入全屏" else "已退出全屏"
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xCC000000))
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(26.dp),
+                    tint = Color.White,
+                )
+                Text(
+                    text = text,
+                    style = COUITheme.textStyles.footnote1,
+                    color = Color.White,
+                )
+            }
         }
     }
 }

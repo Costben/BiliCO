@@ -92,6 +92,9 @@ fun VideoScreen(
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
+    val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
+    val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
+    val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
@@ -283,7 +286,7 @@ fun VideoScreen(
 
     // 手机横过来就进全屏；只有「横屏转回竖屏」才退出，竖屏本身不构成退出的理由，
     // 否则手势上滑进全屏会被这条立刻抹掉。
-    val deviceLandscape = rememberDeviceLandscape()
+    val deviceLandscape = rememberDeviceLandscape(autoRotateMode)
     var wasLandscape by remember { mutableStateOf(deviceLandscape) }
     LaunchedEffect(deviceLandscape, manualFullscreenExit) {
         if (inPipMode) return@LaunchedEffect
@@ -296,12 +299,12 @@ fun VideoScreen(
         wasLandscape = deviceLandscape
     }
 
-    // 全屏时锁横屏把屏幕转过去；主动退出时锁竖屏，其余时候跟着传感器走。
-    LaunchedEffect(fullscreen, manualFullscreenExit) {
+    // 全屏时锁横屏把屏幕转过去；主动退出或关闭自动旋转时锁竖屏，其余时候跟着传感器走。
+    LaunchedEffect(fullscreen, manualFullscreenExit, autoRotateMode) {
         if (inPipMode) return@LaunchedEffect
         activity?.requestedOrientation = when {
             fullscreen -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            manualFullscreenExit -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            manualFullscreenExit || autoRotateMode == 0 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
         }
     }
@@ -316,16 +319,12 @@ fun VideoScreen(
     }
 
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
-
     val fullViewport = fullscreen || inPipMode
     val configuration = LocalConfiguration.current
     val playerHeight = if (fullViewport) {
         configuration.screenHeightDp.dp
     } else {
-        minOf(
-            configuration.screenWidthDp.dp * 9f / 16f,
-            configuration.screenHeightDp.dp * 0.7f,
-        )
+        minOf(configuration.screenWidthDp.dp * 9f / 16f, configuration.screenHeightDp.dp * 0.7f)
     }
 
     val message = state.message
@@ -378,6 +377,8 @@ fun VideoScreen(
                     onToggleFullscreen = { applyFullscreen(!fullscreen) },
                     onFullscreenChange = applyFullscreen,
                     hapticEnabled = gestureHaptic,
+                    volumeBrightnessEnabled = gestureVolBright,
+                    fullscreenHintEnabled = fullscreenGestureHint,
                     onQualityClick = { qualityDialogVisible = true },
                     onSpeedClick = { speedDialogVisible = true },
                     onBack = {
@@ -594,5 +595,3 @@ fun VideoScreen(
         )
     }
 }
-
-private val DETAIL_PAGES = listOf("info", "comment")

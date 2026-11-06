@@ -49,6 +49,9 @@ fun SettingsScreen(
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
+    val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
+    val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
+    val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
     val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
@@ -56,6 +59,7 @@ fun SettingsScreen(
     val account by container.session.account.collectAsStateWithLifecycle()
 
     var pickQuality by remember { mutableStateOf(false) }
+    var pickAutoRotate by remember { mutableStateOf(false) }
     var pickOpacity by remember { mutableStateOf(false) }
     var pickFontScale by remember { mutableStateOf(false) }
     var pickArea by remember { mutableStateOf(false) }
@@ -105,6 +109,33 @@ fun SettingsScreen(
                     summary = if (autoPip) "开" else "关",
                     cardListPosition = CardListPosition.Middle,
                     onClick = { container.settings.setAutoPip(!autoPip) },
+                )
+                ArrowPreference(
+                    title = "自动横屏",
+                    modifier = Modifier.testTag("settings_auto_rotate"),
+                    summary = when (autoRotateMode) {
+                        0 -> "关闭"
+                        1 -> "迟钝 (防误触)"
+                        2 -> "标准"
+                        3 -> "灵敏"
+                        else -> "迟钝 (防误触)"
+                    },
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { pickAutoRotate = true },
+                )
+                ArrowPreference(
+                    title = "手势调节亮度与音量",
+                    modifier = Modifier.testTag("settings_gesture_vol_bright"),
+                    summary = if (gestureVolBright) "开 (双侧滑动)" else "关",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { container.settings.setGestureVolumeBrightness(!gestureVolBright) },
+                )
+                ArrowPreference(
+                    title = "全屏切换提示",
+                    modifier = Modifier.testTag("settings_fs_hint"),
+                    summary = if (fullscreenGestureHint) "开 (触发后淡入淡出)" else "关",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { container.settings.setFullscreenGestureHint(!fullscreenGestureHint) },
                 )
                 ArrowPreference(
                     title = "手势震动",
@@ -226,6 +257,20 @@ fun SettingsScreen(
                 pickQuality = false
             },
             onDismiss = { pickQuality = false },
+        )
+    }
+
+    if (pickAutoRotate) {
+        val rotateOptions = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
+        OptionPicker(
+            title = "自动横屏灵敏度",
+            options = rotateOptions,
+            selectedIndex = autoRotateMode.coerceIn(0, rotateOptions.lastIndex),
+            onPick = { index ->
+                container.settings.setAutoRotateMode(index)
+                pickAutoRotate = false
+            },
+            onDismiss = { pickAutoRotate = false },
         )
     }
 

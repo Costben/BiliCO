@@ -63,6 +63,24 @@ class SettingsRepository(
     private val _gestureHaptic = MutableStateFlow(true)
     val gestureHaptic: StateFlow<Boolean> = _gestureHaptic.asStateFlow()
 
+    /**
+     * 重力感应自动横屏模式（阈值）：
+     * 0: 关闭
+     * 1: 迟钝 / 防误触（正负 15°，75..105 / 255..285，默认）
+     * 2: 标准（正负 25°，65..115 / 245..295）
+     * 3: 灵敏（正负 35°，55..125 / 235..305）
+     */
+    private val _autoRotateMode = MutableStateFlow(1)
+    val autoRotateMode: StateFlow<Int> = _autoRotateMode.asStateFlow()
+
+    /** 是否允许双侧垂直滑动调节亮度与音量。 */
+    private val _gestureVolumeBrightness = MutableStateFlow(true)
+    val gestureVolumeBrightness: StateFlow<Boolean> = _gestureVolumeBrightness.asStateFlow()
+
+    /** 全屏切换触发后的淡入淡出短暂提示开关。 */
+    private val _fullscreenGestureHint = MutableStateFlow(true)
+    val fullscreenGestureHint: StateFlow<Boolean> = _fullscreenGestureHint.asStateFlow()
+
     init {
         scope.launch {
             val prefs = context.biliDataStore.data.first()
@@ -80,7 +98,25 @@ class SettingsRepository(
             _backgroundPlay.value = prefs[KEY_BACKGROUND_PLAY] ?: true
             _autoPip.value = prefs[KEY_AUTO_PIP] ?: true
             _gestureHaptic.value = prefs[KEY_GESTURE_HAPTIC] ?: true
+            _autoRotateMode.value = prefs[KEY_AUTO_ROTATE_MODE] ?: 1
+            _gestureVolumeBrightness.value = prefs[KEY_GESTURE_VOL_BRIGHT] ?: true
+            _fullscreenGestureHint.value = prefs[KEY_FS_GESTURE_HINT] ?: true
         }
+    }
+
+    fun setAutoRotateMode(mode: Int) {
+        _autoRotateMode.value = mode.coerceIn(0, 3)
+        scope.launch { context.biliDataStore.edit { it[KEY_AUTO_ROTATE_MODE] = _autoRotateMode.value } }
+    }
+
+    fun setGestureVolumeBrightness(enabled: Boolean) {
+        _gestureVolumeBrightness.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_GESTURE_VOL_BRIGHT] = enabled } }
+    }
+
+    fun setFullscreenGestureHint(enabled: Boolean) {
+        _fullscreenGestureHint.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_FS_GESTURE_HINT] = enabled } }
     }
 
     fun setGestureHaptic(enabled: Boolean) {
@@ -163,5 +199,8 @@ class SettingsRepository(
         val KEY_BACKGROUND_PLAY = booleanPreferencesKey("background_play")
         val KEY_AUTO_PIP = booleanPreferencesKey("auto_pip")
         val KEY_GESTURE_HAPTIC = booleanPreferencesKey("gesture_haptic")
+        val KEY_AUTO_ROTATE_MODE = intPreferencesKey("auto_rotate_mode")
+        val KEY_GESTURE_VOL_BRIGHT = booleanPreferencesKey("gesture_vol_bright")
+        val KEY_FS_GESTURE_HINT = booleanPreferencesKey("fullscreen_gesture_hint")
     }
 }

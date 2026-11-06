@@ -91,6 +91,8 @@ internal fun VideoPlayer(
     onToggleFullscreen: () -> Unit,
     onFullscreenChange: (Boolean) -> Unit = { if (it) onToggleFullscreen() },
     hapticEnabled: Boolean = true,
+    volumeBrightnessEnabled: Boolean = true,
+    fullscreenHintEnabled: Boolean = true,
     onQualityClick: () -> Unit,
     onSpeedClick: () -> Unit,
     onBack: () -> Unit,
@@ -148,6 +150,8 @@ internal fun VideoPlayer(
                 longPressSpeedValue = longPressSpeedValue,
                 fullscreen = fullscreen,
                 hapticEnabled = hapticEnabled,
+                volumeBrightnessEnabled = volumeBrightnessEnabled,
+                fullscreenHintEnabled = fullscreenHintEnabled,
                 onTap = { controlsVisible = !controlsVisible },
                 onDoubleTap = {
                     // 双击是播放/暂停，结果必须看得见：暂停时把控件亮出来。
