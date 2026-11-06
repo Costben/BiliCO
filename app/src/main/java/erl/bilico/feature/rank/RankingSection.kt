@@ -18,8 +18,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
@@ -70,7 +72,14 @@ fun RankingSection(
     }
     val coverHeightPx = coverWidthPx * 9 / 16
 
-    LaunchedEffect(state.section) { listState.scrollToItem(0) }
+    // 只有换分区才回顶：重新进这一页时保留上次看到的位置。
+    var lastSection by remember { mutableStateOf(state.section) }
+    LaunchedEffect(state.section) {
+        if (state.section != lastSection) {
+            lastSection = state.section
+            listState.scrollToItem(0)
+        }
+    }
 
     FullPagePullToRefresh(
         isRefreshing = state.isRefreshing,
