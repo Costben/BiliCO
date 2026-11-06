@@ -105,6 +105,8 @@ fun MainShell(nav: NavState, container: AppContainer) {
     var feedCollapse by remember { mutableFloatStateOf(0f) }
     var dynamicCollapse by remember { mutableFloatStateOf(0f) }
     var dynamicFilterIndex by rememberSaveable { mutableIntStateOf(0) }
+    // 双击当前分段回顶刷新：每双击一次加一，分段那边看到变化就归位重拉。
+    var feedRefreshTick by remember { mutableIntStateOf(0) }
     val account by container.session.account.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableIntStateOf(0) }
     // 翻页状态提到外壳：分段胶囊要跟着 pager 连续移动，不能等切完页再动。
@@ -155,6 +157,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 onSegment = { segment = it },
                                 onCollapse = { feedCollapse = it },
                                 pagerState = feedPager,
+                                refreshTick = feedRefreshTick,
                             )
 
                             1 -> DynamicScreen(
@@ -202,6 +205,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     onDynamicFilter = { dynamicFilterIndex = it },
                     pager = feedPager,
                     dynamicPager = dynamicPager,
+                    onFeedReselect = { feedRefreshTick++ },
                     bounds = topBarBounds,
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
                 )
@@ -233,6 +237,7 @@ private fun MainTopBar(
     onDynamicFilter: (Int) -> Unit,
     pager: PagerState,
     dynamicPager: PagerState,
+    onFeedReselect: () -> Unit,
     bounds: TopBarBounds,
     modifier: Modifier = Modifier,
 ) {
@@ -267,6 +272,7 @@ private fun MainTopBar(
                 onDynamicFilter = onDynamicFilter,
                 pager = pager,
                 dynamicPager = dynamicPager,
+                onFeedReselect = onFeedReselect,
             )
         }
     }
@@ -285,6 +291,7 @@ private fun BarContent(
     onDynamicFilter: (Int) -> Unit,
     pager: PagerState,
     dynamicPager: PagerState,
+    onFeedReselect: () -> Unit,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
     Column(
@@ -363,6 +370,7 @@ private fun BarContent(
                     onSelect = if (tab == 0) onSegment else onDynamicFilter,
                     // 两个 tab 的胶囊都跟着各自的 pager 走，拖动时指示块贴住手指。
                     pager = if (tab == 0) pager else dynamicPager,
+                    onReselect = if (tab == 0) onFeedReselect else null,
                 )
             }
         }

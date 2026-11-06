@@ -33,6 +33,7 @@ fun FeedScreen(
     onSegment: (Int) -> Unit,
     onCollapse: (Float) -> Unit,
     pagerState: PagerState,
+    refreshTick: Int,
 ) {
     val recommendState = rememberLazyListState()
     val rankingState = rememberLazyListState()
@@ -65,6 +66,7 @@ fun FeedScreen(
                     listState = recommendState,
                     active = segment == 0,
                     onCollapse = onCollapse,
+                    refreshTick = refreshTick,
                 )
 
                 1 -> RankingSection(
@@ -74,6 +76,7 @@ fun FeedScreen(
                     listState = rankingState,
                     active = segment == 1,
                     onCollapse = onCollapse,
+                    refreshTick = refreshTick,
                 )
 
                 else -> BangumiRankSection(
@@ -83,6 +86,7 @@ fun FeedScreen(
                     gridState = bangumiState,
                     active = segment == 2,
                     onCollapse = onCollapse,
+                    refreshTick = refreshTick,
                 )
             }
         }

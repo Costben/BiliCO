@@ -53,6 +53,7 @@ internal fun RecommendFeed(
     listState: LazyListState,
     active: Boolean,
     onCollapse: (Float) -> Unit,
+    refreshTick: Int,
 ) {
     val viewModel: FeedViewModel = viewModel { FeedViewModel(container.feed) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -77,6 +78,13 @@ internal fun RecommendFeed(
         }
             .distinctUntilChanged()
             .collect(onCollapse)
+    }
+
+    // 双击当前分段：回到第一条并重新拉一遍。
+    LaunchedEffect(refreshTick) {
+        if (refreshTick == 0 || !active) return@LaunchedEffect
+        listState.scrollToItem(0)
+        viewModel.refresh()
     }
 
     LaunchedEffect(listState) {

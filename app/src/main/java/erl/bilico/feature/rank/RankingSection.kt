@@ -65,6 +65,7 @@ fun RankingSection(
     listState: LazyListState,
     active: Boolean,
     onCollapse: (Float) -> Unit,
+    refreshTick: Int,
 ) {
     val viewModel: RankingViewModel = viewModel { RankingViewModel(container.ranking) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -96,6 +97,13 @@ fun RankingSection(
         }
             .distinctUntilChanged()
             .collect(onCollapse)
+    }
+
+    // 双击当前分段：回到第一条并重新拉一遍。
+    LaunchedEffect(refreshTick) {
+        if (refreshTick == 0 || !active) return@LaunchedEffect
+        listState.scrollToItem(0)
+        viewModel.refresh()
     }
 
     FullPagePullToRefresh(

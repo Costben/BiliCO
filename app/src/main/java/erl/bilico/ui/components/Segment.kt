@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
@@ -374,6 +376,8 @@ private val SegmentPressSpring = spring<Float>(dampingRatio = 1f, stiffness = 43
  * [labels] 均分宽度，选中项由 [selectedIndex] 控制，点击回调 [onSelect]。
  *
  * 传了 [pager] 时指示块跟着翻页走：拖动中每帧贴住手指，松手后由弹簧把位置补齐。
+ *
+ * 传了 [onReselect] 时，双击当前选中项会回调它（用于回顶刷新）；选中项因此不再响应单击。
  */
 @Composable
 fun SegmentCapsule(
@@ -384,6 +388,7 @@ fun SegmentCapsule(
     height: Dp = 32.dp,
     segmentWidth: Dp = 84.dp,
     pager: PagerState? = null,
+    onReselect: (() -> Unit)? = null,
 ) {
     if (labels.isEmpty()) return
     val scheme = COUITheme.colorScheme
@@ -483,16 +488,26 @@ fun SegmentCapsule(
         ) {
             labels.forEachIndexed { index, label ->
                 val amount = (1f - abs(effectivePage - index)).coerceIn(0f, 1f)
+                val reselect = onReselect
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clickable(
-                            interactionSource = pressSource,
-                            indication = null,
-                            onClick = {
-                                selectTarget(index)
-                                onSelect(index)
+                        .then(
+                            // 已选中那一项换成双击手势：单击不做任何事，双击通知外层回顶刷新。
+                            if (reselect != null && index == settled) {
+                                Modifier.pointerInput(index) {
+                                    detectTapGestures(onDoubleTap = { reselect() })
+                                }
+                            } else {
+                                Modifier.clickable(
+                                    interactionSource = pressSource,
+                                    indication = null,
+                                    onClick = {
+                                        selectTarget(index)
+                                        onSelect(index)
+                                    },
+                                )
                             },
                         ),
                     contentAlignment = Alignment.Center,
