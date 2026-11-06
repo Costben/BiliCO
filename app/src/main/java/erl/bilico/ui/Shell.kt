@@ -35,7 +35,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -53,7 +61,7 @@ import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.live.LiveListScreen
 import erl.bilico.feature.me.MeScreen
 import erl.bilico.ui.components.SegmentCapsule
-import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBar
+import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBar
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarItem
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -383,13 +391,14 @@ private fun FloatingBottomBar(
     onTab: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     Box(
         modifier
             .fillMaxWidth()
             .navigationBarsPadding()
     ) {
-        // 只有四个 tab，不带左右配件：底栏就是一条胶囊。
-        BottomFloatingAccessoryNavigationBar(modifier = Modifier) {
+        // 底栏就三个 tab。个人页从顶栏头像进，不再占底栏的位置。
+        BottomFloatingNavigationBar(modifier = Modifier.capsuleRim(isDark)) {
             BottomFloatingNavigationBarItem(
                 selected = tab == 0,
                 onClick = { onTab(0) },
@@ -411,13 +420,31 @@ private fun FloatingBottomBar(
                 label = "直播",
                 modifier = Modifier.testTag("bottom_tab_live"),
             )
-            BottomFloatingNavigationBarItem(
-                selected = tab == 3,
-                onClick = { onTab(3) },
-                icon = COUIIcons.Contacts,
-                label = "我的",
-                modifier = Modifier.testTag("bottom_tab_me"),
-            )
         }
     }
+}
+
+/**
+ * 底栏胶囊的一圈边缘光。
+ *
+ * COUI 自带的描边这台机器上落不下来：平台材质接管了描边却画不出东西（同机的 coui 示例底栏整圈
+ * 都没有亮边），退回 Compose 的那条又是按法线打光的，只点亮上下两条长边，左右两个半圆端是零。
+ * 这里沿胶囊轮廓自己描 1dp，竖直方向渐隐，四个方向连成闭合的一圈。
+ */
+private fun Modifier.capsuleRim(isDark: Boolean): Modifier = drawWithContent {
+    drawContent()
+    val stroke = 1.dp.toPx()
+    if (size.width <= stroke * 2f || size.height <= stroke * 2f) return@drawWithContent
+    val top = if (isDark) 0.34f else 0.22f
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0f to Color.White.copy(alpha = top),
+            0.5f to Color.White.copy(alpha = top * 0.9f),
+            1f to Color.White.copy(alpha = top * 0.7f),
+        ),
+        topLeft = Offset(stroke / 2f, stroke / 2f),
+        size = Size(size.width - stroke, size.height - stroke),
+        cornerRadius = CornerRadius((size.height - stroke) / 2f),
+        style = Stroke(width = stroke),
+    )
 }
