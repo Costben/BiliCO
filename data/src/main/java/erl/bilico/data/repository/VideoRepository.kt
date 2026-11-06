@@ -1,9 +1,6 @@
 package erl.bilico.data.repository
 
-import erl.bilico.data.model.DashTrack
-import erl.bilico.data.model.PlayUrlData
 import erl.bilico.data.model.PlaybackSource
-import erl.bilico.data.model.QualityOption
 import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.network.BiliApi
@@ -81,7 +78,7 @@ class VideoRepository(
                 val signed = WbiUtils.sign(params, keys.first, keys.second)
                 val response = runCatching { api.playUrl(signed) }.getOrNull()
                 if (response != null && response.code == 0 && response.data != null) {
-                    return@runCatching response.data.toSource(qn)
+                    return@runCatching response.data.toPlaybackSource(qn)
                 }
 
                 val legacyParams = mapOf(
@@ -99,83 +96,7 @@ class VideoRepository(
                 if (legacy.code != 0 || data == null) {
                     error(legacy.message.ifBlank { "播放地址获取失败(${legacy.code})" })
                 }
-                data.toSource(qn)
+                data.toPlaybackSource(qn)
             }
         }
-
-    private fun PlayUrlData.toSource(targetQn: Int): PlaybackSource {
-        val dashVideoIds = dash?.video.orEmpty()
-            .filter { it.baseUrl.isNotBlank() }
-            .map { it.id }
-            .toSet()
-        val qualities = buildList {
-            supportFormats.orEmpty().forEach { format ->
-                // 未登录时接口仍会列出全部清晰度，只保留真的拿到流的那几档
-                if (dashVideoIds.isNotEmpty() && format.quality !in dashVideoIds) return@forEach
-                add(
-                    QualityOption(
-                        quality = format.quality,
-                        label = format.newDescription.ifBlank { format.description },
-                        needLogin = format.needLogin,
-                        needVip = format.needVip,
-                    ),
-                )
-            }
-            if (isEmpty()) {
-                acceptQuality.forEachIndexed { index, quality ->
-                    if (dashVideoIds.isNotEmpty() && quality !in dashVideoIds) return@forEachIndexed
-                    add(QualityOption(quality, acceptDescription.getOrNull(index).orEmpty()))
-                }
-            }
-        }
-
-        val dashData = dash
-        if (dashData != null) {
-            val video = pickVideo(dashData.video, targetQn) ?: error("没有可播放的视频流")
-            val audio = pickAudio(dashData.audio.orEmpty())
-            return PlaybackSource(
-                videoUrl = video.baseUrl,
-                videoBackupUrls = video.backupUrl.orEmpty().filter { it.isNotBlank() },
-                audioUrl = audio?.baseUrl,
-                audioBackupUrls = audio?.backupUrl.orEmpty().filter { it.isNotBlank() },
-                quality = video.id,
-                qualities = qualities,
-                durationMs = timelength,
-            )
-        }
-
-        val segment = durl?.firstOrNull() ?: error("播放地址为空")
-        return PlaybackSource(
-            videoUrl = segment.url,
-            videoBackupUrls = segment.backupUrl.orEmpty().filter { it.isNotBlank() },
-            audioUrl = null,
-            audioBackupUrls = emptyList(),
-            quality = quality,
-            qualities = qualities,
-            durationMs = segment.length,
-        )
-    }
-
-    private fun pickVideo(videos: List<DashTrack>, targetQn: Int): DashTrack? {
-        val playable = videos.filter { it.baseUrl.isNotBlank() }
-        if (playable.isEmpty()) return null
-        val within = playable.filter { it.id <= targetQn }
-        val pool = within.ifEmpty { playable }
-        // 同一档位优先 AVC，兼容性最好；没有 AVC 时再用 HEVC/AV1。
-        return pool.sortedWith(
-            compareByDescending<DashTrack> { it.id }
-                .thenBy { if (it.codecs.startsWith("avc")) 0 else 1 },
-        ).firstOrNull()
-    }
-
-    private fun pickAudio(audios: List<DashTrack>): DashTrack? {
-        val playable = audios.filter { it.baseUrl.isNotBlank() }
-        if (playable.isEmpty()) return null
-        val standard = playable.filter { it.id in AUDIO_TRACK_IDS }
-        return standard.maxByOrNull { it.id } ?: playable.maxByOrNull { it.bandwidth }
-    }
-
-    private companion object {
-        val AUDIO_TRACK_IDS = setOf(30216, 30232, 30280)
-    }
 }

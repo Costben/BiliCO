@@ -1,7 +1,17 @@
 package erl.bilico.data.network
 
+import erl.bilico.data.model.BangumiFollowResponse
 import erl.bilico.data.model.BaseResponse
 import erl.bilico.data.model.DynamicFeedResponse
+import erl.bilico.data.model.MessageAtResponse
+import erl.bilico.data.model.MessageLikeResponse
+import erl.bilico.data.model.MessageReplyResponse
+import erl.bilico.data.model.PgcRankResponse
+import erl.bilico.data.model.PgcSeasonResponse
+import erl.bilico.data.model.RankingResponse
+import erl.bilico.data.model.SystemNoticeResponse
+import erl.bilico.data.model.UserRelationResponse
+import erl.bilico.data.model.VideoRelationResponse
 import erl.bilico.data.model.FavFolderResponse
 import erl.bilico.data.model.FavResourceResponse
 import erl.bilico.data.model.FollowingsResponse
@@ -124,6 +134,82 @@ interface BiliApi {
 
     @GET("x/relation/followings")
     suspend fun followings(@QueryMap params: Map<String, String>): FollowingsResponse
+
+    // ---------- 弹幕 ----------
+
+    @GET("https://api.bilibili.com/x/v2/dm/web/seg.so")
+    suspend fun danmakuSegment(
+        @Query("type") type: Int = 1,
+        @Query("oid") oid: Long,
+        @Query("segment_index") segmentIndex: Int,
+    ): okhttp3.ResponseBody
+
+    // ---------- 番剧 ----------
+
+    @GET("pgc/view/web/season")
+    suspend fun pgcSeason(@QueryMap params: Map<String, String>): PgcSeasonResponse
+
+    @GET("pgc/player/web/v2/playurl")
+    suspend fun pgcPlayUrl(@QueryMap params: Map<String, String>): okhttp3.ResponseBody
+
+    @GET("pgc/player/web/playurl")
+    suspend fun pgcPlayUrlLegacy(@QueryMap params: Map<String, String>): okhttp3.ResponseBody
+
+    @GET("pgc/web/rank/list")
+    suspend fun pgcRank(@QueryMap params: Map<String, String>): PgcRankResponse
+
+    @GET("pgc/season/rank/web/list")
+    suspend fun pgcSeasonRank(@QueryMap params: Map<String, String>): PgcRankResponse
+
+    @GET("x/space/bangumi/follow/list")
+    suspend fun bangumiFollow(@QueryMap params: Map<String, String>): BangumiFollowResponse
+
+    // ---------- 排行榜 ----------
+
+    @GET("x/web-interface/ranking/v2")
+    suspend fun ranking(@QueryMap params: Map<String, String>): RankingResponse
+
+    // ---------- 视频互动 ----------
+
+    @GET("x/web-interface/archive/relation")
+    suspend fun videoRelation(@Query("aid") aid: Long): VideoRelationResponse
+
+    @GET("x/relation")
+    suspend fun userRelation(@Query("fid") fid: Long): UserRelationResponse
+
+    @FormUrlEncoded
+    @POST("x/web-interface/archive/like")
+    suspend fun likeVideo(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
+    @POST("x/web-interface/coin/add")
+    suspend fun coinVideo(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
+    @POST("x/v3/fav/resource/deal")
+    suspend fun favoriteResource(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
+    @POST("x/v2/history/toview/add")
+    suspend fun addWatchLater(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
+    @POST("x/relation/modify")
+    suspend fun modifyRelation(@FieldMap fields: Map<String, String>): BaseResponse
+
+    // ---------- 消息 ----------
+
+    @GET("https://api.bilibili.com/x/msgfeed/reply")
+    suspend fun messageReply(@QueryMap params: Map<String, String>): MessageReplyResponse
+
+    @GET("https://api.bilibili.com/x/msgfeed/at")
+    suspend fun messageAt(@QueryMap params: Map<String, String>): MessageAtResponse
+
+    @GET("https://api.bilibili.com/x/msgfeed/like")
+    suspend fun messageLike(@QueryMap params: Map<String, String>): MessageLikeResponse
+
+    @GET("https://message.bilibili.com/x/sys-msg/query_notify_list")
+    suspend fun systemNotices(@QueryMap params: Map<String, String>): SystemNoticeResponse
 }
 
 interface PassportApi {

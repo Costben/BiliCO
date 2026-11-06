@@ -4,12 +4,17 @@ import android.content.Context
 import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.TokenRefreshHelper
 import erl.bilico.data.repository.CommentRepository
+import erl.bilico.data.repository.DanmakuRepository
 import erl.bilico.data.repository.DynamicRepository
 import erl.bilico.data.repository.FavoriteRepository
 import erl.bilico.data.repository.FeedRepository
 import erl.bilico.data.repository.HeartbeatReporter
 import erl.bilico.data.repository.HistoryRepository
+import erl.bilico.data.repository.InteractionRepository
 import erl.bilico.data.repository.LiveRepository
+import erl.bilico.data.repository.MessageRepository
+import erl.bilico.data.repository.PgcRepository
+import erl.bilico.data.repository.RankingRepository
 import erl.bilico.data.repository.RelationRepository
 import erl.bilico.data.repository.SearchRepository
 import erl.bilico.data.repository.SpaceRepository
@@ -67,4 +72,14 @@ class AppContainer(context: Context) {
     val watchLater = WatchLaterRepository(client.api, client.buvid)
 
     val relations = RelationRepository(client.api, client.buvid)
+
+    val danmaku = DanmakuRepository(client.api, client.buvid)
+
+    val pgc = PgcRepository(client.api, client.wbi, client.buvid)
+
+    val ranking = RankingRepository(client.api, client.wbi, client.buvid)
+
+    val interactions = InteractionRepository(client.api, client.buvid, session)
+
+    val messages = MessageRepository(client.api, client.buvid)
 }
