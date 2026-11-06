@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,6 +30,7 @@ import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.di.AppContainer
 import erl.bilico.ui.NavState
+import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
@@ -52,6 +54,7 @@ fun DynamicScreen(
     container: AppContainer,
     nav: NavState,
     topInset: Dp,
+    onCollapse: (Float) -> Unit,
 ) {
     val viewModel: DynamicViewModel = viewModel {
         DynamicViewModel(container.dynamic, container.session)
@@ -81,6 +84,7 @@ fun DynamicScreen(
         state = state,
         viewModel = viewModel,
         topInset = topInset,
+        onCollapse = onCollapse,
         onOpenUser = { nav.push(Route.Space(it)) },
         onOpenVideo = { nav.push(Route.Video(it)) },
         onOpenImage = { images, index -> viewer = images to index },
@@ -107,6 +111,7 @@ private fun DynamicContent(
     state: DynamicUiState,
     viewModel: DynamicViewModel,
     topInset: Dp,
+    onCollapse: (Float) -> Unit,
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
@@ -115,6 +120,18 @@ private fun DynamicContent(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val pullState = rememberFullPagePullToRefreshState()
+    val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
+
+    // 和推荐流同一套折叠规则：翻过第一条就收起，回到顶部才展开。
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+            if (first == null || first.index > 0) titleHeightPx
+            else (-first.offset).toFloat().coerceIn(0f, titleHeightPx)
+        }
+            .distinctUntilChanged()
+            .collect(onCollapse)
+    }
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .distinctUntilChanged()

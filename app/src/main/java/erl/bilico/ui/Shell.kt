@@ -102,6 +102,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val topBarBounds = remember { TopBarBounds() }
     val topBarHeight = pinnedHeight(TitleRowHeight)
     var feedCollapse by remember { mutableFloatStateOf(0f) }
+    var dynamicCollapse by remember { mutableFloatStateOf(0f) }
     val account by container.session.account.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableIntStateOf(0) }
     // 翻页状态提到外壳：分段胶囊要跟着 pager 连续移动，不能等切完页再动。
@@ -109,7 +110,12 @@ fun MainShell(nav: NavState, container: AppContainer) {
 
     // 标题行的折叠量只在这里算一次：顶栏和分段胶囊读同一个值，滚动时才不会各折各的。
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
-    val collapseTarget = if (tab == 0) (feedCollapse / titleHeightPx).coerceIn(0f, 1f) else 0f
+    val collapsePx = when (tab) {
+        0 -> feedCollapse
+        1 -> dynamicCollapse
+        else -> 0f
+    }
+    val collapseTarget = (collapsePx / titleHeightPx).coerceIn(0f, 1f)
     val collapseShown = remember { Animatable(collapseTarget) }
     LaunchedEffect(collapseTarget) {
         if (abs(collapseTarget - collapseShown.value) > 0.6f) {
@@ -152,6 +158,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 container = container,
                                 nav = nav,
                                 topInset = topBarHeight,
+                                onCollapse = { dynamicCollapse = it },
                             )
 
                             2 -> LiveListScreen(
