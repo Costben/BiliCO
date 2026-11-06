@@ -179,7 +179,7 @@ private fun InfoContent(
             ) {
                 VideoAction(
                     icon = COUIIcons.Promotions,
-                    label = "点赞",
+                    label = if (liked) "已赞" else "点赞",
                     active = liked,
                     onClick = onLike,
                 )
