@@ -4,6 +4,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,29 +20,39 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicScreen
+import erl.bilico.feature.feed.FEED_SEGMENTS
 import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.live.LiveListScreen
 import erl.bilico.feature.me.MeScreen
+import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBar
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarItem
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
@@ -62,12 +73,16 @@ import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** 底栏切页的交叉淡入时长。 */
 private const val MainTabFadeMillis = 220
 
 /** 顶栏标题行高度；列表滚动时标题就折这么高。 */
 internal val TitleRowHeight = 44.dp
+
+/** 顶栏左上角头像的直径。 */
+private val AvatarSize = 32.dp
 
 /** 推荐页的标题行才会跟着列表折起来，其余页面固定一条。 */
 private val tabTitles = listOf("推荐", "动态", "直播", "我的")
@@ -81,6 +96,22 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val topBarBounds = remember { TopBarBounds() }
     val topBarHeight = pinnedHeight(TitleRowHeight)
     var feedCollapse by remember { mutableFloatStateOf(0f) }
+    val account by container.session.account.collectAsStateWithLifecycle()
+    var segment by rememberSaveable { mutableIntStateOf(0) }
+
+    // 标题行的折叠量只在这里算一次：顶栏和分段胶囊读同一个值，滚动时才不会各折各的。
+    val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
+    val collapseTarget = if (tab == 0) (feedCollapse / titleHeightPx).coerceIn(0f, 1f) else 0f
+    val collapseShown = remember { Animatable(collapseTarget) }
+    LaunchedEffect(collapseTarget) {
+        if (abs(collapseTarget - collapseShown.value) > 0.6f) {
+            collapseShown.animateTo(collapseTarget, tween(MainTabFadeMillis))
+        } else {
+            collapseShown.snapTo(collapseTarget)
+        }
+    }
+    // 传 lambda 而不是数值：折叠每帧都在变，读值的地方都在绘制阶段，不会把整页重组一遍。
+    val collapsed: () -> Float = { collapseShown.value }
 
     Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalTopBarBounds provides topBarBounds) {
@@ -103,8 +134,9 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 container = container,
                                 nav = nav,
                                 topInset = topBarHeight,
+                                segment = segment,
+                                onSegment = { segment = it },
                                 onCollapse = { feedCollapse = it },
-                                onScrollIdle = { feedCollapse = 0f },
                             )
 
                             1 -> DynamicScreen(
@@ -139,7 +171,11 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 MainTopBar(
                     tab = tab,
                     nav = nav,
-                    collapsePx = feedCollapse,
+                    collapsed = collapsed,
+                    avatarUrl = account?.face,
+                    onAvatarClick = { nav.setTab(3) },
+                    segment = segment,
+                    onSegment = { segment = it },
                     bounds = topBarBounds,
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
                 )
@@ -162,24 +198,16 @@ fun MainShell(nav: NavState, container: AppContainer) {
 private fun MainTopBar(
     tab: Int,
     nav: NavState,
-    collapsePx: Float,
+    collapsed: () -> Float,
+    avatarUrl: String?,
+    onAvatarClick: () -> Unit,
+    segment: Int,
+    onSegment: (Int) -> Unit,
     bounds: TopBarBounds,
     modifier: Modifier = Modifier,
 ) {
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val pageBarHeight = statusBarTop + TitleRowHeight
-    val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
-    val collapseTarget = if (tab == 0) (collapsePx / titleHeightPx).coerceIn(0f, 1f) else 0f
-    // 折叠量只认 Animatable 的当前值这一条来源，避免目标一步跨过阈值时先折没一帧再弹回来。
-    val collapseShown = remember { Animatable(collapseTarget) }
-    LaunchedEffect(collapseTarget) {
-        if (abs(collapseTarget - collapseShown.value) > 0.6f) {
-            collapseShown.animateTo(collapseTarget, tween(MainTabFadeMillis))
-        } else {
-            collapseShown.snapTo(collapseTarget)
-        }
-    }
-    val collapsed = collapseShown.value
 
     Box(modifier) {
         AppBarSurface(
@@ -201,6 +229,10 @@ private fun MainTopBar(
                 tab = page,
                 nav = nav,
                 collapsed = collapsed,
+                avatarUrl = avatarUrl,
+                onAvatarClick = onAvatarClick,
+                segment = segment,
+                onSegment = onSegment,
             )
         }
     }
@@ -210,7 +242,11 @@ private fun MainTopBar(
 private fun BarContent(
     tab: Int,
     nav: NavState,
-    collapsed: Float,
+    collapsed: () -> Float,
+    avatarUrl: String?,
+    onAvatarClick: () -> Unit,
+    segment: Int,
+    onSegment: (Int) -> Unit,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
     Column(
@@ -220,16 +256,34 @@ private fun BarContent(
     ) {
         Box(Modifier.fillMaxWidth().height(TitleRowHeight)) {
             Box(Modifier.fillMaxSize().clipToBounds()) {
-                Box(Modifier.fillMaxSize().graphicsLayer { translationY = -collapsed * titleHeightPx }) {
-                    Text(
-                        tabTitles.getOrElse(tab) { "" },
-                        color = COUITheme.colorScheme.onSurface.copy(alpha = 1f - collapsed),
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp, bottom = 6.dp),
-                    )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationY = -collapsed() * titleHeightPx
+                            alpha = 1f - collapsed()
+                        },
+                ) {
+                    // 推荐页的左上角是登录用户自己的头像，其余 tab 仍是文字标题。
+                    if (tab == 0) {
+                        FeedAvatar(
+                            url = avatarUrl,
+                            onClick = onAvatarClick,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 16.dp, bottom = 8.dp),
+                        )
+                    } else {
+                        Text(
+                            tabTitles.getOrElse(tab) { "" },
+                            color = COUITheme.colorScheme.onSurface,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 16.dp, bottom = 6.dp),
+                        )
+                    }
                 }
             }
             Row(
@@ -237,8 +291,8 @@ private fun BarContent(
                     .align(Alignment.CenterEnd)
                     .padding(end = TopAppBarDefaults.ActionIconPadding)
                     .graphicsLayer {
-                        translationY = -collapsed * titleHeightPx / 2f
-                        alpha = 1f - collapsed
+                        translationY = -collapsed() * titleHeightPx / 2f
+                        alpha = 1f - collapsed()
                     },
                 horizontalArrangement = Arrangement.spacedBy(
                     TopAppBarDefaults.ActionMenuItemSpacing,
@@ -248,6 +302,54 @@ private fun BarContent(
             ) {
                 TabActions(tab, nav)
             }
+        }
+
+        // 分段胶囊画在顶栏这一层：盖在玻璃之上才不会随折叠一起被模糊掉。
+        if (tab == 0) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .graphicsLayer { translationY = -collapsed() * titleHeightPx },
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                SegmentCapsule(
+                    labels = FEED_SEGMENTS,
+                    selectedIndex = segment,
+                    onSelect = onSegment,
+                )
+            }
+        }
+    }
+}
+
+/** 顶栏左上角的账号头像；未登录时退回一个中性图标。 */
+@Composable
+private fun FeedAvatar(
+    url: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val sizePx = with(LocalDensity.current) { AvatarSize.roundToPx() }
+    val model = remember(url, sizePx) { Formatters.sizedImageUrl(url, sizePx, sizePx) }
+    Box(
+        modifier = modifier
+            .size(AvatarSize)
+            .clip(CircleShape)
+            .background(COUITheme.colorScheme.surfaceContainerHigh)
+            .clickable(onClick = onClick)
+            .testTag("top_avatar"),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (model.isBlank()) {
+            Icon(COUIIcons.Contacts, "我的", Modifier.size(20.dp))
+        } else {
+            AsyncImage(
+                model = model,
+                contentDescription = "我的",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
         }
     }
 }

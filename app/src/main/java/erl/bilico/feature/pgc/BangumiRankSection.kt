@@ -37,6 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.data.model.BangumiCard
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.feed.FeedSegmentRowHeight
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.CoverImage
@@ -79,7 +80,7 @@ fun BangumiRankSection(
         onRefresh = { scope.launch { viewModel.refresh() } },
         modifier = Modifier.fillMaxSize(),
         state = pullState,
-        contentPadding = PaddingValues(top = topInset),
+        contentPadding = PaddingValues(top = topInset + FeedSegmentRowHeight),
         colors = fullPagePullToRefreshColors(backgroundColor = pageContainerColor()),
         refreshTexts = FullPageRefreshTexts,
         completeHoldDurationMillis = FullPageRefreshHoldMillis,
@@ -90,7 +91,7 @@ fun BangumiRankSection(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 12.dp,
-                top = topInset + 44.dp,
+                top = topInset + FeedSegmentRowHeight,
                 end = 12.dp,
                 bottom = 66.dp + navBottomPadding(),
             ),

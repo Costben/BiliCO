@@ -2,16 +2,10 @@ package erl.bilico.feature.feed
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -19,18 +13,22 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.pgc.BangumiRankSection
 import erl.bilico.feature.rank.RankingSection
 import erl.bilico.ui.NavState
-import erl.bilico.ui.components.SegmentCapsule
 
-/** 推荐 tab 的三段：推荐流、排行榜、番剧。分段胶囊浮在列表上方，切换时列表位置各自保留。 */
+/**
+ * 推荐 tab 的三段：推荐流、排行榜、番剧。
+ *
+ * 分段胶囊不在这里画：它要跟着标题行折进顶栏，得画在顶栏那一层才不会被玻璃盖住，
+ * 所以 [segment] 与 [onSegment] 都由外壳持有。
+ */
 @Composable
 fun FeedScreen(
     container: AppContainer,
     nav: NavState,
     topInset: Dp,
+    segment: Int,
+    onSegment: (Int) -> Unit,
     onCollapse: (Float) -> Unit,
-    onScrollIdle: () -> Unit,
 ) {
-    var segment by rememberSaveable { mutableIntStateOf(0) }
     val recommendState = rememberLazyListState()
     val rankingState = rememberLazyListState()
     val bangumiState = rememberLazyGridState()
@@ -49,7 +47,6 @@ fun FeedScreen(
                 topInset = segmentTop,
                 listState = recommendState,
                 onCollapse = onCollapse,
-                onScrollIdle = onScrollIdle,
             )
 
             1 -> RankingSection(
@@ -66,16 +63,11 @@ fun FeedScreen(
                 gridState = bangumiState,
             )
         }
-
-        SegmentCapsule(
-            labels = FEED_SEGMENTS,
-            selectedIndex = segment,
-            onSelect = { segment = it },
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = segmentTop),
-        )
     }
 }
 
-private val FEED_SEGMENTS = listOf("推荐", "排行榜", "番剧")
+/** 分段胶囊占掉的一条高度；列表和下拉刷新都要把它让出来。 */
+internal val FeedSegmentRowHeight = 44.dp
+
+/** 推荐 tab 的三个分段标题。 */
+internal val FEED_SEGMENTS = listOf("推荐", "排行榜", "番剧")

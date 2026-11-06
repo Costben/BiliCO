@@ -52,7 +52,6 @@ internal fun RecommendFeed(
     topInset: Dp,
     listState: LazyListState,
     onCollapse: (Float) -> Unit,
-    onScrollIdle: () -> Unit,
 ) {
     val viewModel: FeedViewModel = viewModel { FeedViewModel(container.feed) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -85,7 +84,6 @@ internal fun RecommendFeed(
                 if (lastVisible != null && size > 0 && lastVisible >= size - 3) {
                     viewModel.loadMore()
                 }
-                onScrollIdle()
             }
     }
 
@@ -94,7 +92,7 @@ internal fun RecommendFeed(
         onRefresh = { scope.launch { viewModel.refresh() } },
         modifier = Modifier.fillMaxSize(),
         state = pullState,
-        contentPadding = PaddingValues(top = topInset),
+        contentPadding = PaddingValues(top = topInset + FeedSegmentRowHeight),
         colors = fullPagePullToRefreshColors(backgroundColor = pageContainerColor()),
         refreshTexts = FullPageRefreshTexts,
         completeHoldDurationMillis = FullPageRefreshHoldMillis,
@@ -104,7 +102,7 @@ internal fun RecommendFeed(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 12.dp,
-                top = topInset + 44.dp,
+                top = topInset + FeedSegmentRowHeight,
                 end = 12.dp,
                 bottom = 66.dp + navBottomPadding(),
             ),
