@@ -90,6 +90,8 @@ class PgcRepository(
                     episodes = episodes,
                     seasons = seasons,
                     followed = (season.userStatus?.follow ?: 0) == 1,
+                    lastEpId = season.userStatus?.progress?.lastEpId ?: 0L,
+                    lastTimeSec = (season.userStatus?.progress?.lastTime ?: 0L).coerceAtLeast(0L),
                 )
             }
         }

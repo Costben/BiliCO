@@ -20,6 +20,8 @@ data class PlayUrlData(
     @SerialName("accept_quality") val acceptQuality: List<Int> = emptyList(),
     @SerialName("accept_description") val acceptDescription: List<String> = emptyList(),
     @SerialName("support_formats") val supportFormats: List<FormatItem>? = null,
+    @SerialName("last_play_time") val lastPlayTime: Long = 0,
+    @SerialName("last_play_cid") val lastPlayCid: Long = 0,
     val dash: Dash? = null,
     val durl: List<Durl>? = null,
 )

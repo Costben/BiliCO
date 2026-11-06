@@ -46,6 +46,8 @@ internal fun PlayUrlData.toPlaybackSource(targetQn: Int): PlaybackSource {
             quality = video.id,
             qualities = qualities,
             durationMs = timelength,
+            lastPlayTimeMs = lastPlayTime.coerceAtLeast(0L),
+            lastPlayCid = lastPlayCid.coerceAtLeast(0L),
         )
     }
 
@@ -58,6 +60,8 @@ internal fun PlayUrlData.toPlaybackSource(targetQn: Int): PlaybackSource {
         quality = quality,
         qualities = qualities,
         durationMs = segment.length,
+        lastPlayTimeMs = lastPlayTime.coerceAtLeast(0L),
+        lastPlayCid = lastPlayCid.coerceAtLeast(0L),
     )
 }
 

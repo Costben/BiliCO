@@ -39,6 +39,14 @@ data class PgcSeason(
 @Serializable
 data class PgcUserStatus(
     val follow: Int = 0,
+    val progress: PgcWatchProgress? = null,
+)
+
+@Serializable
+data class PgcWatchProgress(
+    @SerialName("last_ep_id") val lastEpId: Long = 0,
+    @SerialName("last_ep_index") val lastEpIndex: String = "",
+    @SerialName("last_time") val lastTime: Long = 0,
 )
 
 @Serializable
@@ -184,6 +192,8 @@ data class BangumiDetail(
     val episodes: List<BangumiEpisode>,
     val seasons: List<BangumiSeasonRef>,
     val followed: Boolean = false,
+    val lastEpId: Long = 0L,
+    val lastTimeSec: Long = 0L,
 )
 
 /** 番剧排行、追番列表共用的一张卡片。 */

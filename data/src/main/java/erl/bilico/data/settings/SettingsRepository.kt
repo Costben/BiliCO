@@ -53,6 +53,12 @@ class SettingsRepository(
     private val _danmakuArea = MutableStateFlow(0)
     val danmakuArea: StateFlow<Int> = _danmakuArea.asStateFlow()
 
+    private val _backgroundPlay = MutableStateFlow(true)
+    val backgroundPlay: StateFlow<Boolean> = _backgroundPlay.asStateFlow()
+
+    private val _autoPip = MutableStateFlow(true)
+    val autoPip: StateFlow<Boolean> = _autoPip.asStateFlow()
+
     init {
         scope.launch {
             val prefs = context.biliDataStore.data.first()
@@ -67,7 +73,19 @@ class SettingsRepository(
             _danmakuOpacity.value = prefs[KEY_DANMAKU_OPACITY] ?: 100
             _danmakuFontScale.value = prefs[KEY_DANMAKU_FONT] ?: 100
             _danmakuArea.value = prefs[KEY_DANMAKU_AREA] ?: 0
+            _backgroundPlay.value = prefs[KEY_BACKGROUND_PLAY] ?: true
+            _autoPip.value = prefs[KEY_AUTO_PIP] ?: true
         }
+    }
+
+    fun setBackgroundPlay(enabled: Boolean) {
+        _backgroundPlay.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_BACKGROUND_PLAY] = enabled } }
+    }
+
+    fun setAutoPip(enabled: Boolean) {
+        _autoPip.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_AUTO_PIP] = enabled } }
     }
 
     fun setDanmakuEnabled(enabled: Boolean) {
@@ -132,5 +150,7 @@ class SettingsRepository(
         val KEY_DANMAKU_OPACITY = intPreferencesKey("danmaku_opacity")
         val KEY_DANMAKU_FONT = intPreferencesKey("danmaku_font_scale")
         val KEY_DANMAKU_AREA = intPreferencesKey("danmaku_area")
+        val KEY_BACKGROUND_PLAY = booleanPreferencesKey("background_play")
+        val KEY_AUTO_PIP = booleanPreferencesKey("auto_pip")
     }
 }

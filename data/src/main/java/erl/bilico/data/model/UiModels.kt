@@ -58,6 +58,8 @@ data class PlaybackSource(
     val quality: Int,
     val qualities: List<QualityOption>,
     val durationMs: Long,
+    val lastPlayTimeMs: Long = 0L,
+    val lastPlayCid: Long = 0L,
 )
 
 data class Comment(
@@ -127,7 +129,12 @@ data class DynamicItemUi(
 )
 
 data class HistoryItem(
+    val key: String = "",
     val bvid: String,
+    val cid: Long = 0L,
+    val seasonId: Long = 0L,
+    val epId: Long = 0L,
+    val isPgc: Boolean = false,
     val title: String,
     val cover: String,
     val upName: String,

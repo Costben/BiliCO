@@ -22,6 +22,7 @@ import erl.bilico.data.model.LiveRoomDetailResponse
 import erl.bilico.data.model.LiveRoomInfoResponse
 import erl.bilico.data.model.NavResponse
 import erl.bilico.data.model.PlayUrlResponse
+import erl.bilico.data.model.PlayerInfoResponse
 import erl.bilico.data.model.QrCodeResponse
 import erl.bilico.data.model.QrPollResponse
 import erl.bilico.data.model.RelationStatResponse
@@ -60,6 +61,12 @@ interface BiliApi {
 
     @GET("x/player/playurl")
     suspend fun playUrlLegacy(@QueryMap params: Map<String, String>): PlayUrlResponse
+
+    @GET("x/player/wbi/v2")
+    suspend fun playerInfo(@QueryMap params: Map<String, String>): PlayerInfoResponse
+
+    @GET("x/player/v2")
+    suspend fun playerInfoLegacy(@QueryMap params: Map<String, String>): PlayerInfoResponse
 
     @GET("x/v2/reply/wbi/main")
     suspend fun mainComments(@QueryMap params: Map<String, String>): ReplyResponse
