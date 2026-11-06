@@ -20,6 +20,10 @@ class HeartbeatReporter(
         playedTimeSec: Long,
         realPlayedTimeSec: Long,
         startTsSec: Long,
+        epid: Long = 0L,
+        sid: Long = 0L,
+        videoType: Int = 3,
+        subType: Int = 0,
     ): Boolean = withContext(Dispatchers.IO) {
         val csrf = session.csrf()
         if (csrf.isBlank()) return@withContext false
@@ -30,12 +34,15 @@ class HeartbeatReporter(
             if (aid > 0) put("aid", aid.toString())
             if (bvid.isNotBlank()) put("bvid", bvid)
             if (cid > 0) put("cid", cid.toString())
+            if (epid > 0) put("epid", epid.toString())
+            if (sid > 0) put("sid", sid.toString())
             session.mid().takeIf { it > 0 }?.let { put("mid", it.toString()) }
             put("played_time", played.toString())
             put("real_played_time", real.toString())
             put("realtime", real.toString())
             put("start_ts", startTsSec.coerceAtLeast(0L).toString())
-            put("type", "3")
+            put("type", videoType.toString())
+            if (subType > 0) put("sub_type", subType.toString())
             put("dt", "2")
             put("outer", "0")
             put("play_type", if (played <= 0L && real <= 0L) "1" else "0")

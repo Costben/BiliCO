@@ -132,6 +132,7 @@ fun VideoScreen(
         }
         player.addListener(listener)
         onDispose {
+            viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
             player.removeListener(listener)
             player.release()
         }
@@ -306,6 +307,7 @@ fun VideoScreen(
                             selectedCid = state.selectedCid,
                             onRetry = viewModel::load,
                             onSelectPart = { index ->
+                                viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
                                 viewModel.selectPart(index, player.currentPosition)
                             },
                             onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },

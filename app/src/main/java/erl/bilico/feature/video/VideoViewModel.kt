@@ -135,6 +135,24 @@ class VideoViewModel(
         }
     }
 
+    /** 页面退出或切 P 时用外部长生命周期协程补发一次末次进度。 */
+    fun flushHeartbeat(playedSec: Long, externalScope: kotlinx.coroutines.CoroutineScope) {
+        val detail = _state.value.detail ?: return
+        val cid = _state.value.selectedCid
+        val ts = startTs
+        if (cid <= 0L || ts <= 0L || playedSec <= 0L) return
+        externalScope.launch {
+            heartbeat.report(
+                bvid = bvid,
+                aid = detail.aid,
+                cid = cid,
+                playedTimeSec = playedSec,
+                realPlayedTimeSec = playedSec,
+                startTsSec = ts,
+            )
+        }
+    }
+
     fun consumeMessage() {
         _state.update { it.copy(message = null) }
     }

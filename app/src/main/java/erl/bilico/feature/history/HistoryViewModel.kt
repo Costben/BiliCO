@@ -69,7 +69,7 @@ class HistoryViewModel(
                     _state.update {
                         it.copy(
                             items = if (firstPage) {
-                                page.items
+                                page.items.distinctBy { item -> item.bvid }
                             } else {
                                 (it.items + page.items).distinctBy { item -> item.bvid }
                             },
