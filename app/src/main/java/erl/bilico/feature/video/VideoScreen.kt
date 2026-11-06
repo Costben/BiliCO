@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -27,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +61,7 @@ import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @Composable
@@ -100,6 +104,17 @@ fun VideoScreen(
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    // 简介 / 评论两页横向翻；点标签翻页，滑完一页再把标签写回去。
+    // 回写必须等翻页停稳：动画途中 currentPage 会先经过另一页，写回去会把动画打断在半路。
+    val detailPager = rememberPagerState(initialPage = tab, pageCount = { DETAIL_PAGES.size })
+    LaunchedEffect(tab) {
+        if (detailPager.settledPage != tab) detailPager.animateScrollToPage(tab)
+    }
+    LaunchedEffect(detailPager) {
+        snapshotFlow { detailPager.settledPage }
+            .distinctUntilChanged()
+            .collect { tab = it }
+    }
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
     var subtitleDialogVisible by remember { mutableStateOf(false) }
@@ -385,13 +400,16 @@ fun VideoScreen(
                     onSend = sendDanmaku,
                 )
 
-                Box(
+                HorizontalPager(
+                    state = detailPager,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                         .navigationBarsPadding(),
-                ) {
-                    when (tab) {
+                    beyondViewportPageCount = 0,
+                    key = { DETAIL_PAGES[it] },
+                ) { page ->
+                    when (page) {
                         0 -> VideoInfoTab(
                             detail = state.detail,
                             isLoading = state.isLoading,
@@ -521,6 +539,8 @@ fun VideoScreen(
         )
     }
 }
+
+private val DETAIL_PAGES = listOf("info", "comment")
 
 private fun VideoUiState.qualityLabel(): String? {
     val source = source ?: return null
