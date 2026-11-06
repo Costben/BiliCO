@@ -1,6 +1,7 @@
 package erl.bilico.data.repository
 
 import erl.bilico.data.model.ArchiveMajor
+import erl.bilico.data.model.DynamicArticleCard
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItem
 import erl.bilico.data.model.DynamicItemUi
@@ -70,20 +71,40 @@ class DynamicRepository(
         val content = modules?.content
         val stat = modules?.stat
         val major = content?.major
+        // 图文动态的正文在 major.opus.summary.text，desc 通常为空；
+        // itemOpusStyle 下整条卡片只有 summary 这一个载体。
+        val opusSummary = major?.opus?.summary?.text.orEmpty().trim()
+        val articleTitle = major?.article?.title.orEmpty().trim()
         val text = content?.desc?.text?.trim().orEmpty()
+            .ifBlank { opusSummary }
+            .ifBlank { articleTitle }
 
         val nested = orig?.takeIf { depth < 2 }?.toUi(depth + 1)
+        // opus 的图字段叫 url，draw 的叫 src，两边都要取。
         val images = (major?.draw?.items ?: major?.opus?.pics).orEmpty()
             .asSequence()
-            .filter { it.src.isNotBlank() }
+            .filter { it.displayUrl.isNotBlank() }
             .take(9)
-            .map { DynamicImage(Formatters.normalizeImageUrl(it.src), it.width, it.height) }
+            .map { DynamicImage(Formatters.normalizeImageUrl(it.displayUrl), it.width, it.height) }
             .toList()
         val video = major?.archive?.toCard()
+
+        val articleId = major?.article?.id ?: 0L
+        val selfId = idStr.ifBlank { basic?.ridStr.orEmpty() }
+        val article = if (articleId > 0L || major?.type == MAJOR_TYPE_OPUS) {
+            DynamicArticleCard(
+                articleId = articleId,
+                title = articleTitle.ifBlank { major?.opus?.title.orEmpty().trim() },
+                dynamicId = selfId,
+            )
+        } else {
+            null
+        }
 
         val kind = when {
             nested != null -> DynamicKind.FORWARD
             video != null -> DynamicKind.VIDEO
+            article != null -> DynamicKind.TEXT
             images.isNotEmpty() -> DynamicKind.IMAGES
             text.isNotEmpty() -> DynamicKind.TEXT
             else -> DynamicKind.UNSUPPORTED
@@ -92,7 +113,8 @@ class DynamicRepository(
 
         val fallbackId = "${author?.mid}-${author?.pubTs}-${text.hashCode()}-${images.firstOrNull()?.url.orEmpty()}"
         return DynamicItemUi(
-            id = "$depth:${idStr.ifBlank { fallbackId }}",
+            // 前缀区分转发层级，避免同一条动态在不同层级撞 key；id 本身留给阅读页用。
+            id = "$depth:${selfId.ifBlank { fallbackId }}",
             kind = kind,
             authorMid = author?.mid ?: 0L,
             authorName = author?.name.orEmpty(),
@@ -102,6 +124,7 @@ class DynamicRepository(
             content = text,
             images = images,
             video = video,
+            article = article,
             forward = nested,
             forwardCount = stat?.forward?.count ?: 0,
             commentCount = stat?.comment?.count ?: 0,
@@ -150,6 +173,8 @@ class DynamicRepository(
     }
 
     private companion object {
+        const val MAJOR_TYPE_OPUS = "MAJOR_TYPE_OPUS"
+
         const val FEED_FEATURES =
             "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote,decorationCard," +
                 "onlyfansAssetsV2,onlyfansQaCard,forwardListHidden,ugcDelete"

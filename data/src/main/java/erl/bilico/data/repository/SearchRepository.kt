@@ -1,5 +1,6 @@
 package erl.bilico.data.repository
 
+import erl.bilico.data.model.SearchArticle
 import erl.bilico.data.model.SearchItem
 import erl.bilico.data.model.SearchUser
 import erl.bilico.data.model.SearchVideo
@@ -74,6 +75,24 @@ class SearchRepository(
             }
         }
 
+    /** 专栏搜索：`search_type=article`，结果是 cv 号，点开走阅读页。 */
+    suspend fun searchArticles(keyword: String, page: Int): Result<List<SearchArticle>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val response = api.searchType(
+                    signedParams(
+                        keyword = keyword,
+                        searchType = "article",
+                        page = page,
+                    ) + mapOf("order" to "totalrank", "web_location" to "1430654"),
+                )
+                if (response.code != 0) error(response.message.ifBlank { "搜索失败(${response.code})" })
+                response.data?.result.orEmpty()
+                    .filter { it.id > 0L }
+                    .map { it.toArticle() }
+            }
+        }
+
     private suspend fun signedParams(
         keyword: String,
         searchType: String,
@@ -115,6 +134,18 @@ class SearchRepository(
         sign = Formatters.decodeHtmlEntities(usign),
         fansText = Formatters.formatStat(fans.toLong()) + "粉丝",
         videoCountText = "${Formatters.formatStat(videos.toLong())}视频",
+    )
+
+    private fun SearchItem.toArticle(): SearchArticle = SearchArticle(
+        id = id,
+        title = cleanTitle(title),
+        cover = Formatters.normalizeImageUrl(imageUrls.firstOrNull()),
+        author = author,
+        upMid = mid,
+        categoryName = categoryName,
+        viewText = Formatters.formatStat(view.toLong()),
+        likeText = Formatters.formatStat(like.toLong()),
+        desc = cleanTitle(desc),
     )
 
     private fun cleanTitle(raw: String): String =

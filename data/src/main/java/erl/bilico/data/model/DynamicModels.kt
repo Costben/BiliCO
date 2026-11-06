@@ -30,6 +30,18 @@ data class DynamicItem(
     val type: String = "",
     val modules: JsonElement? = null,
     val orig: DynamicItem? = null,
+    val basic: DynamicBasic? = null,
+)
+
+/** 评论与资源 ID：动态的评论区 oid 和专栏 cv 号都在这里。 */
+@Serializable
+data class DynamicBasic(
+    @SerialName("comment_id_str") val commentIdStr: String = "",
+    @SerialName("comment_type")
+    @Serializable(with = FlexibleIntSerializer::class)
+    val commentType: Int = 0,
+    @SerialName("rid_str") val ridStr: String = "",
+    @SerialName("jump_url") val jumpUrl: String = "",
 )
 
 @Serializable
@@ -67,8 +79,21 @@ data class DynamicDesc(
 data class DynamicMajor(
     val type: String = "",
     val archive: ArchiveMajor? = null,
+    val article: ArticleMajor? = null,
     val draw: DrawMajor? = null,
     val opus: OpusMajor? = null,
+)
+
+/** 专栏卡片。`id` 就是 cv 号，正文走 `x/article/view`。 */
+@Serializable
+data class ArticleMajor(
+    @Serializable(with = FlexibleLongSerializer::class)
+    val id: Long = 0,
+    val title: String = "",
+    val desc: String = "",
+    val covers: List<String> = emptyList(),
+    @SerialName("jump_url") val jumpUrl: String = "",
+    val label: String = "",
 )
 
 @Serializable
@@ -84,11 +109,16 @@ data class DrawMajor(
     val items: List<DynamicImageData> = emptyList(),
 )
 
+/**
+ * 图文动态。正文在 `summary.text`（最多 500 字），图片列表的字段名是 `url`，
+ * 不是 `draw.items` 的 `src`，取图时两处都要看。
+ */
 @Serializable
 data class OpusMajor(
     val pics: List<DynamicImageData> = emptyList(),
     val summary: OpusSummary? = null,
     val title: String? = null,
+    @SerialName("jump_url") val jumpUrl: String = "",
 )
 
 @Serializable
@@ -98,10 +128,14 @@ data class OpusSummary(
 
 @Serializable
 data class DynamicImageData(
+    // 图文用 url，旧版图片动态用 src，两边都收着。
     val src: String = "",
+    val url: String = "",
     val width: Int = 0,
     val height: Int = 0,
-)
+) {
+    val displayUrl: String get() = src.ifBlank { url }
+}
 
 @Serializable
 data class DynamicStatModule(

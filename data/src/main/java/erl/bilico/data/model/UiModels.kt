@@ -119,6 +119,13 @@ data class DynamicVideoCard(
     val durationText: String,
 )
 
+/** 卡片点开后要跳去哪：有 cv 号走专栏，否则把这个动态自己的 id 交给阅读页。 */
+data class DynamicArticleCard(
+    val articleId: Long = 0L,
+    val title: String = "",
+    val dynamicId: String = "",
+)
+
 data class DynamicItemUi(
     val id: String,
     val kind: DynamicKind,
@@ -130,6 +137,8 @@ data class DynamicItemUi(
     val content: String,
     val images: List<DynamicImage> = emptyList(),
     val video: DynamicVideoCard? = null,
+    /** 专栏或图文长文：卡片右下角带「阅读」标记，点开进阅读页。 */
+    val article: DynamicArticleCard? = null,
     val forward: DynamicItemUi? = null,
     val forwardCount: Int = 0,
     val commentCount: Int = 0,
@@ -207,6 +216,18 @@ data class SearchUser(
     val sign: String,
     val fansText: String,
     val videoCountText: String,
+)
+
+data class SearchArticle(
+    val id: Long,
+    val title: String,
+    val cover: String,
+    val author: String,
+    val upMid: Long,
+    val categoryName: String,
+    val viewText: String,
+    val likeText: String,
+    val desc: String,
 )
 
 data class SpaceProfile(

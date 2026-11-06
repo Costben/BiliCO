@@ -3,6 +3,7 @@ package erl.bilico.di
 import android.content.Context
 import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.TokenRefreshHelper
+import erl.bilico.data.repository.ArticleRepository
 import erl.bilico.data.repository.CommentRepository
 import erl.bilico.data.repository.DanmakuRepository
 import erl.bilico.data.repository.DynamicRepository
@@ -57,6 +58,8 @@ class AppContainer(context: Context) {
     val heartbeat = HeartbeatReporter(client.api, session)
 
     val dynamic = DynamicRepository(client.api, client.buvid)
+
+    val articles = ArticleRepository(client.api, client.wbi, client.buvid)
 
     val history = HistoryRepository(client.api, client.buvid)
 

@@ -1,8 +1,10 @@
 package erl.bilico.data.network
 
 import erl.bilico.data.model.AddReplyResponse
+import erl.bilico.data.model.ArticleViewResponse
 import erl.bilico.data.model.BangumiFollowResponse
 import erl.bilico.data.model.BaseResponse
+import erl.bilico.data.model.DynamicDetailResponse
 import erl.bilico.data.model.DynamicFeedResponse
 import erl.bilico.data.model.MessageAtResponse
 import erl.bilico.data.model.MessageLikeResponse
@@ -95,6 +97,17 @@ interface BiliApi {
 
     @GET("x/polymer/web-dynamic/v1/feed/all")
     suspend fun dynamicFeed(@QueryMap params: Map<String, String>): DynamicFeedResponse
+
+    // ---------- 专栏 / 图文 ----------
+
+    @GET("x/article/view")
+    suspend fun articleView(@QueryMap params: Map<String, String>): ArticleViewResponse
+
+    @GET("x/polymer/web-dynamic/v1/detail")
+    suspend fun dynamicDetail(@QueryMap params: Map<String, String>): DynamicDetailResponse
+
+    @GET("x/polymer/web-dynamic/v1/opus/detail")
+    suspend fun opusDetail(@QueryMap params: Map<String, String>): DynamicDetailResponse
 
     @GET("x/web-interface/history/cursor")
     suspend fun history(@QueryMap params: Map<String, String>): HistoryResponse

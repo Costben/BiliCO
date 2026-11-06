@@ -46,6 +46,16 @@ data class SearchItem(
     val fans: Int = 0,
     @Serializable(with = FlexibleIntSerializer::class)
     val videos: Int = 0,
+    // 专栏结果的字段
+    @SerialName("image_urls") val imageUrls: List<String> = emptyList(),
+    val desc: String = "",
+    @SerialName("category_name") val categoryName: String = "",
+    @Serializable(with = FlexibleIntSerializer::class)
+    val view: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
+    val like: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
+    val reply: Int = 0,
 )
 
 @Serializable
