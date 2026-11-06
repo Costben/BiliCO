@@ -1,7 +1,11 @@
 package erl.bilico.feature.comment
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +15,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,8 +51,11 @@ import erl.bilico.ui.components.InputDialog
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.FloatingActionButton
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Send
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -102,7 +109,7 @@ fun CommentTab(
                 else -> LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 88.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     item(key = "header") {
@@ -179,35 +186,43 @@ fun CommentTab(
                     color = Color.White,
                 )
             }
-        }
 
-        HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(COUITheme.colorScheme.background)
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(COUITheme.colorScheme.surfaceVariant)
-                    .clickable {
-                        if (!container.session.isLoggedIn()) {
-                            viewModel.showMessage("请先登录")
-                        } else {
-                            composeTarget = ComposeTarget.Main
-                        }
+            // 评论入口改成右下角悬浮球：按下缩一圈，松手带一点回弹。
+            val ballInteraction = remember { MutableInteractionSource() }
+            val ballPressed by ballInteraction.collectIsPressedAsState()
+            val ballScale = remember { Animatable(1f) }
+            LaunchedEffect(ballPressed) {
+                ballScale.animateTo(
+                    targetValue = if (ballPressed) 0.94f else 1f,
+                    animationSpec = if (ballPressed) {
+                        spring(dampingRatio = 0.55f, stiffness = 1400f)
+                    } else {
+                        spring(dampingRatio = 0.34f, stiffness = 420f)
+                    },
+                )
+            }
+            FloatingActionButton(
+                onClick = {
+                    if (!container.session.isLoggedIn()) {
+                        viewModel.showMessage("请先登录")
+                    } else {
+                        composeTarget = ComposeTarget.Main
                     }
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                },
+                interactionSource = ballInteraction,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .graphicsLayer {
+                        scaleX = ballScale.value
+                        scaleY = ballScale.value
+                    },
             ) {
-                Text(
-                    text = if (state.isSending) "正在发送评论…" else "发一条友善的评论…",
-                    style = COUITheme.textStyles.footnote1,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                Icon(
+                    imageVector = COUIIcons.Send,
+                    contentDescription = "发送评论",
+                    modifier = Modifier.size(24.dp),
+                    tint = COUITheme.colorScheme.onPrimary,
                 )
             }
         }
