@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import erl.bilico.data.model.SearchArticle
 import erl.bilico.data.model.SearchUser
 import erl.bilico.data.model.SearchVideo
 import erl.bilico.data.util.Formatters
@@ -89,10 +90,10 @@ fun SearchScreen(
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .distinctUntilChanged()
             .collect { lastVisible ->
-                val size = if (viewModel.state.value.tab == 0) {
-                    viewModel.state.value.videos.size
-                } else {
-                    viewModel.state.value.users.size
+                val size = when (viewModel.state.value.tab) {
+                    0 -> viewModel.state.value.videos.size
+                    1 -> viewModel.state.value.users.size
+                    else -> viewModel.state.value.articles.size
                 }
                 if (lastVisible != null && size > 0 && lastVisible >= size - 2) {
                     viewModel.loadMore()
@@ -138,7 +139,7 @@ fun SearchScreen(
                                 .padding(vertical = 4.dp),
                         ) {
                             SegmentCapsule(
-                                labels = listOf("视频", "用户"),
+                                labels = listOf("视频", "用户", "专栏"),
                                 selectedIndex = state.tab,
                                 onSelect = viewModel::setTab,
                             )
@@ -159,6 +160,10 @@ fun SearchScreen(
                         state.tab == 1 && state.users.isEmpty() -> item(key = "empty") {
                             EmptyState("没有找到相关用户")
                         }
+
+                        state.tab == 2 && state.articles.isEmpty() -> item(key = "empty") {
+                            EmptyState("没有找到相关专栏")
+                        }
                     }
 
                     if (state.tab == 0) {
@@ -172,7 +177,7 @@ fun SearchScreen(
                                 onClick = { nav.push(Route.Video(video.bvid)) },
                             )
                         }
-                    } else {
+                    } else if (state.tab == 1) {
                         items(
                             items = state.users,
                             key = { it.mid },
@@ -181,6 +186,17 @@ fun SearchScreen(
                             SearchUserRow(
                                 user = user,
                                 onClick = { nav.push(Route.Space(user.mid)) },
+                            )
+                        }
+                    } else {
+                        items(
+                            items = state.articles,
+                            key = { "article-${it.id}" },
+                            contentType = { "search-article" },
+                        ) { article ->
+                            SearchArticleRow(
+                                article = article,
+                                onClick = { nav.push(Route.Article(article.id, article.title)) },
                             )
                         }
                     }
@@ -219,7 +235,7 @@ fun SearchScreen(
                             },
                             expanded = true,
                             onExpandedChange = { if (!it) nav.pop() },
-                            label = "搜索视频 / 用户",
+                            label = "搜索视频 / 用户 / 专栏",
                             modifier = Modifier.weight(1f).testTag("search_input"),
                         )
                     }
@@ -345,6 +361,72 @@ private fun SearchVideoRow(video: SearchVideo, onClick: () -> Unit) {
                     text = buildString {
                         append(video.author.ifBlank { "未知 UP" })
                         if (video.playText.isNotBlank()) append(" · ").append(video.playText).append("播放")
+                    },
+                    fontSize = 11.sp,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchArticleRow(article: SearchArticle, onClick: () -> Unit) {
+    val density = LocalDensity.current
+    val coverWidthPx = remember(density) { with(density) { 96.dp.roundToPx() } }
+    val coverHeightPx = remember(coverWidthPx) { coverWidthPx * 3 / 4 }
+    val coverUrl = remember(article.cover, coverWidthPx) {
+        Formatters.sizedImageUrl(article.cover, coverWidthPx, coverHeightPx)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        insideMargin = PaddingValues(10.dp),
+        onClick = onClick,
+    ) {
+        Row {
+            Box(
+                modifier = Modifier
+                    .width(96.dp)
+                    .aspectRatio(4f / 3f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(COUITheme.colorScheme.surfaceContainerHigh),
+            ) {
+                if (article.cover.isNotBlank()) {
+                    CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f).padding(start = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = article.title,
+                    fontSize = 14.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = COUITheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (article.desc.isNotBlank()) {
+                    Text(
+                        text = article.desc,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        color = COUITheme.colorScheme.onSurfaceSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    text = buildString {
+                        append(article.author.ifBlank { "未知作者" })
+                        if (article.categoryName.isNotBlank()) append(" · ").append(article.categoryName)
+                        if (article.viewText.isNotBlank()) append(" · ").append(article.viewText).append("阅读")
+                        if (article.likeText.isNotBlank()) append(" · ").append(article.likeText).append("赞")
                     },
                     fontSize = 11.sp,
                     color = COUITheme.colorScheme.onSurfaceSecondary,

@@ -2,6 +2,7 @@ package erl.bilico.feature.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import erl.bilico.data.model.SearchArticle
 import erl.bilico.data.model.SearchUser
 import erl.bilico.data.model.SearchVideo
 import erl.bilico.data.repository.SearchRepository
@@ -19,6 +20,7 @@ data class SearchUiState(
     val hotLoading: Boolean = false,
     val videos: List<SearchVideo> = emptyList(),
     val users: List<SearchUser> = emptyList(),
+    val articles: List<SearchArticle> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val isEnd: Boolean = false,
@@ -34,6 +36,7 @@ class SearchViewModel(
 
     private var videoPage = 1
     private var userPage = 1
+    private var articlePage = 1
     private var inFlight = false
 
     init {
@@ -57,10 +60,10 @@ class SearchViewModel(
         if (_state.value.tab == tab) return
         _state.update { it.copy(tab = tab) }
         if (_state.value.submitted.isNotBlank()) {
-            val hasItems = if (tab == 0) {
-                _state.value.videos.isNotEmpty()
-            } else {
-                _state.value.users.isNotEmpty()
+            val hasItems = when (tab) {
+                0 -> _state.value.videos.isNotEmpty()
+                1 -> _state.value.users.isNotEmpty()
+                else -> _state.value.articles.isNotEmpty()
             }
             if (!hasItems) submit(_state.value.submitted)
         }
@@ -71,12 +74,14 @@ class SearchViewModel(
         if (trimmed.isEmpty()) return
         videoPage = 1
         userPage = 1
+        articlePage = 1
         _state.update {
             it.copy(
                 query = trimmed,
                 submitted = trimmed,
                 videos = emptyList(),
                 users = emptyList(),
+                articles = emptyList(),
                 isLoading = true,
                 isEnd = false,
                 error = null,
@@ -102,10 +107,14 @@ class SearchViewModel(
         inFlight = true
         val keyword = _state.value.submitted
         val tab = _state.value.tab
-        val page = if (tab == 0) videoPage else userPage
+        val page = when (tab) {
+            0 -> videoPage
+            1 -> userPage
+            else -> articlePage
+        }
         viewModelScope.launch {
-            if (tab == 0) {
-                repository.searchVideos(keyword, page)
+            when (tab) {
+                0 -> repository.searchVideos(keyword, page)
                     .onSuccess { list ->
                         videoPage = page + 1
                         _state.update {
@@ -119,13 +128,28 @@ class SearchViewModel(
                         }
                     }
                     .onFailure { error -> fail(firstPage, error) }
-            } else {
-                repository.searchUsers(keyword, page)
+
+                1 -> repository.searchUsers(keyword, page)
                     .onSuccess { list ->
                         userPage = page + 1
                         _state.update {
                             it.copy(
                                 users = if (firstPage) list else it.users + list,
+                                isLoading = false,
+                                isLoadingMore = false,
+                                isEnd = list.isEmpty(),
+                                error = null,
+                            )
+                        }
+                    }
+                    .onFailure { error -> fail(firstPage, error) }
+
+                else -> repository.searchArticles(keyword, page)
+                    .onSuccess { list ->
+                        articlePage = page + 1
+                        _state.update {
+                            it.copy(
+                                articles = if (firstPage) list else it.articles + list,
                                 isLoading = false,
                                 isLoadingMore = false,
                                 isEnd = list.isEmpty(),
