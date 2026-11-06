@@ -9,6 +9,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -80,6 +85,60 @@ fun SecondaryPage(
                     gradientGlass = BlurEffectsEnabled,
                     navigationIcon = { BackIconButton(onClick = onBack) },
                     actions = actions,
+                )
+            }
+        }
+    }
+}
+
+/** [SecondaryPage] 的双列版本：番剧、图集这类以封面为主的列表用它。 */
+@Composable
+fun SecondaryGridPage(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    gridState: LazyGridState = rememberLazyGridState(),
+    content: LazyGridScope.() -> Unit,
+) {
+    val pageColor = pageContainerColor()
+    val backdrop = rememberLayerBackdrop()
+    val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
+
+    Box(modifier.fillMaxSize().background(pageColor)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .layerBackdropIf(BlurEffectsEnabled, backdrop)
+                .background(pageColor)
+        ) {
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    top = glassBarContentTop(topBarHeight, 10.dp),
+                    end = 12.dp,
+                    bottom = 24.dp + navBottomPadding(),
+                ),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                content = content,
+            )
+        }
+
+        CompositionLocalProvider(
+            LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
+            LocalEdgeToEdge provides true,
+        ) {
+            PinnedBarDensity {
+                SmallTopAppBar(
+                    title = title,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    color = pageColor,
+                    showDivider = false,
+                    gradientGlass = BlurEffectsEnabled,
+                    navigationIcon = { BackIconButton(onClick = onBack) },
                 )
             }
         }

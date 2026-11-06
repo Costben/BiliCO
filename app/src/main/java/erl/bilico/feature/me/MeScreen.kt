@@ -78,6 +78,11 @@ fun MeScreen(
                     onClick = { nav.push(Route.History) },
                 )
                 ArrowPreference(
+                    title = "消息",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { nav.push(Route.Messages) },
+                )
+                ArrowPreference(
                     title = "收藏夹",
                     cardListPosition = CardListPosition.Middle,
                     onClick = { nav.push(Route.Favorites) },
@@ -86,6 +91,11 @@ fun MeScreen(
                     title = "稍后再看",
                     cardListPosition = CardListPosition.Middle,
                     onClick = { nav.push(Route.WatchLater) },
+                )
+                ArrowPreference(
+                    title = "追番",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { nav.push(Route.BangumiFollow) },
                 )
                 ArrowPreference(
                     title = "关注",
