@@ -4,9 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,8 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -36,10 +34,13 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.R
+import io.github.suqi8.coui.kmp.basic.TabRowDefaults
+import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -80,13 +81,7 @@ internal fun VideoDetailBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (!composing) {
-            DETAIL_TABS.forEachIndexed { index, label ->
-                DetailTab(
-                    label = label,
-                    active = selected == index,
-                    onClick = { onSelect(index) },
-                )
-            }
+            DetailTabs(selected = selected, onSelect = onSelect)
             Spacer(Modifier.weight(1f))
         }
 
@@ -129,33 +124,34 @@ internal fun VideoDetailBar(
 }
 
 @Composable
-private fun DetailTab(label: String, active: Boolean, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .height(44.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = label,
-            style = COUITheme.textStyles.body1,
-            fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
-            color = if (active) {
-                COUITheme.colorScheme.onSurface
-            } else {
-                COUITheme.colorScheme.onSurfaceSecondary
-            },
-        )
-        Spacer(Modifier.height(3.dp))
-        Box(
-            modifier = Modifier
-                .width(16.dp)
-                .height(3.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(if (active) COUITheme.colorScheme.primary else Color.Transparent),
+private fun DetailTabs(selected: Int, onSelect: (Int) -> Unit) {
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val labelStyle = COUITheme.textStyles.body2.copy(fontWeight = FontWeight.Medium)
+    // 行内分段不吃满整行：按标签实测宽度定死，右边才腾得给弹幕胶囊。
+    val tabsWidth = remember(density, labelStyle) {
+        with(density) {
+            val segmentPadding = 12.dp.toPx()
+            val natural = DETAIL_TABS.maxOf {
+                measurer.measure(it, labelStyle, maxLines = 1).size.width + segmentPadding * 2f
+            }.coerceAtLeast(TabRowDefaults.TabRowWithContourMinWidth.toPx())
+            (natural * DETAIL_TABS.size).toDp() + TabRowDefaults.TabRowWithContourTinyPadding * 2
+        }
+    }
+
+    // 组件内部第一步就 fillMaxWidth，直接给 width 会被它盖掉；套一层定宽的盒子才收得住。
+    Box(Modifier.width(tabsWidth)) {
+        TabRowWithContour(
+            tabs = DETAIL_TABS,
+            selectedTabIndex = selected,
+            onTabSelected = onSelect,
+            colors = TabRowDefaults.tabRowColors(
+                contentColor = COUITheme.colorScheme.onSurfaceSecondary,
+                selectedContentColor = COUITheme.colorScheme.onSurface,
+            ),
+            height = TabRowDefaults.TabRowWithContourTinyHeight,
+            cornerRadius = TabRowDefaults.TabRowWithContourTinyCornerRadius,
+            contourPadding = TabRowDefaults.TabRowWithContourTinyPadding,
         )
     }
 }
