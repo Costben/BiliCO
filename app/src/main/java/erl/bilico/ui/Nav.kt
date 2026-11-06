@@ -104,7 +104,6 @@ fun Modifier.expandOrigin(origin: ExpandOrigin): Modifier =
 
 sealed interface Route {
     data object Main : Route
-    data object Search : Route
     data class Video(val bvid: String, val startSec: Long = 0L, val cid: Long = 0L) : Route
     data class LiveRoom(val roomId: Long) : Route
     data class Space(val mid: Long) : Route

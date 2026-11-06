@@ -64,7 +64,6 @@ import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.message.MessageScreen
 import erl.bilico.feature.pgc.BangumiFollowScreen
 import erl.bilico.feature.pgc.PgcScreen
-import erl.bilico.feature.search.SearchScreen
 import erl.bilico.feature.settings.SettingsScreen
 import erl.bilico.feature.space.SpaceScreen
 import erl.bilico.feature.video.VideoScreen
@@ -391,7 +390,6 @@ private fun ExpandLayer(
 private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
     when (route) {
         Route.Main -> MainShell(nav, container)
-        Route.Search -> SearchScreen(nav, container)
         is Route.Video -> VideoScreen(
             container = container,
             nav = nav,

@@ -2,6 +2,7 @@ package erl.bilico.feature.search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -20,7 +22,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -28,7 +29,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,13 +46,9 @@ import erl.bilico.data.model.SearchUser
 import erl.bilico.data.model.SearchVideo
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
-import erl.bilico.ui.AppBarSurface
-import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
-import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.Avatar
-import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
@@ -55,36 +56,40 @@ import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.SectionTitle
 import erl.bilico.ui.components.SegmentCapsule
 import erl.bilico.ui.components.navBottomPadding
-import erl.bilico.ui.glassBarContentTop
-import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
-import erl.bilico.ui.pinnedHeight
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.InputField
-import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
+import io.github.suqi8.coui.kmp.basic.SearchBar
+import io.github.suqi8.coui.kmp.basic.SearchBarActionButton
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.blur.LocalBackdrop
-import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-/** 搜索栏连同上下留白的高度；列表首项要让到它下面。 */
-private val SearchBarHeight = 56.dp
-
+/**
+ * 顶栏搜索面板：点放大镜就地展开，不另开一页。
+ *
+ * 上半截是搜索栏，下面先给搜索历史与热搜；提交关键词后同一个面板换成结果列表。
+ * 点面板外的遮罩、按返回或点「取消」都收起。
+ */
 @Composable
-fun SearchScreen(
+fun SearchPanel(
     nav: NavState,
     container: AppContainer,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val viewModel: SearchViewModel = viewModel { SearchViewModel(container.search) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val history by container.settings.searchHistory.collectAsStateWithLifecycle()
 
     val pageColor = pageContainerColor()
-    val backdrop = rememberLayerBackdrop()
-    val barHeight = pinnedHeight(SearchBarHeight)
+    val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
-    val density = LocalDensity.current
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val showingResults = state.submitted.isNotBlank()
+
+    // 每次展开都从搜索首页开始：历史、热搜，而不是上次那一屏结果。
+    LaunchedEffect(Unit) { viewModel.reset() }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -101,19 +106,69 @@ fun SearchScreen(
             }
     }
 
-    Box(Modifier.fillMaxSize().background(pageColor)) {
+    val dismiss: () -> Unit = {
+        focusManager.clearFocus(force = true)
+        onClose()
+    }
+
+    Box(modifier) {
+        // 面板外的遮罩：点一下就收起。压得比面板底色暗一档，面板边界才看得出来。
         Box(
             Modifier
                 .fillMaxSize()
-                .layerBackdropIf(BlurEffectsEnabled, backdrop)
-                .background(pageColor)
+                .background(Color.Black.copy(alpha = 0.55f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = dismiss,
+                ),
+        )
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = if (showingResults) screenHeight else screenHeight * 0.66f)
+                // 只给收起态加底部圆角：那一刻它是吊在顶上的浮层；出结果时它就是一整页。
+                .clip(
+                    if (showingResults) {
+                        RectangleShape
+                    } else {
+                        RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp)
+                    },
+                )
+                .background(pageColor),
         ) {
+            SearchBar(
+                inputField = {
+                    InputField(
+                        query = state.query,
+                        onQueryChange = viewModel::onQueryChange,
+                        onSearch = { keyword ->
+                            container.settings.addSearchHistory(keyword)
+                            viewModel.submit(keyword)
+                        },
+                        expanded = true,
+                        onExpandedChange = { if (!it) dismiss() },
+                        label = "搜索视频 / 用户 / 专栏",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("search_bar"),
+                    )
+                },
+                onExpandedChange = { if (!it) dismiss() },
+                expanded = true,
+                modifier = Modifier.statusBarsPadding(),
+                outsideEndAction = {
+                    SearchBarActionButton(text = "取消", onClick = dismiss)
+                },
+            ) { }
+
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(
                     start = 12.dp,
-                    top = glassBarContentTop(barHeight, 8.dp),
+                    top = 8.dp,
                     end = 12.dp,
                     bottom = 24.dp + navBottomPadding(),
                 ),
@@ -203,41 +258,6 @@ fun SearchScreen(
 
                     if (state.isLoadingMore) {
                         item(key = "loading-more") { LoadingState() }
-                    }
-                }
-            }
-        }
-
-        CompositionLocalProvider(
-            LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
-            LocalEdgeToEdge provides true,
-        ) {
-            PinnedBarDensity {
-                AppBarSurface(
-                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
-                    containerColor = pageColor,
-                    scrollFraction = { 1f },
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        BackIconButton(onClick = nav::pop)
-                        InputField(
-                            query = state.query,
-                            onQueryChange = viewModel::onQueryChange,
-                            onSearch = { keyword ->
-                                container.settings.addSearchHistory(keyword)
-                                viewModel.submit(keyword)
-                            },
-                            expanded = true,
-                            onExpandedChange = { if (!it) nav.pop() },
-                            label = "搜索视频 / 用户 / 专栏",
-                            modifier = Modifier.weight(1f).testTag("search_input"),
-                        )
                     }
                 }
             }

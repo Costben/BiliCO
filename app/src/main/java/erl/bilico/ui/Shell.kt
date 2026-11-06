@@ -1,8 +1,11 @@
 package erl.bilico.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -56,6 +60,7 @@ import erl.bilico.feature.feed.FEED_SEGMENTS
 import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.live.LiveListScreen
 import erl.bilico.feature.me.MeScreen
+import erl.bilico.feature.search.SearchPanel
 import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBar
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarItem
@@ -107,6 +112,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
     var dynamicFilterIndex by rememberSaveable { mutableIntStateOf(0) }
     // 双击当前分段回顶刷新：每双击一次加一，分段那边看到变化就归位重拉。
     var feedRefreshTick by remember { mutableIntStateOf(0) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
     val account by container.session.account.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableIntStateOf(0) }
     // 翻页状态提到外壳：分段胶囊要跟着 pager 连续移动，不能等切完页再动。
@@ -206,6 +212,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     pager = feedPager,
                     dynamicPager = dynamicPager,
                     onFeedReselect = { feedRefreshTick++ },
+                    onSearch = { searchOpen = true },
                     bounds = topBarBounds,
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
                 )
@@ -220,6 +227,20 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
+        }
+
+        // 搜索面板盖在整页之上：点放大镜就地展开，不另开一页。
+        AnimatedVisibility(
+            visible = searchOpen,
+            enter = fadeIn(animationSpec = tween(MainTabFadeMillis)),
+            exit = fadeOut(animationSpec = tween(MainTabFadeMillis)),
+        ) {
+            SearchPanel(
+                nav = nav,
+                container = container,
+                onClose = { searchOpen = false },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
@@ -238,6 +259,7 @@ private fun MainTopBar(
     pager: PagerState,
     dynamicPager: PagerState,
     onFeedReselect: () -> Unit,
+    onSearch: () -> Unit,
     bounds: TopBarBounds,
     modifier: Modifier = Modifier,
 ) {
@@ -273,6 +295,7 @@ private fun MainTopBar(
                 pager = pager,
                 dynamicPager = dynamicPager,
                 onFeedReselect = onFeedReselect,
+                onSearch = onSearch,
             )
         }
     }
@@ -292,6 +315,7 @@ private fun BarContent(
     pager: PagerState,
     dynamicPager: PagerState,
     onFeedReselect: () -> Unit,
+    onSearch: () -> Unit,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
     Column(
@@ -345,7 +369,7 @@ private fun BarContent(
                 ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-
+                TabActions(tab, nav, onSearch)
             }
         }
 
@@ -409,10 +433,10 @@ private fun FeedAvatar(
 }
 
 @Composable
-private fun RowScope.TabActions(tab: Int, nav: NavState) {
+private fun RowScope.TabActions(tab: Int, nav: NavState, onSearch: () -> Unit) {
     when (tab) {
         0 -> HighlightedIconButton(
-            onClick = { nav.push(Route.Search) },
+            onClick = onSearch,
             modifier = Modifier
                 .couiTopAppBarActionItem()
                 .testTag("top_search"),

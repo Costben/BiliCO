@@ -56,6 +56,17 @@ class SearchViewModel(
         _state.update { it.copy(query = query) }
     }
 
+    /** 重新打开面板时回到搜索首页，不带着上次的结果；热搜缓存留着。 */
+    fun reset() {
+        videoPage = 1
+        userPage = 1
+        articlePage = 1
+        inFlight = false
+        _state.update {
+            SearchUiState(hot = it.hot, hotLoading = it.hotLoading)
+        }
+    }
+
     fun setTab(tab: Int) {
         if (_state.value.tab == tab) return
         _state.update { it.copy(tab = tab) }
