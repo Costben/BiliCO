@@ -1,6 +1,7 @@
 package erl.bilico.data.repository
 
 import erl.bilico.data.model.LiveCandidate
+import erl.bilico.data.model.LiveDanmakuServer
 import erl.bilico.data.model.LivePlayUrlData
 import erl.bilico.data.model.LivePlayback
 import erl.bilico.data.model.LiveQuality
@@ -107,6 +108,39 @@ class LiveRepository(
             isLive = data.liveStatus == 1,
         )
     }
+
+    /** 弹幕服务器的 token 与地址。房间号要用详情里的真实房号，短号拿不到 token。 */
+    suspend fun danmakuServer(roomId: Long): Result<LiveDanmakuServer> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                buvid.ensure()
+                val keys = wbi.getKeys()
+                val params = mapOf(
+                    "id" to roomId.toString(),
+                    "type" to "0",
+                    "web_location" to "444.8",
+                )
+                val response = api.liveDanmakuInfo(
+                    WbiUtils.sign(params, keys.first, keys.second),
+                )
+                if (response.code != 0) {
+                    error(response.message.ifBlank { "弹幕服务器获取失败(${response.code})" })
+                }
+                val data = response.data ?: error("弹幕服务器为空")
+                val urls = data.hosts.mapNotNull { host ->
+                    // 优先 wss，没有加密端口时才退回明文 ws。
+                    val port = when {
+                        host.wssPort > 0 -> host.wssPort
+                        host.port > 0 -> host.port
+                        else -> 0
+                    }
+                    val scheme = if (host.wssPort > 0) "wss" else "ws"
+                    if (host.host.isBlank() || port == 0) null else "$scheme://${host.host}:$port/sub"
+                }
+                if (data.token.isBlank() || urls.isEmpty()) error("弹幕服务器不可用")
+                LiveDanmakuServer(token = data.token, urls = urls)
+            }
+        }
 
     suspend fun playback(roomId: Long, qn: Int = DEFAULT_QN): Result<LivePlayback> =
         withContext(Dispatchers.IO) {

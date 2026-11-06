@@ -29,7 +29,9 @@ dependencies {
     api(libs.retrofit)
     api(libs.retrofit.kotlinx.serialization)
     api(libs.okhttp)
+    api(libs.okio)
     api(libs.kotlinx.serialization.json)
     api(libs.kotlinx.coroutines.android)
     api(libs.androidx.datastore.preferences)
+    implementation(libs.brotli)
 }

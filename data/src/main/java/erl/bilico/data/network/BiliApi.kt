@@ -19,6 +19,7 @@ import erl.bilico.data.model.FavFolderResponse
 import erl.bilico.data.model.FavResourceResponse
 import erl.bilico.data.model.FollowingsResponse
 import erl.bilico.data.model.HistoryResponse
+import erl.bilico.data.model.LiveDanmakuInfoResponse
 import erl.bilico.data.model.LiveListResponse
 import erl.bilico.data.model.LivePlayUrlResponse
 import erl.bilico.data.model.LiveRoomDetailResponse
@@ -123,6 +124,9 @@ interface BiliApi {
 
     @GET("https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo")
     suspend fun livePlayUrl(@QueryMap params: Map<String, String>): LivePlayUrlResponse
+
+    @GET("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo")
+    suspend fun liveDanmakuInfo(@QueryMap params: Map<String, String>): LiveDanmakuInfoResponse
 
     @GET("x/web-interface/wbi/search/square")
     suspend fun searchSquare(@QueryMap params: Map<String, String>): SearchSquareResponse

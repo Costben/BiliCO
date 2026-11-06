@@ -160,3 +160,40 @@ data class LiveAnchorBaseInfo(
     val uname: String = "",
     val face: String = "",
 )
+
+@Serializable
+data class LiveDanmakuInfoResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: LiveDanmakuInfoData? = null,
+)
+
+@Serializable
+data class LiveDanmakuInfoData(
+    val token: String = "",
+    @SerialName("host_list") val hosts: List<LiveDanmakuHost> = emptyList(),
+)
+
+@Serializable
+data class LiveDanmakuHost(
+    val host: String = "",
+    val port: Int = 0,
+    @SerialName("ws_port") val wsPort: Int = 0,
+    @SerialName("wss_port") val wssPort: Int = 0,
+)
+
+/** 一条已经解好的直播弹幕，UI 只需要这些东西。 */
+data class LiveDanmakuMessage(
+    val name: String,
+    val text: String,
+    val mid: Long = 0,
+    val medalName: String = "",
+    val medalLevel: Int = 0,
+)
+
+/** 弹幕服务端：token 用在认证包里，urls 按顺序尝试。 */
+data class LiveDanmakuServer(
+    val token: String,
+    val urls: List<String>,
+)
+
