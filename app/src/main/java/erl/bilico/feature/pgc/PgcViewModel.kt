@@ -40,9 +40,10 @@ class PgcViewModel(
     private val settings: SettingsRepository,
     private val seasonId: Long,
     private val epId: Long,
+    private val startPositionMs: Long = 0L,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(PgcUiState())
+    private val _state = MutableStateFlow(PgcUiState(resumePositionMs = startPositionMs.coerceAtLeast(0L)))
     val state: StateFlow<PgcUiState> = _state.asStateFlow()
 
     private var playbackJob: Job? = null
@@ -67,24 +68,41 @@ class PgcViewModel(
                         }
                         return@onSuccess
                     }
-                    val index = if (epId > 0L) {
-                        detail.episodes.indexOfFirst { it.epId == epId }.coerceAtLeast(0)
+                    val targetEp = if (epId > 0L) epId else detail.lastEpId
+                    val index = if (targetEp > 0L) {
+                        detail.episodes.indexOfFirst { it.epId == targetEp }.coerceAtLeast(0)
                     } else {
                         0
                     }
+                    val chosenEp = detail.episodes[index]
+                    val serverResumeMs = if (startPositionMs <= 0L &&
+                        chosenEp.epId == detail.lastEpId &&
+                        detail.lastTimeSec >= 3L &&
+                        (chosenEp.durationSec <= 0L || detail.lastTimeSec < chosenEp.durationSec - 5L)
+                    ) {
+                        detail.lastTimeSec * 1000L
+                    } else {
+                        0L
+                    }
+                    val resumeMs = if (startPositionMs > 0L) startPositionMs else serverResumeMs
                     _state.update {
                         it.copy(
                             detail = detail,
                             isLoading = false,
                             selectedEpIndex = index,
                             followed = detail.followed,
+                            message = if (serverResumeMs > 0L) {
+                                "已从上次进度 ${erl.bilico.data.util.Formatters.formatDuration(serverResumeMs / 1000)} 继续播放"
+                            } else {
+                                it.message
+                            },
                         )
                     }
                     loadPlayback(
-                        episode = detail.episodes[index],
+                        episode = chosenEp,
                         qn = settings.defaultQuality.value,
                         notifyDowngrade = false,
-                        positionMs = 0L,
+                        positionMs = resumeMs,
                     )
                 }
                 .onFailure { error ->
@@ -101,6 +119,26 @@ class PgcViewModel(
         if (index == _state.value.selectedEpIndex) return
         _state.update { it.copy(selectedEpIndex = index) }
         loadPlayback(episode, _state.value.requestedQuality, notifyDowngrade = false, positionMs = 0L)
+    }
+
+    fun playNextEpisode(): Boolean {
+        val detail = _state.value.detail ?: return false
+        val nextIndex = _state.value.selectedEpIndex + 1
+        val nextEp = detail.episodes.getOrNull(nextIndex) ?: return false
+        _state.update {
+            it.copy(
+                selectedEpIndex = nextIndex,
+                message = "即将播放 ${nextEp.title.ifBlank { "下一话" }}",
+            )
+        }
+        loadPlayback(nextEp, _state.value.requestedQuality, notifyDowngrade = false, positionMs = 0L)
+        return true
+    }
+
+    fun consumeResumePosition() {
+        if (_state.value.resumePositionMs != 0L) {
+            _state.update { it.copy(resumePositionMs = 0L) }
+        }
     }
 
     fun toggleFollow() {

@@ -44,6 +44,7 @@ class VideoViewModel(
     private val settings: SettingsRepository,
     private val bvid: String,
     startPositionMs: Long = 0L,
+    private val initialCid: Long = 0L,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(VideoUiState(resumePositionMs = startPositionMs.coerceAtLeast(0L)))
@@ -52,6 +53,7 @@ class VideoViewModel(
     private var playbackJob: Job? = null
     private var startTs = 0L
     private var lastHeartbeatAt = 0L
+    private var initialResumeSettled = startPositionMs > 0L
 
     init {
         load()
@@ -62,20 +64,21 @@ class VideoViewModel(
             _state.update { it.copy(isLoading = true, error = null) }
             repository.detail(bvid)
                 .onSuccess { detail ->
-                    val index = detail.pages.indexOfFirst { it.cid == detail.cid }
-                        .coerceAtLeast(0)
+                    val targetCid = initialCid.takeIf { cid -> cid > 0L && detail.pages.any { it.cid == cid } }
+                        ?: detail.cid
+                    val index = detail.pages.indexOfFirst { it.cid == targetCid }.coerceAtLeast(0)
                     _state.update {
                         it.copy(
                             detail = detail,
                             isLoading = false,
-                            selectedCid = detail.cid,
+                            selectedCid = targetCid,
                             selectedPartIndex = index,
                         )
                     }
                     loadRelation(detail.aid, detail.upMid)
                     loadPlayback(
                         qn = settings.defaultQuality.value,
-                        cid = detail.cid,
+                        cid = targetCid,
                         notifyDowngrade = false,
                     )
                 }
@@ -91,6 +94,7 @@ class VideoViewModel(
         val detail = _state.value.detail ?: return
         val part = detail.pages.getOrNull(index) ?: return
         if (part.cid == _state.value.selectedCid) return
+        initialResumeSettled = true
         _state.update { it.copy(selectedPartIndex = index, selectedCid = part.cid) }
         loadPlayback(
             qn = _state.value.requestedQuality,
@@ -98,6 +102,61 @@ class VideoViewModel(
             notifyDowngrade = false,
             positionMs = 0L,
         )
+    }
+
+    fun playNextPart(): Boolean {
+        val detail = _state.value.detail ?: return false
+        val nextIndex = _state.value.selectedPartIndex + 1
+        val nextPart = detail.pages.getOrNull(nextIndex) ?: return false
+        initialResumeSettled = true
+        _state.update {
+            it.copy(
+                selectedPartIndex = nextIndex,
+                selectedCid = nextPart.cid,
+                message = "即将播放 P${nextPart.index} ${nextPart.title}".trim(),
+            )
+        }
+        loadPlayback(qn = _state.value.requestedQuality, cid = nextPart.cid, notifyDowngrade = false, positionMs = 0L)
+        return true
+    }
+
+    fun applyServerResumeHint(lastPlayCid: Long, lastPlayTimeMs: Long): Long {
+        if (initialResumeSettled || lastPlayTimeMs < 3_000L) return 0L
+        val detail = _state.value.detail ?: return 0L
+        val targetPartIndex = if (lastPlayCid > 0L) detail.pages.indexOfFirst { it.cid == lastPlayCid } else -1
+        val currentCid = _state.value.selectedCid
+        if (targetPartIndex >= 0 && detail.pages[targetPartIndex].cid != currentCid) {
+            val part = detail.pages[targetPartIndex]
+            val maxMs = part.durationSec * 1000L
+            if (maxMs > 0L && lastPlayTimeMs >= maxMs - 5_000L) return 0L
+            initialResumeSettled = true
+            _state.update {
+                it.copy(
+                    selectedPartIndex = targetPartIndex,
+                    selectedCid = part.cid,
+                    message = "已从上次进度 ${erl.bilico.data.util.Formatters.formatDuration(lastPlayTimeMs / 1000)} 继续播放",
+                )
+            }
+            loadPlayback(_state.value.requestedQuality, part.cid, notifyDowngrade = false, positionMs = lastPlayTimeMs)
+            return 0L
+        }
+        if (lastPlayCid > 0L && lastPlayCid != currentCid) return 0L
+        val curPartDurMs = (detail.pages.getOrNull(_state.value.selectedPartIndex)?.durationSec ?: detail.durationSec.toLong()) * 1000L
+        if (curPartDurMs > 0L && lastPlayTimeMs >= curPartDurMs - 5_000L) return 0L
+        initialResumeSettled = true
+        _state.update {
+            it.copy(
+                resumePositionMs = lastPlayTimeMs,
+                message = "已从上次进度 ${erl.bilico.data.util.Formatters.formatDuration(lastPlayTimeMs / 1000)} 继续播放",
+            )
+        }
+        return lastPlayTimeMs
+    }
+
+    fun consumeResumePosition() {
+        if (_state.value.resumePositionMs != 0L) {
+            _state.update { it.copy(resumePositionMs = 0L) }
+        }
     }
 
     fun selectQuality(qn: Int, positionMs: Long) {

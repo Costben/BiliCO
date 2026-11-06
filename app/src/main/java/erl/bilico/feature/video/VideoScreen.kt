@@ -50,12 +50,15 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import erl.bilico.di.AppContainer
 import erl.bilico.data.model.FavoriteFolder
+import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
+import erl.bilico.player.BindPlaybackSession
+import erl.bilico.player.LocalInPipMode
+import erl.bilico.player.PlaybackBridge
+import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.pageContainerColor
@@ -64,18 +67,15 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/**
- * 视频页：16:9 播放器 + 简介/评论两个 tab。
- * 播放器随页面创建与销毁，全屏只切换方向并隐藏系统栏。
- */
 @Composable
 fun VideoScreen(
     container: AppContainer,
     nav: NavState,
     bvid: String,
     startPositionMs: Long = 0L,
+    initialCid: Long = 0L,
 ) {
-    val viewModel: VideoViewModel = viewModel(key = "video-$bvid-$startPositionMs") {
+    val viewModel: VideoViewModel = viewModel(key = "video-$bvid-$startPositionMs-$initialCid") {
         VideoViewModel(
             repository = container.video,
             heartbeat = container.heartbeat,
@@ -84,6 +84,7 @@ fun VideoScreen(
             settings = container.settings,
             bvid = bvid,
             startPositionMs = startPositionMs,
+            initialCid = initialCid,
         )
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -92,26 +93,45 @@ fun VideoScreen(
     val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
     val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
     val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
+    val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
+    val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
+    val inPipMode = LocalInPipMode.current
+
     val scope = rememberCoroutineScope()
     val danmakuController = remember { DanmakuController(container.danmaku, scope) }
+    val subtitleController = remember { SubtitleController(container.subtitles, scope) }
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val player = remember { ExoPlayer.Builder(context).build() }
+    val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
+    var subtitleDialogVisible by remember { mutableStateOf(false) }
     var coinDialogVisible by remember { mutableStateOf(false) }
     var favoriteFolders by remember { mutableStateOf<List<FavoriteFolder>?>(null) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
+    var longPressSpeed by remember { mutableStateOf(false) }
+
+    val boostSpeed = if (speed >= 2f) 3f else 2f
+    val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
 
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
+
+    BindPlaybackSession(
+        player = player,
+        title = state.detail?.title.orEmpty(),
+        subtitle = state.detail?.upName.orEmpty(),
+        isPlaying = isPlaying,
+        backgroundPlay = backgroundPlay,
+        autoPip = autoPip,
+    )
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -123,6 +143,9 @@ fun VideoScreen(
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
                     viewModel.markPlaybackStarted()
+                } else if (playbackState == Player.STATE_ENDED) {
+                    viewModel.flushHeartbeat(player.duration.coerceAtLeast(0L) / 1000, container.scope)
+                    viewModel.playNextPart()
                 }
             }
 
@@ -138,17 +161,32 @@ fun VideoScreen(
         }
     }
 
-    LaunchedEffect(state.selectedCid) {
+    LaunchedEffect(state.selectedCid, state.detail?.aid) {
         val cid = state.selectedCid
         if (cid > 0L) {
             danmakuController.attach(cid)
             danmakuController.onPosition(player.currentPosition)
+            subtitleController.attach(
+                bvid = bvid,
+                aid = state.detail?.aid ?: 0L,
+                cid = cid,
+                onAuxiliaryLoaded = { info ->
+                    val seekMs = viewModel.applyServerResumeHint(info.lastPlayCid, info.lastPlayTimeMs)
+                    if (seekMs > 0L && player.playbackState != Player.STATE_IDLE && player.currentPosition < 3_000L) {
+                        player.seekTo(seekMs)
+                        viewModel.consumeResumePosition()
+                    }
+                },
+            )
         }
     }
 
     LaunchedEffect(state.source) {
         val source = state.source ?: return@LaunchedEffect
         playerError = null
+        if (state.resumePositionMs <= 0L && source.lastPlayTimeMs >= 3_000L) {
+            viewModel.applyServerResumeHint(source.lastPlayCid, source.lastPlayTimeMs)
+        }
         val headers = container.client.mediaRequestHeaders(bvid)
         val dataSourceFactory = OkHttpDataSource.Factory(container.client.mediaClient())
             .setDefaultRequestProperties(headers)
@@ -165,17 +203,18 @@ fun VideoScreen(
             )
         }
         player.setMediaSource(mediaSource)
-        player.setPlaybackSpeed(speed)
-        val resumeAt = state.resumePositionMs
+        player.setPlaybackSpeed(effectiveSpeed)
+        val resumeAt = viewModel.state.value.resumePositionMs
         player.prepare()
         if (resumeAt > 0L) {
             player.seekTo(resumeAt)
+            viewModel.consumeResumePosition()
         }
         player.playWhenReady = true
     }
 
-    LaunchedEffect(speed) {
-        player.setPlaybackSpeed(speed)
+    LaunchedEffect(effectiveSpeed) {
+        player.setPlaybackSpeed(effectiveSpeed)
     }
 
     LaunchedEffect(player) {
@@ -196,7 +235,6 @@ fun VideoScreen(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller?.hide(WindowInsetsCompat.Type.systemBars())
         } else {
-            // 退出全屏固定回竖屏：部分 ROM 上 UNSPECIFIED 不会把已强制的横屏改回来。
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
@@ -213,11 +251,11 @@ fun VideoScreen(
 
     BackHandler(enabled = fullscreen) { fullscreen = false }
 
+    val fullViewport = fullscreen || inPipMode
     val configuration = LocalConfiguration.current
-    val playerHeight = if (fullscreen) {
+    val playerHeight = if (fullViewport) {
         configuration.screenHeightDp.dp
     } else {
-        // 横屏时 16:9 会高于可用高度，此时按可用高度的 70% 收窄，保证 tab 和内容可见。
         minOf(
             configuration.screenWidthDp.dp * 9f / 16f,
             configuration.screenHeightDp.dp * 0.7f,
@@ -240,12 +278,16 @@ fun VideoScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (fullscreen) Modifier else Modifier.statusBarsPadding()),
+                .then(if (fullViewport) Modifier else Modifier.statusBarsPadding()),
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(playerHeight),
+                modifier = if (inPipMode) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .height(playerHeight)
+                },
             ) {
                 VideoPlayer(
                     player = player,
@@ -270,8 +312,29 @@ fun VideoScreen(
                     },
                     onRetry = viewModel::load,
                     modifier = Modifier.fillMaxSize(),
+                    inPipMode = inPipMode,
                     danmakuEnabled = danmakuEnabled,
                     onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                    subtitleLabel = subtitleController.buttonLabel,
+                    onSubtitleClick = { subtitleDialogVisible = true },
+                    onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
+                        { PlaybackBridge.enterPipNow(activity) }
+                    } else {
+                        null
+                    },
+                    longPressSpeedActive = longPressSpeed,
+                    longPressSpeedValue = boostSpeed,
+                    onLongPressSpeedChange = { longPressSpeed = it },
+                    subtitleOverlay = { chromeVisible ->
+                        SubtitleOverlay(
+                            cues = subtitleController.cues,
+                            positionMs = positionMs,
+                            fullscreen = fullscreen,
+                            controlsVisible = chromeVisible,
+                            inPip = inPipMode,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
                     overlay = {
                         DanmakuOverlay(
                             player = player,
@@ -290,7 +353,7 @@ fun VideoScreen(
                 )
             }
 
-            if (!fullscreen) {
+            if (!fullViewport) {
                 VideoTabRow(selected = tab, onSelect = { tab = it })
 
                 Box(
@@ -355,7 +418,7 @@ fun VideoScreen(
             }
         }
 
-        if (message != null) {
+        if (message != null && !inPipMode) {
             Text(
                 text = message,
                 modifier = Modifier
@@ -379,6 +442,18 @@ fun VideoScreen(
                 speedDialogVisible = false
             },
             onDismiss = { speedDialogVisible = false },
+        )
+    }
+
+    if (subtitleDialogVisible) {
+        SubtitleDialog(
+            tracks = subtitleController.tracks,
+            selectedKey = subtitleController.selectedTrackKey,
+            onSelect = { key ->
+                subtitleController.selectTrack(key)
+                subtitleDialogVisible = false
+            },
+            onDismiss = { subtitleDialogVisible = false },
         )
     }
 

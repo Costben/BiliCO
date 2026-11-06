@@ -50,7 +50,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import erl.bilico.di.AppContainer
@@ -59,7 +58,14 @@ import erl.bilico.feature.video.DanmakuController
 import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.QualityDialog
 import erl.bilico.feature.video.SpeedDialog
+import erl.bilico.feature.video.SubtitleController
+import erl.bilico.feature.video.SubtitleDialog
+import erl.bilico.feature.video.SubtitleOverlay
 import erl.bilico.feature.video.VideoPlayer
+import erl.bilico.player.BindPlaybackSession
+import erl.bilico.player.LocalInPipMode
+import erl.bilico.player.PlaybackBridge
+import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.pageContainerColor
@@ -67,18 +73,15 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 
-/**
- * 番剧播放页：取流走 PGC 接口，播放器、清晰度、倍速、弹幕都复用视频页的组件。
- * 评论以当前集的 aid 为主楼对象。
- */
 @Composable
 fun PgcScreen(
     container: AppContainer,
     nav: NavState,
     seasonId: Long,
     epId: Long = 0L,
+    startPositionMs: Long = 0L,
 ) {
-    val viewModel: PgcViewModel = viewModel(key = "pgc-$seasonId-$epId") {
+    val viewModel: PgcViewModel = viewModel(key = "pgc-$seasonId-$epId-$startPositionMs") {
         PgcViewModel(
             repository = container.pgc,
             heartbeat = container.heartbeat,
@@ -86,6 +89,7 @@ fun PgcScreen(
             settings = container.settings,
             seasonId = seasonId,
             epId = epId,
+            startPositionMs = startPositionMs,
         )
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -94,24 +98,44 @@ fun PgcScreen(
     val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
     val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
     val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
+    val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
+    val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
+    val inPipMode = LocalInPipMode.current
+
     val scope = rememberCoroutineScope()
     val danmakuController = remember { DanmakuController(container.danmaku, scope) }
+    val subtitleController = remember { SubtitleController(container.subtitles, scope) }
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val player = remember { ExoPlayer.Builder(context).build() }
+    val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
+    var subtitleDialogVisible by remember { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
+    var longPressSpeed by remember { mutableStateOf(false) }
+
+    val boostSpeed = if (speed >= 2f) 3f else 2f
+    val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
 
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
+
+    val episode = viewModel.currentEpisode
+    BindPlaybackSession(
+        player = player,
+        title = state.detail?.title.orEmpty(),
+        subtitle = episode?.title.orEmpty(),
+        isPlaying = isPlaying,
+        backgroundPlay = backgroundPlay,
+        autoPip = autoPip,
+    )
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -123,6 +147,9 @@ fun PgcScreen(
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
                     viewModel.markPlaybackStarted()
+                } else if (playbackState == Player.STATE_ENDED) {
+                    viewModel.flushHeartbeat(player.duration.coerceAtLeast(0L) / 1000, container.scope)
+                    viewModel.playNextEpisode()
                 }
             }
 
@@ -138,11 +165,12 @@ fun PgcScreen(
         }
     }
 
-    val episode = viewModel.currentEpisode
-    LaunchedEffect(episode?.cid) {
-        val cid = episode?.cid ?: return@LaunchedEffect
-        danmakuController.attach(cid)
+    LaunchedEffect(episode?.cid, episode?.aid, episode?.bvid) {
+        val ep = episode ?: return@LaunchedEffect
+        if (ep.cid <= 0L) return@LaunchedEffect
+        danmakuController.attach(ep.cid)
         danmakuController.onPosition(player.currentPosition)
+        subtitleController.attach(bvid = ep.bvid, aid = ep.aid, cid = ep.cid)
     }
 
     LaunchedEffect(state.source) {
@@ -172,17 +200,18 @@ fun PgcScreen(
             )
         }
         player.setMediaSource(mediaSource)
-        player.setPlaybackSpeed(speed)
-        val resumeAt = state.resumePositionMs
+        player.setPlaybackSpeed(effectiveSpeed)
+        val resumeAt = viewModel.state.value.resumePositionMs
         player.prepare()
         if (resumeAt > 0L) {
             player.seekTo(resumeAt)
+            viewModel.consumeResumePosition()
         }
         player.playWhenReady = true
     }
 
-    LaunchedEffect(speed) {
-        player.setPlaybackSpeed(speed)
+    LaunchedEffect(effectiveSpeed) {
+        player.setPlaybackSpeed(effectiveSpeed)
     }
 
     LaunchedEffect(player) {
@@ -219,8 +248,9 @@ fun PgcScreen(
 
     BackHandler(enabled = fullscreen) { fullscreen = false }
 
+    val fullViewport = fullscreen || inPipMode
     val configuration = LocalConfiguration.current
-    val playerHeight = if (fullscreen) {
+    val playerHeight = if (fullViewport) {
         configuration.screenHeightDp.dp
     } else {
         minOf(
@@ -245,12 +275,16 @@ fun PgcScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (fullscreen) Modifier else Modifier.statusBarsPadding()),
+                .then(if (fullViewport) Modifier else Modifier.statusBarsPadding()),
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(playerHeight),
+                modifier = if (inPipMode) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .height(playerHeight)
+                },
             ) {
                 VideoPlayer(
                     player = player,
@@ -275,8 +309,29 @@ fun PgcScreen(
                     },
                     onRetry = viewModel::retryPlayback,
                     modifier = Modifier.fillMaxSize(),
+                    inPipMode = inPipMode,
                     danmakuEnabled = danmakuEnabled,
                     onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                    subtitleLabel = subtitleController.buttonLabel,
+                    onSubtitleClick = { subtitleDialogVisible = true },
+                    onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
+                        { PlaybackBridge.enterPipNow(activity) }
+                    } else {
+                        null
+                    },
+                    longPressSpeedActive = longPressSpeed,
+                    longPressSpeedValue = boostSpeed,
+                    onLongPressSpeedChange = { longPressSpeed = it },
+                    subtitleOverlay = { chromeVisible ->
+                        SubtitleOverlay(
+                            cues = subtitleController.cues,
+                            positionMs = positionMs,
+                            fullscreen = fullscreen,
+                            controlsVisible = chromeVisible,
+                            inPip = inPipMode,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
                     overlay = {
                         DanmakuOverlay(
                             player = player,
@@ -295,7 +350,7 @@ fun PgcScreen(
                 )
             }
 
-            if (!fullscreen) {
+            if (!fullViewport) {
                 PgcTabRow(selected = tab, onSelect = { tab = it })
 
                 Box(
@@ -339,7 +394,7 @@ fun PgcScreen(
             }
         }
 
-        if (message != null) {
+        if (message != null && !inPipMode) {
             Text(
                 text = message,
                 modifier = Modifier
@@ -363,6 +418,18 @@ fun PgcScreen(
                 speedDialogVisible = false
             },
             onDismiss = { speedDialogVisible = false },
+        )
+    }
+
+    if (subtitleDialogVisible) {
+        SubtitleDialog(
+            tracks = subtitleController.tracks,
+            selectedKey = subtitleController.selectedTrackKey,
+            onSelect = { key ->
+                subtitleController.selectTrack(key)
+                subtitleDialogVisible = false
+            },
+            onDismiss = { subtitleDialogVisible = false },
         )
     }
 

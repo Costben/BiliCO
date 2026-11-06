@@ -20,6 +20,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,9 +51,10 @@ import io.github.suqi8.coui.kmp.icon.extended.ChevronBackward
 import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.delay
 
 /**
- * 只用 PlayerView 做渲染，控件全部由 Compose 画，保证跟 COUI 主题一致。
+ * 只用 PlayerView 做渲染，手势、字幕与控件全部由 Compose 叠加，保证与 COUI 主题一致。
  */
 @Composable
 internal fun VideoPlayer(
@@ -74,10 +76,29 @@ internal fun VideoPlayer(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    inPipMode: Boolean = false,
     danmakuEnabled: Boolean = false,
     onToggleDanmaku: () -> Unit = {},
+    subtitleLabel: String? = null,
+    onSubtitleClick: (() -> Unit)? = null,
+    onEnterPip: (() -> Unit)? = null,
+    longPressSpeedActive: Boolean = false,
+    longPressSpeedValue: Float = 2f,
+    onLongPressSpeedChange: (Boolean) -> Unit = {},
+    subtitleOverlay: @Composable (controlsVisible: Boolean) -> Unit = {},
     overlay: @Composable () -> Unit = {},
 ) {
+    var controlsVisible by remember { mutableStateOf(true) }
+
+    LaunchedEffect(controlsVisible, isPlaying, isBuffering, errorMessage) {
+        if (controlsVisible && isPlaying && !isBuffering && errorMessage == null) {
+            delay(4500)
+            controlsVisible = false
+        }
+    }
+
+    val showChrome = !inPipMode && (controlsVisible || !isPlaying || errorMessage != null)
+
     Box(modifier.background(Color.Black)) {
         AndroidView(
             factory = { context ->
@@ -92,39 +113,64 @@ internal fun VideoPlayer(
 
         overlay()
 
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent)),
-                )
-                .padding(PlayerControlsPadding),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = COUIIcons.ChevronBackward,
-                contentDescription = "返回",
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .clickable(onClick = onBack)
-                    .padding(8.dp),
-                tint = Color.White,
-            )
-            Text(
-                text = title,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 4.dp),
-                style = COUITheme.textStyles.body2,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        subtitleOverlay(showChrome)
+
+        if (!inPipMode) {
+            PlayerGestureLayer(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                longPressSpeedActive = longPressSpeedActive,
+                longPressSpeedValue = longPressSpeedValue,
+                onTap = { controlsVisible = !controlsVisible },
+                onDoubleTap = onPlayPause,
+                onLongPressSpeedChange = onLongPressSpeedChange,
+                onSeek = onSeek,
+                modifier = Modifier.fillMaxSize(),
             )
         }
 
-        if (errorMessage != null) {
+        if (showChrome) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent)),
+                    )
+                    .padding(PlayerControlsPadding),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = COUIIcons.ChevronBackward,
+                    contentDescription = "返回",
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onBack)
+                        .padding(8.dp),
+                    tint = Color.White,
+                )
+                Text(
+                    text = title,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp),
+                    style = COUITheme.textStyles.body2,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (onEnterPip != null) {
+                    ControlLabel(
+                        text = "小窗",
+                        onClick = onEnterPip,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
+            }
+        }
+
+        if (errorMessage != null && !inPipMode) {
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -149,7 +195,7 @@ internal fun VideoPlayer(
                     color = Color.White,
                 )
             }
-        } else if (isBuffering) {
+        } else if (isBuffering && !inPipMode) {
             CircularProgressIndicator(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -159,51 +205,60 @@ internal fun VideoPlayer(
             )
         }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))),
+        if (showChrome) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))),
+                    )
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                PlayerProgress(
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    onSeek = onSeek,
                 )
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        ) {
-            PlayerProgress(
-                positionMs = positionMs,
-                durationMs = durationMs,
-                onSeek = onSeek,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = if (isPlaying) COUIIcons.Pause else COUIIcons.Play,
-                    contentDescription = if (isPlaying) "暂停" else "播放",
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onPlayPause)
-                        .padding(6.dp),
-                    tint = Color.White,
-                )
-                Spacer(Modifier.weight(1f))
-                ControlLabel(
-                    text = if (danmakuEnabled) "弹幕开" else "弹幕关",
-                    onClick = onToggleDanmaku,
-                )
-                ControlLabel(
-                    text = speedLabel(speed),
-                    onClick = onSpeedClick,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-                ControlLabel(
-                    text = qualityLabel ?: "清晰度",
-                    onClick = onQualityClick,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-                ControlLabel(
-                    text = if (fullscreen) "退出" else "全屏",
-                    onClick = onToggleFullscreen,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (isPlaying) COUIIcons.Pause else COUIIcons.Play,
+                        contentDescription = if (isPlaying) "暂停" else "播放",
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onPlayPause)
+                            .padding(6.dp),
+                        tint = Color.White,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    ControlLabel(
+                        text = if (danmakuEnabled) "弹幕开" else "弹幕关",
+                        onClick = onToggleDanmaku,
+                    )
+                    if (subtitleLabel != null && onSubtitleClick != null) {
+                        ControlLabel(
+                            text = subtitleLabel,
+                            onClick = onSubtitleClick,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                    ControlLabel(
+                        text = speedLabel(speed),
+                        onClick = onSpeedClick,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                    ControlLabel(
+                        text = qualityLabel ?: "清晰度",
+                        onClick = onQualityClick,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                    ControlLabel(
+                        text = if (fullscreen) "退出" else "全屏",
+                        onClick = onToggleFullscreen,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
             }
         }
     }

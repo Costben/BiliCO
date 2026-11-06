@@ -18,6 +18,7 @@ import erl.bilico.data.repository.RankingRepository
 import erl.bilico.data.repository.RelationRepository
 import erl.bilico.data.repository.SearchRepository
 import erl.bilico.data.repository.SpaceRepository
+import erl.bilico.data.repository.SubtitleRepository
 import erl.bilico.data.repository.VideoRepository
 import erl.bilico.data.repository.WatchLaterRepository
 import erl.bilico.data.session.SessionRepository
@@ -82,4 +83,6 @@ class AppContainer(context: Context) {
     val interactions = InteractionRepository(client.api, client.buvid, session)
 
     val messages = MessageRepository(client.api, client.buvid)
+
+    val subtitles = SubtitleRepository(client.api, client.wbi, client.buvid, client.okHttp)
 }
