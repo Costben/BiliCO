@@ -1,9 +1,6 @@
 package erl.bilico.feature.video
 
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -94,6 +91,7 @@ fun VideoScreen(
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
+    val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
@@ -105,6 +103,17 @@ fun VideoScreen(
     val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
+    // 用户主动退出全屏、而手机还横着时，先锁竖屏，等手机真的竖过来再交还给传感器。
+    var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
+    val applyFullscreen: (Boolean) -> Unit = { value ->
+        if (value) {
+            manualFullscreenExit = false
+            fullscreen = true
+        } else {
+            manualFullscreenExit = true
+            fullscreen = false
+        }
+    }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     // 简介 / 评论两页横向翻；点标签翻页，滑完一页再把标签写回去。
     // 回写必须等翻页停稳：动画途中 currentPage 会先经过另一页，写回去会把动画打断在半路。
@@ -263,26 +272,50 @@ fun VideoScreen(
     DisposableEffect(fullscreen) {
         val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         if (fullscreen) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             controller?.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller?.hide(WindowInsetsCompat.Type.systemBars())
         } else {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
         onDispose { }
     }
 
+    // 手机横过来就进全屏；只有「横屏转回竖屏」才退出，竖屏本身不构成退出的理由，
+    // 否则手势上滑进全屏会被这条立刻抹掉。
+    val deviceLandscape = rememberDeviceLandscape()
+    var wasLandscape by remember { mutableStateOf(deviceLandscape) }
+    LaunchedEffect(deviceLandscape, manualFullscreenExit) {
+        if (inPipMode) return@LaunchedEffect
+        if (deviceLandscape && !manualFullscreenExit) {
+            if (!fullscreen) fullscreen = true
+        } else if (!deviceLandscape && wasLandscape) {
+            if (manualFullscreenExit) manualFullscreenExit = false
+            if (fullscreen) fullscreen = false
+        }
+        wasLandscape = deviceLandscape
+    }
+
+    // 全屏时锁横屏把屏幕转过去；主动退出时锁竖屏，其余时候跟着传感器走。
+    LaunchedEffect(fullscreen, manualFullscreenExit) {
+        if (inPipMode) return@LaunchedEffect
+        activity?.requestedOrientation = when {
+            fullscreen -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            manualFullscreenExit -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            // 离开播放页就锁回竖屏：别的页面没有横屏布局，转过去会散架。
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
                 ?.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 
-    BackHandler(enabled = fullscreen) { fullscreen = false }
+    BackHandler(enabled = fullscreen) { applyFullscreen(false) }
 
     val fullViewport = fullscreen || inPipMode
     val configuration = LocalConfiguration.current
@@ -342,11 +375,13 @@ fun VideoScreen(
                         if (player.isPlaying) player.pause() else player.play()
                     },
                     onSeek = { player.seekTo(it) },
-                    onToggleFullscreen = { fullscreen = !fullscreen },
+                    onToggleFullscreen = { applyFullscreen(!fullscreen) },
+                    onFullscreenChange = applyFullscreen,
+                    hapticEnabled = gestureHaptic,
                     onQualityClick = { qualityDialogVisible = true },
                     onSpeedClick = { speedDialogVisible = true },
                     onBack = {
-                        if (fullscreen) fullscreen = false else nav.pop()
+                        if (fullscreen) applyFullscreen(false) else nav.pop()
                     },
                     onRetry = viewModel::load,
                     modifier = Modifier.fillMaxSize(),
@@ -561,26 +596,3 @@ fun VideoScreen(
 }
 
 private val DETAIL_PAGES = listOf("info", "comment")
-
-private fun VideoUiState.qualityLabel(): String? {
-    val source = source ?: return null
-    val active = source.qualities.firstOrNull { it.quality == activeQuality }
-    return active?.label?.takeIf { it.isNotBlank() } ?: "${activeQuality}P"
-}
-
-private fun Context.findActivity(): Activity? {
-    var current: Context? = this
-    while (current is ContextWrapper) {
-        if (current is Activity) return current
-        current = current.baseContext
-    }
-    return null
-}
-
-private fun shareVideo(context: Context, title: String, bvid: String) {
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, "$title\nhttps://www.bilibili.com/video/$bvid")
-    }
-    context.startActivity(Intent.createChooser(intent, "分享视频"))
-}

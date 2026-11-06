@@ -48,6 +48,7 @@ fun SettingsScreen(
     val quality by container.settings.defaultQuality.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
+    val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
     val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
@@ -102,8 +103,15 @@ fun SettingsScreen(
                     title = "自动画中画",
                     modifier = Modifier.testTag("settings_auto_pip"),
                     summary = if (autoPip) "开" else "关",
-                    cardListPosition = CardListPosition.Tail,
+                    cardListPosition = CardListPosition.Middle,
                     onClick = { container.settings.setAutoPip(!autoPip) },
+                )
+                ArrowPreference(
+                    title = "手势震动",
+                    modifier = Modifier.testTag("settings_gesture_haptic"),
+                    summary = if (gestureHaptic) "开" else "关",
+                    cardListPosition = CardListPosition.Tail,
+                    onClick = { container.settings.setGestureHaptic(!gestureHaptic) },
                 )
             }
         }

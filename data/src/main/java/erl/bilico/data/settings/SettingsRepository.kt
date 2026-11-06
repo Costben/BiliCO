@@ -59,6 +59,10 @@ class SettingsRepository(
     private val _autoPip = MutableStateFlow(true)
     val autoPip: StateFlow<Boolean> = _autoPip.asStateFlow()
 
+    /** 手势调亮度、音量时的震动反馈。 */
+    private val _gestureHaptic = MutableStateFlow(true)
+    val gestureHaptic: StateFlow<Boolean> = _gestureHaptic.asStateFlow()
+
     init {
         scope.launch {
             val prefs = context.biliDataStore.data.first()
@@ -75,7 +79,13 @@ class SettingsRepository(
             _danmakuArea.value = prefs[KEY_DANMAKU_AREA] ?: 0
             _backgroundPlay.value = prefs[KEY_BACKGROUND_PLAY] ?: true
             _autoPip.value = prefs[KEY_AUTO_PIP] ?: true
+            _gestureHaptic.value = prefs[KEY_GESTURE_HAPTIC] ?: true
         }
+    }
+
+    fun setGestureHaptic(enabled: Boolean) {
+        _gestureHaptic.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_GESTURE_HAPTIC] = enabled } }
     }
 
     fun setBackgroundPlay(enabled: Boolean) {
@@ -152,5 +162,6 @@ class SettingsRepository(
         val KEY_DANMAKU_AREA = intPreferencesKey("danmaku_area")
         val KEY_BACKGROUND_PLAY = booleanPreferencesKey("background_play")
         val KEY_AUTO_PIP = booleanPreferencesKey("auto_pip")
+        val KEY_GESTURE_HAPTIC = booleanPreferencesKey("gesture_haptic")
     }
 }

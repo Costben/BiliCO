@@ -2,6 +2,8 @@ package erl.bilico.feature.video
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,13 +20,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,6 +34,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -86,6 +89,8 @@ internal fun VideoPlayer(
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onToggleFullscreen: () -> Unit,
+    onFullscreenChange: (Boolean) -> Unit = { if (it) onToggleFullscreen() },
+    hapticEnabled: Boolean = true,
     onQualityClick: () -> Unit,
     onSpeedClick: () -> Unit,
     onBack: () -> Unit,
@@ -141,6 +146,8 @@ internal fun VideoPlayer(
                 durationMs = durationMs,
                 longPressSpeedActive = longPressSpeedActive,
                 longPressSpeedValue = longPressSpeedValue,
+                fullscreen = fullscreen,
+                hapticEnabled = hapticEnabled,
                 onTap = { controlsVisible = !controlsVisible },
                 onDoubleTap = {
                     // 双击是播放/暂停，结果必须看得见：暂停时把控件亮出来。
@@ -149,6 +156,7 @@ internal fun VideoPlayer(
                 },
                 onLongPressSpeedChange = onLongPressSpeedChange,
                 onSeek = onSeek,
+                onFullscreenChange = onFullscreenChange,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -291,7 +299,10 @@ internal fun VideoPlayer(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 进度条照 PiliPlus：一条 3dp 的细线，走过的部分实白、剩下的半透明白，
+ * 播放头只是一颗小圆点，拖动时才略微放大。
+ */
 @Composable
 private fun PlayerProgress(
     positionMs: Long,
@@ -300,37 +311,71 @@ private fun PlayerProgress(
 ) {
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
+    var widthPx by remember { mutableIntStateOf(1) }
     val max = durationMs.coerceAtLeast(1L).toFloat()
     val value = (if (dragging) dragValue else positionMs.toFloat()).coerceIn(0f, max)
+    val fraction = if (durationMs > 0L) (value / max).coerceIn(0f, 1f) else 0f
+    val enabled = durationMs > 0L
 
-    Slider(
-        value = value,
-        onValueChange = {
-            dragging = true
-            dragValue = it
-        },
-        onValueChangeFinished = {
-            dragging = false
-            onSeek(dragValue.toLong())
-        },
-        valueRange = 0f..max,
-        enabled = durationMs > 0L,
-        modifier = Modifier.fillMaxWidth(),
-        // 默认滑块是 M3 那种竖长条，压在视频上像根棍子，换成小圆点。
-        thumb = {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp)
+            .onSizeChanged { widthPx = it.width }
+            .pointerInput(enabled, max) {
+                if (!enabled) return@pointerInput
+                detectTapGestures { offset ->
+                    onSeek(((offset.x / widthPx.coerceAtLeast(1)) * max).toLong())
+                }
+            }
+            .pointerInput(enabled, max) {
+                if (!enabled) return@pointerInput
+                fun fractionAt(x: Float) = (x / widthPx.coerceAtLeast(1)).coerceIn(0f, 1f)
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        dragging = true
+                        dragValue = fractionAt(offset.x) * max
+                    },
+                    onHorizontalDrag = { change, _ ->
+                        dragValue = fractionAt(change.position.x) * max
+                    },
+                    onDragEnd = {
+                        dragging = false
+                        onSeek(dragValue.toLong())
+                    },
+                    onDragCancel = { dragging = false },
+                )
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(1.5.dp))
+                .background(Color.White.copy(alpha = 0.24f)),
+        )
+        Box(
+            Modifier
+                .fillMaxWidth(fraction)
+                .height(3.dp)
+                .clip(RoundedCornerShape(1.5.dp))
+                .background(Color.White),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(fraction)
+                .height(3.dp),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
             Box(
-                modifier = Modifier
-                    .size(13.dp)
+                Modifier
+                    .size(if (dragging) 11.dp else 9.dp)
                     .clip(CircleShape)
                     .background(Color.White),
             )
-        },
-        colors = SliderDefaults.colors(
-            thumbColor = Color.White,
-            activeTrackColor = COUITheme.colorScheme.primary,
-            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-        ),
-    )
+        }
+    }
 }
 
 @Composable
