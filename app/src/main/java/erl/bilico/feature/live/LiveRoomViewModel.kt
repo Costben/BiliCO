@@ -2,6 +2,9 @@ package erl.bilico.feature.live
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import erl.bilico.data.live.LiveDanmakuClient
+import erl.bilico.data.live.LiveDanmakuState
+import erl.bilico.data.model.LiveDanmakuMessage
 import erl.bilico.data.model.LivePlayback
 import erl.bilico.data.model.LiveRoomDetail
 import erl.bilico.data.repository.LiveRepository
@@ -11,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 
 data class LiveRoomUiState(
     val detail: LiveRoomDetail? = null,
@@ -23,20 +27,34 @@ data class LiveRoomUiState(
     val activeQuality: Int = 0,
     /** 每次成功取流加一：地址可能一模一样，靠它让播放器重新 prepare。 */
     val playbackGeneration: Int = 0,
+    val danmaku: List<LiveDanmakuMessage> = emptyList(),
+    val danmakuState: LiveDanmakuState = LiveDanmakuState.Idle,
+    val danmakuError: String? = null,
 )
 
 class LiveRoomViewModel(
     private val repository: LiveRepository,
+    okHttp: OkHttpClient,
     private val roomId: Long,
+    private val uid: Long,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LiveRoomUiState())
     val state: StateFlow<LiveRoomUiState> = _state.asStateFlow()
 
+    private val danmakuClient = LiveDanmakuClient(viewModelScope, okHttp)
     private var playbackJob: Job? = null
 
     init {
         load()
+        viewModelScope.launch {
+            danmakuClient.messages.collect { message ->
+                _state.update { it.copy(danmaku = (it.danmaku + message).takeLast(MAX_MESSAGES)) }
+            }
+        }
+        viewModelScope.launch {
+            danmakuClient.state.collect { state -> _state.update { it.copy(danmakuState = state) } }
+        }
     }
 
     fun load() {
@@ -45,7 +63,10 @@ class LiveRoomViewModel(
             repository.detail(roomId)
                 .onSuccess { detail ->
                     _state.update { it.copy(detail = detail, isLoading = false) }
-                    if (detail.isLive) loadPlayback(_state.value.requestedQuality)
+                    if (detail.isLive) {
+                        loadPlayback(_state.value.requestedQuality)
+                        connectDanmaku(detail.roomId.takeIf { it > 0L } ?: roomId)
+                    }
                 }
                 .onFailure { error ->
                     _state.update {
@@ -62,6 +83,35 @@ class LiveRoomViewModel(
 
     fun retryPlayback() {
         if (_state.value.detail?.isLive == true) loadPlayback(_state.value.requestedQuality)
+    }
+
+    /** 弹幕 token 与真实房号绑定，短号进房要先换成详情里的 roomId。 */
+    private fun connectDanmaku(realRoomId: Long) {
+        // 服务端只给登录用户下发弹幕：uid 为 0 时连接会被立刻关闭，没必要重试。
+        if (uid <= 0L) {
+            _state.update {
+                it.copy(
+                    danmakuState = LiveDanmakuState.Failed,
+                    danmakuError = "登录后查看弹幕",
+                )
+            }
+            return
+        }
+        viewModelScope.launch {
+            repository.danmakuServer(realRoomId)
+                .onSuccess { server ->
+                    _state.update { it.copy(danmakuError = null) }
+                    danmakuClient.connect(realRoomId, server.token, server.urls.first(), uid)
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            danmakuState = LiveDanmakuState.Failed,
+                            danmakuError = error.message ?: "弹幕连接失败",
+                        )
+                    }
+                }
+        }
     }
 
     private fun loadPlayback(qn: Int) {
@@ -94,5 +144,13 @@ class LiveRoomViewModel(
                     }
                 }
         }
+    }
+
+    override fun onCleared() {
+        danmakuClient.disconnect()
+    }
+
+    private companion object {
+        const val MAX_MESSAGES = 200
     }
 }

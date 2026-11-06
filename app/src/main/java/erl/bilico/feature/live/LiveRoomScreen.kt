@@ -14,9 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +57,7 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.FullscreenEffect
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.pageContainerColor
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -69,7 +68,7 @@ fun LiveRoomScreen(
     roomId: Long,
 ) {
     val viewModel: LiveRoomViewModel = viewModel(key = "live-$roomId") {
-        LiveRoomViewModel(container.live, roomId)
+        LiveRoomViewModel(container.live, container.client.okHttp, roomId, container.session.mid())
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -218,9 +217,7 @@ fun LiveRoomScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
+                        .navigationBarsPadding(),
                 ) {
                     when {
                         state.isLoading -> LoadingState(Modifier.height(160.dp))
@@ -229,7 +226,19 @@ fun LiveRoomScreen(
                             onRetry = viewModel::load,
                         )
 
-                        else -> state.detail?.let { LiveRoomInfo(it) }
+                        else -> state.detail?.let { detail ->
+                            LiveRoomInfo(
+                                detail = detail,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            )
+                            HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
+                            LiveDanmakuPanel(
+                                messages = state.danmaku,
+                                state = state.danmakuState,
+                                error = state.danmakuError,
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                            )
+                        }
                     }
                 }
             }
@@ -251,58 +260,62 @@ fun LiveRoomScreen(
 }
 
 @Composable
-private fun LiveRoomInfo(detail: LiveRoomDetail) {
+private fun LiveRoomInfo(detail: LiveRoomDetail, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
-    val avatarPx = with(density) { 40.dp.roundToPx() }
+    val avatarPx = with(density) { 36.dp.roundToPx() }
     val avatarUrl = remember(detail.anchorFace) {
         Formatters.sizedImageUrl(detail.anchorFace, avatarPx, avatarPx)
     }
 
-    Text(
-        text = detail.title,
-        style = COUITheme.textStyles.title3,
-    )
-
-    Spacer(Modifier.height(12.dp))
-
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (detail.anchorFace.isNotBlank()) {
-            AsyncImage(
-                model = avatarUrl,
-                contentDescription = null,
-                modifier = Modifier.size(40.dp).clip(CircleShape),
-                contentScale = ContentScale.Crop,
-            )
-            Spacer(Modifier.width(10.dp))
-        }
-        Column {
-            Text(
-                text = detail.anchorName.ifBlank { "未知主播" },
-                style = COUITheme.textStyles.body2,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = buildString {
-                    if (detail.areaName.isNotBlank()) append(detail.areaName).append(" · ")
-                    if (detail.isLive) {
-                        append(Formatters.formatStat(detail.online)).append("人气")
-                    } else {
-                        append("未开播")
-                    }
-                },
-                style = COUITheme.textStyles.footnote2,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-            )
-        }
-    }
-
-    if (detail.description.isNotBlank()) {
-        Spacer(Modifier.height(14.dp))
+    Column(modifier) {
         Text(
-            text = detail.description,
-            style = COUITheme.textStyles.footnote1,
-            color = COUITheme.colorScheme.onSurfaceSecondary,
+            text = detail.title,
+            style = COUITheme.textStyles.title3,
+            maxLines = 2,
         )
+
+        Spacer(Modifier.height(10.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (detail.anchorFace.isNotBlank()) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(36.dp).clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                )
+                Spacer(Modifier.width(10.dp))
+            }
+            Column {
+                Text(
+                    text = detail.anchorName.ifBlank { "未知主播" },
+                    style = COUITheme.textStyles.body2,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = buildString {
+                        if (detail.areaName.isNotBlank()) append(detail.areaName).append(" · ")
+                        if (detail.isLive) {
+                            append(Formatters.formatStat(detail.online)).append("人气")
+                        } else {
+                            append("未开播")
+                        }
+                    },
+                    style = COUITheme.textStyles.footnote2,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                )
+            }
+        }
+
+        if (detail.description.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = detail.description,
+                style = COUITheme.textStyles.footnote1,
+                color = COUITheme.colorScheme.onSurfaceSecondary,
+                maxLines = 2,
+            )
+        }
     }
 }
 
