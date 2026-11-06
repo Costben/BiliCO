@@ -50,3 +50,22 @@ data class VideoPage(
     val part: String = "",
     val duration: Long = 0,
 )
+
+@Serializable
+data class RelatedResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: List<RelatedItem>? = null,
+)
+
+@Serializable
+data class RelatedItem(
+    val aid: Long = 0,
+    val bvid: String = "",
+    val pic: String = "",
+    val title: String = "",
+    val duration: Int = 0,
+    val pubdate: Long = 0,
+    val owner: VideoOwner = VideoOwner(),
+    val stat: VideoStat = VideoStat(),
+)

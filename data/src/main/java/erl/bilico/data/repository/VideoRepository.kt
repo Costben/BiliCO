@@ -1,5 +1,6 @@
 package erl.bilico.data.repository
 
+import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.model.VideoPart
@@ -8,6 +9,7 @@ import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.network.WbiKeyManager
 import erl.bilico.data.network.WbiUtils
 import erl.bilico.data.session.SessionRepository
+import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -99,4 +101,33 @@ class VideoRepository(
                 data.toPlaybackSource(qn)
             }
         }
+
+    /** 简介下面那一栏「其他推荐视频」：接口按相关度给一串，字段和推荐流卡片对得上。 */
+    suspend fun related(bvid: String): Result<List<FeedVideo>> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val response = api.related(bvid)
+            if (response.code != 0) {
+                error(response.message.ifBlank { "相关推荐加载失败(${response.code})" })
+            }
+            response.data.orEmpty()
+                .filter { it.bvid.isNotBlank() && it.title.isNotBlank() }
+                .map { item ->
+                    val seconds = item.duration.toLong().coerceAtLeast(0L)
+                    FeedVideo(
+                        bvid = item.bvid,
+                        aid = item.aid,
+                        title = item.title,
+                        cover = Formatters.normalizeImageUrl(item.pic),
+                        upName = item.owner.name,
+                        upMid = item.owner.mid,
+                        upFace = Formatters.normalizeImageUrl(item.owner.face),
+                        playCount = item.stat.view,
+                        durationSec = item.duration,
+                        playCountText = Formatters.formatStat(item.stat.view),
+                        durationText = Formatters.formatDuration(seconds),
+                    )
+                }
+        }
+    }
 }

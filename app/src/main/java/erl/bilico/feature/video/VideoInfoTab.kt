@@ -8,29 +8,35 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.util.Formatters
@@ -57,6 +63,8 @@ internal fun VideoInfoTab(
     onRetry: () -> Unit,
     onSelectPart: (Int) -> Unit,
     onOpenUser: (Long) -> Unit,
+    onOpenVideo: (String) -> Unit,
+    related: List<FeedVideo>,
     liked: Boolean,
     coined: Int,
     favorited: Boolean,
@@ -82,6 +90,8 @@ internal fun VideoInfoTab(
             selectedCid = selectedCid,
             onSelectPart = onSelectPart,
             onOpenUser = onOpenUser,
+            onOpenVideo = onOpenVideo,
+            related = related,
             liked = liked,
             coined = coined,
             favorited = favorited,
@@ -102,6 +112,8 @@ private fun InfoContent(
     selectedCid: Long,
     onSelectPart: (Int) -> Unit,
     onOpenUser: (Long) -> Unit,
+    onOpenVideo: (String) -> Unit,
+    related: List<FeedVideo>,
     liked: Boolean,
     coined: Int,
     favorited: Boolean,
@@ -259,6 +271,91 @@ private fun InfoContent(
 
         item(key = "divider") {
             HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
+        }
+
+        if (related.isNotEmpty()) {
+            item(key = "related-title") {
+                Text(
+                    text = "其他推荐视频",
+                    style = COUITheme.textStyles.body1,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+            items(related, key = { "related-${it.bvid}" }) { video ->
+                RelatedVideoRow(video = video, onOpen = { onOpenVideo(video.bvid) })
+            }
+        }
+    }
+}
+
+/** 简介下面那一栏：左边缩略图，右边标题与 UP 信息。 */
+@Composable
+private fun RelatedVideoRow(video: FeedVideo, onOpen: () -> Unit) {
+    val density = LocalDensity.current
+    val coverWidth = 152.dp
+    val coverWidthPx = with(density) { coverWidth.roundToPx() }
+    val coverHeightPx = coverWidthPx * 9 / 16
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onOpen)
+            .padding(vertical = 4.dp),
+    ) {
+        Box(
+            Modifier
+                .width(coverWidth)
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(8.dp)),
+        ) {
+            CoverImage(
+                url = Formatters.sizedImageUrl(video.cover, coverWidthPx, coverHeightPx),
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (video.durationText.isNotBlank()) {
+                Text(
+                    text = video.durationText,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(5.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xB3000000))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    fontSize = 10.sp,
+                    color = Color.White,
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .height(coverWidth * 9f / 16f),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = video.title,
+                style = COUITheme.textStyles.body2,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Column {
+                Text(
+                    text = video.upName.ifBlank { "未知 UP" },
+                    style = COUITheme.textStyles.footnote2,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "${video.playCountText}播放",
+                    style = COUITheme.textStyles.footnote2,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }

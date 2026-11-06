@@ -422,6 +422,8 @@ fun VideoScreen(
                                 viewModel.selectPart(index, player.currentPosition)
                             },
                             onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                            onOpenVideo = { next -> nav.push(Route.Video(next)) },
+                            related = state.related,
                             liked = state.liked,
                             coined = state.coined,
                             favorited = state.favorited,

@@ -12,6 +12,7 @@ import erl.bilico.data.model.MessageReplyResponse
 import erl.bilico.data.model.PgcRankResponse
 import erl.bilico.data.model.PgcSeasonResponse
 import erl.bilico.data.model.RankingResponse
+import erl.bilico.data.model.RelatedResponse
 import erl.bilico.data.model.SystemNoticeResponse
 import erl.bilico.data.model.UserRelationResponse
 import erl.bilico.data.model.VideoRelationResponse
@@ -213,6 +214,11 @@ interface BiliApi {
 
     @GET("x/web-interface/ranking/v2")
     suspend fun ranking(@QueryMap params: Map<String, String>): RankingResponse
+
+    // ---------- 相关推荐 ----------
+
+    @GET("x/web-interface/archive/related")
+    suspend fun related(@Query("bvid") bvid: String): RelatedResponse
 
     // ---------- 视频互动 ----------
 

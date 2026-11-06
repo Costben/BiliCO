@@ -2,6 +2,7 @@ package erl.bilico.feature.video
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.repository.HeartbeatReporter
@@ -18,6 +19,7 @@ import kotlinx.coroutines.launch
 
 data class VideoUiState(
     val detail: VideoDetail? = null,
+    val related: List<FeedVideo> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
     val source: PlaybackSource? = null,
@@ -76,6 +78,7 @@ class VideoViewModel(
                         )
                     }
                     loadRelation(detail.aid, detail.upMid)
+                    loadRelated()
                     loadPlayback(
                         qn = settings.defaultQuality.value,
                         cid = targetCid,
@@ -385,6 +388,13 @@ class VideoViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    private fun loadRelated() {
+        viewModelScope.launch {
+            repository.related(bvid)
+                .onSuccess { items -> _state.update { it.copy(related = items) } }
         }
     }
 
