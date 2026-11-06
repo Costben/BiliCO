@@ -85,6 +85,8 @@ class CookieStore(
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        val host = url.host.lowercase()
+        if (host != "bilibili.com" && !host.endsWith(".bilibili.com")) return emptyList()
         ensureLoaded()
         if (values.isEmpty()) return emptyList()
         return values.mapNotNull { (name, value) ->
