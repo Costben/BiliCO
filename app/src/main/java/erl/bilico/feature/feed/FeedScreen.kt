@@ -39,12 +39,13 @@ fun FeedScreen(
     val segmentTop = topInset + 8.dp
     val pagerState = rememberPagerState(initialPage = segment, pageCount = { FEED_SEGMENTS.size })
 
-    // 点胶囊翻页；滑完一页再把选中态写回去。两边都盯着同一个 page，不会被对方的写入绕成环。
+    // 点胶囊翻页；滑完一页再把选中态写回去。
+    // 回写必须等翻页停稳：动画途中 currentPage 会先经过中间那页，写回去会把动画打断在半路。
     LaunchedEffect(segment) {
-        if (pagerState.currentPage != segment) pagerState.animateScrollToPage(segment)
+        if (pagerState.settledPage != segment) pagerState.animateScrollToPage(segment)
     }
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.currentPage }
+        snapshotFlow { pagerState.settledPage }
             .distinctUntilChanged()
             .collect(onSegment)
     }
