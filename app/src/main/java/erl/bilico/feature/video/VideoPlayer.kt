@@ -1,6 +1,7 @@
 package erl.bilico.feature.video
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,11 +13,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
@@ -31,23 +34,36 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import erl.bilico.data.model.QualityOption
 import erl.bilico.data.util.Formatters
+import erl.bilico.ui.components.FullscreenExitIcon
+import erl.bilico.ui.components.FullscreenIcon
+import erl.bilico.ui.components.PiliGlyph
+import erl.bilico.ui.components.PiliIcon
+import erl.bilico.ui.components.PipIcon
 import erl.bilico.ui.components.PlayerControlsPadding
 import erl.bilico.ui.components.PlayerScrim
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.ChevronBackward
+import io.github.suqi8.coui.kmp.icon.extended.Back
+import io.github.suqi8.coui.kmp.icon.extended.Home
+import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -55,6 +71,9 @@ import kotlinx.coroutines.delay
 
 /**
  * 只用 PlayerView 做渲染，手势、字幕与控件全部由 Compose 叠加，保证与 COUI 主题一致。
+ *
+ * 控件排布照 PiliPlus：顶部左边返回（全屏再多一个回首页），右边弹幕开关、小窗、更多；
+ * 底部进度条下面一行是播放键、两行时间，右边字幕 / 倍速 / 清晰度 / 全屏。
  */
 @Composable
 internal fun VideoPlayer(
@@ -82,6 +101,9 @@ internal fun VideoPlayer(
     subtitleLabel: String? = null,
     onSubtitleClick: (() -> Unit)? = null,
     onEnterPip: (() -> Unit)? = null,
+    onHome: (() -> Unit)? = null,
+    onWatchLater: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
     longPressSpeedActive: Boolean = false,
     longPressSpeedValue: Float = 2f,
     onLongPressSpeedChange: (Boolean) -> Unit = {},
@@ -97,7 +119,9 @@ internal fun VideoPlayer(
         }
     }
 
-    val showChrome = !inPipMode && (controlsVisible || !isPlaying || errorMessage != null)
+    // 只看「要不要显示控件」这一个开关。暂停、缓冲、网络抖动都不能把控件顶回来，
+    // 否则点一下屏幕看到控件纹丝不动，像是点不动。
+    val showChrome = !inPipMode && (controlsVisible || errorMessage != null)
 
     Box(modifier.background(Color.Black)) {
         AndroidView(
@@ -122,7 +146,11 @@ internal fun VideoPlayer(
                 longPressSpeedActive = longPressSpeedActive,
                 longPressSpeedValue = longPressSpeedValue,
                 onTap = { controlsVisible = !controlsVisible },
-                onDoubleTap = onPlayPause,
+                onDoubleTap = {
+                    // 双击是播放/暂停，结果必须看得见：暂停时把控件亮出来。
+                    controlsVisible = true
+                    onPlayPause()
+                },
                 onLongPressSpeedChange = onLongPressSpeedChange,
                 onSeek = onSeek,
                 modifier = Modifier.fillMaxSize(),
@@ -140,32 +168,34 @@ internal fun VideoPlayer(
                     .padding(PlayerControlsPadding),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = COUIIcons.ChevronBackward,
-                    contentDescription = "返回",
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onBack)
-                        .padding(8.dp),
-                    tint = Color.White,
-                )
+                PlayerIconButton(COUIIcons.Back, "返回", onBack)
+                if (fullscreen && onHome != null) {
+                    PlayerIconButton(COUIIcons.Home, "首页", onHome)
+                }
                 Text(
                     text = title,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 4.dp),
+                        .padding(horizontal = 4.dp),
                     style = COUITheme.textStyles.body2,
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (onEnterPip != null) {
-                    ControlLabel(
-                        text = "小窗",
-                        onClick = onEnterPip,
-                        modifier = Modifier.padding(start = 6.dp),
+                // 竖屏非全屏时，弹幕开关在简介那一行的胶囊右端，这里不再重复。
+                if (fullscreen) {
+                    PlayerGlyphButton(
+                        glyph = if (danmakuEnabled) PiliGlyph.DmOn else PiliGlyph.DmOff,
+                        label = if (danmakuEnabled) "关闭弹幕" else "开启弹幕",
+                        onClick = onToggleDanmaku,
+                        tint = if (danmakuEnabled) Color.White else Color.White.copy(alpha = 0.45f),
                     )
+                }
+                if (onEnterPip != null) {
+                    PlayerIconButton(PipIcon, "小窗", onEnterPip)
+                }
+                if (onWatchLater != null || onShare != null) {
+                    PlayerMoreMenu(onWatchLater = onWatchLater, onShare = onShare)
                 }
             }
         }
@@ -221,27 +251,28 @@ internal fun VideoPlayer(
                     onSeek = onSeek,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (isPlaying) COUIIcons.Pause else COUIIcons.Play,
-                        contentDescription = if (isPlaying) "暂停" else "播放",
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .clickable(onClick = onPlayPause)
-                            .padding(6.dp),
-                        tint = Color.White,
+                    PlayerIconButton(
+                        icon = if (isPlaying) COUIIcons.Pause else COUIIcons.Play,
+                        label = if (isPlaying) "暂停" else "播放",
+                        onClick = onPlayPause,
                     )
-                    Spacer(Modifier.weight(1f))
-                    ControlLabel(
-                        text = if (danmakuEnabled) "弹幕开" else "弹幕关",
-                        onClick = onToggleDanmaku,
-                    )
-                    if (subtitleLabel != null && onSubtitleClick != null) {
-                        ControlLabel(
-                            text = subtitleLabel,
-                            onClick = onSubtitleClick,
-                            modifier = Modifier.padding(start = 6.dp),
+                    Column(modifier = Modifier.padding(start = 2.dp)) {
+                        Text(
+                            text = Formatters.formatDuration(positionMs / 1000),
+                            style = COUITheme.textStyles.footnote2,
+                            color = Color.White,
+                            lineHeight = 15.sp,
                         )
+                        Text(
+                            text = Formatters.formatDuration(durationMs / 1000),
+                            style = COUITheme.textStyles.footnote2,
+                            color = Color.White.copy(alpha = 0.6f),
+                            lineHeight = 15.sp,
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (subtitleLabel != null && onSubtitleClick != null) {
+                        ControlLabel(text = subtitleLabel, onClick = onSubtitleClick)
                     }
                     ControlLabel(
                         text = speedLabel(speed),
@@ -253,10 +284,10 @@ internal fun VideoPlayer(
                         onClick = onQualityClick,
                         modifier = Modifier.padding(start = 6.dp),
                     )
-                    ControlLabel(
-                        text = if (fullscreen) "退出" else "全屏",
+                    PlayerIconButton(
+                        icon = if (fullscreen) FullscreenExitIcon else FullscreenIcon,
+                        label = if (fullscreen) "退出全屏" else "全屏",
                         onClick = onToggleFullscreen,
-                        modifier = Modifier.padding(start = 6.dp),
                     )
                 }
             }
@@ -264,6 +295,7 @@ internal fun VideoPlayer(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerProgress(
     positionMs: Long,
@@ -275,37 +307,134 @@ private fun PlayerProgress(
     val max = durationMs.coerceAtLeast(1L).toFloat()
     val value = (if (dragging) dragValue else positionMs.toFloat()).coerceIn(0f, max)
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = Formatters.formatDuration(positionMs / 1000),
-            style = COUITheme.textStyles.footnote2,
-            color = Color.White.copy(alpha = 0.9f),
-        )
-        Slider(
-            value = value,
-            onValueChange = {
-                dragging = true
-                dragValue = it
-            },
-            onValueChangeFinished = {
-                dragging = false
-                onSeek(dragValue.toLong())
-            },
-            valueRange = 0f..max,
-            enabled = durationMs > 0L,
-            modifier = Modifier.weight(1f),
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = COUITheme.colorScheme.primary,
-                inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-            ),
-        )
-        Text(
-            text = Formatters.formatDuration(durationMs / 1000),
-            style = COUITheme.textStyles.footnote2,
-            color = Color.White.copy(alpha = 0.9f),
+    Slider(
+        value = value,
+        onValueChange = {
+            dragging = true
+            dragValue = it
+        },
+        onValueChangeFinished = {
+            dragging = false
+            onSeek(dragValue.toLong())
+        },
+        valueRange = 0f..max,
+        enabled = durationMs > 0L,
+        modifier = Modifier.fillMaxWidth(),
+        // 默认滑块是 M3 那种竖长条，压在视频上像根棍子，换成小圆点。
+        thumb = {
+            Box(
+                modifier = Modifier
+                    .size(13.dp)
+                    .clip(CircleShape)
+                    .background(Color.White),
+            )
+        },
+        colors = SliderDefaults.colors(
+            thumbColor = Color.White,
+            activeTrackColor = COUITheme.colorScheme.primary,
+            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+        ),
+    )
+}
+
+@Composable
+private fun PlayerIconButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    tint: Color = Color.White,
+) {
+    Icon(
+        imageVector = icon,
+        contentDescription = label,
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .padding(9.dp),
+        tint = tint,
+    )
+}
+
+/** 字体图标按钮：字形占满 40dp 的触摸区，按下感与图标按钮一致。 */
+@Composable
+private fun PlayerGlyphButton(
+    glyph: String,
+    label: String,
+    onClick: () -> Unit,
+    tint: Color = Color.White,
+) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        PiliIcon(
+            glyph = glyph,
+            contentDescription = label,
+            size = 20.dp,
+            tint = tint,
         )
     }
+}
+
+/** 顶栏右端的三个点：稍后再看与分享，都是这一页本来就能做的事。 */
+@Composable
+private fun PlayerMoreMenu(
+    onWatchLater: (() -> Unit)?,
+    onShare: (() -> Unit)?,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val menuOffset = with(LocalDensity.current) { 44.dp.roundToPx() }
+
+    Box {
+        PlayerIconButton(COUIIcons.More, "更多", onClick = { expanded = true })
+        if (expanded) {
+            Popup(
+                alignment = Alignment.TopEnd,
+                offset = IntOffset(0, menuOffset),
+                onDismissRequest = { expanded = false },
+                properties = PopupProperties(focusable = true),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(124.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xF2202020))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                        .padding(vertical = 4.dp),
+                ) {
+                    onWatchLater?.let { action ->
+                        PlayerMenuRow("稍后再看") {
+                            expanded = false
+                            action()
+                        }
+                    }
+                    onShare?.let { action ->
+                        PlayerMenuRow("分享") {
+                            expanded = false
+                            action()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerMenuRow(label: String, onClick: () -> Unit) {
+    Text(
+        text = label,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        style = COUITheme.textStyles.body2,
+        color = Color.White,
+    )
 }
 
 @Composable
@@ -400,7 +529,7 @@ internal val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 internal fun speedLabel(speed: Float): String = when (speed) {
     0.5f -> "0.5x"
     0.75f -> "0.75x"
-    1f -> "倍速"
+    1f -> "1.0x"
     1.25f -> "1.25x"
     1.5f -> "1.5x"
     2f -> "2.0x"
@@ -441,7 +570,7 @@ internal fun SpeedDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = speedLabel(option).replace("倍速", "正常"),
+                        text = if (option == 1f) "正常" else speedLabel(option),
                         modifier = Modifier.weight(1f),
                         style = COUITheme.textStyles.body1,
                         color = if (selected) {

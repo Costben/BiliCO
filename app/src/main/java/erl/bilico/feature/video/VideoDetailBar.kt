@@ -34,19 +34,16 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import erl.bilico.R
+import erl.bilico.ui.components.PiliGlyph
+import erl.bilico.ui.components.PiliIcon
 import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.SearchBar
 import io.github.suqi8.coui.kmp.basic.SearchBarActionButton
 import io.github.suqi8.coui.kmp.basic.SearchBarDefaults
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
@@ -212,18 +209,15 @@ private fun DanmakuToggle(enabled: Boolean, onToggle: () -> Unit) {
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = if (enabled) "\uE803" else "\uE802",
-                fontFamily = DanmakuIconFamily,
-                fontSize = 18.sp,
-                lineHeight = 18.sp,
-                color = if (enabled) scheme.primary else scheme.onSurfaceSecondary,
+            PiliIcon(
+                glyph = if (enabled) PiliGlyph.DmOn else PiliGlyph.DmOff,
+                contentDescription = null,
+                size = 18.dp,
+                tint = if (enabled) scheme.primary else scheme.onSurfaceSecondary,
             )
         }
     }
 }
-
-private val DanmakuIconFamily = FontFamily(Font(R.font.piliplus_custom_icons))
 
 private val DETAIL_TABS = listOf("简介", "评论")
 

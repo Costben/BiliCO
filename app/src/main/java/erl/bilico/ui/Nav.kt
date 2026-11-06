@@ -260,6 +260,14 @@ class NavState {
         }
     }
 
+    /** 播放页的「首页」：退出所有二级页，回到第一个标签。 */
+    fun popToMain() {
+        mainTab = 0
+        while (stack.size > 1) {
+            stack.removeAt(stack.lastIndex)
+        }
+    }
+
     fun reset(route: Route) {
         stack.clear()
         stack.add(NavEntry(route))

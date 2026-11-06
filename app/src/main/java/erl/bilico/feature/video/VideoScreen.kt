@@ -3,6 +3,7 @@ package erl.bilico.feature.video
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -92,6 +93,7 @@ fun VideoScreen(
     val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
+    val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
@@ -306,6 +308,11 @@ fun VideoScreen(
             .fillMaxSize()
             .background(pageContainerColor()),
     ) {
+        // 竖屏非全屏时，视频上方那条状态栏恒为纯黑，不跟主题走。
+        if (!fullViewport) {
+            PlayerStatusBar(activity = activity, darkMode = darkMode)
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -352,6 +359,15 @@ fun VideoScreen(
                         { PlaybackBridge.enterPipNow(activity) }
                     } else {
                         null
+                    },
+                    onHome = { nav.popToMain() },
+                    onWatchLater = viewModel::addToWatchLater,
+                    onShare = {
+                        shareVideo(
+                            context = context,
+                            title = state.detail?.title.orEmpty(),
+                            bvid = bvid,
+                        )
                     },
                     longPressSpeedActive = longPressSpeed,
                     longPressSpeedValue = boostSpeed,
@@ -558,4 +574,12 @@ private fun Context.findActivity(): Activity? {
         current = current.baseContext
     }
     return null
+}
+
+private fun shareVideo(context: Context, title: String, bvid: String) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, "$title\nhttps://www.bilibili.com/video/$bvid")
+    }
+    context.startActivity(Intent.createChooser(intent, "分享视频"))
 }
