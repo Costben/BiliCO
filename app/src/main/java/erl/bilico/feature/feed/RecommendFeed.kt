@@ -51,6 +51,7 @@ internal fun RecommendFeed(
     nav: NavState,
     topInset: Dp,
     listState: LazyListState,
+    active: Boolean,
     onCollapse: (Float) -> Unit,
 ) {
     val viewModel: FeedViewModel = viewModel { FeedViewModel(container.feed) }
@@ -66,7 +67,9 @@ internal fun RecommendFeed(
     }
     val coverHeightPx = coverWidthPx * 9 / 16
 
-    LaunchedEffect(listState) {
+    // 只有自己是当前页时才报折叠量：翻走时收起来，翻回来按列表实际位置重新报一次。
+    LaunchedEffect(listState, active) {
+        if (!active) return@LaunchedEffect
         snapshotFlow {
             val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
             if (first == null || first.index > 0) titleHeightPx
