@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -35,15 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -92,6 +87,9 @@ internal val TitleRowHeight = 44.dp
 /** 顶栏左上角头像的直径。 */
 private val AvatarSize = 32.dp
 
+/** 底栏三格的总宽：三格各 50dp、两处间距 8dp、左右内边距各 12dp，加起来 190dp。 */
+private val BottomBarWidth = 190.dp
+
 /** 推荐页的标题行才会跟着列表折起来，其余页面固定一条。 */
 private val tabTitles = listOf("推荐", "动态", "直播", "我的")
 
@@ -106,6 +104,8 @@ fun MainShell(nav: NavState, container: AppContainer) {
     var feedCollapse by remember { mutableFloatStateOf(0f) }
     val account by container.session.account.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableIntStateOf(0) }
+    // 翻页状态提到外壳：分段胶囊要跟着 pager 连续移动，不能等切完页再动。
+    val feedPager = rememberPagerState(initialPage = segment, pageCount = { FEED_SEGMENTS.size })
 
     // 标题行的折叠量只在这里算一次：顶栏和分段胶囊读同一个值，滚动时才不会各折各的。
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
@@ -145,6 +145,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 segment = segment,
                                 onSegment = { segment = it },
                                 onCollapse = { feedCollapse = it },
+                                pagerState = feedPager,
                             )
 
                             1 -> DynamicScreen(
@@ -184,6 +185,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     onAvatarClick = { nav.setTab(3) },
                     segment = segment,
                     onSegment = { segment = it },
+                    pager = feedPager,
                     bounds = topBarBounds,
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
                 )
@@ -211,6 +213,7 @@ private fun MainTopBar(
     onAvatarClick: () -> Unit,
     segment: Int,
     onSegment: (Int) -> Unit,
+    pager: PagerState,
     bounds: TopBarBounds,
     modifier: Modifier = Modifier,
 ) {
@@ -241,6 +244,7 @@ private fun MainTopBar(
                 onAvatarClick = onAvatarClick,
                 segment = segment,
                 onSegment = onSegment,
+                pager = pager,
             )
         }
     }
@@ -255,6 +259,7 @@ private fun BarContent(
     onAvatarClick: () -> Unit,
     segment: Int,
     onSegment: (Int) -> Unit,
+    pager: PagerState,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
     Column(
@@ -325,6 +330,7 @@ private fun BarContent(
                     labels = FEED_SEGMENTS,
                     selectedIndex = segment,
                     onSelect = onSegment,
+                    pager = pager,
                 )
             }
         }
@@ -391,14 +397,16 @@ private fun FloatingBottomBar(
     onTab: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     Box(
         modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.BottomCenter,
     ) {
         // 底栏就三个 tab。个人页从顶栏头像进，不再占底栏的位置。
-        BottomFloatingNavigationBar(modifier = Modifier.capsuleRim(isDark)) {
+        // 宽度收在 190dp：三格各 50dp，和 Cobo 底栏的格子一样宽；放开的话每格会用满 70dp，
+        // 三个 tab 撑得很散。
+        BottomFloatingNavigationBar(modifier = Modifier.width(BottomBarWidth)) {
             BottomFloatingNavigationBarItem(
                 selected = tab == 0,
                 onClick = { onTab(0) },
@@ -422,29 +430,4 @@ private fun FloatingBottomBar(
             )
         }
     }
-}
-
-/**
- * 底栏胶囊的一圈边缘光。
- *
- * COUI 自带的描边这台机器上落不下来：平台材质接管了描边却画不出东西（同机的 coui 示例底栏整圈
- * 都没有亮边），退回 Compose 的那条又是按法线打光的，只点亮上下两条长边，左右两个半圆端是零。
- * 这里沿胶囊轮廓自己描 1dp，竖直方向渐隐，四个方向连成闭合的一圈。
- */
-private fun Modifier.capsuleRim(isDark: Boolean): Modifier = drawWithContent {
-    drawContent()
-    val stroke = 1.dp.toPx()
-    if (size.width <= stroke * 2f || size.height <= stroke * 2f) return@drawWithContent
-    val top = if (isDark) 0.34f else 0.22f
-    drawRoundRect(
-        brush = Brush.verticalGradient(
-            0f to Color.White.copy(alpha = top),
-            0.5f to Color.White.copy(alpha = top * 0.9f),
-            1f to Color.White.copy(alpha = top * 0.7f),
-        ),
-        topLeft = Offset(stroke / 2f, stroke / 2f),
-        size = Size(size.width - stroke, size.height - stroke),
-        cornerRadius = CornerRadius((size.height - stroke) / 2f),
-        style = Stroke(width = stroke),
-    )
 }

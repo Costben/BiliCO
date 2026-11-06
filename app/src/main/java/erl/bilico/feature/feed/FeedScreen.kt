@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
@@ -32,12 +32,12 @@ fun FeedScreen(
     segment: Int,
     onSegment: (Int) -> Unit,
     onCollapse: (Float) -> Unit,
+    pagerState: PagerState,
 ) {
     val recommendState = rememberLazyListState()
     val rankingState = rememberLazyListState()
     val bangumiState = rememberLazyGridState()
     val segmentTop = topInset + 8.dp
-    val pagerState = rememberPagerState(initialPage = segment, pageCount = { FEED_SEGMENTS.size })
 
     // 点胶囊翻页；滑完一页再把选中态写回去。
     // 回写必须等翻页停稳：动画途中 currentPage 会先经过中间那页，写回去会把动画打断在半路。

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -353,6 +354,17 @@ private class CouiSegmentIndicatorMotion(
         }
         active = position.isRunning || widthSpring.isRunning || heightSpring.isRunning
     }
+
+    val isRunning: Boolean
+        get() = position.isRunning || widthSpring.isRunning || heightSpring.isRunning
+
+    /** 手指拖动时直接贴合：弹簧在跑的时候不接管，免得和换项动画抢位置。 */
+    fun updateDrag(center: Float, dynamicWidth: Float, dynamicHeight: Float) {
+        if (isRunning) return
+        centerX = center
+        width = dynamicWidth
+        height = dynamicHeight
+    }
 }
 
 private val SegmentPressSpring = spring<Float>(dampingRatio = 1f, stiffness = 438.65f)
@@ -360,6 +372,8 @@ private val SegmentPressSpring = spring<Float>(dampingRatio = 1f, stiffness = 43
 /**
  * 顶栏里的分段胶囊：不透明底 + 半透明指示块。
  * [labels] 均分宽度，选中项由 [selectedIndex] 控制，点击回调 [onSelect]。
+ *
+ * 传了 [pager] 时指示块跟着翻页走：拖动中每帧贴住手指，松手后由弹簧把位置补齐。
  */
 @Composable
 fun SegmentCapsule(
@@ -369,6 +383,7 @@ fun SegmentCapsule(
     modifier: Modifier = Modifier,
     height: Dp = 32.dp,
     segmentWidth: Dp = 84.dp,
+    pager: PagerState? = null,
 ) {
     if (labels.isEmpty()) return
     val scheme = COUITheme.colorScheme
@@ -396,8 +411,7 @@ fun SegmentCapsule(
     LaunchedEffect(motion) { motion.animate() }
 
     var settled by remember { mutableIntStateOf(initial) }
-    LaunchedEffect(selectedIndex, segmentWidthPx) {
-        val target = selectedIndex.coerceIn(0, labels.lastIndex)
+    val selectTarget: (Int) -> Unit = { target ->
         if (target != settled) {
             settled = target
             motion.select(
@@ -408,6 +422,29 @@ fun SegmentCapsule(
                 lastCenter = lastCenter,
                 maxExtraWidth = with(density) { 16.dp.toPx() },
             )
+        }
+    }
+    if (pager != null) {
+        LaunchedEffect(pager.currentPage, segmentWidthPx) {
+            selectTarget(pager.currentPage.coerceIn(0, labels.lastIndex))
+        }
+        // 拖动与惯性阶段每帧贴住翻页进度，而不是等停下来再追。
+        LaunchedEffect(pager.currentPageOffsetFraction, pager.isScrollInProgress) {
+            if (pager.isScrollInProgress && !motion.isRunning) {
+                val pageFloat = (pager.currentPage + pager.currentPageOffsetFraction)
+                    .coerceIn(0f, labels.lastIndex.toFloat())
+                val stretch = sin(abs(pager.currentPageOffsetFraction) * PI.toFloat())
+                    .coerceIn(0f, 1f)
+                motion.updateDrag(
+                    center = padPx + pageFloat * segmentWidthPx + segmentWidthPx / 2f,
+                    dynamicWidth = segmentWidthPx + with(density) { 14.dp.toPx() } * stretch,
+                    dynamicHeight = restHeightPx * (1f - 0.1f * stretch),
+                )
+            }
+        }
+    } else {
+        LaunchedEffect(selectedIndex, segmentWidthPx) {
+            selectTarget(selectedIndex.coerceIn(0, labels.lastIndex))
         }
     }
 
@@ -453,7 +490,10 @@ fun SegmentCapsule(
                         .clickable(
                             interactionSource = pressSource,
                             indication = null,
-                            onClick = { onSelect(index) },
+                            onClick = {
+                                selectTarget(index)
+                                onSelect(index)
+                            },
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
