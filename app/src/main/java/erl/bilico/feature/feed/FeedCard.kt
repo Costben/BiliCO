@@ -154,7 +154,7 @@ internal fun FeedCard(
 
 /** 播放量、弹幕数这类小字：图标加数字，颜色统一压到次要色。 */
 @Composable
-private fun StatLabel(icon: ImageVector, text: String) {
+internal fun StatLabel(icon: ImageVector, text: String) {
     val color = COUITheme.colorScheme.onSurfaceSecondary
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, Modifier.size(12.dp), tint = color)
@@ -165,7 +165,7 @@ private fun StatLabel(icon: ImageVector, text: String) {
 
 /** UP 主行右侧的三个点：点开在图标下方浮出一小块菜单。 */
 @Composable
-private fun MoreMenu(
+internal fun MoreMenu(
     onWatchLater: () -> Unit,
     onShare: () -> Unit,
 ) {
@@ -245,7 +245,7 @@ private fun MenuRow(label: String, onClick: () -> Unit) {
     )
 }
 
-private fun shareVideo(context: Context, video: FeedVideo) {
+internal fun shareVideo(context: Context, video: FeedVideo) {
     val link = "https://www.bilibili.com/video/${video.bvid}"
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"

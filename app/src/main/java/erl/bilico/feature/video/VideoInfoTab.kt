@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +42,11 @@ import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.util.Formatters
+import erl.bilico.di.AppContainer
+import erl.bilico.feature.feed.MoreMenu
+import erl.bilico.feature.feed.StatLabel
+import erl.bilico.feature.feed.rememberWatchLaterAction
+import erl.bilico.feature.feed.shareVideo
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
@@ -49,6 +56,8 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.AddCircle
 import io.github.suqi8.coui.kmp.icon.extended.Favorites
+import io.github.suqi8.coui.kmp.icon.extended.Messages
+import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.icon.extended.Promotions
 import io.github.suqi8.coui.kmp.icon.extended.Stopwatch
 import io.github.suqi8.coui.kmp.icon.extended.Store
@@ -65,6 +74,7 @@ internal fun VideoInfoTab(
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     related: List<FeedVideo>,
+    container: AppContainer,
     liked: Boolean,
     coined: Int,
     favorited: Boolean,
@@ -92,6 +102,7 @@ internal fun VideoInfoTab(
             onOpenUser = onOpenUser,
             onOpenVideo = onOpenVideo,
             related = related,
+            container = container,
             liked = liked,
             coined = coined,
             favorited = favorited,
@@ -114,6 +125,7 @@ private fun InfoContent(
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     related: List<FeedVideo>,
+    container: AppContainer,
     liked: Boolean,
     coined: Int,
     favorited: Boolean,
@@ -282,15 +294,24 @@ private fun InfoContent(
                 )
             }
             items(related, key = { "related-${it.bvid}" }) { video ->
-                RelatedVideoRow(video = video, onOpen = { onOpenVideo(video.bvid) })
+                RelatedVideoRow(
+                    video = video,
+                    onWatchLater = rememberWatchLaterAction(container, video),
+                    onOpen = { onOpenVideo(video.bvid) },
+                )
             }
         }
     }
 }
 
-/** 简介下面那一栏：左边缩略图，右边标题与 UP 信息。 */
+/** 简介下面那一栏：左边缩略图，右边标题、播放弹幕数与 UP 行（含三点菜单）。 */
 @Composable
-private fun RelatedVideoRow(video: FeedVideo, onOpen: () -> Unit) {
+private fun RelatedVideoRow(
+    video: FeedVideo,
+    onWatchLater: () -> Unit,
+    onOpen: () -> Unit,
+) {
+    val context = LocalContext.current
     val density = LocalDensity.current
     val coverWidth = 152.dp
     val coverWidthPx = with(density) { coverWidth.roundToPx() }
@@ -330,7 +351,7 @@ private fun RelatedVideoRow(video: FeedVideo, onOpen: () -> Unit) {
         Column(
             modifier = Modifier
                 .weight(1f)
-                .height(coverWidth * 9f / 16f),
+                .heightIn(min = coverWidth * 9f / 16f),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
@@ -341,20 +362,28 @@ private fun RelatedVideoRow(video: FeedVideo, onOpen: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Column {
-                Text(
-                    text = video.upName.ifBlank { "未知 UP" },
-                    style = COUITheme.textStyles.footnote2,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatLabel(COUIIcons.Play, video.playCountText)
+                    if (video.danmakuText.isNotBlank()) {
+                        Spacer(Modifier.width(10.dp))
+                        StatLabel(COUIIcons.Messages, video.danmakuText)
+                    }
+                }
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "${video.playCountText}播放",
-                    style = COUITheme.textStyles.footnote2,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                    maxLines = 1,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = video.upName.ifBlank { "未知 UP" },
+                        modifier = Modifier.weight(1f),
+                        style = COUITheme.textStyles.footnote2,
+                        color = COUITheme.colorScheme.onSurfaceSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    MoreMenu(
+                        onWatchLater = onWatchLater,
+                        onShare = { shareVideo(context, video) },
+                    )
+                }
             }
         }
     }

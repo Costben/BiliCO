@@ -440,6 +440,7 @@ fun VideoScreen(
                             onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
                             onOpenVideo = { next -> nav.push(Route.Video(next)) },
                             related = state.related,
+                            container = container,
                             liked = state.liked,
                             coined = state.coined,
                             favorited = state.favorited,
