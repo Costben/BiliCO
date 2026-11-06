@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import erl.bilico.data.model.DynamicArticleCard
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
@@ -50,6 +51,7 @@ internal fun DynamicCard(
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
+    onOpenContent: (DynamicArticleCard) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -97,6 +99,7 @@ internal fun DynamicCard(
                     onOpenUser = onOpenUser,
                     onOpenVideo = onOpenVideo,
                     onOpenImage = onOpenImage,
+                    onOpenContent = onOpenContent,
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
@@ -109,6 +112,14 @@ internal fun DynamicCard(
             )
 
             DynamicKind.TEXT -> Unit
+        }
+
+        item.article?.let { article ->
+            ArticleLinkBox(
+                article = article,
+                onClick = { onOpenContent(article) },
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
 
         Row(
@@ -231,6 +242,7 @@ private fun ForwardBox(
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
+    onOpenContent: (DynamicArticleCard) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -270,6 +282,49 @@ private fun ForwardBox(
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
+        item.article?.let { article ->
+            ArticleLinkBox(
+                article = article,
+                onClick = { onOpenContent(article) },
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+/** 专栏 / 图文长文的入口条：卡片里只留标题，正文在阅读页里展开。 */
+@Composable
+private fun ArticleLinkBox(
+    article: DynamicArticleCard,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(COUITheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = article.title.ifBlank { "阅读全文" },
+            modifier = Modifier.weight(1f),
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.Medium,
+            color = COUITheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = "阅读",
+            fontSize = 11.sp,
+            color = COUITheme.colorScheme.primary,
+            maxLines = 1,
+        )
     }
 }
 

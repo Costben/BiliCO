@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.article.ArticleScreen
+import erl.bilico.feature.article.DynamicArticleScreen
 import erl.bilico.feature.dynamic.DynamicScreen
 import erl.bilico.feature.favorite.FavoriteFolderScreen
 import erl.bilico.feature.favorite.FavoriteFoldersScreen
@@ -416,6 +418,19 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
 
         Route.Messages -> MessageScreen(container, nav)
         Route.BangumiFollow -> BangumiFollowScreen(container, nav)
+        is Route.Article -> ArticleScreen(
+            container = container,
+            nav = nav,
+            cvId = route.cvId,
+            initialTitle = route.title,
+        )
+
+        is Route.Opus -> DynamicArticleScreen(
+            container = container,
+            nav = nav,
+            dynamicId = route.dynamicId,
+            initialTitle = route.title,
+        )
     }
 }
 

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import erl.bilico.data.model.DynamicArticleCard
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.di.AppContainer
@@ -83,6 +84,13 @@ fun DynamicScreen(
         onOpenUser = { nav.push(Route.Space(it)) },
         onOpenVideo = { nav.push(Route.Video(it)) },
         onOpenImage = { images, index -> viewer = images to index },
+        onOpenContent = { card ->
+            if (card.articleId > 0L) {
+                nav.push(Route.Article(card.articleId, card.title))
+            } else if (card.dynamicId.isNotBlank()) {
+                nav.push(Route.Opus(card.dynamicId, card.title))
+            }
+        },
     )
 
     viewer?.let { (images, index) ->
@@ -102,6 +110,7 @@ private fun DynamicContent(
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
+    onOpenContent: (DynamicArticleCard) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -163,6 +172,7 @@ private fun DynamicContent(
                         onOpenUser = onOpenUser,
                         onOpenVideo = onOpenVideo,
                         onOpenImage = onOpenImage,
+                        onOpenContent = onOpenContent,
                     )
                 }
                 if (state.items.isNotEmpty()) {
