@@ -69,9 +69,9 @@ class HistoryViewModel(
                     _state.update {
                         it.copy(
                             items = if (firstPage) {
-                                page.items.distinctBy { item -> item.bvid }
+                                page.items.distinctBy { item -> item.key.ifBlank { item.bvid } }
                             } else {
-                                (it.items + page.items).distinctBy { item -> item.bvid }
+                                (it.items + page.items).distinctBy { item -> item.key.ifBlank { item.bvid } }
                             },
                             isInitialLoading = false,
                             isRefreshing = false,

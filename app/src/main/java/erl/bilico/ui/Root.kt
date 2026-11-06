@@ -395,6 +395,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
             nav = nav,
             bvid = route.bvid,
             startPositionMs = route.startSec * 1000,
+            initialCid = route.cid,
         )
 
         is Route.LiveRoom -> LiveRoomScreen(container, nav, route.roomId)
@@ -410,6 +411,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
             nav = nav,
             seasonId = route.seasonId,
             epId = route.epId,
+            startPositionMs = route.startSec * 1000,
         )
 
         Route.Messages -> MessageScreen(container, nav)

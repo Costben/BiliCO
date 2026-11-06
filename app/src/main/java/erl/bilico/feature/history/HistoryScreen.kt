@@ -93,13 +93,31 @@ fun HistoryScreen(
         }
         items(
             count = state.items.size,
-            key = { state.items[it].bvid },
+            key = { state.items[it].key.ifBlank { state.items[it].bvid } },
             contentType = { "history-row" },
         ) { index ->
             val item = state.items[index]
             HistoryRow(
                 item = item,
-                onClick = { nav.push(Route.Video(item.bvid, item.progressSec.toLong())) },
+                onClick = {
+                    if (item.isPgc) {
+                        nav.push(
+                            Route.Pgc(
+                                seasonId = item.seasonId,
+                                epId = item.epId,
+                                startSec = item.progressSec.toLong(),
+                            ),
+                        )
+                    } else {
+                        nav.push(
+                            Route.Video(
+                                bvid = item.bvid,
+                                startSec = item.progressSec.toLong(),
+                                cid = item.cid,
+                            ),
+                        )
+                    }
+                },
             )
         }
         if (state.items.isNotEmpty() && state.isLoadingMore) {
