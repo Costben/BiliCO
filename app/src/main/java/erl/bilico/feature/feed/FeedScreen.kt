@@ -50,11 +50,6 @@ fun FeedScreen(
             .collect(onSegment)
     }
 
-    // 标题行的折叠只属于推荐流，切走时把它展开。
-    LaunchedEffect(segment) {
-        if (segment != 0) onCollapse(0f)
-    }
-
     Box(Modifier.fillMaxSize()) {
         HorizontalPager(
             state = pagerState,
@@ -77,6 +72,8 @@ fun FeedScreen(
                     nav = nav,
                     topInset = segmentTop,
                     listState = rankingState,
+                    active = segment == 1,
+                    onCollapse = onCollapse,
                 )
 
                 else -> BangumiRankSection(
@@ -84,6 +81,8 @@ fun FeedScreen(
                     nav = nav,
                     topInset = segmentTop,
                     gridState = bangumiState,
+                    active = segment == 2,
+                    onCollapse = onCollapse,
                 )
             }
         }

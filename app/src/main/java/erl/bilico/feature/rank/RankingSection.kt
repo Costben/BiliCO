@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
@@ -35,6 +36,7 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.feed.FeedCard
 import erl.bilico.feature.feed.FeedSegmentRowHeight
 import erl.bilico.ui.LocalTopBarBounds
+import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.EmptyState
@@ -51,6 +53,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.rememberFullPagePullToRefreshState
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /** 排行榜分段：分区 chips + 整榜列表，接口一次返回全部。 */
@@ -60,6 +63,8 @@ fun RankingSection(
     nav: NavState,
     topInset: Dp,
     listState: LazyListState,
+    active: Boolean,
+    onCollapse: (Float) -> Unit,
 ) {
     val viewModel: RankingViewModel = viewModel { RankingViewModel(container.ranking) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -71,6 +76,7 @@ fun RankingSection(
         with(density) { (screenWidthDp.dp - 48.dp).roundToPx() }.coerceAtMost(900)
     }
     val coverHeightPx = coverWidthPx * 9 / 16
+    val titleHeightPx = with(density) { TitleRowHeight.toPx() }
 
     // 只有换分区才回顶：重新进这一页时保留上次看到的位置。
     var lastSection by remember { mutableStateOf(state.section) }
@@ -79,6 +85,17 @@ fun RankingSection(
             lastSection = state.section
             listState.scrollToItem(0)
         }
+    }
+
+    LaunchedEffect(listState, active) {
+        if (!active) return@LaunchedEffect
+        snapshotFlow {
+            val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+            if (first == null || first.index > 0) titleHeightPx
+            else (-first.offset).toFloat().coerceIn(0f, titleHeightPx)
+        }
+            .distinctUntilChanged()
+            .collect(onCollapse)
     }
 
     FullPagePullToRefresh(

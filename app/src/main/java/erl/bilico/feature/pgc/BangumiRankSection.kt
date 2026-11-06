@@ -18,7 +18,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -39,6 +41,7 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.feed.FeedSegmentRowHeight
 import erl.bilico.ui.NavState
+import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.EmptyState
@@ -54,6 +57,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.rememberFullPagePullToRefreshState
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /** 番剧分段：默认给出番剧区排行榜，点封面进详情。 */
@@ -63,6 +67,8 @@ fun BangumiRankSection(
     nav: NavState,
     topInset: Dp,
     gridState: LazyGridState,
+    active: Boolean,
+    onCollapse: (Float) -> Unit,
 ) {
     val viewModel: BangumiRankViewModel = viewModel { BangumiRankViewModel(container.pgc) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -74,6 +80,18 @@ fun BangumiRankSection(
         with(density) { (screenWidthDp.dp / 2 - 40.dp).roundToPx() }.coerceAtMost(600)
     }
     val coverHeightPx = coverWidthPx * 4 / 3
+    val titleHeightPx = with(density) { TitleRowHeight.toPx() }
+
+    LaunchedEffect(gridState, active) {
+        if (!active) return@LaunchedEffect
+        snapshotFlow {
+            val first = gridState.layoutInfo.visibleItemsInfo.firstOrNull()
+            if (first == null || first.index > 0) titleHeightPx
+            else (-first.offset.y).toFloat().coerceIn(0f, titleHeightPx)
+        }
+            .distinctUntilChanged()
+            .collect(onCollapse)
+    }
 
     FullPagePullToRefresh(
         isRefreshing = state.isRefreshing,
