@@ -46,9 +46,16 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val quality by container.settings.defaultQuality.collectAsStateWithLifecycle()
+    val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
+    val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
+    val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
+    val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
 
     var pickQuality by remember { mutableStateOf(false) }
+    var pickOpacity by remember { mutableStateOf(false) }
+    var pickFontScale by remember { mutableStateOf(false) }
+    var pickArea by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var cacheCleared by remember { mutableIntStateOf(0) }
@@ -81,6 +88,44 @@ fun SettingsScreen(
                         ?: "跟随接口",
                     cardListPosition = CardListPosition.Tail,
                     onClick = { pickQuality = true },
+                )
+            }
+        }
+
+        item(key = "danmaku-title") { SectionTitle("弹幕") }
+
+        item(key = "danmaku") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                insideMargin = PaddingValues(0.dp),
+            ) {
+                ArrowPreference(
+                    title = "弹幕",
+                    modifier = Modifier.testTag("settings_danmaku"),
+                    summary = if (danmakuEnabled) "开" else "关",
+                    cardListPosition = CardListPosition.Head,
+                    onClick = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                )
+                ArrowPreference(
+                    title = "不透明度",
+                    modifier = Modifier.testTag("settings_danmaku_opacity"),
+                    summary = "$danmakuOpacity%",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { pickOpacity = true },
+                )
+                ArrowPreference(
+                    title = "字号",
+                    modifier = Modifier.testTag("settings_danmaku_font"),
+                    summary = "$danmakuFontScale%",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { pickFontScale = true },
+                )
+                ArrowPreference(
+                    title = "显示区域",
+                    modifier = Modifier.testTag("settings_danmaku_area"),
+                    summary = danmakuAreaLabel(danmakuArea),
+                    cardListPosition = CardListPosition.Tail,
+                    onClick = { pickArea = true },
                 )
             }
         }
@@ -160,6 +205,45 @@ fun SettingsScreen(
         )
     }
 
+    if (pickOpacity) {
+        OptionPicker(
+            title = "弹幕不透明度",
+            options = OPACITY_OPTIONS.map { "$it%" },
+            selectedIndex = OPACITY_OPTIONS.indexOf(danmakuOpacity).coerceAtLeast(0),
+            onPick = { index ->
+                container.settings.setDanmakuOpacity(OPACITY_OPTIONS[index])
+                pickOpacity = false
+            },
+            onDismiss = { pickOpacity = false },
+        )
+    }
+
+    if (pickFontScale) {
+        OptionPicker(
+            title = "弹幕字号",
+            options = FONT_SCALE_OPTIONS.map { "$it%" },
+            selectedIndex = FONT_SCALE_OPTIONS.indexOf(danmakuFontScale).coerceAtLeast(0),
+            onPick = { index ->
+                container.settings.setDanmakuFontScale(FONT_SCALE_OPTIONS[index])
+                pickFontScale = false
+            },
+            onDismiss = { pickFontScale = false },
+        )
+    }
+
+    if (pickArea) {
+        OptionPicker(
+            title = "弹幕显示区域",
+            options = AREA_OPTIONS.map(::danmakuAreaLabel),
+            selectedIndex = danmakuArea.coerceIn(0, AREA_OPTIONS.lastIndex),
+            onPick = { index ->
+                container.settings.setDanmakuArea(index)
+                pickArea = false
+            },
+            onDismiss = { pickArea = false },
+        )
+    }
+
     if (showAbout) {
         ConfirmDialog(
             title = "关于 BiliCO",
@@ -184,8 +268,7 @@ fun SettingsScreen(
     }
 }
 
-/** 单选弹窗：和 Cobo 的设置项同一套组件，胶囊高亮由 ListPopupColumn 自己铺。 */
-@Composable
+/** 单选弹窗：和 Cobo 的设置项同一套组件，胶囊高亮由 ListPopupColumn 自己铺。 */@Composable
 private fun OptionPicker(
     title: String,
     options: List<String>,
@@ -235,4 +318,14 @@ private fun OptionPicker(
             )
         }
     }
+}
+
+private val OPACITY_OPTIONS = listOf(25, 50, 75, 100)
+private val FONT_SCALE_OPTIONS = listOf(75, 100, 125, 150)
+private val AREA_OPTIONS = listOf(0, 1, 2)
+
+private fun danmakuAreaLabel(area: Int): String = when (area) {
+    0 -> "1/4 屏"
+    1 -> "半屏"
+    else -> "全屏"
 }

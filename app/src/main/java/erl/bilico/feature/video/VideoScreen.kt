@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +54,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import erl.bilico.di.AppContainer
+import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.feature.comment.CommentTab
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
@@ -60,6 +62,7 @@ import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 视频页：16:9 播放器 + 简介/评论两个 tab。
@@ -73,9 +76,24 @@ fun VideoScreen(
     startPositionMs: Long = 0L,
 ) {
     val viewModel: VideoViewModel = viewModel(key = "video-$bvid-$startPositionMs") {
-        VideoViewModel(container.video, container.heartbeat, bvid, startPositionMs)
+        VideoViewModel(
+            repository = container.video,
+            heartbeat = container.heartbeat,
+            interactions = container.interactions,
+            session = container.session,
+            settings = container.settings,
+            bvid = bvid,
+            startPositionMs = startPositionMs,
+        )
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
+    val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
+    val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
+    val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val danmakuController = remember { DanmakuController(container.danmaku, scope) }
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
@@ -85,6 +103,8 @@ fun VideoScreen(
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
+    var coinDialogVisible by remember { mutableStateOf(false) }
+    var favoriteFolders by remember { mutableStateOf<List<FavoriteFolder>?>(null) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
 
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -114,6 +134,14 @@ fun VideoScreen(
         onDispose {
             player.removeListener(listener)
             player.release()
+        }
+    }
+
+    LaunchedEffect(state.selectedCid) {
+        val cid = state.selectedCid
+        if (cid > 0L) {
+            danmakuController.attach(cid)
+            danmakuController.onPosition(player.currentPosition)
         }
     }
 
@@ -154,6 +182,7 @@ fun VideoScreen(
             positionMs = player.currentPosition.coerceAtLeast(0L)
             durationMs = player.duration.coerceAtLeast(0L)
             viewModel.reportHeartbeat(positionMs / 1000, player.isPlaying)
+            danmakuController.onPosition(positionMs)
             delay(500)
         }
     }
@@ -240,6 +269,23 @@ fun VideoScreen(
                     },
                     onRetry = viewModel::load,
                     modifier = Modifier.fillMaxSize(),
+                    danmakuEnabled = danmakuEnabled,
+                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                    overlay = {
+                        DanmakuOverlay(
+                            player = player,
+                            items = danmakuController.items,
+                            isPlaying = isPlaying,
+                            enabled = danmakuEnabled,
+                            opacity = danmakuOpacity / 100f,
+                            fontScale = danmakuFontScale / 100f,
+                            areaFraction = when (danmakuArea) {
+                                0 -> 0.25f
+                                1 -> 0.5f
+                                else -> 1f
+                            },
+                        )
+                    },
                 )
             }
 
@@ -263,6 +309,29 @@ fun VideoScreen(
                                 viewModel.selectPart(index, player.currentPosition)
                             },
                             onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                            liked = state.liked,
+                            coined = state.coined,
+                            favorited = state.favorited,
+                            following = state.following,
+                            onLike = viewModel::toggleLike,
+                            onCoin = { coinDialogVisible = true },
+                            onFavorite = {
+                                if (!container.session.isLoggedIn()) {
+                                    viewModel.showLoginHint()
+                                } else {
+                                    scope.launch {
+                                        container.favorites.folders(container.session.mid())
+                                            .onSuccess { favoriteFolders = it }
+                                            .onFailure {
+                                                viewModel.showMessage(
+                                                    it.message ?: "收藏夹加载失败",
+                                                )
+                                            }
+                                    }
+                                }
+                            },
+                            onWatchLater = viewModel::addToWatchLater,
+                            onFollow = viewModel::toggleFollow,
                             modifier = Modifier.fillMaxSize(),
                         )
 
@@ -308,6 +377,28 @@ fun VideoScreen(
                 speedDialogVisible = false
             },
             onDismiss = { speedDialogVisible = false },
+        )
+    }
+
+    if (coinDialogVisible) {
+        CoinDialog(
+            remaining = (2 - state.coined).coerceIn(1, 2),
+            onSelect = { count ->
+                coinDialogVisible = false
+                viewModel.coin(count)
+            },
+            onDismiss = { coinDialogVisible = false },
+        )
+    }
+
+    favoriteFolders?.let { folders ->
+        FavoriteFolderDialog(
+            folders = folders,
+            onSelect = { mediaId ->
+                favoriteFolders = null
+                viewModel.favorite(mediaId)
+            },
+            onDismiss = { favoriteFolders = null },
         )
     }
 

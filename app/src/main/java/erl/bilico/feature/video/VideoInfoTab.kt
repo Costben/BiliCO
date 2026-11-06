@@ -25,10 +25,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.util.Formatters
@@ -36,7 +38,14 @@ import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.AddCircle
+import io.github.suqi8.coui.kmp.icon.extended.Favorites
+import io.github.suqi8.coui.kmp.icon.extended.Promotions
+import io.github.suqi8.coui.kmp.icon.extended.Stopwatch
+import io.github.suqi8.coui.kmp.icon.extended.Store
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 @Composable
@@ -48,6 +57,15 @@ internal fun VideoInfoTab(
     onRetry: () -> Unit,
     onSelectPart: (Int) -> Unit,
     onOpenUser: (Long) -> Unit,
+    liked: Boolean,
+    coined: Int,
+    favorited: Boolean,
+    following: Boolean,
+    onLike: () -> Unit,
+    onCoin: () -> Unit,
+    onFavorite: () -> Unit,
+    onWatchLater: () -> Unit,
+    onFollow: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when {
@@ -64,6 +82,15 @@ internal fun VideoInfoTab(
             selectedCid = selectedCid,
             onSelectPart = onSelectPart,
             onOpenUser = onOpenUser,
+            liked = liked,
+            coined = coined,
+            favorited = favorited,
+            following = following,
+            onLike = onLike,
+            onCoin = onCoin,
+            onFavorite = onFavorite,
+            onWatchLater = onWatchLater,
+            onFollow = onFollow,
             modifier = modifier,
         )
     }
@@ -75,6 +102,15 @@ private fun InfoContent(
     selectedCid: Long,
     onSelectPart: (Int) -> Unit,
     onOpenUser: (Long) -> Unit,
+    liked: Boolean,
+    coined: Int,
+    favorited: Boolean,
+    following: Boolean,
+    onLike: () -> Unit,
+    onCoin: () -> Unit,
+    onFavorite: () -> Unit,
+    onWatchLater: () -> Unit,
+    onFollow: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var descExpanded by rememberSaveable(detail.bvid) { mutableStateOf(false) }
@@ -135,6 +171,45 @@ private fun InfoContent(
             }
         }
 
+        item(key = "actions") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                VideoAction(
+                    icon = COUIIcons.Promotions,
+                    label = "点赞",
+                    active = liked,
+                    onClick = onLike,
+                )
+                VideoAction(
+                    icon = COUIIcons.Store,
+                    label = if (coined > 0) "已投币" else "投币",
+                    active = coined > 0,
+                    onClick = onCoin,
+                )
+                VideoAction(
+                    icon = COUIIcons.Favorites,
+                    label = if (favorited) "已收藏" else "收藏",
+                    active = favorited,
+                    onClick = onFavorite,
+                )
+                VideoAction(
+                    icon = COUIIcons.Stopwatch,
+                    label = "稍后再看",
+                    active = false,
+                    onClick = onWatchLater,
+                )
+                VideoAction(
+                    icon = COUIIcons.AddCircle,
+                    label = if (following) "已关注" else "关注",
+                    active = following,
+                    onClick = onFollow,
+                )
+            }
+        }
+
         val desc = detail.desc.trim()
         if (desc.isNotEmpty()) {
             item(key = "desc") {
@@ -185,6 +260,32 @@ private fun InfoContent(
         item(key = "divider") {
             HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
         }
+    }
+}
+
+@Composable
+private fun VideoAction(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tint = if (active) {
+        COUITheme.colorScheme.primary
+    } else {
+        COUITheme.colorScheme.onSurfaceSecondary
+    }
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, label, Modifier.size(22.dp), tint = tint)
+        Spacer(Modifier.height(3.dp))
+        Text(label, fontSize = 11.sp, color = tint, maxLines = 1)
     }
 }
 

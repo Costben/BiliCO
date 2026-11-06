@@ -5,7 +5,10 @@ import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.repository.HeartbeatReporter
+import erl.bilico.data.repository.InteractionRepository
 import erl.bilico.data.repository.VideoRepository
+import erl.bilico.data.session.SessionRepository
+import erl.bilico.data.settings.SettingsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,11 +29,19 @@ data class VideoUiState(
     val selectedPartIndex: Int = 0,
     val resumePositionMs: Long = 0,
     val message: String? = null,
+    val liked: Boolean = false,
+    val coined: Int = 0,
+    val favorited: Boolean = false,
+    val following: Boolean = false,
+    val interactionBusy: Boolean = false,
 )
 
 class VideoViewModel(
     private val repository: VideoRepository,
     private val heartbeat: HeartbeatReporter,
+    private val interactions: InteractionRepository,
+    private val session: SessionRepository,
+    private val settings: SettingsRepository,
     private val bvid: String,
     startPositionMs: Long = 0L,
 ) : ViewModel() {
@@ -61,7 +72,12 @@ class VideoViewModel(
                             selectedPartIndex = index,
                         )
                     }
-                    loadPlayback(qn = DEFAULT_QUALITY, cid = detail.cid, notifyDowngrade = false)
+                    loadRelation(detail.aid, detail.upMid)
+                    loadPlayback(
+                        qn = settings.defaultQuality.value,
+                        cid = detail.cid,
+                        notifyDowngrade = false,
+                    )
                 }
                 .onFailure { error ->
                     _state.update {
@@ -121,6 +137,134 @@ class VideoViewModel(
 
     fun consumeMessage() {
         _state.update { it.copy(message = null) }
+    }
+
+    fun showLoginHint() {
+        _state.update { it.copy(message = "登录后可用") }
+    }
+
+    fun showMessage(text: String) {
+        _state.update { it.copy(message = text) }
+    }
+
+    // ---------- 互动 ----------
+
+    fun toggleLike() {
+        val detail = _state.value.detail ?: return
+        if (!requireLogin()) return
+        val target = !_state.value.liked
+        interact {
+            interactions.like(detail.aid, target).onSuccess {
+                _state.update { state ->
+                    val current = state.detail ?: return@update state
+                    val delta = if (target) 1L else -1L
+                    state.copy(
+                        liked = target,
+                        detail = current.copy(like = (current.like + delta).coerceAtLeast(0L)),
+                    )
+                }
+            }
+        }
+    }
+
+    fun coin(count: Int) {
+        val detail = _state.value.detail ?: return
+        if (!requireLogin()) return
+        val awarded = _state.value.coined
+        if (awarded >= 2) {
+            _state.update { it.copy(message = "已经投过币了") }
+            return
+        }
+        val add = (count.coerceIn(1, 2) - awarded).coerceIn(1, 2)
+        interact {
+            interactions.coin(detail.aid, add).onSuccess {
+                _state.update { state ->
+                    val current = state.detail ?: return@update state
+                    state.copy(
+                        coined = (state.coined + add).coerceAtMost(2),
+                        detail = current.copy(coin = current.coin + add),
+                        message = "投币成功",
+                    )
+                }
+            }
+        }
+    }
+
+    fun favorite(mediaId: Long) {
+        val detail = _state.value.detail ?: return
+        if (!requireLogin()) return
+        interact {
+            interactions.favorite(detail.aid, mediaId).onSuccess {
+                _state.update { state ->
+                    val current = state.detail ?: return@update state
+                    state.copy(
+                        favorited = true,
+                        detail = current.copy(favorite = current.favorite + 1),
+                        message = "已收藏",
+                    )
+                }
+            }
+        }
+    }
+
+    fun addToWatchLater() {
+        val detail = _state.value.detail ?: return
+        if (!requireLogin()) return
+        interact {
+            interactions.addToWatchLater(detail.aid).onSuccess {
+                _state.update { it.copy(message = "已加入稍后再看") }
+            }
+        }
+    }
+
+    fun toggleFollow() {
+        val detail = _state.value.detail ?: return
+        if (!requireLogin()) return
+        if (detail.upMid <= 0L) return
+        val target = !_state.value.following
+        interact {
+            interactions.follow(detail.upMid, target).onSuccess {
+                _state.update {
+                    it.copy(following = target, message = if (target) "已关注" else "已取消关注")
+                }
+            }
+        }
+    }
+
+    private fun loadRelation(aid: Long, upMid: Long) {
+        if (!session.isLoggedIn()) return
+        viewModelScope.launch {
+            interactions.relation(aid).onSuccess { relation ->
+                _state.update {
+                    it.copy(
+                        liked = relation.like,
+                        coined = relation.coin,
+                        favorited = relation.favorite,
+                    )
+                }
+            }
+            if (upMid > 0L) {
+                val following = interactions.isFollowing(upMid)
+                _state.update { it.copy(following = following) }
+            }
+        }
+    }
+
+    private fun requireLogin(): Boolean {
+        if (session.isLoggedIn()) return true
+        _state.update { it.copy(message = "登录后可用") }
+        return false
+    }
+
+    private fun interact(block: suspend () -> Result<Unit>) {
+        if (_state.value.interactionBusy) return
+        _state.update { it.copy(interactionBusy = true) }
+        viewModelScope.launch {
+            block().onFailure { error ->
+                _state.update { it.copy(message = error.message ?: "操作失败") }
+            }
+            _state.update { it.copy(interactionBusy = false) }
+        }
     }
 
     private fun loadPlayback(

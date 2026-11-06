@@ -74,6 +74,9 @@ internal fun VideoPlayer(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    danmakuEnabled: Boolean = false,
+    onToggleDanmaku: () -> Unit = {},
+    overlay: @Composable () -> Unit = {},
 ) {
     Box(modifier.background(Color.Black)) {
         AndroidView(
@@ -86,6 +89,8 @@ internal fun VideoPlayer(
             update = { view -> view.player = player },
             modifier = Modifier.fillMaxSize(),
         )
+
+        overlay()
 
         Row(
             modifier = Modifier
@@ -181,8 +186,13 @@ internal fun VideoPlayer(
                 )
                 Spacer(Modifier.weight(1f))
                 ControlLabel(
+                    text = if (danmakuEnabled) "弹幕开" else "弹幕关",
+                    onClick = onToggleDanmaku,
+                )
+                ControlLabel(
                     text = speedLabel(speed),
                     onClick = onSpeedClick,
+                    modifier = Modifier.padding(start = 8.dp),
                 )
                 ControlLabel(
                     text = qualityLabel ?: "清晰度",
