@@ -388,6 +388,7 @@ fun VideoScreen(
                 VideoDetailBar(
                     selected = tab,
                     onSelect = { tab = it },
+                    pager = detailPager,
                     danmakuEnabled = danmakuEnabled,
                     onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
                     composing = danmakuComposing,
