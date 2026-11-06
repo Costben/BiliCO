@@ -40,6 +40,15 @@ internal class DanmakuController(
         load(index + 1)
     }
 
+    /** 发完弹幕后把当前段重新拉一遍，免得要等进度滚过分段边界才看得到。 */
+    fun reload(positionMs: Long) {
+        if (cid <= 0L) return
+        val index = (positionMs.coerceAtLeast(0L) / SEGMENT_MS).toInt() + 1
+        loaded.remove(index)
+        failed.remove(index)
+        load(index)
+    }
+
     private fun load(index: Int) {
         if (index < 1 || index in loaded || index in loading || index in failed) return
         loading.add(index)
@@ -52,7 +61,7 @@ internal class DanmakuController(
                 failed.add(index)
             } else {
                 loaded.add(index)
-                items = (items + segment).sortedBy { it.timeMs }
+                items = (items + segment).distinctBy { it.id }.sortedBy { it.timeMs }
             }
         }
     }

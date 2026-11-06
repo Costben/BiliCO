@@ -93,6 +93,10 @@ interface BiliApi {
     @POST("x/click-interface/web/heartbeat")
     suspend fun heartbeat(@FieldMap fields: Map<String, String>): BaseResponse
 
+    @FormUrlEncoded
+    @POST("x/v2/dm/post")
+    suspend fun sendDanmaku(@FieldMap fields: Map<String, String>): BaseResponse
+
     @POST("x/internal/gaia-gateway/ExClimbWuzhi")
     suspend fun activateBuvid(@retrofit2.http.Body payload: Map<String, String>): BaseResponse
 

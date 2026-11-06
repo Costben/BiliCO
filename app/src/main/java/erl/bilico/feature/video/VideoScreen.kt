@@ -6,20 +6,14 @@ import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -39,7 +33,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -114,6 +107,29 @@ fun VideoScreen(
     var favoriteFolders by remember { mutableStateOf<List<FavoriteFolder>?>(null) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
     var longPressSpeed by remember { mutableStateOf(false) }
+    var danmakuComposing by rememberSaveable { mutableStateOf(false) }
+    var danmakuDraft by rememberSaveable { mutableStateOf("") }
+
+    val sendDanmaku: () -> Unit = {
+        val text = danmakuDraft.trim()
+        val aid = state.detail?.aid ?: 0L
+        val cid = state.selectedCid
+        when {
+            text.isEmpty() -> Unit
+            !container.session.isLoggedIn() -> viewModel.showLoginHint()
+            else -> scope.launch {
+                val position = player.currentPosition.coerceAtLeast(0L)
+                container.danmaku.send(aid, cid, text, position)
+                    .onSuccess {
+                        danmakuDraft = ""
+                        danmakuComposing = false
+                        danmakuController.reload(position)
+                        viewModel.showMessage("弹幕已发送")
+                    }
+                    .onFailure { viewModel.showMessage(it.message ?: "发送弹幕失败") }
+            }
+        }
+    }
 
     val boostSpeed = if (speed >= 2f) 3f else 2f
     val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
@@ -354,7 +370,20 @@ fun VideoScreen(
             }
 
             if (!fullViewport) {
-                VideoTabRow(selected = tab, onSelect = { tab = it })
+                VideoDetailBar(
+                    selected = tab,
+                    onSelect = { tab = it },
+                    danmakuEnabled = danmakuEnabled,
+                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                    composing = danmakuComposing,
+                    draft = danmakuDraft,
+                    onDraftChange = { danmakuDraft = it },
+                    onComposingChange = {
+                        danmakuComposing = it
+                        if (!it) danmakuDraft = ""
+                    },
+                    onSend = sendDanmaku,
+                )
 
                 Box(
                     modifier = Modifier
@@ -493,47 +522,6 @@ fun VideoScreen(
     }
 }
 
-@Composable
-private fun VideoTabRow(selected: Int, onSelect: (Int) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(44.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TABS.forEachIndexed { index, label ->
-            val active = selected == index
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable { onSelect(index) },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = label,
-                    style = COUITheme.textStyles.body1,
-                    fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
-                    color = if (active) {
-                        COUITheme.colorScheme.onSurface
-                    } else {
-                        COUITheme.colorScheme.onSurfaceSecondary
-                    },
-                )
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .width(18.dp)
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(if (active) COUITheme.colorScheme.primary else Color.Transparent),
-                )
-            }
-        }
-    }
-}
-
 private fun VideoUiState.qualityLabel(): String? {
     val source = source ?: return null
     val active = source.qualities.firstOrNull { it.quality == activeQuality }
@@ -548,5 +536,3 @@ private fun Context.findActivity(): Activity? {
     }
     return null
 }
-
-private val TABS = listOf("简介", "评论")

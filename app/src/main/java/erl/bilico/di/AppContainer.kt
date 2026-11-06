@@ -77,7 +77,7 @@ class AppContainer(context: Context) {
 
     val relations = RelationRepository(client.api, client.buvid)
 
-    val danmaku = DanmakuRepository(client.api, client.buvid)
+    val danmaku = DanmakuRepository(client.api, client.buvid, session)
 
     val pgc = PgcRepository(client.api, client.wbi, client.buvid, session)
 
