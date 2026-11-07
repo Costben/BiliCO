@@ -70,8 +70,12 @@ import erl.bilico.feature.pgc.BangumiFollowScreen
 import erl.bilico.feature.pgc.PgcScreen
 import erl.bilico.feature.settings.SettingsScreen
 import erl.bilico.feature.space.SpaceScreen
+import erl.bilico.feature.update.UpdateDialog
+import erl.bilico.feature.update.UpdateScreen
 import erl.bilico.feature.video.VideoScreen
 import erl.bilico.feature.watchlater.WatchLaterScreen
+import erl.bilico.update.AppUpdater
+import erl.bilico.update.UpdateCheckInterval
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
@@ -80,6 +84,7 @@ import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.COUIPopupHost
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -91,6 +96,15 @@ fun BiliCoRoot(container: AppContainer) {
     val nav = remember { NavState() }
     val scope = rememberCoroutineScope()
     SideEffect { nav.attach(scope) }
+
+    // 启动时静默查一次更新：等本地配置读完，开关打开且距上次检查超过 12 小时才发请求。
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        container.settings.loaded.first { it }
+        if (!container.settings.autoCheckUpdate.value) return@LaunchedEffect
+        val elapsed = System.currentTimeMillis() - container.settings.updateCheckedAt.value
+        if (elapsed < UpdateCheckInterval) return@LaunchedEffect
+        container.updater.checkUpdate(manual = false)
+    }
 
     // 搜索框带着焦点跳页时，输入法的候选栏会浮在新页面上；每次切页都清一次焦点。
     val focusManager = LocalFocusManager.current
@@ -148,7 +162,30 @@ fun BiliCoRoot(container: AppContainer) {
                 COUIPopupHost()
             }
         }
+
+        // 更新提示挂在根节点：自动检查、设置页手动检查以及更新日志页预览均统一由此弹出。
+        UpdatePrompt(container)
     }
+}
+
+@Composable
+private fun UpdatePrompt(container: AppContainer) {
+    val context = LocalContext.current
+    val info = container.updater.pendingUpdate ?: return
+    UpdateDialog(
+        container = container,
+        info = info,
+        preview = container.updater.previewingUpdate,
+        onDismiss = { container.updater.dismissUpdate() },
+        onSkip = {
+            container.settings.setSkippedUpdateVersion(info.version)
+            container.updater.dismissUpdate()
+        },
+        onDownload = {
+            AppUpdater.openDownload(context, info)
+            container.updater.dismissUpdate()
+        },
+    )
 }
 
 /** 页面跟着手指往回收的返回动画；根页面不注册，交给系统播退回桌面的动画。 */
@@ -443,6 +480,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
         Route.Messages -> MessageScreen(container, nav)
         Route.BangumiFollow -> BangumiFollowScreen(container, nav)
         Route.WebLogin -> WebLoginScreen(container, nav)
+        Route.Update -> UpdateScreen(container, nav)
         is Route.Article -> ArticleScreen(
             container = container,
             nav = nav,

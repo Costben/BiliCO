@@ -25,8 +25,10 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.ui.NavState
 import erl.bilico.ui.components.ConfirmDialog
+import erl.bilico.ui.components.PreferenceDivider
 import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.components.SectionTitle
+import erl.bilico.ui.Route
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DropdownImpl
@@ -36,6 +38,7 @@ import io.github.suqi8.coui.kmp.layout.DialogButtonBar
 import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
+import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import kotlinx.coroutines.launch
 
 @Composable
@@ -58,6 +61,9 @@ fun SettingsScreen(
     val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
     val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
     val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
+    val autoCheckUpdate by container.settings.autoCheckUpdate.collectAsStateWithLifecycle()
+    val acceptPrerelease by container.settings.acceptPrerelease.collectAsStateWithLifecycle()
+    val inAppUpdate by container.settings.inAppUpdate.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
 
     var pickQuality by remember { mutableStateOf(false) }
@@ -215,6 +221,59 @@ fun SettingsScreen(
                             cacheCleared++
                         }
                     },
+                )
+            }
+        }
+
+        item(key = "update-title") { SectionTitle("更新") }
+
+        item(key = "update") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                insideMargin = PaddingValues(0.dp),
+            ) {
+                ArrowPreference(
+                    title = "检查更新",
+                    modifier = Modifier.testTag("settings_update"),
+                    summary = if (container.updater.checkingUpdate) {
+                        "正在检查…"
+                    } else {
+                        "当前版本 v${BuildConfig.VERSION_NAME}"
+                    },
+                    cardListPosition = CardListPosition.Head,
+                    onClick = { scope.launch { container.updater.checkUpdate(manual = true) } },
+                )
+                PreferenceDivider()
+                ArrowPreference(
+                    title = "更新日志",
+                    modifier = Modifier.testTag("settings_changelog"),
+                    summary = "检查更新页面 · 历史版本与发布说明",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { nav.push(Route.Update) },
+                )
+                PreferenceDivider()
+                SwitchPreference(
+                    checked = autoCheckUpdate,
+                    onCheckedChange = container.settings::setAutoCheckUpdate,
+                    title = "自动检查更新",
+                    modifier = Modifier.testTag("settings_auto_update"),
+                    cardListPosition = CardListPosition.Middle,
+                )
+                PreferenceDivider()
+                SwitchPreference(
+                    checked = acceptPrerelease,
+                    onCheckedChange = container.settings::setAcceptPrerelease,
+                    title = "接收预发布版本",
+                    modifier = Modifier.testTag("settings_prerelease"),
+                    cardListPosition = CardListPosition.Middle,
+                )
+                PreferenceDivider()
+                SwitchPreference(
+                    checked = inAppUpdate,
+                    onCheckedChange = container.settings::setInAppUpdate,
+                    title = "应用内更新",
+                    modifier = Modifier.testTag("settings_in_app_update"),
+                    cardListPosition = CardListPosition.Tail,
                 )
             }
         }

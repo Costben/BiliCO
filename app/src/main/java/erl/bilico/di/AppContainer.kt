@@ -24,6 +24,7 @@ import erl.bilico.data.repository.VideoRepository
 import erl.bilico.data.repository.WatchLaterRepository
 import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.settings.SettingsRepository
+import erl.bilico.update.AppUpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,6 +67,8 @@ class AppContainer(context: Context) {
     val live = LiveRepository(client.api, client.wbi, client.buvid)
 
     val settings = SettingsRepository(appContext, scope)
+
+    val updater = AppUpdateManager(appContext, settings)
 
     val search = SearchRepository(client.api, client.wbi, client.buvid)
 

@@ -138,6 +138,7 @@ sealed interface Route {
     data object Messages : Route
     data object BangumiFollow : Route
     data object WebLogin : Route
+    data object Update : Route
     data class Article(val cvId: Long, val title: String = "") : Route
     data class Opus(val dynamicId: String, val title: String = "") : Route
 }
