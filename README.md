@@ -1,4 +1,17 @@
+<div align="center">
+
+<img src="favicon.png" width="96" height="96" alt="BiliCO" />
+
 # BiliCO
+
+**哔哩哔哩第三方客户端** · Kotlin + Jetpack Compose · UI 基于 COUI（ColorOS 17 设计语言）
+
+[![Release](https://img.shields.io/github/v/release/Costben/BiliCO?label=release&color=1f6feb)](https://github.com/Costben/BiliCO/releases)
+![Android](https://img.shields.io/badge/Android-26%2B-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
+![COUI](https://img.shields.io/badge/UI-COUI%20%C2%B7%20ColorOS%2017-111111)
+
+</div>
 
 哔哩哔哩第三方客户端。用 Jetpack Compose 与 COUI 组件库从零写起，目标是轻、快、流畅。
 
@@ -49,7 +62,7 @@ keyPassword=********
 - `versionName` 用 `MAJOR.MINOR.PATCH`。MAJOR 给不兼容的大改版，MINOR 给成批新功能，PATCH 给修 bug。
 - `versionCode` 由 `versionName` 推出：`MAJOR * 10000 + MINOR * 100 + PATCH`，保证单调递增且与名称对得上。
 
-当前的 `0.1.2-pre` 对应 `versionCode 102`。
+当前的 `0.1.3-pre` 对应 `versionCode 103`。
 
 ## 目录
 
