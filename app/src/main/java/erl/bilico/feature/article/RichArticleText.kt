@@ -23,6 +23,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import erl.bilico.data.model.ArticleBlock
+import erl.bilico.data.model.ArticleDetail
 import erl.bilico.data.model.ArticleSpan
 import erl.bilico.data.util.Formatters
 
@@ -61,21 +63,22 @@ internal fun rememberArticleRichText(
                 if (emote != null) {
                     val id = "emote-${emoteIndex++}"
                     val token = span.text.ifBlank { "[表情]" }
+                    val itemEmoteSize = if (emote.large) (baseFontSize * 2.3f).sp else emoteSize
                     inline[id] = InlineTextContent(
                         Placeholder(
-                            width = emoteSize,
-                            height = emoteSize,
+                            width = itemEmoteSize,
+                            height = itemEmoteSize,
                             placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
                         ),
                         {
                             AsyncImage(
                                 model = Formatters.sizedImageUrl(
                                     emote.url,
-                                    (emoteSize.value * 2).toInt(),
-                                    (emoteSize.value * 2).toInt(),
+                                    (itemEmoteSize.value * 2.5f).toInt(),
+                                    (itemEmoteSize.value * 2.5f).toInt(),
                                 ),
                                 contentDescription = token,
-                                modifier = Modifier.size(emoteSize.value.dp),
+                                modifier = Modifier.size(itemEmoteSize.value.dp),
                             )
                         },
                     )
@@ -117,3 +120,19 @@ internal fun articleImageAspectRatio(width: Int, height: Int): Float? {
 }
 
 internal fun spansPlainText(spans: List<ArticleSpan>): String = spans.joinToString("") { it.text }
+
+internal fun ArticleDetail.summaryRepeatsBody(): Boolean {
+    val head = blocks.firstOrNull { it.plainText().isNotBlank() }?.plainText() ?: return false
+    val probe = summary.trim().take(24)
+    return probe.length >= 8 && head.contains(probe)
+}
+
+internal fun ArticleBlock.plainText(): String = when (this) {
+    is ArticleBlock.Heading -> spans.joinToString("") { it.text }
+    is ArticleBlock.Paragraph -> spans.joinToString("") { it.text }
+    is ArticleBlock.Quote -> spans.joinToString("") { it.text }
+    is ArticleBlock.ListBlock -> items.flatten().joinToString("") { it.text }
+    is ArticleBlock.Code -> content
+    is ArticleBlock.LinkCard -> card.title
+    is ArticleBlock.Image, ArticleBlock.Divider -> ""
+}

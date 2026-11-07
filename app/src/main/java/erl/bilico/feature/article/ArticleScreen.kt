@@ -63,10 +63,6 @@ import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.net.HttpURLConnection
-import java.net.URL
 
 /** 专栏详情。入口目前有两处：搜索结果与动态里的专栏卡片。 */
 @Composable
@@ -181,7 +177,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.articleContent(
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
 ) {
     if (article.banner.isNotBlank()) {
-        item(key = "banner") { BannerImage(article.banner, article.title) }
+        item(key = "banner") {
+            BannerImage(
+                url = article.banner,
+                title = article.title,
+                onClick = { onOpenImage(listOf(DynamicImage(article.banner, 0, 0)), 0) },
+            )
+        }
     }
     item(key = "header") { ArticleHeader(article, onOpenUser) }
     article.blocks.forEachIndexed { index, block ->
@@ -193,7 +195,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.articleContent(
 }
 
 @Composable
-private fun BannerImage(url: String, title: String) {
+private fun BannerImage(
+    url: String,
+    title: String,
+    onClick: () -> Unit = {},
+) {
     val density = LocalDensity.current
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val widthPx = remember(density, screenWidthDp) {
@@ -204,7 +210,8 @@ private fun BannerImage(url: String, title: String) {
         contentDescription = title,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp)),
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
         contentScale = ContentScale.FillWidth,
     )
 }
@@ -260,26 +267,6 @@ private fun ArticleHeader(article: ArticleDetail, onOpenUser: (Long) -> Unit) {
             )
         }
     }
-}
-
-/**
- * 图文动态的 summary 往往就是正文本身，专栏摘要也常是正文开头。
- * 正文里已经出现过摘要开头就不再单独列一遍。
- */
-private fun ArticleDetail.summaryRepeatsBody(): Boolean {
-    val head = blocks.firstOrNull { it.plainText().isNotBlank() }?.plainText() ?: return false
-    val probe = summary.trim().take(24)
-    return probe.length >= 8 && head.contains(probe)
-}
-
-private fun ArticleBlock.plainText(): String = when (this) {
-    is ArticleBlock.Heading -> spans.joinToString("") { it.text }
-    is ArticleBlock.Paragraph -> spans.joinToString("") { it.text }
-    is ArticleBlock.Quote -> spans.joinToString("") { it.text }
-    is ArticleBlock.ListBlock -> items.flatten().joinToString("") { it.text }
-    is ArticleBlock.Code -> content
-    is ArticleBlock.LinkCard -> card.title
-    is ArticleBlock.Image, ArticleBlock.Divider -> ""
 }
 
 @Composable
@@ -521,27 +508,21 @@ private fun ArticleFooter(article: ArticleDetail, onOpenComments: () -> Unit) {
         }
         HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
         if (article.commentOid > 0L) {
-            Row(
+            Text(
+                text = if (replyCount > 0L) {
+                    "查看全部 ${Formatters.formatStat(replyCount)} 条评论"
+                } else {
+                    "查看评论"
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = if (replyCount > 0L) {
-                        "查看全部 ${Formatters.formatStat(replyCount)} 条评论"
-                    } else {
-                        "查看评论"
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable(onClick = onOpenComments)
-                        .padding(vertical = 10.dp),
-                    fontSize = 14.sp,
-                    color = COUITheme.colorScheme.primary,
-                )
-            }
+                    .padding(vertical = 8.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onOpenComments)
+                    .padding(vertical = 10.dp),
+                fontSize = 14.sp,
+                color = COUITheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -561,58 +542,54 @@ private fun ArticleCommentSheet(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        Box(
+        Column(
             Modifier
                 .fillMaxSize()
                 .background(pageContainerColor()),
         ) {
-            Column(Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BackIconButton(onClick = onDismiss)
-                    Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                        Text(
-                            text = "评论",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = COUITheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = title,
-                            fontSize = 11.sp,
-                            color = COUITheme.colorScheme.onSurfaceSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    if (commentCount > 0L) {
-                        Text(
-                            text = Formatters.formatStat(commentCount),
-                            fontSize = 12.sp,
-                            color = COUITheme.colorScheme.onSurfaceSecondary,
-                            modifier = Modifier.padding(end = 12.dp),
-                        )
-                    }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BackIconButton(onClick = onDismiss)
+                Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                    Text(
+                        text = "评论",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = COUITheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = title,
+                        fontSize = 11.sp,
+                        color = COUITheme.colorScheme.onSurfaceSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
-                CommentTab(
-                    container = container,
-                    oid = oid,
-                    type = type,
-                    onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .navigationBarsPadding(),
-                )
+                if (commentCount > 0L) {
+                    Text(
+                        text = Formatters.formatStat(commentCount),
+                        fontSize = 12.sp,
+                        color = COUITheme.colorScheme.onSurfaceSecondary,
+                        modifier = Modifier.padding(end = 12.dp),
+                    )
+                }
             }
+            HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
+            CommentTab(
+                container = container,
+                oid = oid,
+                type = type,
+                onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+            )
         }
     }
 }
-
-/** 阅读页里图片统一按屏宽请求，避免 Coil 拉原图把一张长图解码到几千万像素。 */

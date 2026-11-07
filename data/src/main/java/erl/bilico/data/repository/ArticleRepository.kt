@@ -6,6 +6,8 @@ import erl.bilico.data.model.ArticleSpan
 import erl.bilico.data.model.ArticleViewData
 import erl.bilico.data.model.DynamicItem
 import erl.bilico.data.model.DynamicModules
+import erl.bilico.data.model.DynamicRichTextNode
+import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.flattenDynamicModules
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BiliClient
@@ -101,7 +103,12 @@ class ArticleRepository(
                 ?: if (articleId != null) 12 else 17
             val commentOid = firstNumericId(basic?.commentIdStr, basic?.ridStr, id) ?: articleId ?: 0L
             val images = opusMajor?.pics.orEmpty() + major?.draw?.items.orEmpty()
-            val banner = images.firstOrNull { it.src.isNotBlank() }?.src.orEmpty()
+            val hasBlockImage = blocks.any { it is ArticleBlock.Image }
+            val banner = if (hasBlockImage) {
+                ""
+            } else {
+                images.firstOrNull { it.displayUrl.isNotBlank() }?.displayUrl.orEmpty()
+            }
 
             ArticleDetail(
                 articleId = articleId ?: 0L,
@@ -159,29 +166,114 @@ class ArticleRepository(
         title to ArticleContentParser.parseOpusParagraphs(paragraphs)
     }.getOrNull()
 
-    /** 没有 opus 正文时退一步：用详情里的 desc 与图片拼一份能读的内容。 */
+    /** 没有 opus 正文时退一步：用详情里的 desc、表情节点、图片与转发原帖拼一份完整可读的内容。 */
     private fun blocksFromDetailItem(item: DynamicItem): List<ArticleBlock> {
         val modules = item.modules.decodeModules() ?: return emptyList()
-        val content = modules.content ?: return emptyList()
+        val content = modules.content
         val blocks = mutableListOf<ArticleBlock>()
-        val text = content.desc?.text.orEmpty().ifBlank { content.major?.opus?.summary?.text.orEmpty() }.trim()
-        if (text.isNotBlank()) {
-            text.split('\n')
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .forEach { blocks += ArticleBlock.Paragraph(listOf(ArticleSpan(it))) }
+        if (content != null) {
+            val rawNodes = content.desc?.richTextNodes.orEmpty() +
+                content.major?.opus?.summary?.richTextNodes.orEmpty()
+            val text = content.desc?.text.orEmpty()
+                .ifBlank { content.major?.opus?.summary?.text.orEmpty() }
+                .trim()
+            blocks += buildParagraphBlocks(text, rawNodes, quote = false)
+
+            val images = content.major?.opus?.pics.orEmpty() + content.major?.draw?.items.orEmpty()
+            images.forEach { pic ->
+                if (pic.displayUrl.isNotBlank()) {
+                    blocks += ArticleBlock.Image(
+                        url = Formatters.normalizeImageUrl(pic.displayUrl),
+                        width = pic.width,
+                        height = pic.height,
+                    )
+                }
+            }
         }
-        val images = content.major?.opus?.pics.orEmpty() + content.major?.draw?.items.orEmpty()
-        images.forEach { pic ->
-            if (pic.src.isNotBlank()) {
-                blocks += ArticleBlock.Image(
-                    url = Formatters.normalizeImageUrl(pic.src),
-                    width = pic.width,
-                    height = pic.height,
-                )
+        item.orig?.let { origItem ->
+            val origModules = origItem.modules.decodeModules()
+            val origAuthor = origModules?.author?.name.orEmpty()
+            val origContent = origModules?.content
+            val origNodes = origContent?.desc?.richTextNodes.orEmpty() +
+                origContent?.major?.opus?.summary?.richTextNodes.orEmpty()
+            val origBody = origContent?.desc?.text.orEmpty()
+                .ifBlank { origContent?.major?.opus?.summary?.text.orEmpty() }
+                .ifBlank { origContent?.major?.archive?.title.orEmpty() }
+                .trim()
+            val fullOrigText = if (origAuthor.isNotBlank()) "@$origAuthor：$origBody" else origBody
+            val quoteParas = buildParagraphBlocks(fullOrigText, origNodes, quote = true)
+            if (quoteParas.isNotEmpty()) {
+                val mergedSpans = buildList {
+                    quoteParas.filterIsInstance<ArticleBlock.Quote>().forEachIndexed { idx, q ->
+                        if (idx > 0) add(ArticleSpan("\n"))
+                        addAll(q.spans)
+                    }
+                }
+                blocks += ArticleBlock.Quote(mergedSpans)
+            }
+            val origImages = origContent?.major?.opus?.pics.orEmpty() +
+                origContent?.major?.draw?.items.orEmpty()
+            origImages.forEach { pic ->
+                if (pic.displayUrl.isNotBlank()) {
+                    blocks += ArticleBlock.Image(
+                        url = Formatters.normalizeImageUrl(pic.displayUrl),
+                        width = pic.width,
+                        height = pic.height,
+                    )
+                }
             }
         }
         return blocks
+    }
+
+    private fun buildParagraphBlocks(
+        text: String,
+        nodes: List<DynamicRichTextNode>,
+        quote: Boolean,
+    ): List<ArticleBlock> {
+        if (text.isBlank()) return emptyList()
+        val emotes = buildMap {
+            nodes.forEach { node ->
+                val emoji = node.emoji ?: node.rich?.emoji ?: return@forEach
+                val url = Formatters.normalizeImageUrl(emoji.displayUrl)
+                if (url.isBlank()) return@forEach
+                val img = EmoteImage(url = url, large = emoji.size >= 2)
+                listOf(node.text, node.origText, emoji.text, node.rich?.text.orEmpty(), node.rich?.origText.orEmpty())
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .forEach { put(it, img) }
+            }
+        }
+        val tokenRegex = Regex("\\[[^\\[\\]\\n]{1,64}\\]")
+        return text.split('\n')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .map { line ->
+                val spans = if (emotes.isEmpty()) {
+                    listOf(ArticleSpan(line))
+                } else {
+                    buildList {
+                        var cursor = 0
+                        tokenRegex.findAll(line).forEach { match ->
+                            if (match.range.first > cursor) {
+                                add(ArticleSpan(line.substring(cursor, match.range.first)))
+                            }
+                            val token = match.value
+                            val emote = emotes[token]
+                            if (emote != null) {
+                                add(ArticleSpan(text = token, emote = emote))
+                            } else {
+                                add(ArticleSpan(token))
+                            }
+                            cursor = match.range.last + 1
+                        }
+                        if (cursor < line.length) {
+                            add(ArticleSpan(line.substring(cursor)))
+                        }
+                    }
+                }
+                if (quote) ArticleBlock.Quote(spans) else ArticleBlock.Paragraph(spans)
+            }
     }
 
     private fun ArticleViewData.toDetail(

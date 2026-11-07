@@ -1,6 +1,7 @@
 package erl.bilico.feature.dynamic
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,8 +13,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -30,13 +32,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import erl.bilico.data.model.DynamicArticleCard
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.Avatar
+import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -51,79 +53,92 @@ internal fun DynamicCard(
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
-    onOpenContent: (DynamicArticleCard) -> Unit,
+    onOpenDynamic: (DynamicItemUi) -> Unit,
     modifier: Modifier = Modifier,
+    isDetail: Boolean = false,
 ) {
+    val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
+    val linkBlue = if (isDark) Color(0xFF5CA8FF) else Color(0xFF1367B1)
+
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (!isDetail) Modifier.clickable { onOpenDynamic(item) } else Modifier),
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
     ) {
         DynamicHeader(
             item = item,
             avatarSize = 40.dp,
-            onClick = { if (item.authorMid > 0L) onOpenUser(item.authorMid) },
+            onClick = { if (item.authorMid > 0L) onOpenUser(item.authorMid) else if (!isDetail) onOpenDynamic(item) },
         )
 
-        if (item.content.isNotBlank()) {
+        if (item.title.isNotBlank() && item.title != item.content) {
             Text(
-                text = item.content,
+                text = item.title,
                 modifier = Modifier.padding(top = 8.dp),
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
+                fontSize = 16.sp,
+                lineHeight = 23.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = COUITheme.colorScheme.onSurface,
-                maxLines = 8,
+                maxLines = if (isDetail) Int.MAX_VALUE else 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
 
-        when (item.kind) {
-            DynamicKind.VIDEO -> item.video?.let {
-                DynamicVideoCardView(
-                    video = it,
-                    onOpenVideo = onOpenVideo,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+        if (item.content.isNotBlank() || item.emotes.isNotEmpty()) {
+            RichCommentText(
+                content = item.content,
+                emotes = item.emotes,
+                modifier = Modifier.padding(top = 8.dp),
+                style = COUITheme.textStyles.body1.copy(
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                ),
+                color = COUITheme.colorScheme.onSurface,
+                prefixColor = linkBlue,
+                maxLines = if (isDetail) Int.MAX_VALUE else 8,
+            )
+        }
 
-            DynamicKind.IMAGES -> if (item.images.isNotEmpty()) {
-                DynamicImageGrid(
-                    images = item.images,
-                    onOpenImage = onOpenImage,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+        val video = item.video
+        val forward = item.forward
+        when {
+            video != null -> DynamicVideoCardView(
+                video = video,
+                onOpenVideo = onOpenVideo,
+                modifier = Modifier.padding(top = 8.dp),
+            )
 
-            DynamicKind.FORWARD -> item.forward?.let {
-                ForwardBox(
-                    item = it,
-                    onOpenUser = onOpenUser,
-                    onOpenVideo = onOpenVideo,
-                    onOpenImage = onOpenImage,
-                    onOpenContent = onOpenContent,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+            forward != null -> ForwardBox(
+                item = forward,
+                isDark = isDark,
+                linkBlue = linkBlue,
+                isDetail = isDetail,
+                onOpenUser = onOpenUser,
+                onOpenVideo = onOpenVideo,
+                onOpenImage = onOpenImage,
+                onOpenDynamic = onOpenDynamic,
+                modifier = Modifier.padding(top = 8.dp),
+            )
 
-            DynamicKind.UNSUPPORTED -> Text(
+            item.images.isNotEmpty() -> DynamicImageGrid(
+                images = item.images,
+                onOpenImage = onOpenImage,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+
+            item.kind == DynamicKind.UNSUPPORTED -> Text(
                 text = "暂不支持的动态类型",
                 modifier = Modifier.padding(top = 8.dp),
                 fontSize = 12.sp,
                 color = COUITheme.colorScheme.onSurfaceSecondary,
             )
-
-            DynamicKind.TEXT -> Unit
-        }
-
-        item.article?.let { article ->
-            ArticleLinkBox(
-                article = article,
-                onClick = { onOpenContent(article) },
-                modifier = Modifier.padding(top = 8.dp),
-            )
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -150,13 +165,19 @@ private fun DynamicHeader(
     onClick: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Avatar(
-            url = remember(item.authorFace, avatarSize) {
-                val px = avatarSize.value.toInt()
-                Formatters.sizedImageUrl(item.authorFace, px * 3, px * 3)
-            },
-            size = avatarSize,
-        )
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .clickable(onClick = onClick),
+        ) {
+            Avatar(
+                url = remember(item.authorFace, avatarSize) {
+                    val px = avatarSize.value.toInt()
+                    Formatters.sizedImageUrl(item.authorFace, px * 3, px * 3)
+                },
+                size = avatarSize,
+            )
+        }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -239,33 +260,75 @@ private fun DynamicVideoCardView(
 @Composable
 private fun ForwardBox(
     item: DynamicItemUi,
+    isDark: Boolean,
+    linkBlue: Color,
+    isDetail: Boolean,
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
-    onOpenContent: (DynamicArticleCard) -> Unit,
+    onOpenDynamic: (DynamicItemUi) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shape = RoundedCornerShape(10.dp)
+    val bgColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF2F3F5)
+    val borderColor = if (isDark) Color(0x1FFFFFFF) else Color(0x14000000)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(COUITheme.colorScheme.surfaceVariant)
-            .padding(12.dp),
+            .clip(shape)
+            .background(bgColor)
+            .border(width = 0.5.dp, color = borderColor, shape = shape)
+            .clickable { onOpenDynamic(item) }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        DynamicHeader(
-            item = item,
-            avatarSize = 24.dp,
-            onClick = { if (item.authorMid > 0L) onOpenUser(item.authorMid) },
-        )
-        if (item.content.isNotBlank()) {
+        if (item.authorName.isNotBlank()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "@${item.authorName}",
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = linkBlue,
+                    modifier = Modifier.clickable {
+                        if (item.authorMid > 0L) onOpenUser(item.authorMid) else onOpenDynamic(item)
+                    },
+                )
+                val time = item.displayTime()
+                if (time.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = time,
+                        fontSize = 11.5.sp,
+                        color = COUITheme.colorScheme.onSurfaceSecondary,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        if (item.title.isNotBlank() && item.title != item.content) {
             Text(
-                text = item.content,
+                text = item.title,
                 modifier = Modifier.padding(top = 6.dp),
-                fontSize = 13.sp,
-                lineHeight = 19.sp,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = COUITheme.colorScheme.onSurface,
-                maxLines = 5,
+                maxLines = if (isDetail) Int.MAX_VALUE else 2,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (item.content.isNotBlank() || item.emotes.isNotEmpty()) {
+            RichCommentText(
+                content = item.content,
+                emotes = item.emotes,
+                modifier = Modifier.padding(top = 6.dp),
+                style = COUITheme.textStyles.body2.copy(
+                    fontSize = 14.sp,
+                    lineHeight = 20.5.sp,
+                ),
+                color = COUITheme.colorScheme.onSurface,
+                prefixColor = linkBlue,
+                maxLines = if (isDetail) Int.MAX_VALUE else 6,
             )
         }
         val video = item.video
@@ -282,49 +345,6 @@ private fun ForwardBox(
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
-        item.article?.let { article ->
-            ArticleLinkBox(
-                article = article,
-                onClick = { onOpenContent(article) },
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-    }
-}
-
-/** 专栏 / 图文长文的入口条：卡片里只留标题，正文在阅读页里展开。 */
-@Composable
-private fun ArticleLinkBox(
-    article: DynamicArticleCard,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(COUITheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = article.title.ifBlank { "阅读全文" },
-            modifier = Modifier.weight(1f),
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            fontWeight = FontWeight.Medium,
-            color = COUITheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = "阅读",
-            fontSize = 11.sp,
-            color = COUITheme.colorScheme.primary,
-            maxLines = 1,
-        )
     }
 }
 
@@ -335,8 +355,40 @@ private fun DynamicImageGrid(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val columns = if (images.size == 2 || images.size == 4) 2 else 3
     val contentWidth = cardContentWidthDp()
+
+    if (images.size == 1) {
+        val image = images.first()
+        val ratio = if (image.width > 0 && image.height > 0) {
+            (image.width.toFloat() / image.height.toFloat()).coerceIn(0.65f, 1.85f)
+        } else {
+            4f / 3f
+        }
+        val singleWidthDp = (contentWidth * 0.68f).coerceAtLeast(160.dp)
+        val singleWidthPx = remember(density, singleWidthDp) {
+            with(density) { singleWidthDp.roundToPx() }
+        }
+        val url = remember(image.url, singleWidthPx) {
+            Formatters.widthImageUrl(image.url, singleWidthPx)
+        }
+        Box(
+            modifier = modifier
+                .width(singleWidthDp)
+                .aspectRatio(ratio)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onOpenImage(images, 0) },
+        ) {
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
+        return
+    }
+
+    val columns = if (images.size == 2 || images.size == 4) 2 else 3
     val cellPx = remember(density, columns, contentWidth) {
         with(density) { ((contentWidth - 8.dp) / columns).roundToPx() }
     }

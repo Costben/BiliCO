@@ -27,8 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import erl.bilico.data.model.DynamicArticleCard
 import erl.bilico.data.model.DynamicImage
+import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.di.AppContainer
 import erl.bilico.ui.NavState
@@ -76,10 +76,14 @@ fun DynamicScreen(
     }
 
     if (!loggedIn) {
-        Box(Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = topInset + 48.dp, bottom = 66.dp + navBottomPadding()),
+            contentAlignment = Alignment.Center,
+        ) {
             EmptyState(
                 text = "登录后查看动态",
-                modifier = Modifier.fillMaxSize(),
                 action = {
                     TextButton(text = "去登录", onClick = { nav.popToMe() })
                 },
@@ -112,11 +116,15 @@ fun DynamicScreen(
                 onOpenUser = { nav.push(Route.Space(it)) },
                 onOpenVideo = { nav.push(Route.Video(it)) },
                 onOpenImage = { images, index -> viewer = images to index },
-                onOpenContent = { card ->
-                    if (card.articleId > 0L) {
-                        nav.push(Route.Article(card.articleId, card.title))
-                    } else if (card.dynamicId.isNotBlank()) {
-                        nav.push(Route.Opus(card.dynamicId, card.title))
+                onOpenDynamic = { item ->
+                    val articleId = item.article?.articleId ?: 0L
+                    val dynId = item.dynamicId.ifBlank { item.article?.dynamicId.orEmpty() }
+                    val headerTitle = item.title.ifBlank { item.authorName }
+                    val video = item.video
+                    when {
+                        articleId > 0L -> nav.push(Route.Article(articleId, headerTitle))
+                        dynId.isNotBlank() -> nav.push(Route.Opus(dynId, headerTitle))
+                        video != null -> nav.push(Route.Video(video.bvid))
                     }
                 },
             )
@@ -142,7 +150,7 @@ private fun DynamicContent(
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
-    onOpenContent: (DynamicArticleCard) -> Unit,
+    onOpenDynamic: (DynamicItemUi) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -218,7 +226,7 @@ private fun DynamicContent(
                         onOpenUser = onOpenUser,
                         onOpenVideo = onOpenVideo,
                         onOpenImage = onOpenImage,
-                        onOpenContent = onOpenContent,
+                        onOpenDynamic = onOpenDynamic,
                     )
                 }
                 if (state.items.isNotEmpty()) {

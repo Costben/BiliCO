@@ -73,10 +73,16 @@ internal object ArticleContentParser {
         if (size < 2) return this
         return buildList {
             this@mergeLists.forEach { block ->
-                val previous = lastOrNull() as? ArticleBlock.ListBlock
-                if (block is ArticleBlock.ListBlock && previous?.ordered == block.ordered) {
+                val previous = lastOrNull()
+                if (block is ArticleBlock.ListBlock &&
+                    previous is ArticleBlock.ListBlock &&
+                    previous.ordered == block.ordered
+                ) {
                     removeAt(lastIndex)
                     add(previous.copy(items = previous.items + block.items))
+                } else if (block is ArticleBlock.Quote && previous is ArticleBlock.Quote) {
+                    removeAt(lastIndex)
+                    add(ArticleBlock.Quote(previous.spans + ArticleSpan("\n") + block.spans))
                 } else {
                     add(block)
                 }

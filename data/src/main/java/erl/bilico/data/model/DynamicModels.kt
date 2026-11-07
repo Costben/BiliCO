@@ -73,7 +73,32 @@ data class DynamicContent(
 @Serializable
 data class DynamicDesc(
     val text: String = "",
+    @SerialName("rich_text_nodes") val richTextNodes: List<DynamicRichTextNode> = emptyList(),
 )
+
+@Serializable
+data class DynamicRichTextNode(
+    val type: String = "",
+    val text: String = "",
+    @SerialName("orig_text") val origText: String = "",
+    val emoji: DynamicEmoji? = null,
+    val rich: DynamicRichTextNode? = null,
+)
+
+@Serializable
+data class DynamicEmoji(
+    @SerialName("icon_url") val iconUrl: String = "",
+    val url: String = "",
+    @SerialName("webp_url") val webpUrl: String = "",
+    @SerialName("gif_url") val gifUrl: String = "",
+    @SerialName("static_url") val staticUrl: String = "",
+    @Serializable(with = FlexibleIntSerializer::class)
+    val size: Int = 1,
+    val text: String = "",
+) {
+    val displayUrl: String
+        get() = iconUrl.ifBlank { url }.ifBlank { webpUrl }.ifBlank { gifUrl }.ifBlank { staticUrl }
+}
 
 @Serializable
 data class DynamicMajor(
@@ -124,6 +149,7 @@ data class OpusMajor(
 @Serializable
 data class OpusSummary(
     val text: String = "",
+    @SerialName("rich_text_nodes") val richTextNodes: List<DynamicRichTextNode> = emptyList(),
 )
 
 @Serializable

@@ -69,6 +69,13 @@ data class EmoteImage(
     val large: Boolean = false,
 )
 
+data class CommentSailing(
+    val imageUrl: String,
+    val numPrefix: String = "",
+    val numDesc: String = "",
+    val fanColorHex: String = "",
+)
+
 data class Comment(
     val id: Long,
     val rootId: Long,
@@ -80,9 +87,17 @@ data class Comment(
     val content: String,
     val like: Int,
     val liked: Boolean = false,
+    val disliked: Boolean = false,
     val replyCount: Int,
     val mid: Long = 0L,
+    val location: String = "",
+    val vipColorHex: String = "",
+    val sailing: CommentSailing? = null,
+    val subReplyEntryText: String = "",
+    val isTop: Boolean = false,
+    val isUp: Boolean = false,
     val emotes: Map<String, EmoteImage> = emptyMap(),
+    val pictures: List<DynamicImage> = emptyList(),
     val replies: List<Comment> = emptyList(),
 )
 
@@ -130,21 +145,26 @@ data class DynamicArticleCard(
 
 data class DynamicItemUi(
     val id: String,
+    val dynamicId: String = "",
     val kind: DynamicKind,
     val authorMid: Long = 0L,
     val authorName: String,
     val authorFace: String,
     val timeSec: Long,
     val pubTimeText: String,
+    val title: String = "",
     val content: String,
+    val emotes: Map<String, EmoteImage> = emptyMap(),
     val images: List<DynamicImage> = emptyList(),
     val video: DynamicVideoCard? = null,
-    /** 专栏或图文长文：卡片右下角带「阅读」标记，点开进阅读页。 */
+    /** 专栏或图文长文：点开进阅读页。 */
     val article: DynamicArticleCard? = null,
     val forward: DynamicItemUi? = null,
     val forwardCount: Int = 0,
     val commentCount: Int = 0,
     val likeCount: Int = 0,
+    val commentOid: Long = 0L,
+    val commentType: Int = 17,
 )
 
 data class HistoryItem(
