@@ -308,13 +308,13 @@ fun VideoScreen(
         wasLandscape = deviceLandscape
     }
 
-    // 全屏时锁横屏把屏幕转过去；主动退出或关闭自动旋转时锁竖屏，其余时候跟着传感器走。
-    LaunchedEffect(fullscreen, manualFullscreenExit, autoRotateMode) {
+    // 全屏时锁横屏把屏幕转过去；非全屏时锁定竖屏（严禁将详情页暴露给系统传感器导致详情页横屏）。
+    LaunchedEffect(fullscreen) {
         if (inPipMode) return@LaunchedEffect
-        activity?.requestedOrientation = when {
-            fullscreen -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            manualFullscreenExit || autoRotateMode == 0 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        activity?.requestedOrientation = if (fullscreen) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 

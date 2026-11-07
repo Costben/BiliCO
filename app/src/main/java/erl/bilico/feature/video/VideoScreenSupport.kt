@@ -65,10 +65,10 @@ internal fun Context.findActivity(): Activity? {
 }
 
 /**
- * 手机是不是横着拿的，带 500ms 持续确认防抖机制。
+ * 手机是不是横着拿的，带 500ms 持续确认防抖与双门限迟滞机制。
  *
  * 手机倾斜到目标角度区间后，必须持续稳定 500ms（0.5秒）才真正改变状态，
- * 中途如果晃回原姿态立即取消计时，彻底消除晃动误判。
+ * 中途如果晃动或处于过渡角（死区），取消待定切换，彻底消除晃动误判。
  */
 @Composable
 internal fun rememberDeviceLandscape(mode: Int): Boolean {
@@ -76,42 +76,52 @@ internal fun rememberDeviceLandscape(mode: Int): Boolean {
     val context = LocalContext.current
     var landscape by remember { mutableStateOf(false) }
     val handler = remember { Handler(Looper.getMainLooper()) }
+    var pendingRunnable by remember { mutableStateOf<Runnable?>(null) }
     var pendingTarget by remember { mutableStateOf<Boolean?>(null) }
 
     DisposableEffect(context, mode) {
-        val runnable = Runnable {
-            pendingTarget?.let { target ->
-                landscape = target
-                pendingTarget = null
-            }
-        }
         val listener = object : OrientationEventListener(context) {
             override fun onOrientationChanged(orientation: Int) {
                 if (orientation == ORIENTATION_UNKNOWN) return
                 val delta = when (mode) {
-                    1 -> 15 // 迟钝防误触：75..105 / 255..285
-                    2 -> 25 // 标准：65..115 / 245..295
-                    else -> 35 // 灵敏：55..125 / 235..305
+                    1 -> 30 // 迟钝防误触：60..120 / 240..300
+                    2 -> 38 // 标准：52..128 / 232..308
+                    else -> 45 // 灵敏：45..135 / 225..315
                 }
-                val raw = orientation in (90 - delta)..(90 + delta) ||
+                val inLandscape = orientation in (90 - delta)..(90 + delta) ||
                     orientation in (270 - delta)..(270 + delta)
-                if (raw == landscape) {
-                    if (pendingTarget != null) {
-                        handler.removeCallbacks(runnable)
+                val inPortrait = orientation in 0..(90 - delta - 10) ||
+                    orientation in (360 - (90 - delta - 10))..359 ||
+                    orientation in (90 + delta + 10)..(270 - delta - 10)
+
+                val target = when {
+                    inLandscape -> true
+                    inPortrait -> false
+                    else -> null // 中间盲区/死区，保持当前不变
+                }
+
+                if (target == null || target == landscape) {
+                    // 已经在目标状态或处于过渡角，取消待定切换
+                    pendingRunnable?.let { handler.removeCallbacks(it) }
+                    pendingRunnable = null
+                    pendingTarget = null
+                } else if (pendingTarget != target) {
+                    // 进入新的稳定姿态区间，启动 500ms 持续确认
+                    pendingRunnable?.let { handler.removeCallbacks(it) }
+                    pendingTarget = target
+                    val run = Runnable {
+                        landscape = target
+                        pendingRunnable = null
                         pendingTarget = null
                     }
-                } else {
-                    if (pendingTarget != raw) {
-                        handler.removeCallbacks(runnable)
-                        pendingTarget = raw
-                        handler.postDelayed(runnable, 500L)
-                    }
+                    pendingRunnable = run
+                    handler.postDelayed(run, 500L)
                 }
             }
         }
         if (listener.canDetectOrientation()) listener.enable()
         onDispose {
-            handler.removeCallbacks(runnable)
+            pendingRunnable?.let { handler.removeCallbacks(it) }
             listener.disable()
         }
     }
