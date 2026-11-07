@@ -1,6 +1,7 @@
 package erl.bilico.ui.components
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
@@ -25,11 +26,13 @@ import erl.bilico.data.util.Formatters
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-private val EmoteTokenRegex = Regex("\\[[^\\[\\]\\n]{1,32}\\]")
+private val EmoteTokenRegex = Regex("\\[[^\\[\\]\\n]{1,64}\\]")
+private val ReplyMentionPrefixRegex = Regex("^回复\\s+(@[^\\s:：]+)\\s*[:：]\\s*")
+private val InlineHighlightRegex = Regex("(@[\\w\\u4e00-\\u9fa5\\-]+|#[^#\\n]{1,40}#)")
 
 /**
  * 评论富文本：把 `[doge]` 等命中 [emotes] 的标记切为内联图片，其余保持原文本排版。
- * 小表情按 `1.3em` 内联；大表情包按 `2.6em` 内联，均按控件像素尺寸请求缩略图。
+ * 小表情按 `1.3em` 内联；大表情包在主评论按 `2.4em`、在楼中楼预览（[compactEmotes]）按 `1.45em` 内联，均按控件像素尺寸请求缩略图。
  */
 @Composable
 fun RichCommentText(
@@ -37,6 +40,8 @@ fun RichCommentText(
     emotes: Map<String, EmoteImage>,
     modifier: Modifier = Modifier,
     prefixUserName: String? = null,
+    badgeLabel: String? = null,
+    compactEmotes: Boolean = false,
     style: TextStyle = COUITheme.textStyles.body2,
     color: Color = COUITheme.colorScheme.onSurface,
     prefixColor: Color = COUITheme.colorScheme.primary,
@@ -44,52 +49,95 @@ fun RichCommentText(
 ) {
     val density = LocalDensity.current
     val smallPx = with(density) { 22.dp.roundToPx() }
-    val largePx = with(density) { 44.dp.roundToPx() }
+    val largePx = with(density) { (if (compactEmotes) 26.dp else 42.dp).roundToPx() }
 
-    val display = content.ifBlank { if (emotes.isEmpty()) "[图片评论]" else "" }
-    val (annotated, inlineMap) = remember(display, emotes, prefixUserName, prefixColor, smallPx, largePx) {
+    val rawDisplay = content.ifBlank { if (emotes.isEmpty()) "[图片评论]" else "" }
+    val (annotated, inlineMap) = remember(
+        rawDisplay,
+        emotes,
+        prefixUserName,
+        badgeLabel,
+        compactEmotes,
+        prefixColor,
+        smallPx,
+        largePx,
+    ) {
         val inline = LinkedHashMap<String, InlineTextContent>()
         val builder = AnnotatedString.Builder()
+        if (!badgeLabel.isNullOrBlank()) {
+            builder.withStyle(
+                SpanStyle(
+                    color = Color(0xFFFB7299),
+                    fontWeight = FontWeight.SemiBold,
+                ),
+            ) {
+                append("[")
+                append(badgeLabel)
+                append("] ")
+            }
+        }
         if (!prefixUserName.isNullOrBlank()) {
             builder.withStyle(SpanStyle(color = prefixColor, fontWeight = FontWeight.Medium)) {
                 append(prefixUserName)
-                append("：")
+                append(": ")
             }
         }
+        val mentionMatch = ReplyMentionPrefixRegex.find(rawDisplay)
+        val display = if (mentionMatch != null) {
+            builder.append("回复 ")
+            builder.withStyle(SpanStyle(color = prefixColor, fontWeight = FontWeight.Medium)) {
+                append(mentionMatch.groupValues[1])
+            }
+            builder.append(": ")
+            rawDisplay.substring(mentionMatch.range.last + 1)
+        } else {
+            rawDisplay
+        }
         if (emotes.isEmpty()) {
-            builder.append(display)
+            builder.appendWithMentions(display, prefixColor)
         } else {
             var cursor = 0
             var index = 0
             EmoteTokenRegex.findAll(display).forEach { match ->
                 if (match.range.first > cursor) {
-                    builder.append(display.substring(cursor, match.range.first))
+                    builder.appendWithMentions(display.substring(cursor, match.range.first), prefixColor)
                 }
                 val token = match.value
                 val emote = emotes[token]
                 if (emote != null && emote.url.isNotBlank()) {
                     val id = "emote_${index++}"
-                    val sizeEm = if (emote.large) 2.6.em else 1.32.em
+                    val widthEm = when {
+                        emote.large && compactEmotes -> 1.56.em
+                        emote.large -> 2.48.em
+                        else -> 1.38.em
+                    }
+                    val heightEm = when {
+                        emote.large && compactEmotes -> 1.44.em
+                        emote.large -> 2.32.em
+                        else -> 1.32.em
+                    }
                     val px = if (emote.large) largePx else smallPx
                     val sizedUrl = Formatters.sizedImageUrl(emote.url, px, px)
                     builder.appendInlineContent(id, token)
                     inline[id] = InlineTextContent(
-                        Placeholder(sizeEm, sizeEm, PlaceholderVerticalAlign.Center),
+                        Placeholder(widthEm, heightEm, PlaceholderVerticalAlign.Center),
                     ) {
                         AsyncImage(
                             model = sizedUrl,
                             contentDescription = "表情$token",
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 1.dp),
                         )
                     }
                 } else {
-                    builder.append(token)
+                    builder.appendWithMentions(token, prefixColor)
                 }
                 cursor = match.range.last + 1
             }
             if (cursor < display.length) {
-                builder.append(display.substring(cursor))
+                builder.appendWithMentions(display.substring(cursor), prefixColor)
             }
         }
         builder.toAnnotatedString() to inline
@@ -104,4 +152,23 @@ fun RichCommentText(
         overflow = TextOverflow.Ellipsis,
         inlineContent = inlineMap,
     )
+}
+
+private fun AnnotatedString.Builder.appendWithMentions(
+    segment: String,
+    mentionColor: Color,
+) {
+    var cursor = 0
+    InlineHighlightRegex.findAll(segment).forEach { match ->
+        if (match.range.first > cursor) {
+            append(segment.substring(cursor, match.range.first))
+        }
+        withStyle(SpanStyle(color = mentionColor)) {
+            append(match.value)
+        }
+        cursor = match.range.last + 1
+    }
+    if (cursor < segment.length) {
+        append(segment.substring(cursor))
+    }
 }

@@ -36,19 +36,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import erl.bilico.data.model.Comment
-import erl.bilico.data.util.Formatters
+import erl.bilico.data.model.DynamicImage
 import erl.bilico.di.AppContainer
-import erl.bilico.ui.components.CoverImage
+import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
-import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -71,6 +69,7 @@ internal fun ReplyDialog(
     comment: Comment,
     type: Int = 1,
     onSubReplyAdded: (Comment) -> Unit = {},
+    onOpenUser: (Long) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -84,6 +83,7 @@ internal fun ReplyDialog(
     var draft by remember(comment.id) { mutableStateOf("") }
     var isSending by remember(comment.id) { mutableStateOf(false) }
     var toast by remember(comment.id) { mutableStateOf<String?>(null) }
+    var imageViewer by remember(comment.id) { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
     val listState = rememberLazyListState()
 
     fun showToast(message: String) {
@@ -120,15 +120,48 @@ internal fun ReplyDialog(
             return
         }
         val nextLiked = !target.liked
+        val nextDisliked = if (nextLiked) false else target.disliked
         val nextLike = (target.like + if (nextLiked) 1 else -1).coerceAtLeast(0)
         items = items.map {
-            if (it.id == target.id) it.copy(liked = nextLiked, like = nextLike) else it
+            if (it.id == target.id) {
+                it.copy(liked = nextLiked, disliked = nextDisliked, like = nextLike)
+            } else {
+                it
+            }
         }
         scope.launch {
             container.comments.likeComment(oid = oid, rpid = target.id, liked = nextLiked, type = type)
                 .onFailure { err ->
                     items = items.map { if (it.id == target.id) target else it }
                     showToast(err.message ?: "点赞失败")
+                }
+        }
+    }
+
+    fun toggleDislike(target: Comment) {
+        if (!container.session.isLoggedIn()) {
+            showToast("请先登录")
+            return
+        }
+        val nextDisliked = !target.disliked
+        val nextLiked = if (nextDisliked) false else target.liked
+        val nextLike = if (nextDisliked && target.liked) {
+            (target.like - 1).coerceAtLeast(0)
+        } else {
+            target.like
+        }
+        items = items.map {
+            if (it.id == target.id) {
+                it.copy(disliked = nextDisliked, liked = nextLiked, like = nextLike)
+            } else {
+                it
+            }
+        }
+        scope.launch {
+            container.comments.hateComment(oid = oid, rpid = target.id, hated = nextDisliked, type = type)
+                .onFailure { err ->
+                    items = items.map { if (it.id == target.id) target else it }
+                    showToast(err.message ?: "操作失败")
                 }
         }
     }
@@ -261,13 +294,17 @@ internal fun ReplyDialog(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             items(items, key = { it.id }) { reply ->
-                                ReplyRow(
-                                    reply = reply,
+                                BiliCommentItem(
+                                    comment = reply,
                                     onLike = { toggleLike(reply) },
+                                    onDislike = { toggleDislike(reply) },
                                     onReply = { replyTarget = reply },
+                                    onOpenUser = onOpenUser,
+                                    onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
+                                    isSubReply = true,
                                 )
                             }
                             if (isLoading) {
@@ -355,90 +392,12 @@ internal fun ReplyDialog(
             }
         }
     }
-}
 
-@Composable
-private fun ReplyRow(
-    reply: Comment,
-    onLike: () -> Unit,
-    onReply: () -> Unit,
-) {
-    val density = LocalDensity.current
-    val avatarPx = with(density) { 30.dp.roundToPx() }
-
-    Row(modifier = Modifier.fillMaxWidth()) {
-        CoverImage(
-            url = Formatters.sizedImageUrl(reply.avatar, avatarPx, avatarPx),
-            modifier = Modifier
-                .size(30.dp)
-                .clip(CircleShape),
+    imageViewer?.let { (images, index) ->
+        DynamicImageViewer(
+            images = images,
+            initialIndex = index,
+            onDismiss = { imageViewer = null },
         )
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = reply.userName,
-                    modifier = Modifier.weight(1f, fill = false),
-                    style = COUITheme.textStyles.footnote1,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (reply.level > 0) {
-                    Text(
-                        text = "Lv${reply.level}",
-                        modifier = Modifier.padding(start = 6.dp),
-                        style = COUITheme.textStyles.footnote2,
-                        color = COUITheme.colorScheme.primary,
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = Formatters.formatTimeAgo(reply.timeSec),
-                    style = COUITheme.textStyles.footnote2,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                )
-            }
-            Spacer(Modifier.height(3.dp))
-            RichCommentText(
-                content = reply.content,
-                emotes = reply.emotes,
-                style = COUITheme.textStyles.body2,
-                color = COUITheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val likeLabel = when {
-                    reply.liked && reply.like > 0 ->
-                        "已赞 ${Formatters.formatStat(reply.like.toLong())}"
-                    reply.liked -> "已赞"
-                    reply.like > 0 -> "赞 ${Formatters.formatStat(reply.like.toLong())}"
-                    else -> "赞"
-                }
-                Text(
-                    text = likeLabel,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable(onClick = onLike)
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    style = COUITheme.textStyles.footnote2,
-                    color = if (reply.liked) {
-                        COUITheme.colorScheme.primary
-                    } else {
-                        COUITheme.colorScheme.onSurfaceSecondary
-                    },
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = "回复",
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable(onClick = onReply)
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    style = COUITheme.textStyles.footnote2,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                )
-            }
-        }
     }
 }

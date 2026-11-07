@@ -91,6 +91,10 @@ interface BiliApi {
     suspend fun likeComment(@FieldMap fields: Map<String, String>): BaseResponse
 
     @FormUrlEncoded
+    @POST("x/v2/reply/hate")
+    suspend fun hateComment(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
     @POST("x/click-interface/web/heartbeat")
     suspend fun heartbeat(@FieldMap fields: Map<String, String>): BaseResponse
 

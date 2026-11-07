@@ -163,11 +163,16 @@ class CommentViewModel(
 
     fun toggleLike(target: Comment) {
         val nextLiked = !target.liked
+        val nextDisliked = if (nextLiked) false else target.disliked
         val nextCount = (target.like + if (nextLiked) 1 else -1).coerceAtLeast(0)
         _state.update { s ->
             s.copy(
                 items = s.items.map {
-                    if (it.id == target.id) it.copy(liked = nextLiked, like = nextCount) else it
+                    if (it.id == target.id) {
+                        it.copy(liked = nextLiked, disliked = nextDisliked, like = nextCount)
+                    } else {
+                        it
+                    }
                 },
             )
         }
@@ -182,6 +187,40 @@ class CommentViewModel(
                         )
                     }
                     showMessage(err.message ?: "点赞失败")
+                }
+        }
+    }
+
+    fun toggleDislike(target: Comment) {
+        val nextDisliked = !target.disliked
+        val nextLiked = if (nextDisliked) false else target.liked
+        val nextCount = if (nextDisliked && target.liked) {
+            (target.like - 1).coerceAtLeast(0)
+        } else {
+            target.like
+        }
+        _state.update { s ->
+            s.copy(
+                items = s.items.map {
+                    if (it.id == target.id) {
+                        it.copy(disliked = nextDisliked, liked = nextLiked, like = nextCount)
+                    } else {
+                        it
+                    }
+                },
+            )
+        }
+        viewModelScope.launch {
+            repository.hateComment(oid = oid, rpid = target.id, hated = nextDisliked, type = type)
+                .onFailure { err ->
+                    _state.update { s ->
+                        s.copy(
+                            items = s.items.map {
+                                if (it.id == target.id) target else it
+                            },
+                        )
+                    }
+                    showMessage(err.message ?: "操作失败")
                 }
         }
     }

@@ -37,6 +37,7 @@ data class ReplyTop(
 
 @Serializable
 data class ReplyUpper(
+    val mid: Long = 0,
     val top: ReplyItem? = null,
 )
 
@@ -66,8 +67,10 @@ data class ReplyItem(
     val ctime: Long = 0,
     val member: ReplyMember = ReplyMember(),
     val content: ReplyContent = ReplyContent(),
+    val pictures: List<ReplyPicture>? = null,
     val replies: List<ReplyItem>? = null,
     @SerialName("up_action") val upAction: ReplyUpAction? = null,
+    @SerialName("reply_control") val replyControl: ReplyControl? = null,
 )
 
 @Serializable
@@ -76,6 +79,47 @@ data class ReplyMember(
     val uname: String = "未知用户",
     val avatar: String = "",
     @SerialName("level_info") val levelInfo: ReplyLevel = ReplyLevel(),
+    val vip: ReplyVip? = null,
+    @SerialName("user_sailing") val userSailing: ReplyUserSailing? = null,
+)
+
+@Serializable
+data class ReplyVip(
+    val vipStatus: Int = 0,
+    @SerialName("nickname_color") val nicknameColor: String = "",
+)
+
+@Serializable
+data class ReplyUserSailing(
+    val cardbg: ReplySailingCard? = null,
+    @SerialName("cardbg_with_focus") val cardbgWithFocus: ReplySailingCard? = null,
+)
+
+@Serializable
+data class ReplySailingCard(
+    val id: Long = 0,
+    val name: String = "",
+    val image: String = "",
+    val fan: ReplySailingFan? = null,
+)
+
+@Serializable
+data class ReplySailingFan(
+    @Serializable(with = FlexibleIntSerializer::class)
+    @SerialName("is_fan") val isFan: Int = 0,
+    val number: Long = 0,
+    val color: String = "",
+    val name: String = "",
+    @SerialName("num_desc") val numDesc: String = "",
+    @SerialName("num_prefix") val numPrefix: String = "NO.",
+)
+
+@Serializable
+data class ReplyControl(
+    val location: String = "",
+    @SerialName("time_desc") val timeDesc: String = "",
+    @SerialName("sub_reply_entry_text") val subReplyEntryText: String = "",
+    @SerialName("up_reply") val upReply: Boolean = false,
 )
 
 @Serializable
@@ -88,7 +132,21 @@ data class ReplyLevel(
 data class ReplyContent(
     @Serializable(with = UnescapedStringSerializer::class) val message: String = "",
     val emote: Map<String, ReplyEmote>? = null,
+    val pictures: List<ReplyPicture>? = null,
 )
+
+@Serializable
+data class ReplyPicture(
+    @SerialName("img_src") val imgSrc: String = "",
+    val src: String = "",
+    val url: String = "",
+    @Serializable(with = FlexibleIntSerializer::class)
+    @SerialName("img_width") val imgWidth: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
+    @SerialName("img_height") val imgHeight: Int = 0,
+) {
+    val displayUrl: String get() = imgSrc.ifBlank { src }.ifBlank { url }
+}
 
 @Serializable
 data class ReplyEmote(

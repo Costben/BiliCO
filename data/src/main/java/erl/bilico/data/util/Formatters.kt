@@ -59,6 +59,21 @@ object Formatters {
         return java.time.format.DateTimeFormatter.ofPattern(pattern).format(published)
     }
 
+    /** 评论区时间：24 小时内显示相对时间，超过 24 小时按截图规范显示 MM-dd / yyyy-MM-dd。 */
+    fun formatCommentDate(timestampSeconds: Long): String {
+        if (timestampSeconds <= 0L) return ""
+        val zone = ZoneId.systemDefault()
+        val published = Instant.ofEpochSecond(timestampSeconds).atZone(zone)
+        val now = Instant.now().atZone(zone)
+        val minutes = ChronoUnit.MINUTES.between(published, now).coerceAtLeast(0L)
+        if (minutes < 1) return "刚刚"
+        if (minutes < 60) return "${minutes}分钟前"
+        val hours = ChronoUnit.HOURS.between(published, now).coerceAtLeast(0L)
+        if (hours < 24) return "${hours}小时前"
+        val pattern = if (published.year == now.year) "MM-dd" else "yyyy-MM-dd"
+        return java.time.format.DateTimeFormatter.ofPattern(pattern).format(published)
+    }
+
     /** 补全协议并去掉旧缩放后缀，显示尺寸由调用方按控件尺寸重新拼。 */
     fun normalizeImageUrl(url: String?): String {
         if (url.isNullOrBlank()) return ""
@@ -74,13 +89,15 @@ object Formatters {
     fun sizedImageUrl(url: String?, widthPx: Int, heightPx: Int): String {
         val normalized = normalizeImageUrl(url)
         if (normalized.isEmpty() || widthPx <= 0 || heightPx <= 0) return normalized
+        if (normalized.contains('?') || normalized.endsWith(".gif", ignoreCase = true)) return normalized
         return "$normalized@${widthPx}w_${heightPx}h_1c.webp"
     }
 
-    /** 只限宽度不裁切，用于全屏看图。 */
+    /** 只限宽度不裁切，用于全屏看图与单图自适应。 */
     fun widthImageUrl(url: String?, widthPx: Int): String {
         val normalized = normalizeImageUrl(url)
         if (normalized.isEmpty() || widthPx <= 0) return normalized
+        if (normalized.contains('?') || normalized.endsWith(".gif", ignoreCase = true)) return normalized
         return "$normalized@${widthPx}w.webp"
     }
 

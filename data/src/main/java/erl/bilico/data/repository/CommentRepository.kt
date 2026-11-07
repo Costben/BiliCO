@@ -2,6 +2,8 @@ package erl.bilico.data.repository
 
 import erl.bilico.data.model.Comment
 import erl.bilico.data.model.CommentPage
+import erl.bilico.data.model.CommentSailing
+import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.ReplyData
 import erl.bilico.data.model.ReplyItem
@@ -174,6 +176,31 @@ class CommentRepository(
         }
     }
 
+    suspend fun hateComment(
+        oid: Long,
+        rpid: Long,
+        hated: Boolean,
+        type: Int = 1,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val csrf = session.csrf()
+            require(csrf.isNotBlank()) { "登录后可用" }
+            val response = api.hateComment(
+                mapOf(
+                    "oid" to oid.toString(),
+                    "type" to type.toString(),
+                    "rpid" to rpid.toString(),
+                    "action" to if (hated) "1" else "0",
+                    "csrf" to csrf,
+                ),
+            )
+            if (response.code != 0) {
+                error(response.message.ifBlank { "操作失败(${response.code})" })
+            }
+        }
+    }
+
     private suspend fun legacyFirstPage(oid: Long, type: Int): CommentPage {
         val response = api.legacyComments(
             mapOf(
@@ -188,12 +215,13 @@ class CommentRepository(
             error(response.message.ifBlank { "评论加载失败(${response.code})" })
         }
         val data = response.data ?: return CommentPage(emptyList(), null, true, 0)
+        val upMid = data.upper?.mid ?: 0L
         val items = buildList {
             addAll(data.hots.orEmpty())
             addAll(data.replies.orEmpty())
         }.distinctBy { it.rpid }
         return CommentPage(
-            comments = items.map { it.toComment() },
+            comments = items.map { it.toComment(upMid = upMid) },
             nextOffset = null,
             isEnd = true,
             total = maxOf(data.page.acount, data.page.count, items.size),
@@ -210,6 +238,13 @@ class CommentRepository(
     }
 
     private fun ReplyData.toPage(): CommentPage {
+        val upMid = upper?.mid ?: 0L
+        val topIds = buildSet {
+            top?.upper?.rpid?.takeIf { it > 0L }?.let(::add)
+            top?.admin?.rpid?.takeIf { it > 0L }?.let(::add)
+            upper?.top?.rpid?.takeIf { it > 0L }?.let(::add)
+            topReplies.orEmpty().forEach { if (it.rpid > 0L) add(it.rpid) }
+        }
         val items = buildList {
             top?.upper?.let(::add)
             top?.admin?.let(::add)
@@ -220,34 +255,77 @@ class CommentRepository(
         }.distinctBy { it.rpid }
 
         return CommentPage(
-            comments = items.map { it.toComment() },
+            comments = items.map { it.toComment(isTop = it.rpid in topIds, upMid = upMid) },
             nextOffset = cursor.paginationReply?.nextOffset?.takeIf { it.isNotBlank() },
             isEnd = cursor.isEnd,
             total = maxOf(cursor.allCount, items.size),
         )
     }
 
-    private fun ReplyItem.toComment(): Comment = Comment(
-        id = rpid,
-        rootId = if (root > 0) root else rpid,
-        parentId = parent,
-        userName = member.uname.ifBlank { "未知用户" },
-        avatar = member.avatar,
-        level = member.levelInfo.currentLevel,
-        timeSec = ctime,
-        content = content.message,
-        like = like,
-        liked = action == 1,
-        replyCount = maxOf(count, rcount),
-        mid = mid,
-        emotes = content.emote.orEmpty()
-            .mapValues { (_, emote) ->
-                EmoteImage(
-                    url = Formatters.normalizeImageUrl(emote.url),
-                    large = (emote.meta?.size ?: 1) >= 2,
+    private fun ReplyItem.toComment(
+        isTop: Boolean = false,
+        upMid: Long = 0L,
+    ): Comment {
+        val card = member.userSailing?.cardbg ?: member.userSailing?.cardbgWithFocus
+        val cardImg = Formatters.normalizeImageUrl(card?.image)
+        val fan = card?.fan
+        val sailing = if (cardImg.isNotBlank()) {
+            val isFan = (fan?.isFan ?: 0) == 1 && !fan?.numDesc.isNullOrBlank()
+            CommentSailing(
+                imageUrl = cardImg,
+                numPrefix = if (isFan) fan?.numPrefix.orEmpty().ifBlank { "NO." } else "",
+                numDesc = if (isFan) fan?.numDesc.orEmpty() else "",
+                fanColorHex = if (isFan) fan?.color.orEmpty() else "",
+            )
+        } else {
+            null
+        }
+        val vipColor = if ((member.vip?.vipStatus ?: 0) == 1) {
+            member.vip?.nicknameColor.orEmpty()
+        } else {
+            ""
+        }
+        val rawPics = content.pictures.orEmpty().ifEmpty { pictures.orEmpty() }
+        val commentPictures = rawPics
+            .filter { it.displayUrl.isNotBlank() }
+            .map { pic ->
+                DynamicImage(
+                    url = Formatters.normalizeImageUrl(pic.displayUrl),
+                    width = pic.imgWidth,
+                    height = pic.imgHeight,
                 )
             }
-            .filterValues { it.url.isNotBlank() },
-        replies = replies.orEmpty().map { it.toComment() },
-    )
+
+        return Comment(
+            id = rpid,
+            rootId = if (root > 0) root else rpid,
+            parentId = parent,
+            userName = member.uname.ifBlank { "未知用户" },
+            avatar = member.avatar,
+            level = member.levelInfo.currentLevel,
+            timeSec = ctime,
+            content = content.message,
+            like = like,
+            liked = action == 1,
+            disliked = action == 2,
+            replyCount = maxOf(count, rcount),
+            mid = mid,
+            location = replyControl?.location.orEmpty().trim(),
+            vipColorHex = vipColor,
+            sailing = sailing,
+            subReplyEntryText = replyControl?.subReplyEntryText.orEmpty().trim(),
+            isTop = isTop,
+            isUp = upMid > 0L && mid == upMid,
+            emotes = content.emote.orEmpty()
+                .mapValues { (_, emote) ->
+                    EmoteImage(
+                        url = Formatters.normalizeImageUrl(emote.url),
+                        large = (emote.meta?.size ?: 1) >= 2,
+                    )
+                }
+                .filterValues { it.url.isNotBlank() },
+            pictures = commentPictures,
+            replies = replies.orEmpty().map { it.toComment(upMid = upMid) },
+        )
+    }
 }
