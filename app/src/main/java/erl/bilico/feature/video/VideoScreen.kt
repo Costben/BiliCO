@@ -1,7 +1,7 @@
 package erl.bilico.feature.video
 
-import android.content.pm.ActivityInfo
 import android.os.SystemClock
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -26,11 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
@@ -86,7 +82,6 @@ fun VideoScreen(
     val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
-    var activeLandscapeSide by rememberSaveable { mutableIntStateOf(1) }
     val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
     // 用户主动退出全屏、而手机还横着时，先锁竖屏，等手机真的竖过来再交还给传感器。
     var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
@@ -97,7 +92,6 @@ fun VideoScreen(
         if (value) {
             manualFullscreenExit = false
             manualEnterAwaitingLandscape = deviceSide == 0
-            if (deviceSide != 0) activeLandscapeSide = deviceSide
             fullscreen = true
         } else {
             manualFullscreenExit = true
@@ -157,7 +151,13 @@ fun VideoScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
-    var videoAspectRatio by remember { mutableFloatStateOf(16f / 9f) }
+
+    val headers = remember(bvid) { container.client.mediaRequestHeaders(bvid) }
+    val dataSourceFactory = remember(headers) {
+        OkHttpDataSource.Factory(container.client.mediaClient())
+            .setDefaultRequestProperties(headers)
+    }
+    val playbackAttempts = remember(player) { PlaybackAttempts(player) { effectiveSpeed } }
 
     BindPlaybackSession(
         player = player,
@@ -174,8 +174,11 @@ fun VideoScreen(
         container = container,
         onPlayingChanged = { isPlaying = it },
         onBufferingChanged = { isBuffering = it },
-        onError = { playerError = it },
-        onVideoAspectChanged = { videoAspectRatio = it },
+        onError = { error ->
+            Log.w("BiliPlayer", describePlaybackError(error), error)
+            // 线路坏了先换一条，候选表走完才把错误抛给界面。
+            if (!playbackAttempts.next()) playerError = describePlaybackError(error)
+        },
     )
 
     LaunchedEffect(state.selectedCid, state.detail?.aid) {
@@ -204,30 +207,9 @@ fun VideoScreen(
         if (state.resumePositionMs <= 0L && source.lastPlayTimeMs >= 3_000L) {
             viewModel.applyServerResumeHint(source.lastPlayCid, source.lastPlayTimeMs)
         }
-        val headers = container.client.mediaRequestHeaders(bvid)
-        val dataSourceFactory = OkHttpDataSource.Factory(container.client.mediaClient())
-            .setDefaultRequestProperties(headers)
-        val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(source.videoUrl))
-        val audioUrl = source.audioUrl
-        val mediaSource = if (audioUrl.isNullOrBlank()) {
-            videoSource
-        } else {
-            MergingMediaSource(
-                videoSource,
-                ProgressiveMediaSource.Factory(dataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri(audioUrl)),
-            )
-        }
-        player.setMediaSource(mediaSource)
-        player.setPlaybackSpeed(effectiveSpeed)
         val resumeAt = viewModel.state.value.resumePositionMs
-        player.prepare()
-        if (resumeAt > 0L) {
-            player.seekTo(resumeAt)
-            viewModel.consumeResumePosition()
-        }
-        player.playWhenReady = true
+        playbackAttempts.start(source, dataSourceFactory, resumeAt)
+        if (resumeAt > 0L) viewModel.consumeResumePosition()
     }
 
     LaunchedEffect(effectiveSpeed) {
@@ -253,7 +235,6 @@ fun VideoScreen(
         val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
 
         if (deviceSide != 0) {
-            activeLandscapeSide = deviceSide
             if (manualEnterAwaitingLandscape) {
                 manualEnterAwaitingLandscape = false
             }
@@ -274,15 +255,7 @@ fun VideoScreen(
         wasLandscape = deviceSide != 0
     }
 
-    // 宿主窗口恒定锁定竖屏：全屏旋转由应用内 VideoFullscreenStage 自绘纯几何 90° 缩放旋转完成，
-    // 彻底杜绝系统 WindowManager 截屏淡入淡出转屏动画。
-    DisposableEffect(activity) {
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-    }
-
+    // 宿主窗口的方向由 VideoFullscreenStage 统一接管：竖屏锁死，全屏时真正转成横屏。
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
 
     val message = state.message
@@ -295,9 +268,8 @@ fun VideoScreen(
 
     VideoFullscreenStage(
         fullscreen = fullscreen,
-        landscapeSide = activeLandscapeSide,
+        landscapeSide = deviceSide,
         inPipMode = inPipMode,
-        videoAspectRatio = videoAspectRatio,
         activity = activity,
         darkMode = darkMode,
         playerContent = {

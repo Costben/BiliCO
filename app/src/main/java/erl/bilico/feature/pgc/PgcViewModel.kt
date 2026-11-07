@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.BangumiDetail
 import erl.bilico.data.model.BangumiEpisode
 import erl.bilico.data.model.PlaybackSource
+import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.repository.HeartbeatReporter
 import erl.bilico.data.repository.PgcRepository
 import erl.bilico.data.session.SessionRepository
@@ -260,6 +261,7 @@ class PgcViewModel(
                 aid = episode.aid,
                 seasonId = detail.seasonId,
                 bvid = episode.bvid,
+                cdn = CdnOption.fromId(settings.cdnOption.value),
             )
                 .onSuccess { source ->
                     val downgraded = qn > source.quality && qn >= 80 && notifyDowngrade

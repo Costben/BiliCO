@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.SingletonImageLoader
 import erl.bilico.BuildConfig
+import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.settings.DefaultQuality
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.video.DanmakuSettingsDialog
@@ -50,6 +51,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val quality by container.settings.defaultQuality.collectAsStateWithLifecycle()
+    val cdnOption by container.settings.cdnOption.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
@@ -67,6 +69,7 @@ fun SettingsScreen(
     val account by container.session.account.collectAsStateWithLifecycle()
 
     var pickQuality by remember { mutableStateOf(false) }
+    var pickCdn by remember { mutableStateOf(false) }
     var pickAutoRotate by remember { mutableStateOf(false) }
     var pickOpacity by remember { mutableStateOf(false) }
     var pickFontScale by remember { mutableStateOf(false) }
@@ -104,6 +107,13 @@ fun SettingsScreen(
                         ?: "跟随接口",
                     cardListPosition = CardListPosition.Middle,
                     onClick = { pickQuality = true },
+                )
+                ArrowPreference(
+                    title = "播放线路",
+                    modifier = Modifier.testTag("settings_cdn"),
+                    summary = CdnOption.fromId(cdnOption).label,
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { pickCdn = true },
                 )
                 ArrowPreference(
                     title = "后台播放",
@@ -326,6 +336,20 @@ fun SettingsScreen(
                 pickQuality = false
             },
             onDismiss = { pickQuality = false },
+        )
+    }
+
+    if (pickCdn) {
+        OptionPicker(
+            title = "播放线路",
+            options = CdnOption.entries.map { it.label },
+            selectedIndex = CdnOption.entries.indexOfFirst { it.id == cdnOption }
+                .coerceAtLeast(0),
+            onPick = { index ->
+                container.settings.setCdnOption(CdnOption.entries[index].id)
+                pickCdn = false
+            },
+            onDismiss = { pickCdn = false },
         )
     }
 

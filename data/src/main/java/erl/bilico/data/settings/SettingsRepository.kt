@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import erl.bilico.data.biliDataStore
+import erl.bilico.data.repository.CdnOption
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,9 @@ class SettingsRepository(
 
     private val _defaultQuality = MutableStateFlow(DefaultQuality.P1080.id)
     val defaultQuality: StateFlow<Int> = _defaultQuality.asStateFlow()
+
+    private val _cdnOption = MutableStateFlow(CdnOption.Auto.id)
+    val cdnOption: StateFlow<String> = _cdnOption.asStateFlow()
 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
@@ -87,6 +91,7 @@ class SettingsRepository(
             val prefs = context.biliDataStore.data.first()
             _darkMode.value = prefs[KEY_DARK_MODE] ?: 0
             _defaultQuality.value = prefs[KEY_QUALITY] ?: DefaultQuality.P1080.id
+            _cdnOption.value = CdnOption.fromId(prefs[KEY_CDN]).id
             _searchHistory.value = prefs[KEY_SEARCH_HISTORY]
                 ?.split('\u0001')
                 ?.filter { it.isNotBlank() }
@@ -303,6 +308,12 @@ class SettingsRepository(
         scope.launch { context.biliDataStore.edit { it[KEY_QUALITY] = quality } }
     }
 
+    fun setCdnOption(id: String) {
+        val value = CdnOption.fromId(id).id
+        _cdnOption.value = value
+        scope.launch { context.biliDataStore.edit { it[KEY_CDN] = value } }
+    }
+
     fun addSearchHistory(keyword: String) {
         val trimmed = keyword.trim()
         if (trimmed.isEmpty()) return
@@ -330,6 +341,7 @@ class SettingsRepository(
         const val HISTORY_LIMIT = 12
         val KEY_DARK_MODE = intPreferencesKey("dark_mode")
         val KEY_QUALITY = intPreferencesKey("default_quality")
+        val KEY_CDN = stringPreferencesKey("playback_cdn")
         val KEY_SEARCH_HISTORY = stringPreferencesKey("search_history")
         val KEY_DANMAKU_ENABLED = booleanPreferencesKey("danmaku_enabled")
         val KEY_DANMAKU_OPACITY = intPreferencesKey("danmaku_opacity")

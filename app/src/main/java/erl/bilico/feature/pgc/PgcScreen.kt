@@ -1,6 +1,7 @@
 package erl.bilico.feature.pgc
 
 import android.os.SystemClock
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,19 +38,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
 import erl.bilico.feature.video.DanmakuController
 import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.feature.video.MANUAL_FULLSCREEN_COOLDOWN_MS
+import erl.bilico.feature.video.PlaybackAttempts
 import erl.bilico.feature.video.QualityDialog
 import erl.bilico.feature.video.SpeedDialog
 import erl.bilico.feature.video.SubtitleController
@@ -58,6 +56,7 @@ import erl.bilico.feature.video.SubtitleOverlay
 import erl.bilico.feature.video.VideoFullscreenStage
 import erl.bilico.feature.video.VideoMessageToast
 import erl.bilico.feature.video.VideoPlayer
+import erl.bilico.feature.video.describePlaybackError
 import erl.bilico.feature.video.findActivity
 import erl.bilico.feature.video.rememberDeviceOrientationSide
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
@@ -112,7 +111,6 @@ fun PgcScreen(
     val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
-    var activeLandscapeSide by rememberSaveable { mutableIntStateOf(1) }
     val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
     var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
     var lastManualActionTime by remember { mutableLongStateOf(0L) }
@@ -122,7 +120,6 @@ fun PgcScreen(
         if (value) {
             manualFullscreenExit = false
             manualEnterAwaitingLandscape = deviceSide == 0
-            if (deviceSide != 0) activeLandscapeSide = deviceSide
             fullscreen = true
         } else {
             manualFullscreenExit = true
@@ -146,7 +143,8 @@ fun PgcScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
-    var videoAspectRatio by remember { mutableFloatStateOf(16f / 9f) }
+
+    val playbackAttempts = remember(player) { PlaybackAttempts(player) { effectiveSpeed } }
 
     val episode = viewModel.currentEpisode
     BindPlaybackSession(
@@ -164,12 +162,6 @@ fun PgcScreen(
                 isPlaying = playing
             }
 
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (videoSize.width > 0 && videoSize.height > 0) {
-                    videoAspectRatio = (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
-                }
-            }
-
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
@@ -181,7 +173,8 @@ fun PgcScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                playerError = error.message ?: "播放失败"
+                Log.w("BiliPlayer", describePlaybackError(error), error)
+                if (!playbackAttempts.next()) playerError = describePlaybackError(error)
             }
         }
         player.addListener(listener)
@@ -214,27 +207,9 @@ fun PgcScreen(
         }
         val dataSourceFactory = OkHttpDataSource.Factory(container.client.mediaClient())
             .setDefaultRequestProperties(headers)
-        val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(source.videoUrl))
-        val audioUrl = source.audioUrl
-        val mediaSource = if (audioUrl.isNullOrBlank()) {
-            videoSource
-        } else {
-            MergingMediaSource(
-                videoSource,
-                ProgressiveMediaSource.Factory(dataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri(audioUrl)),
-            )
-        }
-        player.setMediaSource(mediaSource)
-        player.setPlaybackSpeed(effectiveSpeed)
         val resumeAt = viewModel.state.value.resumePositionMs
-        player.prepare()
-        if (resumeAt > 0L) {
-            player.seekTo(resumeAt)
-            viewModel.consumeResumePosition()
-        }
-        player.playWhenReady = true
+        playbackAttempts.start(source, dataSourceFactory, resumeAt)
+        if (resumeAt > 0L) viewModel.consumeResumePosition()
     }
 
     LaunchedEffect(effectiveSpeed) {
@@ -257,7 +232,6 @@ fun PgcScreen(
         val now = SystemClock.uptimeMillis()
         val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
         if (deviceSide != 0) {
-            activeLandscapeSide = deviceSide
             if (manualEnterAwaitingLandscape) manualEnterAwaitingLandscape = false
             if (manualFullscreenExit && !inCooldown) manualFullscreenExit = false
             if (!manualFullscreenExit && !inCooldown && !fullscreen) fullscreen = true
@@ -268,13 +242,6 @@ fun PgcScreen(
             }
         }
         wasLandscape = deviceSide != 0
-    }
-
-    DisposableEffect(activity) {
-        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        onDispose {
-            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
     }
 
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
@@ -337,9 +304,8 @@ fun PgcScreen(
 
     VideoFullscreenStage(
         fullscreen = fullscreen,
-        landscapeSide = activeLandscapeSide,
+        landscapeSide = deviceSide,
         inPipMode = inPipMode,
-        videoAspectRatio = videoAspectRatio,
         activity = activity,
         darkMode = darkMode,
         playerContent = {

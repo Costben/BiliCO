@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.VideoDetail
+import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.repository.HeartbeatReporter
 import erl.bilico.data.repository.InteractionRepository
 import erl.bilico.data.repository.VideoRepository
@@ -364,7 +365,7 @@ class VideoViewModel(
             )
         }
         playbackJob = viewModelScope.launch {
-            repository.playback(bvid, cid, qn)
+            repository.playback(bvid, cid, qn, CdnOption.fromId(settings.cdnOption.value))
                 .onSuccess { source ->
                     val downgraded = qn > source.quality && qn >= 80 && notifyDowngrade
                     _state.update {

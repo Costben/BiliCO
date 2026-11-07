@@ -7,7 +7,6 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.view.OrientationEventListener
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -19,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,26 +29,30 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import erl.bilico.data.model.FavoriteFolder
+import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.di.AppContainer
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 /**
- * ColorOS 17 专属视频转屏动画参数 (逆向自 com.oplus.animation.OplusVideoRotateAnimation)
- * 时长：450ms
- * 曲线：COUIMoveEaseInterpolator (0.3f, 0.0f, 0.1f, 1.0f)
+ * 手动/手势切换全屏后的重力感应冷却保护时长 (毫秒)
  */
-internal const val COLOROS_VIDEO_ROTATE_DURATION_MS = 450
-
-internal val ColorOSMoveEase = CubicBezierEasing(0.3f, 0.0f, 0.1f, 1.0f)
-
-/** 手动/手势切换全屏后的重力感应冷却保护时长 (毫秒) */
 internal const val MANUAL_FULLSCREEN_COOLDOWN_MS = 3000L
 
 internal fun VideoUiState.qualityLabel(): String? {
@@ -249,6 +253,115 @@ internal fun VideoScreenDialogs(
     }
 }
 
+/** 一次播放尝试：视频轨 + 可选的音频轨。换线时整对一起换，避免音画来自不同线路。 */
+internal data class PlaybackAttempt(
+    val videoUrl: String,
+    val audioUrl: String?,
+)
+
+/**
+ * 把 [PlaybackSource] 里排好序的候选地址摊成尝试表。
+ * 视频候选多于音频时复用最后一条音频，反之亦然。
+ */
+internal fun PlaybackSource.streamAttempts(): List<PlaybackAttempt> {
+    val videos = (listOf(videoUrl) + videoBackupUrls).filter { it.isNotBlank() }
+    val audios = (listOfNotNull(audioUrl) + audioBackupUrls).filter { it.isNotBlank() }
+    if (videos.isEmpty()) return emptyList()
+    val count = maxOf(videos.size, audios.size)
+    return List(count) { index ->
+        PlaybackAttempt(
+            videoUrl = videos.getOrElse(index) { videos.last() },
+            audioUrl = audios.getOrNull(index) ?: audios.lastOrNull(),
+        )
+    }
+}
+
+internal fun mediaSourceFor(
+    factory: OkHttpDataSource.Factory,
+    attempt: PlaybackAttempt,
+): MediaSource {
+    val video = ProgressiveMediaSource.Factory(factory)
+        .createMediaSource(MediaItem.fromUri(attempt.videoUrl))
+    val audioUrl = attempt.audioUrl
+    if (audioUrl.isNullOrBlank()) return video
+    return MergingMediaSource(
+        video,
+        ProgressiveMediaSource.Factory(factory).createMediaSource(MediaItem.fromUri(audioUrl)),
+    )
+}
+
+internal fun ExoPlayer.loadAttempt(
+    factory: OkHttpDataSource.Factory,
+    attempt: PlaybackAttempt,
+    speed: Float,
+    seekMs: Long,
+) {
+    setMediaSource(mediaSourceFor(factory, attempt))
+    setPlaybackSpeed(speed)
+    prepare()
+    if (seekMs > 0L) seekTo(seekMs)
+    playWhenReady = true
+}
+
+/**
+ * 播放失败时按候选表就地换线。PCDN 节点会拒绝连接或迟迟不响应，
+ * 换一条常规 CDN 通常立刻恢复，不用重新请求 playurl。
+ */
+internal class PlaybackAttempts(
+    private val player: ExoPlayer,
+    private val speed: () -> Float,
+) {
+    private var attempts: List<PlaybackAttempt> = emptyList()
+    private var factory: OkHttpDataSource.Factory? = null
+    private var index = 0
+
+    val count: Int get() = attempts.size
+
+    fun start(source: PlaybackSource, factory: OkHttpDataSource.Factory, seekMs: Long) {
+        this.factory = factory
+        attempts = source.streamAttempts()
+        index = 0
+        val first = attempts.firstOrNull() ?: return
+        player.loadAttempt(factory, first, speed(), seekMs)
+    }
+
+    /** 还有下一条可用线路就切过去，返回是否切换成功。 */
+    fun next(): Boolean {
+        val factory = factory ?: return false
+        val next = index + 1
+        if (next >= attempts.size) return false
+        index = next
+        player.loadAttempt(factory, attempts[next], speed(), player.currentPosition)
+        return true
+    }
+}
+
+/** 把 ExoPlayer 的「Source error」翻成能定位问题的原因。 */
+internal fun describePlaybackError(error: PlaybackException): String {
+    var cause: Throwable? = error
+    while (cause != null) {
+        if (cause is HttpDataSource.InvalidResponseCodeException) {
+            val host = cause.dataSpec.uri.host.orEmpty()
+            return "播放失败：服务器返回 ${cause.responseCode}" + hostSuffix(host)
+        }
+        if (cause is HttpDataSource.HttpDataSourceException) {
+            val host = cause.dataSpec.uri.host.orEmpty()
+            val reason = when (val inner = cause.cause) {
+                is ConnectException -> "连接被拒绝"
+                is UnknownHostException -> "域名解析失败"
+                is SocketTimeoutException -> "连接超时"
+                null -> "读取失败"
+                else -> inner.javaClass.simpleName
+            }
+            return "播放失败：$reason" + hostSuffix(host)
+        }
+        cause = cause.cause
+    }
+    return "播放失败：${error.errorCodeName}"
+}
+
+private fun hostSuffix(host: String): String = if (host.isBlank()) "" else "（$host）"
+
 @Composable
 internal fun BindPlayerEvents(
     player: Player,
@@ -256,31 +369,37 @@ internal fun BindPlayerEvents(
     container: AppContainer,
     onPlayingChanged: (Boolean) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
-    onError: (String?) -> Unit,
+    onError: (PlaybackException) -> Unit,
     onVideoAspectChanged: (Float) -> Unit = {},
 ) {
+    // 监听器只注册一次，回调要用最新值，否则换线时会读到首次组合时的空候选表。
+    val currentOnPlaying by rememberUpdatedState(onPlayingChanged)
+    val currentOnBuffering by rememberUpdatedState(onBufferingChanged)
+    val currentOnError by rememberUpdatedState(onError)
+    val currentOnAspect by rememberUpdatedState(onVideoAspectChanged)
+
     DisposableEffect(player) {
         val initialSize = player.videoSize
         if (initialSize.width > 0 && initialSize.height > 0) {
-            onVideoAspectChanged(
+            currentOnAspect(
                 (initialSize.width * initialSize.pixelWidthHeightRatio) / initialSize.height,
             )
         }
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
-                onPlayingChanged(playing)
+                currentOnPlaying(playing)
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
-                    onVideoAspectChanged(
+                    currentOnAspect(
                         (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height,
                     )
                 }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                onBufferingChanged(playbackState == Player.STATE_BUFFERING)
+                currentOnBuffering(playbackState == Player.STATE_BUFFERING)
                 if (playbackState == Player.STATE_READY) {
                     viewModel.markPlaybackStarted()
                 } else if (playbackState == Player.STATE_ENDED) {
@@ -290,7 +409,7 @@ internal fun BindPlayerEvents(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                onError(error.message ?: "播放失败")
+                currentOnError(error)
             }
         }
         player.addListener(listener)

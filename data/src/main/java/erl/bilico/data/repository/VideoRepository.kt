@@ -60,7 +60,12 @@ class VideoRepository(
      * 取 DASH 流：先走 WBI 的 playurl，失败再退回不带签名的 MP4 接口。
      * 返回的实际清晰度以视频轨 id 为准，请求清晰度不可用时由 UI 提示。
      */
-    suspend fun playback(bvid: String, cid: Long, qn: Int): Result<PlaybackSource> =
+    suspend fun playback(
+        bvid: String,
+        cid: Long,
+        qn: Int,
+        cdn: CdnOption = CdnOption.Auto,
+    ): Result<PlaybackSource> =
         withContext(Dispatchers.IO) {
             runCatching {
                 buvid.ensure()
@@ -80,7 +85,7 @@ class VideoRepository(
                 val signed = WbiUtils.sign(params, keys.first, keys.second)
                 val response = runCatching { api.playUrl(signed) }.getOrNull()
                 if (response != null && response.code == 0 && response.data != null) {
-                    return@runCatching response.data.toPlaybackSource(qn)
+                    return@runCatching response.data.toPlaybackSource(qn, cdn)
                 }
 
                 val legacyParams = mapOf(
@@ -98,7 +103,7 @@ class VideoRepository(
                 if (legacy.code != 0 || data == null) {
                     error(legacy.message.ifBlank { "播放地址获取失败(${legacy.code})" })
                 }
-                data.toPlaybackSource(qn)
+                data.toPlaybackSource(qn, cdn)
             }
         }
 

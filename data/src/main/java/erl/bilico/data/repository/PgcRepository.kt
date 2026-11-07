@@ -120,6 +120,7 @@ class PgcRepository(
         aid: Long,
         seasonId: Long,
         bvid: String,
+        cdn: CdnOption = CdnOption.Auto,
     ): Result<PlaybackSource> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -148,10 +149,10 @@ class PgcRepository(
             val body = runCatching { api.pgcPlayUrl(signed).string() }.getOrNull()
             if (body != null) {
                 val data = runCatching { parsePlayUrl(body) }.getOrNull()
-                if (data != null) return@runCatching data.toPlaybackSource(qn)
+                if (data != null) return@runCatching data.toPlaybackSource(qn, cdn)
             }
             val legacy = api.pgcPlayUrlLegacy(signed).string()
-            parsePlayUrl(legacy).toPlaybackSource(qn)
+            parsePlayUrl(legacy).toPlaybackSource(qn, cdn)
         }
     }
 

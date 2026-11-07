@@ -8,8 +8,14 @@ import erl.bilico.data.model.QualityOption
 /**
  * playurl 的 dash / durl 转成播放器直接能用的两种流。
  * 视频与番剧两个取流入口共用，清晰度菜单只保留真的拿到视频轨的那几档。
+ *
+ * [cdn] 决定首选线路；其余候选地址按同一套规则排好序塞进 backup 列表，
+ * 播放失败时播放器可以就地换线，不用重新请求 playurl。
  */
-internal fun PlayUrlData.toPlaybackSource(targetQn: Int): PlaybackSource {
+internal fun PlayUrlData.toPlaybackSource(
+    targetQn: Int,
+    cdn: CdnOption = CdnOption.Auto,
+): PlaybackSource {
     val dashVideoIds = dash?.video.orEmpty()
         .filter { it.baseUrl.isNotBlank() }
         .map { it.id }
@@ -38,11 +44,18 @@ internal fun PlayUrlData.toPlaybackSource(targetQn: Int): PlaybackSource {
     if (dashData != null) {
         val video = pickDashVideo(dashData.video, targetQn) ?: error("没有可播放的视频流")
         val audio = pickDashAudio(dashData.audio.orEmpty())
+        val videoUrls = PlaybackCdn.candidates(
+            listOf(video.baseUrl) + video.backupUrl.orEmpty(),
+            cdn,
+        )
+        val audioUrls = audio?.let {
+            PlaybackCdn.candidates(listOf(it.baseUrl) + it.backupUrl.orEmpty(), cdn)
+        }.orEmpty()
         return PlaybackSource(
-            videoUrl = video.baseUrl,
-            videoBackupUrls = video.backupUrl.orEmpty().filter { it.isNotBlank() },
-            audioUrl = audio?.baseUrl,
-            audioBackupUrls = audio?.backupUrl.orEmpty().filter { it.isNotBlank() },
+            videoUrl = videoUrls.firstOrNull() ?: video.baseUrl,
+            videoBackupUrls = videoUrls.drop(1),
+            audioUrl = audioUrls.firstOrNull(),
+            audioBackupUrls = audioUrls.drop(1),
             quality = video.id,
             qualities = qualities,
             durationMs = timelength,
@@ -52,9 +65,13 @@ internal fun PlayUrlData.toPlaybackSource(targetQn: Int): PlaybackSource {
     }
 
     val segment = durl?.firstOrNull() ?: error("播放地址为空")
+    val segmentUrls = PlaybackCdn.candidates(
+        listOf(segment.url) + segment.backupUrl.orEmpty(),
+        cdn,
+    )
     return PlaybackSource(
-        videoUrl = segment.url,
-        videoBackupUrls = segment.backupUrl.orEmpty().filter { it.isNotBlank() },
+        videoUrl = segmentUrls.firstOrNull() ?: segment.url,
+        videoBackupUrls = segmentUrls.drop(1),
         audioUrl = null,
         audioBackupUrls = emptyList(),
         quality = quality,
