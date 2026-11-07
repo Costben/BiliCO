@@ -22,6 +22,7 @@ import coil3.SingletonImageLoader
 import erl.bilico.BuildConfig
 import erl.bilico.data.settings.DefaultQuality
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.ui.NavState
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.SecondaryPage
@@ -53,6 +54,7 @@ fun SettingsScreen(
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
+    val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
     val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
     val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
     val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
@@ -63,6 +65,7 @@ fun SettingsScreen(
     var pickOpacity by remember { mutableStateOf(false) }
     var pickFontScale by remember { mutableStateOf(false) }
     var pickArea by remember { mutableStateOf(false) }
+    var showDanmakuSettings by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var cacheCleared by remember { mutableIntStateOf(0) }
@@ -160,6 +163,13 @@ fun SettingsScreen(
                     summary = if (danmakuEnabled) "开" else "关",
                     cardListPosition = CardListPosition.Head,
                     onClick = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                )
+                ArrowPreference(
+                    title = "弹幕详细设置",
+                    modifier = Modifier.testTag("settings_danmaku_detail"),
+                    summary = "类型屏蔽 · 速度 · 描边 · 字重 · 行距",
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { showDanmakuSettings = true },
                 )
                 ArrowPreference(
                     title = "不透明度",
@@ -313,6 +323,14 @@ fun SettingsScreen(
         )
     }
 
+    if (showDanmakuSettings) {
+        DanmakuSettingsDialog(
+            settings = danmakuSettings,
+            repository = container.settings,
+            onDismiss = { showDanmakuSettings = false },
+        )
+    }
+
     if (showAbout) {
         ConfirmDialog(
             title = "关于 BiliCO",
@@ -391,10 +409,11 @@ private fun OptionPicker(
 
 private val OPACITY_OPTIONS = listOf(25, 50, 75, 100)
 private val FONT_SCALE_OPTIONS = listOf(75, 100, 125, 150)
-private val AREA_OPTIONS = listOf(0, 1, 2)
+private val AREA_OPTIONS = listOf(0, 1, 2, 3)
 
 private fun danmakuAreaLabel(area: Int): String = when (area) {
     0 -> "1/4 屏"
     1 -> "半屏"
+    2 -> "3/4 屏"
     else -> "全屏"
 }

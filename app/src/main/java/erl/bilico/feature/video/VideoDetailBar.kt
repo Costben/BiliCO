@@ -66,6 +66,7 @@ internal fun VideoDetailBar(
     onComposingChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenDanmakuSettings: (() -> Unit)? = null,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val scheme = COUITheme.colorScheme
@@ -126,7 +127,11 @@ internal fun VideoDetailBar(
                     glowColor = null,
                     leadingIcon = { Spacer(Modifier.width(14.dp)) },
                     trailingIcon = {
-                        DanmakuToggle(enabled = danmakuEnabled, onToggle = onToggleDanmaku)
+                        DanmakuToggle(
+                            enabled = danmakuEnabled,
+                            onToggle = onToggleDanmaku,
+                            onOpenSettings = onOpenDanmakuSettings,
+                        )
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -183,9 +188,13 @@ private fun Modifier.fadeTrailingEdge(fade: Float, band: Dp): Modifier =
             )
         }
 
-/** 胶囊右端那个半圆里的弹幕开关，图标取自 PiliPlus 的 dm_on / dm_off 字形。 */
+/** 胶囊右端的弹幕设置与弹幕开关，图标取自 PiliPlus 的 dm_settings / dm_on / dm_off 字形。 */
 @Composable
-private fun DanmakuToggle(enabled: Boolean, onToggle: () -> Unit) {
+private fun DanmakuToggle(
+    enabled: Boolean,
+    onToggle: () -> Unit,
+    onOpenSettings: (() -> Unit)? = null,
+) {
     val scheme = COUITheme.colorScheme
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
@@ -195,9 +204,32 @@ private fun DanmakuToggle(enabled: Boolean, onToggle: () -> Unit) {
                 .height(14.dp)
                 .background(scheme.dividerLine),
         )
+        if (onOpenSettings != null) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onOpenSettings,
+                    )
+                    .semantics {
+                        contentDescription = "弹幕设置"
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                PiliIcon(
+                    glyph = PiliGlyph.DmSettings,
+                    contentDescription = null,
+                    size = 17.dp,
+                    tint = scheme.onSurfaceSecondary,
+                )
+            }
+        }
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(34.dp)
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },

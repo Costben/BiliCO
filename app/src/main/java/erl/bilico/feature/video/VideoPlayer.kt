@@ -53,6 +53,7 @@ import erl.bilico.data.model.QualityOption
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
+import erl.bilico.ui.components.CouiStagePopupMenu
 import erl.bilico.ui.components.FullscreenExitIcon
 import erl.bilico.ui.components.FullscreenIcon
 import erl.bilico.ui.components.PiliGlyph
@@ -103,6 +104,7 @@ internal fun VideoPlayer(
     inPipMode: Boolean = false,
     danmakuEnabled: Boolean = false,
     onToggleDanmaku: () -> Unit = {},
+    onDanmakuSettingsClick: (() -> Unit)? = null,
     subtitleLabel: String? = null,
     onSubtitleClick: (() -> Unit)? = null,
     onEnterPip: (() -> Unit)? = null,
@@ -116,9 +118,19 @@ internal fun VideoPlayer(
     overlay: @Composable () -> Unit = {},
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
+    var fullscreenMoreOpen by remember { mutableStateOf(false) }
+    var prevFullscreen by remember { mutableStateOf(fullscreen) }
 
-    LaunchedEffect(controlsVisible, isPlaying, isBuffering, errorMessage) {
-        if (controlsVisible && isPlaying && !isBuffering && errorMessage == null) {
+    LaunchedEffect(fullscreen) {
+        if (prevFullscreen != fullscreen) {
+            prevFullscreen = fullscreen
+            controlsVisible = false
+            fullscreenMoreOpen = false
+        }
+    }
+
+    LaunchedEffect(controlsVisible, fullscreenMoreOpen, isPlaying, isBuffering, errorMessage) {
+        if (controlsVisible && !fullscreenMoreOpen && isPlaying && !isBuffering && errorMessage == null) {
             delay(4500)
             controlsVisible = false
         }
@@ -127,13 +139,13 @@ internal fun VideoPlayer(
     // 只看「要不要显示控件」这一个开关。暂停、缓冲、网络抖动都不能把控件顶回来，
     // 否则点一下屏幕看到控件纹丝不动，像是点不动。
     val showChrome = !inPipMode && (controlsVisible || errorMessage != null)
-    var fullscreenMoreOpen by remember { mutableStateOf(false) }
     LaunchedEffect(fullscreen, showChrome) {
         if (!fullscreen || !showChrome) fullscreenMoreOpen = false
     }
     val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
+    val stageTransitioning = LocalStageTransitioning.current
 
-    Box(modifier.background(Color.Black)) {
+    Box(modifier.background(if (stageTransitioning) Color.Transparent else Color.Black)) {
         AndroidView(
             factory = { context ->
                 (LayoutInflater.from(context)
@@ -141,9 +153,8 @@ internal fun VideoPlayer(
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                        requestedFrameRate = android.view.View.REQUESTED_FRAME_RATE_CATEGORY_NO_PREFERENCE
-                        videoSurfaceView?.requestedFrameRate =
-                            android.view.View.REQUESTED_FRAME_RATE_CATEGORY_NO_PREFERENCE
+                        requestedFrameRate = 120f
+                        videoSurfaceView?.requestedFrameRate = 120f
                     }
                 }
             },
@@ -203,8 +214,18 @@ internal fun VideoPlayer(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                // 竖屏非全屏时，弹幕开关在简介那一行的胶囊右端，这里不再重复。
+                // 竖屏非全屏时，弹幕设置与弹幕开关在简介那一行的胶囊右端，全屏时在顶栏展示。
                 if (fullscreen) {
+                    if (onDanmakuSettingsClick != null) {
+                        PlayerGlyphButton(
+                            glyph = PiliGlyph.DmSettings,
+                            label = "弹幕设置",
+                            onClick = {
+                                controlsVisible = false
+                                onDanmakuSettingsClick()
+                            },
+                        )
+                    }
                     PlayerGlyphButton(
                         glyph = if (danmakuEnabled) PiliGlyph.DmOn else PiliGlyph.DmOff,
                         label = if (danmakuEnabled) "关闭弹幕" else "开启弹幕",
@@ -215,11 +236,15 @@ internal fun VideoPlayer(
                 if (onEnterPip != null) {
                     PlayerIconButton(PipIcon, "小窗", onEnterPip)
                 }
-                if (onWatchLater != null || onShare != null) {
+                if (onWatchLater != null || onShare != null || onDanmakuSettingsClick != null) {
                     if (fullscreen) {
                         PlayerIconButton(COUIIcons.More, "更多", onClick = { fullscreenMoreOpen = !fullscreenMoreOpen })
                     } else {
-                        PlayerMoreMenu(onWatchLater = onWatchLater, onShare = onShare)
+                        PlayerMoreMenu(
+                            onDanmakuSettings = onDanmakuSettingsClick,
+                            onWatchLater = onWatchLater,
+                            onShare = onShare,
+                        )
                     }
                 }
             }
@@ -318,53 +343,25 @@ internal fun VideoPlayer(
             }
         }
 
-        if (fullscreen && fullscreenMoreOpen && (onWatchLater != null || onShare != null)) {
-            BackHandler { fullscreenMoreOpen = false }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) { detectTapGestures { fullscreenMoreOpen = false } },
-            ) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 52.dp, end = horizontalBarPad)
-                        .widthIn(min = 136.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(COUITheme.colorScheme.surfaceContainer)
-                        .pointerInput(Unit) { detectTapGestures { } }
-                        .padding(vertical = 6.dp),
-                ) {
-                    onWatchLater?.let { action ->
-                        Text(
-                            text = "稍后再看",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    fullscreenMoreOpen = false
-                                    action()
-                                }
-                                .padding(horizontal = 18.dp, vertical = 10.dp),
-                            style = COUITheme.textStyles.body2,
-                            color = COUITheme.colorScheme.onSurface,
+        if (fullscreen) {
+            CouiStagePopupMenu(
+                show = fullscreenMoreOpen,
+                onDismiss = { fullscreenMoreOpen = false },
+                topMargin = 54.dp,
+                endMargin = horizontalBarPad,
+                items = buildList {
+                    onDanmakuSettingsClick?.let { openDm ->
+                        add(
+                            CouiMenuItem("弹幕设置") {
+                                controlsVisible = false
+                                openDm()
+                            },
                         )
                     }
-                    onShare?.let { action ->
-                        Text(
-                            text = "分享",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    fullscreenMoreOpen = false
-                                    action()
-                                }
-                                .padding(horizontal = 18.dp, vertical = 10.dp),
-                            style = COUITheme.textStyles.body2,
-                            color = COUITheme.colorScheme.onSurface,
-                        )
-                    }
-                }
-            }
+                    onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
+                    onShare?.let { add(CouiMenuItem("分享", it)) }
+                },
+            )
         }
     }
 }
@@ -491,9 +488,10 @@ private fun PlayerGlyphButton(
     }
 }
 
-/** 顶栏右端的三个点：稍后再看与分享，都是这一页本来就能做的事。 */
+/** 顶栏右端的三个点：弹幕设置、稍后再看与分享。 */
 @Composable
 private fun PlayerMoreMenu(
+    onDanmakuSettings: (() -> Unit)?,
     onWatchLater: (() -> Unit)?,
     onShare: (() -> Unit)?,
 ) {
@@ -505,6 +503,7 @@ private fun PlayerMoreMenu(
             show = expanded,
             onDismiss = { expanded = false },
             items = buildList {
+                onDanmakuSettings?.let { add(CouiMenuItem("弹幕设置", it)) }
                 onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
                 onShare?.let { add(CouiMenuItem("分享", it)) }
             },

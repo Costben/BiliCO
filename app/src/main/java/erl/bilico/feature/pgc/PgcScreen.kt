@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -48,6 +48,7 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
 import erl.bilico.feature.video.DanmakuController
 import erl.bilico.feature.video.DanmakuOverlay
+import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.feature.video.MANUAL_FULLSCREEN_COOLDOWN_MS
 import erl.bilico.feature.video.QualityDialog
 import erl.bilico.feature.video.SpeedDialog
@@ -59,6 +60,7 @@ import erl.bilico.feature.video.VideoMessageToast
 import erl.bilico.feature.video.VideoPlayer
 import erl.bilico.feature.video.findActivity
 import erl.bilico.feature.video.rememberDeviceOrientationSide
+import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
@@ -91,9 +93,7 @@ fun PgcScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
-    val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
-    val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
-    val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
+    val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
@@ -134,6 +134,7 @@ fun PgcScreen(
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
     var subtitleDialogVisible by remember { mutableStateOf(false) }
+    var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
     var longPressSpeed by remember { mutableStateOf(false) }
 
@@ -311,6 +312,14 @@ fun PgcScreen(
                 inlineInStage = inlineInStage,
             )
         }
+        if (danmakuSettingsDialogVisible) {
+            DanmakuSettingsDialog(
+                settings = danmakuSettings,
+                repository = container.settings,
+                onDismiss = { danmakuSettingsDialogVisible = false },
+                inlineInStage = inlineInStage,
+            )
+        }
         val source = state.source
         if (qualityDialogVisible && source != null) {
             QualityDialog(
@@ -364,6 +373,7 @@ fun PgcScreen(
                 inPipMode = inPipMode,
                 danmakuEnabled = danmakuEnabled,
                 onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
                 subtitleLabel = subtitleController.buttonLabel,
                 onSubtitleClick = { subtitleDialogVisible = true },
                 onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
@@ -389,14 +399,7 @@ fun PgcScreen(
                         player = player,
                         items = danmakuController.items,
                         isPlaying = isPlaying,
-                        enabled = danmakuEnabled,
-                        opacity = danmakuOpacity / 100f,
-                        fontScale = danmakuFontScale / 100f,
-                        areaFraction = when (danmakuArea) {
-                            0 -> 0.25f
-                            1 -> 0.5f
-                            else -> 1f
-                        },
+                        settings = danmakuSettings,
                     )
                 },
             )
@@ -406,6 +409,7 @@ fun PgcScreen(
             }
         },
         detailContent = {
+            val navBarBottom = rememberStableNavBarBottomDp()
             Column(modifier = Modifier.fillMaxSize()) {
                 PgcTabRow(selected = tab, onSelect = { tab = it })
 
@@ -413,7 +417,7 @@ fun PgcScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .navigationBarsPadding(),
+                        .padding(bottom = navBarBottom),
                 ) {
                     when (tab) {
                         0 -> PgcInfoTab(

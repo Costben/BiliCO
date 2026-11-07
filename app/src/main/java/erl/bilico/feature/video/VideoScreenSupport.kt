@@ -33,6 +33,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import erl.bilico.data.model.FavoriteFolder
+import erl.bilico.data.settings.DanmakuSettings
+import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.di.AppContainer
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -180,6 +182,10 @@ internal fun VideoScreenDialogs(
     state: VideoUiState,
     onSelectQuality: (Int) -> Unit,
     onDismissQuality: () -> Unit,
+    danmakuSettingsDialogVisible: Boolean = false,
+    danmakuSettings: DanmakuSettings? = null,
+    settingsRepository: SettingsRepository? = null,
+    onDismissDanmakuSettings: () -> Unit = {},
     inlineInStage: Boolean = false,
 ) {
     if (speedDialogVisible) {
@@ -200,6 +206,15 @@ internal fun VideoScreenDialogs(
                 onDismissSubtitle()
             },
             onDismiss = onDismissSubtitle,
+            inlineInStage = inlineInStage,
+        )
+    }
+
+    if (danmakuSettingsDialogVisible && danmakuSettings != null && settingsRepository != null) {
+        DanmakuSettingsDialog(
+            settings = danmakuSettings,
+            repository = settingsRepository,
+            onDismiss = onDismissDanmakuSettings,
             inlineInStage = inlineInStage,
         )
     }

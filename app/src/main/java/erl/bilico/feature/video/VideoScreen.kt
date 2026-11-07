@@ -6,7 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -67,9 +67,7 @@ fun VideoScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
-    val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
-    val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
-    val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
+    val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
@@ -122,6 +120,7 @@ fun VideoScreen(
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
     var subtitleDialogVisible by remember { mutableStateOf(false) }
+    var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var coinDialogVisible by remember { mutableStateOf(false) }
     var favoriteFolders by remember { mutableStateOf<List<FavoriteFolder>?>(null) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
@@ -332,6 +331,7 @@ fun VideoScreen(
                 inPipMode = inPipMode,
                 danmakuEnabled = danmakuEnabled,
                 onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
                 subtitleLabel = subtitleController.buttonLabel,
                 onSubtitleClick = { subtitleDialogVisible = true },
                 onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
@@ -366,14 +366,7 @@ fun VideoScreen(
                         player = player,
                         items = danmakuController.items,
                         isPlaying = isPlaying,
-                        enabled = danmakuEnabled,
-                        opacity = danmakuOpacity / 100f,
-                        fontScale = danmakuFontScale / 100f,
-                        areaFraction = when (danmakuArea) {
-                            0 -> 0.25f
-                            1 -> 0.5f
-                            else -> 1f
-                        },
+                        settings = danmakuSettings,
                     )
                 },
             )
@@ -404,11 +397,16 @@ fun VideoScreen(
                         viewModel.selectQuality(qn, player.currentPosition)
                     },
                     onDismissQuality = { qualityDialogVisible = false },
+                    danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
+                    danmakuSettings = danmakuSettings,
+                    settingsRepository = container.settings,
+                    onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
                     inlineInStage = true,
                 )
             }
         },
         detailContent = {
+            val navBarBottom = rememberStableNavBarBottomDp()
             Column(modifier = Modifier.fillMaxSize()) {
                 VideoDetailBar(
                     selected = tab,
@@ -416,6 +414,7 @@ fun VideoScreen(
                     pager = detailPager,
                     danmakuEnabled = danmakuEnabled,
                     onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                    onOpenDanmakuSettings = { danmakuSettingsDialogVisible = true },
                     composing = danmakuComposing,
                     draft = danmakuDraft,
                     onDraftChange = { danmakuDraft = it },
@@ -431,7 +430,7 @@ fun VideoScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .navigationBarsPadding(),
+                        .padding(bottom = navBarBottom),
                     beyondViewportPageCount = 0,
                     key = { DETAIL_PAGES[it] },
                 ) { page ->
@@ -530,6 +529,10 @@ fun VideoScreen(
                 viewModel.selectQuality(qn, player.currentPosition)
             },
             onDismissQuality = { qualityDialogVisible = false },
+            danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
+            danmakuSettings = danmakuSettings,
+            settingsRepository = container.settings,
+            onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
             inlineInStage = false,
         )
     }

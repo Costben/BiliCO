@@ -5,20 +5,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import erl.bilico.data.model.DanmakuItem
+import erl.bilico.data.settings.DanmakuSettings
 
 /**
- * 弹幕层的宿主：只是把 [DanmakuSurfaceView] 放进播放器，播放期间的任何一帧都不经过 Compose。
- * 只有换段（items 变化）、改设置、暂停/继续才会走一次重组。
+ * 弹幕层的宿主：把 [DanmakuSurfaceView] 放进播放器，播放期间由 Choreographer VSync 直接驱动 120Hz 亚像素渲染，
+ * 播放期间的任何一帧都不经过 Compose 重组。
  */
 @Composable
 internal fun DanmakuOverlay(
     player: Player?,
     items: List<DanmakuItem>,
     isPlaying: Boolean,
-    enabled: Boolean,
-    opacity: Float,
-    fontScale: Float,
-    areaFraction: Float,
+    settings: DanmakuSettings,
     modifier: Modifier = Modifier,
 ) {
     AndroidView(
@@ -26,20 +24,14 @@ internal fun DanmakuOverlay(
             DanmakuSurfaceView(context).apply {
                 this.player = player
                 this.items = items
-                danmakuEnabled = enabled
-                danmakuOpacity = opacity
-                danmakuFontScale = fontScale
-                danmakuAreaFraction = areaFraction
+                applySettings(settings)
                 playing = isPlaying
             }
         },
         update = { view ->
             view.player = player
             view.items = items
-            view.danmakuEnabled = enabled
-            view.danmakuOpacity = opacity
-            view.danmakuFontScale = fontScale
-            view.danmakuAreaFraction = areaFraction
+            view.applySettings(settings)
             view.playing = isPlaying
         },
         modifier = modifier,
