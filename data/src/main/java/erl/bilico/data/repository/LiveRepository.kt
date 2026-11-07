@@ -63,6 +63,47 @@ class LiveRepository(
         }
     }
 
+    /**
+     * 关注的主播列表：接口会把所有已关注主播都返回，只有 `live_status == 1` 的是在播的。
+     * 动态页的「直播」筛选只要在播的那批。
+     */
+    suspend fun following(page: Int): Result<LiveRoomPage> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val requestPage = page.coerceAtLeast(1)
+            val response = api.liveFollowing(
+                mapOf(
+                    "page" to requestPage.toString(),
+                    "page_size" to FOLLOW_PAGE_SIZE.toString(),
+                    "ignoreRecord" to "1",
+                    "hit_ab" to "true",
+                ),
+            )
+            if (response.code != 0) {
+                error(response.message.ifBlank { "关注直播加载失败(${response.code})" })
+            }
+            val data = response.data ?: error("关注直播为空")
+            val items = data.list
+                .filter { it.liveStatus == 1 && it.roomId > 0L }
+                .map { room ->
+                    LiveRoomItem(
+                        roomId = room.roomId,
+                        title = room.title.ifBlank { "未命名直播间" },
+                        cover = Formatters.normalizeImageUrl(room.roomCover),
+                        anchor = room.uname,
+                        online = 0L,
+                        areaName = room.areaName,
+                        popularityText = room.textSmall,
+                    )
+                }
+            val pageCount = data.pageCount
+            LiveRoomPage(
+                items = items,
+                hasMore = data.list.isNotEmpty() && (pageCount <= 0 || requestPage < pageCount),
+            )
+        }
+    }
+
     suspend fun detail(roomId: Long): Result<LiveRoomDetail> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -243,5 +284,6 @@ class LiveRepository(
     private companion object {
         const val DEFAULT_QN = 10000
         const val PAGE_SIZE = 30
+        const val FOLLOW_PAGE_SIZE = 30
     }
 }

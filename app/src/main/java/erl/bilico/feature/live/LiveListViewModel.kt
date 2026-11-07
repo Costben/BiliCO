@@ -21,6 +21,8 @@ data class LiveListUiState(
 
 class LiveListViewModel(
     private val repository: LiveRepository,
+    /** true 时拉「关注的主播里在播的」，供动态页的直播筛选复用。 */
+    private val following: Boolean = false,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LiveListUiState())
@@ -55,7 +57,8 @@ class LiveListViewModel(
     private fun load(page: Int, firstPage: Boolean) {
         inFlight = true
         viewModelScope.launch {
-            repository.rooms(page)
+            val request = if (following) repository.following(page) else repository.rooms(page)
+            request
                 .onSuccess { result ->
                     nextPage = page + 1
                     _state.update {

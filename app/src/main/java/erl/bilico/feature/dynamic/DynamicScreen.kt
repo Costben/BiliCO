@@ -100,34 +100,47 @@ fun DynamicScreen(
             key = { DynamicFilters[it].second },
         ) { page ->
             val filter = DynamicFilters[page].first
-            // 每个筛选一份自己的列表：滑到对面那页时内容已经加载好，不会先空一下再重新拉。
-            val viewModel: DynamicViewModel = viewModel(key = "dynamic-${filter.name}") {
-                DynamicViewModel(container.dynamic, container.session, filter)
-            }
-            val state by viewModel.state.collectAsStateWithLifecycle()
-            LaunchedEffect(loggedIn) { viewModel.onLoginStateChanged(loggedIn) }
+            when (filter) {
+                DynamicFilter.LIVE -> DynamicLiveTab(
+                    container = container,
+                    nav = nav,
+                    topInset = topInset,
+                    active = pagerState.settledPage == page,
+                    onCollapse = onCollapse,
+                )
 
-            DynamicContent(
-                state = state,
-                viewModel = viewModel,
-                topInset = topInset,
-                active = pagerState.settledPage == page,
-                onCollapse = onCollapse,
-                onOpenUser = { nav.push(Route.Space(it)) },
-                onOpenVideo = { nav.push(Route.Video(it)) },
-                onOpenImage = { images, index -> viewer = images to index },
-                onOpenDynamic = { item ->
-                    val articleId = item.article?.articleId ?: 0L
-                    val dynId = item.dynamicId.ifBlank { item.article?.dynamicId.orEmpty() }
-                    val headerTitle = item.title.ifBlank { item.authorName }
-                    val video = item.video
-                    when {
-                        articleId > 0L -> nav.push(Route.Article(articleId, headerTitle))
-                        dynId.isNotBlank() -> nav.push(Route.Opus(dynId, headerTitle))
-                        video != null -> nav.push(Route.Video(video.bvid))
+                DynamicFilter.ALL, DynamicFilter.VIDEO -> {
+                    val type = if (filter == DynamicFilter.ALL) DynamicFeedType.ALL else DynamicFeedType.VIDEO
+                    // 每个筛选一份自己的列表：滑到对面那页时内容已经加载好，不会先空一下再重新拉。
+                    val viewModel: DynamicViewModel = viewModel(key = "dynamic-${type.name}") {
+                        DynamicViewModel(container.dynamic, container.session, type)
                     }
-                },
-            )
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    LaunchedEffect(loggedIn) { viewModel.onLoginStateChanged(loggedIn) }
+
+                    DynamicContent(
+                        state = state,
+                        viewModel = viewModel,
+                        topInset = topInset,
+                        active = pagerState.settledPage == page,
+                        onCollapse = onCollapse,
+                        onOpenUser = { nav.push(Route.Space(it)) },
+                        onOpenVideo = { nav.push(Route.Video(it)) },
+                        onOpenImage = { images, index -> viewer = images to index },
+                        onOpenDynamic = { item ->
+                            val articleId = item.article?.articleId ?: 0L
+                            val dynId = item.dynamicId.ifBlank { item.article?.dynamicId.orEmpty() }
+                            val headerTitle = item.title.ifBlank { item.authorName }
+                            val video = item.video
+                            when {
+                                articleId > 0L -> nav.push(Route.Article(articleId, headerTitle))
+                                dynId.isNotBlank() -> nav.push(Route.Opus(dynId, headerTitle))
+                                video != null -> nav.push(Route.Video(video.bvid))
+                            }
+                        },
+                    )
+                }
+            }
         }
     }
 
@@ -252,7 +265,10 @@ private fun DynamicContent(
 }
 
 /** 动态页顶部的筛选分段；胶囊画在顶栏那一层，所以这份表外壳也要用。 */
+internal enum class DynamicFilter { ALL, VIDEO, LIVE }
+
 internal val DynamicFilters = listOf(
-    DynamicFeedType.ALL to "全部",
-    DynamicFeedType.VIDEO to "视频",
+    DynamicFilter.ALL to "全部",
+    DynamicFilter.VIDEO to "视频",
+    DynamicFilter.LIVE to "直播",
 )

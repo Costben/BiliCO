@@ -189,6 +189,8 @@ data class LiveRoomItem(
     val anchor: String,
     val online: Long,
     val areaName: String,
+    /** 接口直接给的人气文案（如「1.2万」）；没有数值 online 时用它兜底。 */
+    val popularityText: String = "",
 )
 
 data class LiveRoomDetail(

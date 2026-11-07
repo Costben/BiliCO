@@ -17,6 +17,37 @@ data class LiveListData(
     @SerialName("has_more") val hasMore: Int = 0,
 )
 
+/** 直播关注列表（xlive/web-ucenter/user/following）：包含已关注的主播，在播与否看 live_status。 */
+@Serializable
+data class LiveFollowingResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: LiveFollowingData? = null,
+)
+
+@Serializable
+data class LiveFollowingData(
+    val list: List<LiveFollowingRoom> = emptyList(),
+    val count: Int = 0,
+    @SerialName("live_count") val liveCount: Int = 0,
+    @SerialName("total_page") val totalPage: Int = 0,
+    @SerialName("totalPage") val totalPageAlt: Int = 0,
+) {
+    val pageCount: Int get() = totalPage.takeIf { it > 0 } ?: totalPageAlt
+}
+
+@Serializable
+data class LiveFollowingRoom(
+    @SerialName("roomid") val roomId: Long = 0,
+    val uid: Long = 0,
+    val uname: String = "",
+    val title: String = "",
+    @SerialName("area_name") val areaName: String = "",
+    @SerialName("text_small") val textSmall: String = "",
+    @SerialName("room_cover") val roomCover: String = "",
+    @SerialName("live_status") val liveStatus: Int = 0,
+)
+
 @Serializable
 data class LiveRoom(
     @SerialName("roomid") val roomId: Long = 0,

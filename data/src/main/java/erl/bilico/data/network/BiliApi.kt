@@ -21,6 +21,7 @@ import erl.bilico.data.model.FavResourceResponse
 import erl.bilico.data.model.FollowingsResponse
 import erl.bilico.data.model.HistoryResponse
 import erl.bilico.data.model.LiveDanmakuInfoResponse
+import erl.bilico.data.model.LiveFollowingResponse
 import erl.bilico.data.model.LiveListResponse
 import erl.bilico.data.model.LivePlayUrlResponse
 import erl.bilico.data.model.LiveRoomDetailResponse
@@ -124,6 +125,9 @@ interface BiliApi {
 
     @GET("https://api.live.bilibili.com/room/v3/area/getRoomList")
     suspend fun liveRooms(@QueryMap params: Map<String, String>): LiveListResponse
+
+    @GET("https://api.live.bilibili.com/xlive/web-ucenter/user/following")
+    suspend fun liveFollowing(@QueryMap params: Map<String, String>): LiveFollowingResponse
 
     @GET("https://api.live.bilibili.com/room/v1/Room/get_info")
     suspend fun liveRoomInfo(@Query("room_id") roomId: Long): LiveRoomInfoResponse
