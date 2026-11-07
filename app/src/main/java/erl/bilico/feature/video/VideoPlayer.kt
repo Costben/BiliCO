@@ -114,6 +114,8 @@ internal fun VideoPlayer(
     longPressSpeedActive: Boolean = false,
     longPressSpeedValue: Float = 2f,
     onLongPressSpeedChange: (Boolean) -> Unit = {},
+    liveMode: Boolean = false,
+    statusText: String? = null,
     subtitleOverlay: @Composable (controlsVisible: Boolean) -> Unit = {},
     overlay: @Composable () -> Unit = {},
 ) {
@@ -170,6 +172,7 @@ internal fun VideoPlayer(
             PlayerGestureLayer(
                 positionMs = positionMs,
                 durationMs = durationMs,
+                seekEnabled = !liveMode,
                 longPressSpeedActive = longPressSpeedActive,
                 longPressSpeedValue = longPressSpeedValue,
                 fullscreen = fullscreen,
@@ -295,30 +298,41 @@ internal fun VideoPlayer(
                     )
                     .padding(horizontal = horizontalBarPad, vertical = 6.dp),
             ) {
-                PlayerProgress(
-                    positionMs = positionMs,
-                    durationMs = durationMs,
-                    onSeek = onSeek,
-                )
+                if (!liveMode) {
+                    PlayerProgress(
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        onSeek = onSeek,
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PlayerIconButton(
                         icon = if (isPlaying) COUIIcons.Pause else COUIIcons.Play,
                         label = if (isPlaying) "暂停" else "播放",
                         onClick = onPlayPause,
                     )
-                    Column(modifier = Modifier.padding(start = 2.dp)) {
+                    if (liveMode) {
                         Text(
-                            text = Formatters.formatDuration(positionMs / 1000),
+                            text = statusText.orEmpty(),
+                            modifier = Modifier.padding(start = 6.dp),
                             style = COUITheme.textStyles.footnote2,
                             color = Color.White,
-                            lineHeight = 15.sp,
                         )
-                        Text(
-                            text = Formatters.formatDuration(durationMs / 1000),
-                            style = COUITheme.textStyles.footnote2,
-                            color = Color.White.copy(alpha = 0.6f),
-                            lineHeight = 15.sp,
-                        )
+                    } else {
+                        Column(modifier = Modifier.padding(start = 2.dp)) {
+                            Text(
+                                text = Formatters.formatDuration(positionMs / 1000),
+                                style = COUITheme.textStyles.footnote2,
+                                color = Color.White,
+                                lineHeight = 15.sp,
+                            )
+                            Text(
+                                text = Formatters.formatDuration(durationMs / 1000),
+                                style = COUITheme.textStyles.footnote2,
+                                color = Color.White.copy(alpha = 0.6f),
+                                lineHeight = 15.sp,
+                            )
+                        }
                     }
                     Spacer(Modifier.weight(1f))
                     if (subtitleLabel != null && onSubtitleClick != null) {

@@ -1,25 +1,27 @@
 package erl.bilico.feature.live
 
+import android.content.pm.ActivityInfo
+import android.os.SystemClock
+import android.util.Log
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -36,27 +37,39 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
-import android.util.Log
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import coil3.compose.AsyncImage
+import erl.bilico.data.model.DanmakuItem
+import erl.bilico.data.model.DanmakuType
 import erl.bilico.data.model.LiveCandidate
 import erl.bilico.data.model.LiveRoomDetail
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.video.DanmakuOverlay
+import erl.bilico.feature.video.DanmakuSettingsDialog
+import erl.bilico.feature.video.MANUAL_FULLSCREEN_COOLDOWN_MS
 import erl.bilico.feature.video.QualityDialog
+import erl.bilico.feature.video.SpeedDialog
+import erl.bilico.feature.video.VideoFullscreenStage
+import erl.bilico.feature.video.VideoPlayer
+import erl.bilico.feature.video.findActivity
+import erl.bilico.feature.video.rememberDeviceOrientationSide
+import erl.bilico.feature.video.rememberStableNavBarBottomDp
+import erl.bilico.player.BindPlaybackSession
+import erl.bilico.player.LocalInPipMode
+import erl.bilico.player.PlaybackBridge
+import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.components.ErrorState
-import erl.bilico.ui.components.FullscreenEffect
 import erl.bilico.ui.components.LoadingState
-import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -72,16 +85,64 @@ fun LiveRoomScreen(
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
+    val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
+    val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
+    val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
+    val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
+    val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
+    val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
+    val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
+    val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
+    val inPipMode = LocalInPipMode.current
+
     val context = LocalContext.current
-    val player = remember { ExoPlayer.Builder(context).build() }
+    val activity = remember(context) { context.findActivity() }
+    val player = remember { buildConfiguredExoPlayer(context) }
+
     var fullscreen by rememberSaveable { mutableStateOf(false) }
+    var activeLandscapeSide by rememberSaveable { mutableIntStateOf(1) }
+    val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
+    var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
+    var lastManualActionTime by remember { mutableLongStateOf(0L) }
+    var manualEnterAwaitingLandscape by remember { mutableStateOf(false) }
+    val applyFullscreen: (Boolean) -> Unit = { value ->
+        lastManualActionTime = SystemClock.uptimeMillis()
+        if (value) {
+            manualFullscreenExit = false
+            manualEnterAwaitingLandscape = deviceSide == 0
+            if (deviceSide != 0) activeLandscapeSide = deviceSide
+            fullscreen = true
+        } else {
+            manualFullscreenExit = true
+            manualEnterAwaitingLandscape = false
+            fullscreen = false
+        }
+    }
+
     var qualityDialogVisible by remember { mutableStateOf(false) }
+    var speedDialogVisible by remember { mutableStateOf(false) }
+    var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
+    var speed by rememberSaveable { mutableFloatStateOf(1f) }
+    var longPressSpeed by remember { mutableStateOf(false) }
+    val boostSpeed = if (speed >= 2f) 3f else 2f
+    val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
+
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
     var errorEvent by remember { mutableStateOf<PlaybackException?>(null) }
     var candidateIndex by remember { mutableIntStateOf(0) }
     var refetched by remember { mutableIntStateOf(0) }
+    var videoAspectRatio by remember { mutableFloatStateOf(16f / 9f) }
+
+    val overlayItems = remember { mutableStateListOf<DanmakuItem>() }
+    var consumedDanmakuSeq by remember { mutableLongStateOf(0L) }
+
+    fun clearDanmakuOverlay() {
+        overlayItems.clear()
+        consumedDanmakuSeq = viewModel.state.value.danmakuSeq
+    }
 
     fun mediaSourceFor(candidate: LiveCandidate): MediaSource {
         val headers = container.client.mediaRequestHeaders().toMutableMap().apply {
@@ -103,10 +164,12 @@ fun LiveRoomScreen(
 
     fun prepareCandidate(candidate: LiveCandidate) {
         playerError = null
+        clearDanmakuOverlay()
         player.setMediaSource(mediaSourceFor(candidate))
         player.prepare()
         // 直播从最新位置起播，避免一进房就落后到窗口外。
         player.seekToDefaultPosition()
+        player.setPlaybackSpeed(effectiveSpeed)
         player.playWhenReady = true
     }
 
@@ -114,6 +177,13 @@ fun LiveRoomScreen(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoAspectRatio =
+                        (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -131,6 +201,15 @@ fun LiveRoomScreen(
             player.release()
         }
     }
+
+    BindPlaybackSession(
+        player = player,
+        title = state.detail?.title.orEmpty(),
+        subtitle = state.detail?.anchorName.orEmpty(),
+        isPlaying = isPlaying,
+        backgroundPlay = backgroundPlay,
+        autoPip = autoPip,
+    )
 
     LaunchedEffect(state.playback, state.playbackGeneration) {
         val playback = state.playback ?: return@LaunchedEffect
@@ -152,6 +231,7 @@ fun LiveRoomScreen(
             error,
         )
         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+            clearDanmakuOverlay()
             player.prepare()
             player.seekToDefaultPosition()
             player.playWhenReady = true
@@ -171,91 +251,204 @@ fun LiveRoomScreen(
         playerError = error.message ?: "播放失败"
     }
 
-    FullscreenEffect(fullscreen)
-    BackHandler(enabled = fullscreen) { fullscreen = false }
-
-    val configuration = LocalConfiguration.current
-    val playerHeight = if (fullscreen) {
-        configuration.screenHeightDp.dp
-    } else {
-        minOf(
-            configuration.screenWidthDp.dp * 9f / 16f,
-            configuration.screenHeightDp.dp * 0.7f,
-        )
+    LaunchedEffect(effectiveSpeed) {
+        player.setPlaybackSpeed(effectiveSpeed)
     }
 
-    Box(Modifier.fillMaxSize().background(pageContainerColor())) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (fullscreen) Modifier else Modifier.statusBarsPadding()),
-        ) {
-            Box(Modifier.fillMaxWidth().height(playerHeight)) {
-                LivePlayer(
-                    player = player,
-                    title = state.detail?.title.orEmpty(),
-                    isPlaying = isPlaying,
-                    isBuffering = state.isPlaybackLoading || isBuffering,
-                    errorMessage = state.playbackError ?: playerError,
-                    statusText = playerStatus(state),
-                    fullscreen = fullscreen,
-                    onPlayPause = {
-                        if (player.isPlaying) player.pause() else player.play()
-                    },
-                    onToggleFullscreen = { fullscreen = !fullscreen },
-                    onQualityClick = { qualityDialogVisible = true },
-                    onBack = {
-                        if (fullscreen) fullscreen = false else nav.pop()
-                    },
-                    onRetry = viewModel::retryPlayback,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+    // 直播弹幕直接按到达时的播放位置入轨，和视频弹幕共用同一套 120Hz 渲染。
+    LaunchedEffect(state.danmakuSeq) {
+        val pending = state.danmakuSeq - consumedDanmakuSeq
+        if (pending <= 0L) return@LaunchedEffect
+        val count = pending.coerceAtMost(state.danmaku.size.toLong()).toInt()
+        if (count <= 0) return@LaunchedEffect
+        val nowMs = player.currentPosition.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        val firstId = state.danmakuSeq - count
+        state.danmaku.takeLast(count).forEachIndexed { index, message ->
+            overlayItems += DanmakuItem(
+                id = firstId + index,
+                timeMs = nowMs,
+                type = DanmakuType.SCROLL,
+                content = message.text,
+                color = 0xFFFFFF,
+                fontSize = 25,
+            )
+        }
+        while (overlayItems.size > MAX_OVERLAY_DANMAKU) overlayItems.removeAt(0)
+        consumedDanmakuSeq = state.danmakuSeq
+    }
 
-            if (!fullscreen) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .navigationBarsPadding(),
-                ) {
-                    when {
-                        state.isLoading -> LoadingState(Modifier.height(160.dp))
-                        state.error != null -> ErrorState(
-                            message = state.error.orEmpty(),
-                            onRetry = viewModel::load,
-                        )
-
-                        else -> state.detail?.let { detail ->
-                            LiveRoomInfo(
-                                detail = detail,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                            )
-                            HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
-                            LiveDanmakuPanel(
-                                messages = state.danmaku,
-                                state = state.danmakuState,
-                                error = state.danmakuError,
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                            )
-                        }
-                    }
-                }
+    var wasLandscape by remember { mutableStateOf(deviceSide != 0) }
+    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape) {
+        if (inPipMode) return@LaunchedEffect
+        val now = SystemClock.uptimeMillis()
+        val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
+        if (deviceSide != 0) {
+            activeLandscapeSide = deviceSide
+            if (manualEnterAwaitingLandscape) manualEnterAwaitingLandscape = false
+            if (manualFullscreenExit && !inCooldown) manualFullscreenExit = false
+            if (!manualFullscreenExit && !inCooldown && !fullscreen) fullscreen = true
+        } else {
+            if (manualFullscreenExit) manualFullscreenExit = false
+            if (wasLandscape && !inCooldown && !manualEnterAwaitingLandscape && fullscreen) {
+                fullscreen = false
             }
+        }
+        wasLandscape = deviceSide != 0
+    }
+
+    DisposableEffect(activity) {
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 
-    val playback = state.playback
-    if (qualityDialogVisible && playback != null && playback.qualities.isNotEmpty()) {
-        QualityDialog(
-            qualities = playback.qualities,
-            activeQuality = state.activeQuality,
-            onSelect = { qn ->
-                qualityDialogVisible = false
-                viewModel.selectQuality(qn)
-            },
-            onDismiss = { qualityDialogVisible = false },
-        )
+    BackHandler(enabled = fullscreen) { applyFullscreen(false) }
+
+    @Composable
+    fun RenderLiveDialogs(inlineInStage: Boolean) {
+        if (speedDialogVisible) {
+            SpeedDialog(
+                active = speed,
+                onSelect = { value ->
+                    speed = value
+                    speedDialogVisible = false
+                },
+                onDismiss = { speedDialogVisible = false },
+                inlineInStage = inlineInStage,
+            )
+        }
+        if (danmakuSettingsDialogVisible) {
+            DanmakuSettingsDialog(
+                settings = danmakuSettings,
+                repository = container.settings,
+                onDismiss = { danmakuSettingsDialogVisible = false },
+                inlineInStage = inlineInStage,
+            )
+        }
+        val playback = state.playback
+        if (qualityDialogVisible && playback != null) {
+            QualityDialog(
+                qualities = playback.qualities,
+                activeQuality = state.activeQuality,
+                onSelect = { qn ->
+                    qualityDialogVisible = false
+                    viewModel.selectQuality(qn)
+                },
+                onDismiss = { qualityDialogVisible = false },
+                inlineInStage = inlineInStage,
+            )
+        }
+    }
+
+    VideoFullscreenStage(
+        fullscreen = fullscreen,
+        landscapeSide = activeLandscapeSide,
+        inPipMode = inPipMode,
+        videoAspectRatio = videoAspectRatio,
+        activity = activity,
+        darkMode = darkMode,
+        playerContent = {
+            VideoPlayer(
+                player = player,
+                title = state.detail?.title.orEmpty(),
+                isPlaying = isPlaying,
+                positionMs = 0L,
+                durationMs = 0L,
+                isBuffering = state.isPlaybackLoading || isBuffering,
+                errorMessage = state.playbackError ?: playerError,
+                qualityLabel = state.qualityLabel(),
+                speed = speed,
+                fullscreen = fullscreen,
+                onPlayPause = {
+                    if (player.isPlaying) player.pause() else player.play()
+                },
+                onSeek = {},
+                onToggleFullscreen = { applyFullscreen(!fullscreen) },
+                onFullscreenChange = applyFullscreen,
+                hapticEnabled = gestureHaptic,
+                volumeBrightnessEnabled = gestureVolBright,
+                fullscreenHintEnabled = fullscreenGestureHint,
+                onQualityClick = { qualityDialogVisible = true },
+                onSpeedClick = { speedDialogVisible = true },
+                onBack = {
+                    if (fullscreen) applyFullscreen(false) else nav.pop()
+                },
+                onRetry = viewModel::retryPlayback,
+                modifier = Modifier.fillMaxSize(),
+                inPipMode = inPipMode,
+                liveMode = true,
+                statusText = state.statusText(),
+                danmakuEnabled = danmakuEnabled,
+                onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
+                onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
+                    { PlaybackBridge.enterPipNow(activity) }
+                } else {
+                    null
+                },
+                onHome = { nav.popToMain() },
+                longPressSpeedActive = longPressSpeed,
+                longPressSpeedValue = boostSpeed,
+                onLongPressSpeedChange = { longPressSpeed = it },
+                overlay = {
+                    DanmakuOverlay(
+                        player = player,
+                        items = overlayItems,
+                        isPlaying = isPlaying,
+                        settings = danmakuSettings,
+                    )
+                },
+            )
+            if (fullscreen) {
+                RenderLiveDialogs(inlineInStage = true)
+            }
+        },
+        detailContent = {
+            val navBarBottom = rememberStableNavBarBottomDp()
+            Column(modifier = Modifier.fillMaxSize()) {
+                when {
+                    state.isLoading -> LoadingState(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
+
+                    state.error != null -> ErrorState(
+                        message = state.error.orEmpty(),
+                        modifier = Modifier.weight(1f),
+                        onRetry = viewModel::load,
+                    )
+
+                    else -> state.detail?.let { detail ->
+                        LiveRoomInfo(
+                            detail = detail,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        )
+                        HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
+                        LiveDanmakuPanel(
+                            messages = state.danmaku,
+                            firstSeq = state.danmakuSeq - state.danmaku.size,
+                            state = state.danmakuState,
+                            error = state.danmakuError,
+                            danmakuEnabled = danmakuEnabled,
+                            onToggleDanmaku = {
+                                container.settings.setDanmakuEnabled(!danmakuEnabled)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(bottom = navBarBottom),
+                            onOpenDanmakuSettings = {
+                                danmakuSettingsDialogVisible = true
+                            },
+                        )
+                    }
+                }
+            }
+        },
+    )
+
+    if (!fullscreen) {
+        RenderLiveDialogs(inlineInStage = false)
     }
 }
 
@@ -319,12 +512,19 @@ private fun LiveRoomInfo(detail: LiveRoomDetail, modifier: Modifier = Modifier) 
     }
 }
 
-private fun playerStatus(state: LiveRoomUiState): String {
-    val detail = state.detail ?: return ""
+private fun LiveRoomUiState.statusText(): String {
+    val detail = detail ?: return ""
     if (!detail.isLive) return "未开播"
-    val playback = state.playback ?: return "加载中"
-    val label = playback.qualities.firstOrNull { it.quality == state.activeQuality }?.label
-    return label?.takeIf { it.isNotBlank() } ?: "直播中"
+    return if (playback == null) "加载中" else "直播中"
+}
+
+private fun LiveRoomUiState.qualityLabel(): String? {
+    val playback = playback ?: return null
+    val label = playback.qualities
+        .firstOrNull { it.quality == activeQuality }
+        ?.label
+        ?.takeIf { it.isNotBlank() }
+    return label ?: activeQuality.takeIf { it > 0 }?.let { "${it}P" }
 }
 
 /** 从异常链里掏出 HTTP 状态码，日志里能直接看出是 403 还是超时。 */
@@ -336,3 +536,5 @@ private fun httpStatus(error: PlaybackException): Int? {
     }
     return null
 }
+
+private const val MAX_OVERLAY_DANMAKU = 120

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.live.LiveDanmakuState
 import erl.bilico.data.model.LiveDanmakuMessage
+import erl.bilico.ui.components.DanmakuToggle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -30,9 +31,13 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 @Composable
 internal fun LiveDanmakuPanel(
     messages: List<LiveDanmakuMessage>,
+    firstSeq: Long,
     state: LiveDanmakuState,
     error: String?,
+    danmakuEnabled: Boolean,
+    onToggleDanmaku: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenDanmakuSettings: (() -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) {
@@ -59,6 +64,11 @@ internal fun LiveDanmakuPanel(
                 color = COUITheme.colorScheme.onSurfaceSecondary,
                 maxLines = 1,
             )
+            DanmakuToggle(
+                enabled = danmakuEnabled,
+                onToggle = onToggleDanmaku,
+                onOpenSettings = onOpenDanmakuSettings,
+            )
         }
 
         if (messages.isEmpty()) {
@@ -82,7 +92,7 @@ internal fun LiveDanmakuPanel(
             ) {
                 items(
                     count = messages.size,
-                    key = { index -> index },
+                    key = { index -> firstSeq + index },
                     contentType = { "live-danmaku" },
                 ) { index ->
                     DanmakuRow(messages[index])

@@ -4,9 +4,6 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,16 +11,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.PagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -32,13 +25,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import erl.bilico.ui.components.PiliGlyph
-import erl.bilico.ui.components.PiliIcon
+import erl.bilico.ui.components.DanmakuToggle
 import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.SearchBar
@@ -187,69 +177,6 @@ private fun Modifier.fadeTrailingEdge(fade: Float, band: Dp): Modifier =
                 blendMode = BlendMode.DstIn,
             )
         }
-
-/** 胶囊右端的弹幕设置与弹幕开关，图标取自 PiliPlus 的 dm_settings / dm_on / dm_off 字形。 */
-@Composable
-private fun DanmakuToggle(
-    enabled: Boolean,
-    onToggle: () -> Unit,
-    onOpenSettings: (() -> Unit)? = null,
-) {
-    val scheme = COUITheme.colorScheme
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .padding(start = 6.dp)
-                .width(1.dp)
-                .height(14.dp)
-                .background(scheme.dividerLine),
-        )
-        if (onOpenSettings != null) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onOpenSettings,
-                    )
-                    .semantics {
-                        contentDescription = "弹幕设置"
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                PiliIcon(
-                    glyph = PiliGlyph.DmSettings,
-                    contentDescription = null,
-                    size = 17.dp,
-                    tint = scheme.onSurfaceSecondary,
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(CircleShape)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onToggle,
-                )
-                .semantics {
-                    contentDescription = if (enabled) "关闭弹幕" else "开启弹幕"
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            PiliIcon(
-                glyph = if (enabled) PiliGlyph.DmOn else PiliGlyph.DmOff,
-                contentDescription = null,
-                size = 18.dp,
-                tint = if (enabled) scheme.primary else scheme.onSurfaceSecondary,
-            )
-        }
-    }
-}
 
 private val DETAIL_TABS = listOf("简介", "评论")
 

@@ -71,6 +71,7 @@ private val FullscreenThresholdDp = 32.dp
 internal fun PlayerGestureLayer(
     positionMs: Long,
     durationMs: Long,
+    seekEnabled: Boolean = true,
     longPressSpeedActive: Boolean,
     longPressSpeedValue: Float,
     fullscreen: Boolean,
@@ -95,6 +96,7 @@ internal fun PlayerGestureLayer(
 
     val currentPosition by rememberUpdatedState(positionMs)
     val currentDuration by rememberUpdatedState(durationMs)
+    val currentSeekEnabled by rememberUpdatedState(seekEnabled)
     val currentLongPressActive by rememberUpdatedState(longPressSpeedActive)
     val currentFullscreen by rememberUpdatedState(fullscreen)
     val currentHapticEnabled by rememberUpdatedState(hapticEnabled)
@@ -189,7 +191,7 @@ internal fun PlayerGestureLayer(
 
                                 activeMode = when {
                                     isHorizontal -> {
-                                        if (currentDuration > 0L) {
+                                        if (currentSeekEnabled && currentDuration > 0L) {
                                             seekBaseMs = currentPosition.coerceIn(0L, currentDuration)
                                             seekPreviewMs = seekBaseMs
                                             DragMode.SEEK

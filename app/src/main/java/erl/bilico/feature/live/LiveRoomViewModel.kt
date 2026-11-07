@@ -28,6 +28,8 @@ data class LiveRoomUiState(
     /** 每次成功取流加一：地址可能一模一样，靠它让播放器重新 prepare。 */
     val playbackGeneration: Int = 0,
     val danmaku: List<LiveDanmakuMessage> = emptyList(),
+    /** 累计收到的弹幕条数：列表只留最近若干条，靠它定位新消息。 */
+    val danmakuSeq: Long = 0L,
     val danmakuState: LiveDanmakuState = LiveDanmakuState.Idle,
     val danmakuError: String? = null,
 )
@@ -49,7 +51,12 @@ class LiveRoomViewModel(
         load()
         viewModelScope.launch {
             danmakuClient.messages.collect { message ->
-                _state.update { it.copy(danmaku = (it.danmaku + message).takeLast(MAX_MESSAGES)) }
+                _state.update {
+                    it.copy(
+                        danmaku = (it.danmaku + message).takeLast(MAX_MESSAGES),
+                        danmakuSeq = it.danmakuSeq + 1,
+                    )
+                }
             }
         }
         viewModelScope.launch {
