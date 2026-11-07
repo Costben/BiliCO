@@ -145,9 +145,8 @@ internal fun VideoPlayer(
         if (!fullscreen || !showChrome) fullscreenMoreOpen = false
     }
     val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
-    val stageTransitioning = LocalStageTransitioning.current
 
-    Box(modifier.background(if (stageTransitioning) Color.Transparent else Color.Black)) {
+    Box(modifier.background(Color.Black)) {
         AndroidView(
             factory = { context ->
                 (LayoutInflater.from(context)

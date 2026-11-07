@@ -1,6 +1,5 @@
 package erl.bilico.feature.live
 
-import android.content.pm.ActivityInfo
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -39,7 +38,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -60,6 +58,7 @@ import erl.bilico.feature.video.QualityDialog
 import erl.bilico.feature.video.SpeedDialog
 import erl.bilico.feature.video.VideoFullscreenStage
 import erl.bilico.feature.video.VideoPlayer
+import erl.bilico.feature.video.describePlaybackError
 import erl.bilico.feature.video.findActivity
 import erl.bilico.feature.video.rememberDeviceOrientationSide
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
@@ -101,7 +100,6 @@ fun LiveRoomScreen(
     val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
-    var activeLandscapeSide by rememberSaveable { mutableIntStateOf(1) }
     val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
     var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
     var lastManualActionTime by remember { mutableLongStateOf(0L) }
@@ -111,7 +109,6 @@ fun LiveRoomScreen(
         if (value) {
             manualFullscreenExit = false
             manualEnterAwaitingLandscape = deviceSide == 0
-            if (deviceSide != 0) activeLandscapeSide = deviceSide
             fullscreen = true
         } else {
             manualFullscreenExit = true
@@ -134,7 +131,6 @@ fun LiveRoomScreen(
     var errorEvent by remember { mutableStateOf<PlaybackException?>(null) }
     var candidateIndex by remember { mutableIntStateOf(0) }
     var refetched by remember { mutableIntStateOf(0) }
-    var videoAspectRatio by remember { mutableFloatStateOf(16f / 9f) }
 
     val overlayItems = remember { mutableStateListOf<DanmakuItem>() }
     var consumedDanmakuSeq by remember { mutableLongStateOf(0L) }
@@ -177,13 +173,6 @@ fun LiveRoomScreen(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
-            }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (videoSize.width > 0 && videoSize.height > 0) {
-                    videoAspectRatio =
-                        (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
-                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -248,7 +237,7 @@ fun LiveRoomScreen(
             viewModel.retryPlayback()
             return@LaunchedEffect
         }
-        playerError = error.message ?: "播放失败"
+        playerError = describePlaybackError(error)
     }
 
     LaunchedEffect(effectiveSpeed) {
@@ -261,6 +250,11 @@ fun LiveRoomScreen(
         if (pending <= 0L) return@LaunchedEffect
         val count = pending.coerceAtMost(state.danmaku.size.toLong()).toInt()
         if (count <= 0) return@LaunchedEffect
+        // 暂停期间收到的弹幕只留在列表面板里，恢复播放时不会一次性糊满屏幕。
+        if (!player.isPlaying) {
+            consumedDanmakuSeq = state.danmakuSeq
+            return@LaunchedEffect
+        }
         val nowMs = player.currentPosition.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
         val firstId = state.danmakuSeq - count
         state.danmaku.takeLast(count).forEachIndexed { index, message ->
@@ -283,7 +277,6 @@ fun LiveRoomScreen(
         val now = SystemClock.uptimeMillis()
         val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
         if (deviceSide != 0) {
-            activeLandscapeSide = deviceSide
             if (manualEnterAwaitingLandscape) manualEnterAwaitingLandscape = false
             if (manualFullscreenExit && !inCooldown) manualFullscreenExit = false
             if (!manualFullscreenExit && !inCooldown && !fullscreen) fullscreen = true
@@ -294,13 +287,6 @@ fun LiveRoomScreen(
             }
         }
         wasLandscape = deviceSide != 0
-    }
-
-    DisposableEffect(activity) {
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
     }
 
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
@@ -343,9 +329,8 @@ fun LiveRoomScreen(
 
     VideoFullscreenStage(
         fullscreen = fullscreen,
-        landscapeSide = activeLandscapeSide,
+        landscapeSide = deviceSide,
         inPipMode = inPipMode,
-        videoAspectRatio = videoAspectRatio,
         activity = activity,
         darkMode = darkMode,
         playerContent = {

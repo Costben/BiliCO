@@ -7,12 +7,16 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -120,6 +124,10 @@ fun BiliCoRoot(container: AppContainer) {
         val screenCorner = rememberScreenCornerRadius()
         val cornerShape = remember(screenCorner) { SquircleShape(screenCorner) }
         val pageSurface = pageContainerColor()
+        val configuration = LocalConfiguration.current
+        val frozenPortrait = remember { FrozenPortrait() }
+        val windowPortrait = configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
+        if (windowPortrait) frozenPortrait.capture(configuration, constraints.maxWidth, constraints.maxHeight)
 
         // backdrop 只挂在这一层：整栈内容录一次就够，逐页各录一次是白费。
         Box(Modifier.fillMaxSize().layerBackdropIf(BlurEffectsEnabled, rootBackdrop)) {
@@ -134,6 +142,7 @@ fun BiliCoRoot(container: AppContainer) {
                         screenCorner = screenCorner,
                         nav = nav,
                         container = container,
+                        frozen = if (windowPortrait || !frozenPortrait.ready) null else frozenPortrait,
                     )
                 }
             }
@@ -254,6 +263,7 @@ private fun RouteLayer(
     screenCorner: Dp,
     nav: NavState,
     container: AppContainer,
+    frozen: FrozenPortrait?,
 ) {
     // 只在图层和绘制块里读，手势进行时失效的是图层，不会重组整页。
     val progress: () -> Float = { entry.progress.value }
@@ -312,8 +322,22 @@ private fun RouteLayer(
         )
     }
 
-    CompositionLocalProvider(LocalRouteTransition provides transition) {
-        Box(layer) {
+    // 播放页全屏转成横屏时，压在下面的页面看不见，沿用竖屏的配置和尺寸，
+    // 否则首页信息流等整栈页面会在转屏那一帧按横屏宽度重组、重排，把视频卡住几十毫秒。
+    val freeze = if (!isTop) frozen else null
+    val layerConfiguration = freeze?.configuration ?: LocalConfiguration.current
+    // 修饰符常驻，转屏那一帧只换尺寸来源，不插拔节点；尺寸没变时下面的页面直接跳过测量。
+    val freezeLayout = Modifier.layout { measurable, constraints ->
+        val inner = if (freeze != null) Constraints.fixed(freeze.width, freeze.height) else constraints
+        val placeable = measurable.measure(inner)
+        layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, 0) }
+    }
+
+    CompositionLocalProvider(
+        LocalRouteTransition provides transition,
+        LocalConfiguration provides layerConfiguration,
+    ) {
+        Box(layer.then(freezeLayout)) {
             if (entry.expand) {
                 ExpandLayer(entry, screenCorner, progress, { entry.fade.value }) {
                     RouteContent(entry.route, nav, container)
@@ -532,5 +556,22 @@ private fun rememberScreenCornerRadius(): Dp {
         } else {
             0.dp
         }
+    }
+}
+
+/** 最近一次竖屏时的配置与窗口尺寸，横屏期间给被盖住的页面用。只在组合里读写，不需要快照状态。 */
+private class FrozenPortrait {
+    var configuration: Configuration? = null
+        private set
+    var width = 0
+        private set
+    var height = 0
+        private set
+    val ready: Boolean get() = configuration != null && width > 0 && height > 0
+
+    fun capture(configuration: Configuration, width: Int, height: Int) {
+        this.configuration = configuration
+        this.width = width
+        this.height = height
     }
 }
