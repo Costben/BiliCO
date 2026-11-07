@@ -8,25 +8,30 @@ import android.os.Handler
 import android.os.Looper
 import android.view.OrientationEventListener
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.di.AppContainer
 import io.github.suqi8.coui.kmp.basic.Text
@@ -36,13 +41,10 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * ColorOS 17 专属视频转屏动画参数 (逆向自 com.oplus.animation.OplusVideoRotateAnimation)
  * 时长：450ms
  * 曲线：COUIMoveEaseInterpolator (0.3f, 0.0f, 0.1f, 1.0f)
- * 辅助淡出时长：50ms (0.33f, 0.0f, 0.67f, 1.0f)
  */
 internal const val COLOROS_VIDEO_ROTATE_DURATION_MS = 450
-internal const val COLOROS_VIDEO_ALPHA_DURATION_MS = 50
 
 internal val ColorOSMoveEase = CubicBezierEasing(0.3f, 0.0f, 0.1f, 1.0f)
-internal val ColorOSEase = CubicBezierEasing(0.33f, 0.0f, 0.67f, 1.0f)
 
 /** 手动/手势切换全屏后的重力感应冷却保护时长 (毫秒) */
 internal const val MANUAL_FULLSCREEN_COOLDOWN_MS = 3000L
@@ -65,21 +67,22 @@ internal fun Context.findActivity(): Activity? {
 }
 
 /**
- * 手机是不是横着拿的，带 500ms 持续确认防抖与双门限迟滞机制。
- *
- * 手机倾斜到目标角度区间后，必须持续稳定 500ms（0.5秒）才真正改变状态，
- * 中途如果晃动或处于过渡角（死区），取消待定切换，彻底消除晃动误判。
+ * 物理横竖屏方向，带 500ms 持续确认防抖、双门限迟滞与前后台生命周期启停：
+ * - `0`：竖屏
+ * - `+1`：逆时针横屏（听筒在左，约 270°，对应自绘顺时针旋转 `+90°`）
+ * - `-1`：顺时针反向横屏（听筒在右，约 90°，对应自绘逆时针旋转 `-90°`）
  */
 @Composable
-internal fun rememberDeviceLandscape(mode: Int): Boolean {
-    if (mode == 0) return false
+internal fun rememberDeviceOrientationSide(mode: Int): Int {
+    if (mode == 0) return 0
     val context = LocalContext.current
-    var landscape by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var side by remember { mutableIntStateOf(0) }
     val handler = remember { Handler(Looper.getMainLooper()) }
     var pendingRunnable by remember { mutableStateOf<Runnable?>(null) }
-    var pendingTarget by remember { mutableStateOf<Boolean?>(null) }
+    var pendingTarget by remember { mutableStateOf<Int?>(null) }
 
-    DisposableEffect(context, mode) {
+    DisposableEffect(context, lifecycleOwner, mode) {
         val listener = object : OrientationEventListener(context) {
             override fun onOrientationChanged(orientation: Int) {
                 if (orientation == ORIENTATION_UNKNOWN) return
@@ -88,29 +91,28 @@ internal fun rememberDeviceLandscape(mode: Int): Boolean {
                     2 -> 38 // 标准：52..128 / 232..308
                     else -> 45 // 灵敏：45..135 / 225..315
                 }
-                val inLandscape = orientation in (90 - delta)..(90 + delta) ||
-                    orientation in (270 - delta)..(270 + delta)
+                val inStandardLandscape = orientation in (270 - delta)..(270 + delta)
+                val inReverseLandscape = orientation in (90 - delta)..(90 + delta)
                 val inPortrait = orientation in 0..(90 - delta - 10) ||
                     orientation in (360 - (90 - delta - 10))..359 ||
                     orientation in (90 + delta + 10)..(270 - delta - 10)
 
-                val target = when {
-                    inLandscape -> true
-                    inPortrait -> false
-                    else -> null // 中间盲区/死区，保持当前不变
+                val target: Int? = when {
+                    inStandardLandscape -> 1
+                    inReverseLandscape -> -1
+                    inPortrait -> 0
+                    else -> null
                 }
 
-                if (target == null || target == landscape) {
-                    // 已经在目标状态或处于过渡角，取消待定切换
+                if (target == null || target == side) {
                     pendingRunnable?.let { handler.removeCallbacks(it) }
                     pendingRunnable = null
                     pendingTarget = null
                 } else if (pendingTarget != target) {
-                    // 进入新的稳定姿态区间，启动 500ms 持续确认
                     pendingRunnable?.let { handler.removeCallbacks(it) }
                     pendingTarget = target
                     val run = Runnable {
-                        landscape = target
+                        side = target
                         pendingRunnable = null
                         pendingTarget = null
                     }
@@ -119,13 +121,35 @@ internal fun rememberDeviceLandscape(mode: Int): Boolean {
                 }
             }
         }
-        if (listener.canDetectOrientation()) listener.enable()
+
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    if (listener.canDetectOrientation()) listener.enable()
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    pendingRunnable?.let { handler.removeCallbacks(it) }
+                    pendingRunnable = null
+                    pendingTarget = null
+                    listener.disable()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+            listener.canDetectOrientation()
+        ) {
+            listener.enable()
+        }
+
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             pendingRunnable?.let { handler.removeCallbacks(it) }
             listener.disable()
         }
     }
-    return landscape
+    return side
 }
 
 internal fun shareVideo(context: Context, title: String, bvid: String) {
@@ -156,12 +180,14 @@ internal fun VideoScreenDialogs(
     state: VideoUiState,
     onSelectQuality: (Int) -> Unit,
     onDismissQuality: () -> Unit,
+    inlineInStage: Boolean = false,
 ) {
     if (speedDialogVisible) {
         SpeedDialog(
             active = speed,
             onSelect = onSpeedChange,
             onDismiss = onDismissSpeed,
+            inlineInStage = inlineInStage,
         )
     }
 
@@ -174,10 +200,11 @@ internal fun VideoScreenDialogs(
                 onDismissSubtitle()
             },
             onDismiss = onDismissSubtitle,
+            inlineInStage = inlineInStage,
         )
     }
 
-    if (coinDialogVisible) {
+    if (!inlineInStage && coinDialogVisible) {
         CoinDialog(
             remaining = (2 - coined).coerceIn(1, 2),
             onSelect = onSelectCoin,
@@ -185,12 +212,14 @@ internal fun VideoScreenDialogs(
         )
     }
 
-    favoriteFolders?.let { folders ->
-        FavoriteFolderDialog(
-            folders = folders,
-            onSelect = onSelectFavorite,
-            onDismiss = onDismissFavorite,
-        )
+    if (!inlineInStage) {
+        favoriteFolders?.let { folders ->
+            FavoriteFolderDialog(
+                folders = folders,
+                onSelect = onSelectFavorite,
+                onDismiss = onDismissFavorite,
+            )
+        }
     }
 
     val source = state.source
@@ -200,6 +229,7 @@ internal fun VideoScreenDialogs(
             activeQuality = state.activeQuality,
             onSelect = onSelectQuality,
             onDismiss = onDismissQuality,
+            inlineInStage = inlineInStage,
         )
     }
 }
@@ -212,11 +242,26 @@ internal fun BindPlayerEvents(
     onPlayingChanged: (Boolean) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
     onError: (String?) -> Unit,
+    onVideoAspectChanged: (Float) -> Unit = {},
 ) {
     DisposableEffect(player) {
+        val initialSize = player.videoSize
+        if (initialSize.width > 0 && initialSize.height > 0) {
+            onVideoAspectChanged(
+                (initialSize.width * initialSize.pixelWidthHeightRatio) / initialSize.height,
+            )
+        }
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 onPlayingChanged(playing)
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    onVideoAspectChanged(
+                        (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height,
+                    )
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -243,14 +288,18 @@ internal fun BindPlayerEvents(
 }
 
 @Composable
-internal fun BoxScope.VideoMessageToast(message: String?, inPipMode: Boolean) {
+internal fun BoxScope.VideoMessageToast(
+    message: String?,
+    inPipMode: Boolean,
+    inFullscreen: Boolean = false,
+) {
     if (message != null && !inPipMode) {
         Text(
             text = message,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 96.dp)
+                .then(if (inFullscreen) Modifier else Modifier.navigationBarsPadding())
+                .padding(bottom = if (inFullscreen) 64.dp else 96.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xCC000000))
                 .padding(horizontal = 14.dp, vertical = 8.dp),

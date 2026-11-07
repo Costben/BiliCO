@@ -1,28 +1,14 @@
 package erl.bilico.feature.video
 
-import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,20 +22,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.source.MergingMediaSource
@@ -63,9 +40,6 @@ import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
-import erl.bilico.ui.pageContainerColor
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -114,6 +88,8 @@ fun VideoScreen(
     val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
+    var activeLandscapeSide by rememberSaveable { mutableIntStateOf(1) }
+    val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
     // 用户主动退出全屏、而手机还横着时，先锁竖屏，等手机真的竖过来再交还给传感器。
     var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
     var lastManualActionTime by remember { mutableLongStateOf(0L) }
@@ -122,7 +98,8 @@ fun VideoScreen(
         lastManualActionTime = SystemClock.uptimeMillis()
         if (value) {
             manualFullscreenExit = false
-            manualEnterAwaitingLandscape = true
+            manualEnterAwaitingLandscape = deviceSide == 0
+            if (deviceSide != 0) activeLandscapeSide = deviceSide
             fullscreen = true
         } else {
             manualFullscreenExit = true
@@ -181,6 +158,7 @@ fun VideoScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
+    var videoAspectRatio by remember { mutableFloatStateOf(16f / 9f) }
 
     BindPlaybackSession(
         player = player,
@@ -198,6 +176,7 @@ fun VideoScreen(
         onPlayingChanged = { isPlaying = it },
         onBufferingChanged = { isBuffering = it },
         onError = { playerError = it },
+        onVideoAspectChanged = { videoAspectRatio = it },
     )
 
     LaunchedEffect(state.selectedCid, state.detail?.aid) {
@@ -266,28 +245,16 @@ fun VideoScreen(
         }
     }
 
-    DisposableEffect(fullscreen) {
-        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        if (fullscreen) {
-            controller?.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller?.hide(WindowInsetsCompat.Type.systemBars())
-        } else {
-            controller?.show(WindowInsetsCompat.Type.systemBars())
-        }
-        onDispose { }
-    }
-
     // 手机横过来就进全屏；只有「横屏转回竖屏」才退出。
     // 手势或按钮手动触发全屏后，享受冷却与物理朝向豁免保护，防止手机还没转过来就被强行切回。
-    val deviceLandscape = rememberDeviceLandscape(autoRotateMode)
-    var wasLandscape by remember { mutableStateOf(deviceLandscape) }
-    LaunchedEffect(deviceLandscape, manualFullscreenExit, manualEnterAwaitingLandscape) {
+    var wasLandscape by remember { mutableStateOf(deviceSide != 0) }
+    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape) {
         if (inPipMode) return@LaunchedEffect
         val now = SystemClock.uptimeMillis()
         val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
 
-        if (deviceLandscape) {
+        if (deviceSide != 0) {
+            activeLandscapeSide = deviceSide
             if (manualEnterAwaitingLandscape) {
                 manualEnterAwaitingLandscape = false
             }
@@ -305,45 +272,19 @@ fun VideoScreen(
                 if (fullscreen) fullscreen = false
             }
         }
-        wasLandscape = deviceLandscape
+        wasLandscape = deviceSide != 0
     }
 
-    // 全屏时锁横屏把屏幕转过去；非全屏时锁定竖屏（严禁将详情页暴露给系统传感器导致详情页横屏）。
-    LaunchedEffect(fullscreen) {
-        if (inPipMode) return@LaunchedEffect
-        activity?.requestedOrientation = if (fullscreen) {
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-    }
-
-    DisposableEffect(Unit) {
+    // 宿主窗口恒定锁定竖屏：全屏旋转由应用内 VideoFullscreenStage 自绘纯几何 90° 缩放旋转完成，
+    // 彻底杜绝系统 WindowManager 截屏淡入淡出转屏动画。
+    DisposableEffect(activity) {
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         onDispose {
-            // 离开播放页就锁回竖屏：别的页面没有横屏布局，转过去会散架。
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-                ?.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
-    val fullViewport = fullscreen || inPipMode
-    val configuration = LocalConfiguration.current
-    val targetPlayerHeight = if (fullViewport) {
-        configuration.screenHeightDp.dp
-    } else {
-        minOf(configuration.screenWidthDp.dp * 9f / 16f, configuration.screenHeightDp.dp * 0.7f)
-    }
-    // ColorOS 17 专属视频转屏动画：450ms 配合 COUIMoveEaseInterpolator (0.3f, 0.0f, 0.1f, 1.0f)
-    val playerHeight by animateDpAsState(
-        targetValue = targetPlayerHeight,
-        animationSpec = tween(
-            durationMillis = COLOROS_VIDEO_ROTATE_DURATION_MS,
-            easing = ColorOSMoveEase,
-        ),
-        label = "coloros_player_height",
-    )
 
     val message = state.message
     if (message != null) {
@@ -353,234 +294,243 @@ fun VideoScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(pageContainerColor()),
-    ) {
-        // 竖屏非全屏时，视频上方那条状态栏恒为纯黑，不跟主题走。
-        if (!fullViewport) {
-            PlayerStatusBar(activity = activity, darkMode = darkMode)
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (fullViewport) Modifier else Modifier.statusBarsPadding()),
-        ) {
-            Box(
-                modifier = if (inPipMode) {
-                    Modifier.fillMaxSize()
-                } else {
-                    Modifier
-                        .fillMaxWidth()
-                        .height(playerHeight)
+    VideoFullscreenStage(
+        fullscreen = fullscreen,
+        landscapeSide = activeLandscapeSide,
+        inPipMode = inPipMode,
+        videoAspectRatio = videoAspectRatio,
+        activity = activity,
+        darkMode = darkMode,
+        playerContent = {
+            VideoPlayer(
+                player = player,
+                title = state.detail?.title.orEmpty(),
+                isPlaying = isPlaying,
+                positionMs = positionMs,
+                durationMs = durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
+                isBuffering = state.isPlaybackLoading || isBuffering,
+                errorMessage = state.playbackError ?: playerError,
+                qualityLabel = state.qualityLabel(),
+                speed = speed,
+                fullscreen = fullscreen,
+                onPlayPause = {
+                    if (player.isPlaying) player.pause() else player.play()
                 },
-            ) {
-                VideoPlayer(
-                    player = player,
-                    title = state.detail?.title.orEmpty(),
-                    isPlaying = isPlaying,
-                    positionMs = positionMs,
-                    durationMs = durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
-                    isBuffering = state.isPlaybackLoading || isBuffering,
-                    errorMessage = state.playbackError ?: playerError,
-                    qualityLabel = state.qualityLabel(),
+                onSeek = { player.seekTo(it) },
+                onToggleFullscreen = { applyFullscreen(!fullscreen) },
+                onFullscreenChange = applyFullscreen,
+                hapticEnabled = gestureHaptic,
+                volumeBrightnessEnabled = gestureVolBright,
+                fullscreenHintEnabled = fullscreenGestureHint,
+                onQualityClick = { qualityDialogVisible = true },
+                onSpeedClick = { speedDialogVisible = true },
+                onBack = {
+                    if (fullscreen) applyFullscreen(false) else nav.pop()
+                },
+                onRetry = viewModel::load,
+                modifier = Modifier.fillMaxSize(),
+                inPipMode = inPipMode,
+                danmakuEnabled = danmakuEnabled,
+                onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                subtitleLabel = subtitleController.buttonLabel,
+                onSubtitleClick = { subtitleDialogVisible = true },
+                onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
+                    { PlaybackBridge.enterPipNow(activity) }
+                } else {
+                    null
+                },
+                onHome = { nav.popToMain() },
+                onWatchLater = viewModel::addToWatchLater,
+                onShare = {
+                    shareVideo(
+                        context = context,
+                        title = state.detail?.title.orEmpty(),
+                        bvid = bvid,
+                    )
+                },
+                longPressSpeedActive = longPressSpeed,
+                longPressSpeedValue = boostSpeed,
+                onLongPressSpeedChange = { longPressSpeed = it },
+                subtitleOverlay = { chromeVisible ->
+                    SubtitleOverlay(
+                        cues = subtitleController.cues,
+                        positionMs = positionMs,
+                        fullscreen = fullscreen,
+                        controlsVisible = chromeVisible,
+                        inPip = inPipMode,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
+                overlay = {
+                    DanmakuOverlay(
+                        player = player,
+                        items = danmakuController.items,
+                        isPlaying = isPlaying,
+                        enabled = danmakuEnabled,
+                        opacity = danmakuOpacity / 100f,
+                        fontScale = danmakuFontScale / 100f,
+                        areaFraction = when (danmakuArea) {
+                            0 -> 0.25f
+                            1 -> 0.5f
+                            else -> 1f
+                        },
+                    )
+                },
+            )
+            if (fullscreen) {
+                VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)
+                VideoScreenDialogs(
+                    speedDialogVisible = speedDialogVisible,
                     speed = speed,
-                    fullscreen = fullscreen,
-                    onPlayPause = {
-                        if (player.isPlaying) player.pause() else player.play()
+                    onSpeedChange = { value ->
+                        speed = value
+                        speedDialogVisible = false
                     },
-                    onSeek = { player.seekTo(it) },
-                    onToggleFullscreen = { applyFullscreen(!fullscreen) },
-                    onFullscreenChange = applyFullscreen,
-                    hapticEnabled = gestureHaptic,
-                    volumeBrightnessEnabled = gestureVolBright,
-                    fullscreenHintEnabled = fullscreenGestureHint,
-                    onQualityClick = { qualityDialogVisible = true },
-                    onSpeedClick = { speedDialogVisible = true },
-                    onBack = {
-                        if (fullscreen) applyFullscreen(false) else nav.pop()
+                    onDismissSpeed = { speedDialogVisible = false },
+                    subtitleDialogVisible = subtitleDialogVisible,
+                    subtitleController = subtitleController,
+                    onDismissSubtitle = { subtitleDialogVisible = false },
+                    coinDialogVisible = false,
+                    coined = state.coined,
+                    onSelectCoin = {},
+                    onDismissCoin = {},
+                    favoriteFolders = null,
+                    onSelectFavorite = {},
+                    onDismissFavorite = {},
+                    qualityDialogVisible = qualityDialogVisible,
+                    state = state,
+                    onSelectQuality = { qn ->
+                        qualityDialogVisible = false
+                        viewModel.selectQuality(qn, player.currentPosition)
                     },
-                    onRetry = viewModel::load,
-                    modifier = Modifier.fillMaxSize(),
-                    inPipMode = inPipMode,
-                    danmakuEnabled = danmakuEnabled,
-                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                    subtitleLabel = subtitleController.buttonLabel,
-                    onSubtitleClick = { subtitleDialogVisible = true },
-                    onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
-                        { PlaybackBridge.enterPipNow(activity) }
-                    } else {
-                        null
-                    },
-                    onHome = { nav.popToMain() },
-                    onWatchLater = viewModel::addToWatchLater,
-                    onShare = {
-                        shareVideo(
-                            context = context,
-                            title = state.detail?.title.orEmpty(),
-                            bvid = bvid,
-                        )
-                    },
-                    longPressSpeedActive = longPressSpeed,
-                    longPressSpeedValue = boostSpeed,
-                    onLongPressSpeedChange = { longPressSpeed = it },
-                    subtitleOverlay = { chromeVisible ->
-                        SubtitleOverlay(
-                            cues = subtitleController.cues,
-                            positionMs = positionMs,
-                            fullscreen = fullscreen,
-                            controlsVisible = chromeVisible,
-                            inPip = inPipMode,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    },
-                    overlay = {
-                        DanmakuOverlay(
-                            player = player,
-                            items = danmakuController.items,
-                            isPlaying = isPlaying,
-                            enabled = danmakuEnabled,
-                            opacity = danmakuOpacity / 100f,
-                            fontScale = danmakuFontScale / 100f,
-                            areaFraction = when (danmakuArea) {
-                                0 -> 0.25f
-                                1 -> 0.5f
-                                else -> 1f
-                            },
-                        )
-                    },
+                    onDismissQuality = { qualityDialogVisible = false },
+                    inlineInStage = true,
                 )
             }
+        },
+        detailContent = {
+            Column(modifier = Modifier.fillMaxSize()) {
+                VideoDetailBar(
+                    selected = tab,
+                    onSelect = { tab = it },
+                    pager = detailPager,
+                    danmakuEnabled = danmakuEnabled,
+                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                    composing = danmakuComposing,
+                    draft = danmakuDraft,
+                    onDraftChange = { danmakuDraft = it },
+                    onComposingChange = {
+                        danmakuComposing = it
+                        if (!it) danmakuDraft = ""
+                    },
+                    onSend = sendDanmaku,
+                )
 
-            AnimatedVisibility(
-                visible = !fullViewport,
-                enter = fadeIn(tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase)) +
-                    slideInVertically(tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase)) { it / 4 },
-                exit = fadeOut(tween(COLOROS_VIDEO_ALPHA_DURATION_MS, easing = ColorOSEase)) +
-                    slideOutVertically(tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase)) { it / 4 },
-                modifier = Modifier.weight(1f),
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    VideoDetailBar(
-                        selected = tab,
-                        onSelect = { tab = it },
-                        pager = detailPager,
-                        danmakuEnabled = danmakuEnabled,
-                        onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                        composing = danmakuComposing,
-                        draft = danmakuDraft,
-                        onDraftChange = { danmakuDraft = it },
-                        onComposingChange = {
-                            danmakuComposing = it
-                            if (!it) danmakuDraft = ""
-                        },
-                        onSend = sendDanmaku,
-                    )
-
-                    HorizontalPager(
-                        state = detailPager,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .navigationBarsPadding(),
-                        beyondViewportPageCount = 0,
-                        key = { DETAIL_PAGES[it] },
-                    ) { page ->
-                        when (page) {
-                            0 -> VideoInfoTab(
-                                detail = state.detail,
-                                isLoading = state.isLoading,
-                                error = state.error,
-                                selectedCid = state.selectedCid,
-                                onRetry = viewModel::load,
-                                onSelectPart = { index ->
-                                    viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-                                    viewModel.selectPart(index, player.currentPosition)
-                                },
-                                onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
-                                onOpenVideo = { next -> nav.push(Route.Video(next)) },
-                                related = state.related,
-                                container = container,
-                                liked = state.liked,
-                                coined = state.coined,
-                                favorited = state.favorited,
-                                following = state.following,
-                                onLike = viewModel::toggleLike,
-                                onCoin = { coinDialogVisible = true },
-                                onFavorite = {
-                                    if (!container.session.isLoggedIn()) {
-                                        viewModel.showLoginHint()
-                                    } else {
-                                        scope.launch {
-                                            container.favorites.folders(container.session.mid())
-                                                .onSuccess { favoriteFolders = it }
-                                                .onFailure {
-                                                    viewModel.showMessage(
-                                                        it.message ?: "收藏夹加载失败",
-                                                    )
-                                                }
-                                        }
+                HorizontalPager(
+                    state = detailPager,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .navigationBarsPadding(),
+                    beyondViewportPageCount = 0,
+                    key = { DETAIL_PAGES[it] },
+                ) { page ->
+                    when (page) {
+                        0 -> VideoInfoTab(
+                            detail = state.detail,
+                            isLoading = state.isLoading,
+                            error = state.error,
+                            selectedCid = state.selectedCid,
+                            onRetry = viewModel::load,
+                            onSelectPart = { index ->
+                                viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                                viewModel.selectPart(index, player.currentPosition)
+                            },
+                            onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                            onOpenVideo = { next -> nav.push(Route.Video(next)) },
+                            related = state.related,
+                            container = container,
+                            liked = state.liked,
+                            coined = state.coined,
+                            favorited = state.favorited,
+                            following = state.following,
+                            onLike = viewModel::toggleLike,
+                            onCoin = { coinDialogVisible = true },
+                            onFavorite = {
+                                if (!container.session.isLoggedIn()) {
+                                    viewModel.showLoginHint()
+                                } else {
+                                    scope.launch {
+                                        container.favorites.folders(container.session.mid())
+                                            .onSuccess { favoriteFolders = it }
+                                            .onFailure {
+                                                viewModel.showMessage(
+                                                    it.message ?: "收藏夹加载失败",
+                                                )
+                                            }
                                     }
-                                },
-                                onWatchLater = viewModel::addToWatchLater,
-                                onFollow = viewModel::toggleFollow,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-
-                            else -> {
-                                val aid = state.detail?.aid ?: 0L
-                                if (aid > 0L) {
-                                    CommentTab(
-                                        container = container,
-                                        oid = aid,
-                                        onOpenUser = { mid ->
-                                            if (mid > 0L) nav.push(Route.Space(mid))
-                                        },
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
                                 }
+                            },
+                            onWatchLater = viewModel::addToWatchLater,
+                            onFollow = viewModel::toggleFollow,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+
+                        else -> {
+                            val aid = state.detail?.aid ?: 0L
+                            if (aid > 0L) {
+                                CommentTab(
+                                    container = container,
+                                    oid = aid,
+                                    onOpenUser = { mid ->
+                                        if (mid > 0L) nav.push(Route.Space(mid))
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             }
                         }
                     }
                 }
             }
-        }
-
-        VideoMessageToast(message = message, inPipMode = inPipMode)
-    }
-
-    VideoScreenDialogs(
-        speedDialogVisible = speedDialogVisible,
-        speed = speed,
-        onSpeedChange = { value ->
-            speed = value
-            speedDialogVisible = false
         },
-        onDismissSpeed = { speedDialogVisible = false },
-        subtitleDialogVisible = subtitleDialogVisible,
-        subtitleController = subtitleController,
-        onDismissSubtitle = { subtitleDialogVisible = false },
-        coinDialogVisible = coinDialogVisible,
-        coined = state.coined,
-        onSelectCoin = { count ->
-            coinDialogVisible = false
-            viewModel.coin(count)
+        portraitOverlay = {
+            VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = false)
         },
-        onDismissCoin = { coinDialogVisible = false },
-        favoriteFolders = favoriteFolders,
-        onSelectFavorite = { mediaId ->
-            favoriteFolders = null
-            viewModel.favorite(mediaId)
-        },
-        onDismissFavorite = { favoriteFolders = null },
-        qualityDialogVisible = qualityDialogVisible,
-        state = state,
-        onSelectQuality = { qn ->
-            qualityDialogVisible = false
-            viewModel.selectQuality(qn, player.currentPosition)
-        },
-        onDismissQuality = { qualityDialogVisible = false },
     )
+
+    if (!fullscreen) {
+        VideoScreenDialogs(
+            speedDialogVisible = speedDialogVisible,
+            speed = speed,
+            onSpeedChange = { value ->
+                speed = value
+                speedDialogVisible = false
+            },
+            onDismissSpeed = { speedDialogVisible = false },
+            subtitleDialogVisible = subtitleDialogVisible,
+            subtitleController = subtitleController,
+            onDismissSubtitle = { subtitleDialogVisible = false },
+            coinDialogVisible = coinDialogVisible,
+            coined = state.coined,
+            onSelectCoin = { count ->
+                coinDialogVisible = false
+                viewModel.coin(count)
+            },
+            onDismissCoin = { coinDialogVisible = false },
+            favoriteFolders = favoriteFolders,
+            onSelectFavorite = { mediaId ->
+                favoriteFolders = null
+                viewModel.favorite(mediaId)
+            },
+            onDismissFavorite = { favoriteFolders = null },
+            qualityDialogVisible = qualityDialogVisible,
+            state = state,
+            onSelectQuality = { qn ->
+                qualityDialogVisible = false
+                viewModel.selectQuality(qn, player.currentPosition)
+            },
+            onDismissQuality = { qualityDialogVisible = false },
+            inlineInStage = false,
+        )
+    }
 }

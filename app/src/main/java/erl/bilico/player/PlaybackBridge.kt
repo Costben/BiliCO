@@ -135,6 +135,7 @@ fun buildConfiguredExoPlayer(context: Context): ExoPlayer {
     return ExoPlayer.Builder(context)
         .setAudioAttributes(attrs, true)
         .setHandleAudioBecomingNoisy(true)
+        .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
         .build()
 }
 

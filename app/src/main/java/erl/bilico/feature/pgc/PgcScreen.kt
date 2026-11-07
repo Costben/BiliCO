@@ -1,9 +1,6 @@
 package erl.bilico.feature.pgc
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
-import android.content.pm.ActivityInfo
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,8 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -37,18 +32,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -56,19 +48,23 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
 import erl.bilico.feature.video.DanmakuController
 import erl.bilico.feature.video.DanmakuOverlay
+import erl.bilico.feature.video.MANUAL_FULLSCREEN_COOLDOWN_MS
 import erl.bilico.feature.video.QualityDialog
 import erl.bilico.feature.video.SpeedDialog
 import erl.bilico.feature.video.SubtitleController
 import erl.bilico.feature.video.SubtitleDialog
 import erl.bilico.feature.video.SubtitleOverlay
+import erl.bilico.feature.video.VideoFullscreenStage
+import erl.bilico.feature.video.VideoMessageToast
 import erl.bilico.feature.video.VideoPlayer
+import erl.bilico.feature.video.findActivity
+import erl.bilico.feature.video.rememberDeviceOrientationSide
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
-import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
@@ -100,6 +96,11 @@ fun PgcScreen(
     val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
+    val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
+    val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
+    val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
+    val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
+    val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
@@ -111,6 +112,24 @@ fun PgcScreen(
     val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
+    var activeLandscapeSide by rememberSaveable { mutableIntStateOf(1) }
+    val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
+    var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
+    var lastManualActionTime by remember { mutableLongStateOf(0L) }
+    var manualEnterAwaitingLandscape by remember { mutableStateOf(false) }
+    val applyFullscreen: (Boolean) -> Unit = { value ->
+        lastManualActionTime = SystemClock.uptimeMillis()
+        if (value) {
+            manualFullscreenExit = false
+            manualEnterAwaitingLandscape = deviceSide == 0
+            if (deviceSide != 0) activeLandscapeSide = deviceSide
+            fullscreen = true
+        } else {
+            manualFullscreenExit = true
+            manualEnterAwaitingLandscape = false
+            fullscreen = false
+        }
+    }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
@@ -126,6 +145,7 @@ fun PgcScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
+    var videoAspectRatio by remember { mutableFloatStateOf(16f / 9f) }
 
     val episode = viewModel.currentEpisode
     BindPlaybackSession(
@@ -141,6 +161,12 @@ fun PgcScreen(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoAspectRatio = (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -224,40 +250,33 @@ fun PgcScreen(
         }
     }
 
-    DisposableEffect(fullscreen) {
-        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        if (fullscreen) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            controller?.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller?.hide(WindowInsetsCompat.Type.systemBars())
+    var wasLandscape by remember { mutableStateOf(deviceSide != 0) }
+    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape) {
+        if (inPipMode) return@LaunchedEffect
+        val now = SystemClock.uptimeMillis()
+        val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
+        if (deviceSide != 0) {
+            activeLandscapeSide = deviceSide
+            if (manualEnterAwaitingLandscape) manualEnterAwaitingLandscape = false
+            if (manualFullscreenExit && !inCooldown) manualFullscreenExit = false
+            if (!manualFullscreenExit && !inCooldown && !fullscreen) fullscreen = true
         } else {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            controller?.show(WindowInsetsCompat.Type.systemBars())
+            if (manualFullscreenExit) manualFullscreenExit = false
+            if (wasLandscape && !inCooldown && !manualEnterAwaitingLandscape && fullscreen) {
+                fullscreen = false
+            }
         }
-        onDispose { }
+        wasLandscape = deviceSide != 0
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(activity) {
+        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-                ?.show(WindowInsetsCompat.Type.systemBars())
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 
-    BackHandler(enabled = fullscreen) { fullscreen = false }
-
-    val fullViewport = fullscreen || inPipMode
-    val configuration = LocalConfiguration.current
-    val playerHeight = if (fullViewport) {
-        configuration.screenHeightDp.dp
-    } else {
-        minOf(
-            configuration.screenWidthDp.dp * 9f / 16f,
-            configuration.screenHeightDp.dp * 0.7f,
-        )
-    }
+    BackHandler(enabled = fullscreen) { applyFullscreen(false) }
 
     val message = state.message
     if (message != null) {
@@ -267,90 +286,127 @@ fun PgcScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(pageContainerColor()),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (fullViewport) Modifier else Modifier.statusBarsPadding()),
-        ) {
-            Box(
-                modifier = if (inPipMode) {
-                    Modifier.fillMaxSize()
-                } else {
-                    Modifier
-                        .fillMaxWidth()
-                        .height(playerHeight)
+    @Composable
+    fun RenderPgcDialogs(inlineInStage: Boolean) {
+        if (speedDialogVisible) {
+            SpeedDialog(
+                active = speed,
+                onSelect = { value ->
+                    speed = value
+                    speedDialogVisible = false
                 },
-            ) {
-                VideoPlayer(
-                    player = player,
-                    title = state.detail?.title.orEmpty(),
-                    isPlaying = isPlaying,
-                    positionMs = positionMs,
-                    durationMs = durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
-                    isBuffering = state.isPlaybackLoading || isBuffering,
-                    errorMessage = state.playbackError ?: playerError,
-                    qualityLabel = state.qualityLabel(),
-                    speed = speed,
-                    fullscreen = fullscreen,
-                    onPlayPause = {
-                        if (player.isPlaying) player.pause() else player.play()
-                    },
-                    onSeek = { player.seekTo(it) },
-                    onToggleFullscreen = { fullscreen = !fullscreen },
-                    onQualityClick = { qualityDialogVisible = true },
-                    onSpeedClick = { speedDialogVisible = true },
-                    onBack = {
-                        if (fullscreen) fullscreen = false else nav.pop()
-                    },
-                    onRetry = viewModel::retryPlayback,
-                    modifier = Modifier.fillMaxSize(),
-                    inPipMode = inPipMode,
-                    danmakuEnabled = danmakuEnabled,
-                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                    subtitleLabel = subtitleController.buttonLabel,
-                    onSubtitleClick = { subtitleDialogVisible = true },
-                    onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
-                        { PlaybackBridge.enterPipNow(activity) }
-                    } else {
-                        null
-                    },
-                    longPressSpeedActive = longPressSpeed,
-                    longPressSpeedValue = boostSpeed,
-                    onLongPressSpeedChange = { longPressSpeed = it },
-                    subtitleOverlay = { chromeVisible ->
-                        SubtitleOverlay(
-                            cues = subtitleController.cues,
-                            positionMs = positionMs,
-                            fullscreen = fullscreen,
-                            controlsVisible = chromeVisible,
-                            inPip = inPipMode,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    },
-                    overlay = {
-                        DanmakuOverlay(
-                            player = player,
-                            items = danmakuController.items,
-                            isPlaying = isPlaying,
-                            enabled = danmakuEnabled,
-                            opacity = danmakuOpacity / 100f,
-                            fontScale = danmakuFontScale / 100f,
-                            areaFraction = when (danmakuArea) {
-                                0 -> 0.25f
-                                1 -> 0.5f
-                                else -> 1f
-                            },
-                        )
-                    },
-                )
-            }
+                onDismiss = { speedDialogVisible = false },
+                inlineInStage = inlineInStage,
+            )
+        }
+        if (subtitleDialogVisible) {
+            SubtitleDialog(
+                tracks = subtitleController.tracks,
+                selectedKey = subtitleController.selectedTrackKey,
+                onSelect = { key ->
+                    subtitleController.selectTrack(key)
+                    subtitleDialogVisible = false
+                },
+                onDismiss = { subtitleDialogVisible = false },
+                inlineInStage = inlineInStage,
+            )
+        }
+        val source = state.source
+        if (qualityDialogVisible && source != null) {
+            QualityDialog(
+                qualities = source.qualities,
+                activeQuality = state.activeQuality,
+                onSelect = { qn ->
+                    qualityDialogVisible = false
+                    viewModel.selectQuality(qn, player.currentPosition)
+                },
+                onDismiss = { qualityDialogVisible = false },
+                inlineInStage = inlineInStage,
+            )
+        }
+    }
 
-            if (!fullViewport) {
+    VideoFullscreenStage(
+        fullscreen = fullscreen,
+        landscapeSide = activeLandscapeSide,
+        inPipMode = inPipMode,
+        videoAspectRatio = videoAspectRatio,
+        activity = activity,
+        darkMode = darkMode,
+        playerContent = {
+            VideoPlayer(
+                player = player,
+                title = state.detail?.title.orEmpty(),
+                isPlaying = isPlaying,
+                positionMs = positionMs,
+                durationMs = durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
+                isBuffering = state.isPlaybackLoading || isBuffering,
+                errorMessage = state.playbackError ?: playerError,
+                qualityLabel = state.qualityLabel(),
+                speed = speed,
+                fullscreen = fullscreen,
+                onPlayPause = {
+                    if (player.isPlaying) player.pause() else player.play()
+                },
+                onSeek = { player.seekTo(it) },
+                onToggleFullscreen = { applyFullscreen(!fullscreen) },
+                onFullscreenChange = applyFullscreen,
+                hapticEnabled = gestureHaptic,
+                volumeBrightnessEnabled = gestureVolBright,
+                fullscreenHintEnabled = fullscreenGestureHint,
+                onQualityClick = { qualityDialogVisible = true },
+                onSpeedClick = { speedDialogVisible = true },
+                onBack = {
+                    if (fullscreen) applyFullscreen(false) else nav.pop()
+                },
+                onRetry = viewModel::retryPlayback,
+                modifier = Modifier.fillMaxSize(),
+                inPipMode = inPipMode,
+                danmakuEnabled = danmakuEnabled,
+                onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                subtitleLabel = subtitleController.buttonLabel,
+                onSubtitleClick = { subtitleDialogVisible = true },
+                onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
+                    { PlaybackBridge.enterPipNow(activity) }
+                } else {
+                    null
+                },
+                longPressSpeedActive = longPressSpeed,
+                longPressSpeedValue = boostSpeed,
+                onLongPressSpeedChange = { longPressSpeed = it },
+                subtitleOverlay = { chromeVisible ->
+                    SubtitleOverlay(
+                        cues = subtitleController.cues,
+                        positionMs = positionMs,
+                        fullscreen = fullscreen,
+                        controlsVisible = chromeVisible,
+                        inPip = inPipMode,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
+                overlay = {
+                    DanmakuOverlay(
+                        player = player,
+                        items = danmakuController.items,
+                        isPlaying = isPlaying,
+                        enabled = danmakuEnabled,
+                        opacity = danmakuOpacity / 100f,
+                        fontScale = danmakuFontScale / 100f,
+                        areaFraction = when (danmakuArea) {
+                            0 -> 0.25f
+                            1 -> 0.5f
+                            else -> 1f
+                        },
+                    )
+                },
+            )
+            if (fullscreen) {
+                VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)
+                RenderPgcDialogs(inlineInStage = true)
+            }
+        },
+        detailContent = {
+            Column(modifier = Modifier.fillMaxSize()) {
                 PgcTabRow(selected = tab, onSelect = { tab = it })
 
                 Box(
@@ -392,58 +448,14 @@ fun PgcScreen(
                     }
                 }
             }
-        }
+        },
+        portraitOverlay = {
+            VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = false)
+        },
+    )
 
-        if (message != null && !inPipMode) {
-            Text(
-                text = message,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 96.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xCC000000))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                style = COUITheme.textStyles.footnote1,
-                color = Color.White,
-            )
-        }
-    }
-
-    if (speedDialogVisible) {
-        SpeedDialog(
-            active = speed,
-            onSelect = { value ->
-                speed = value
-                speedDialogVisible = false
-            },
-            onDismiss = { speedDialogVisible = false },
-        )
-    }
-
-    if (subtitleDialogVisible) {
-        SubtitleDialog(
-            tracks = subtitleController.tracks,
-            selectedKey = subtitleController.selectedTrackKey,
-            onSelect = { key ->
-                subtitleController.selectTrack(key)
-                subtitleDialogVisible = false
-            },
-            onDismiss = { subtitleDialogVisible = false },
-        )
-    }
-
-    val source = state.source
-    if (qualityDialogVisible && source != null) {
-        QualityDialog(
-            qualities = source.qualities,
-            activeQuality = state.activeQuality,
-            onSelect = { qn ->
-                qualityDialogVisible = false
-                viewModel.selectQuality(qn, player.currentPosition)
-            },
-            onDismiss = { qualityDialogVisible = false },
-        )
+    if (!fullscreen) {
+        RenderPgcDialogs(inlineInStage = false)
     }
 }
 
@@ -492,15 +504,6 @@ private fun PgcUiState.qualityLabel(): String? {
     val source = source ?: return null
     val active = source.qualities.firstOrNull { it.quality == activeQuality }
     return active?.label?.takeIf { it.isNotBlank() } ?: "${activeQuality}P"
-}
-
-private fun Context.findActivity(): Activity? {
-    var current: Context? = this
-    while (current is ContextWrapper) {
-        if (current is Activity) return current
-        current = current.baseContext
-    }
-    return null
 }
 
 private val TABS = listOf("简介", "评论")

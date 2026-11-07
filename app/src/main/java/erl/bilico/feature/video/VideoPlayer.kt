@@ -1,5 +1,7 @@
 package erl.bilico.feature.video
 
+import android.view.LayoutInflater
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -7,6 +9,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,11 +45,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import erl.bilico.R
 import erl.bilico.data.model.QualityOption
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.CouiMenuItem
@@ -55,7 +58,6 @@ import erl.bilico.ui.components.FullscreenIcon
 import erl.bilico.ui.components.PiliGlyph
 import erl.bilico.ui.components.PiliIcon
 import erl.bilico.ui.components.PipIcon
-import erl.bilico.ui.components.PlayerControlsPadding
 import erl.bilico.ui.components.PlayerScrim
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -125,13 +127,24 @@ internal fun VideoPlayer(
     // 只看「要不要显示控件」这一个开关。暂停、缓冲、网络抖动都不能把控件顶回来，
     // 否则点一下屏幕看到控件纹丝不动，像是点不动。
     val showChrome = !inPipMode && (controlsVisible || errorMessage != null)
+    var fullscreenMoreOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(fullscreen, showChrome) {
+        if (!fullscreen || !showChrome) fullscreenMoreOpen = false
+    }
+    val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
 
     Box(modifier.background(Color.Black)) {
         AndroidView(
             factory = { context ->
-                PlayerView(context).apply {
+                (LayoutInflater.from(context)
+                    .inflate(R.layout.view_exo_texture_player, null, false) as PlayerView).apply {
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                        requestedFrameRate = android.view.View.REQUESTED_FRAME_RATE_CATEGORY_NO_PREFERENCE
+                        videoSurfaceView?.requestedFrameRate =
+                            android.view.View.REQUESTED_FRAME_RATE_CATEGORY_NO_PREFERENCE
+                    }
                 }
             },
             update = { view -> view.player = player },
@@ -173,7 +186,7 @@ internal fun VideoPlayer(
                     .background(
                         Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent)),
                     )
-                    .padding(PlayerControlsPadding),
+                    .padding(PaddingValues(horizontal = horizontalBarPad, vertical = 8.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 PlayerIconButton(COUIIcons.Back, "返回", onBack)
@@ -203,7 +216,11 @@ internal fun VideoPlayer(
                     PlayerIconButton(PipIcon, "小窗", onEnterPip)
                 }
                 if (onWatchLater != null || onShare != null) {
-                    PlayerMoreMenu(onWatchLater = onWatchLater, onShare = onShare)
+                    if (fullscreen) {
+                        PlayerIconButton(COUIIcons.More, "更多", onClick = { fullscreenMoreOpen = !fullscreenMoreOpen })
+                    } else {
+                        PlayerMoreMenu(onWatchLater = onWatchLater, onShare = onShare)
+                    }
                 }
             }
         }
@@ -251,7 +268,7 @@ internal fun VideoPlayer(
                     .background(
                         Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))),
                     )
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = horizontalBarPad, vertical = 6.dp),
             ) {
                 PlayerProgress(
                     positionMs = positionMs,
@@ -297,6 +314,55 @@ internal fun VideoPlayer(
                         label = if (fullscreen) "退出全屏" else "全屏",
                         onClick = onToggleFullscreen,
                     )
+                }
+            }
+        }
+
+        if (fullscreen && fullscreenMoreOpen && (onWatchLater != null || onShare != null)) {
+            BackHandler { fullscreenMoreOpen = false }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) { detectTapGestures { fullscreenMoreOpen = false } },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 52.dp, end = horizontalBarPad)
+                        .widthIn(min = 136.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(COUITheme.colorScheme.surfaceContainer)
+                        .pointerInput(Unit) { detectTapGestures { } }
+                        .padding(vertical = 6.dp),
+                ) {
+                    onWatchLater?.let { action ->
+                        Text(
+                            text = "稍后再看",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    fullscreenMoreOpen = false
+                                    action()
+                                }
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                            style = COUITheme.textStyles.body2,
+                            color = COUITheme.colorScheme.onSurface,
+                        )
+                    }
+                    onShare?.let { action ->
+                        Text(
+                            text = "分享",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    fullscreenMoreOpen = false
+                                    action()
+                                }
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                            style = COUITheme.textStyles.body2,
+                            color = COUITheme.colorScheme.onSurface,
+                        )
+                    }
                 }
             }
         }
@@ -463,78 +529,6 @@ private fun ControlLabel(
     )
 }
 
-@Composable
-internal fun QualityDialog(
-    qualities: List<QualityOption>,
-    activeQuality: Int,
-    onSelect: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val options = remember(qualities) { qualities.distinctBy { it.quality } }
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(COUITheme.colorScheme.surfaceContainer)
-                .padding(vertical = 10.dp),
-        ) {
-            Text(
-                text = "清晰度",
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-            )
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 320.dp)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                options.forEach { option ->
-                    val active = option.quality == activeQuality
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(option.quality) }
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = option.label.ifBlank { "${option.quality}P" },
-                            modifier = Modifier.weight(1f),
-                            style = COUITheme.textStyles.body1,
-                            color = if (active) {
-                                COUITheme.colorScheme.primary
-                            } else {
-                                COUITheme.colorScheme.onSurface
-                            },
-                        )
-                        if (option.needVip) {
-                            Text(
-                                text = "大会员",
-                                style = COUITheme.textStyles.footnote2,
-                                color = COUITheme.colorScheme.primary,
-                            )
-                        } else if (option.needLogin) {
-                            Text(
-                                text = "登录",
-                                style = COUITheme.textStyles.footnote2,
-                                color = COUITheme.colorScheme.onSurfaceSecondary,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-internal val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
-
 internal fun speedLabel(speed: Float): String = when (speed) {
     0.5f -> "0.5x"
     0.75f -> "0.75x"
@@ -543,53 +537,4 @@ internal fun speedLabel(speed: Float): String = when (speed) {
     1.5f -> "1.5x"
     2f -> "2.0x"
     else -> "${speed}x"
-}
-
-@Composable
-internal fun SpeedDialog(
-    active: Float,
-    onSelect: (Float) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(COUITheme.colorScheme.surfaceContainer)
-                .padding(vertical = 10.dp),
-        ) {
-            Text(
-                text = "播放倍速",
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-            )
-            PLAYBACK_SPEEDS.forEach { option ->
-                val selected = option == active
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelect(option) }
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = if (option == 1f) "正常" else speedLabel(option),
-                        modifier = Modifier.weight(1f),
-                        style = COUITheme.textStyles.body1,
-                        color = if (selected) {
-                            COUITheme.colorScheme.primary
-                        } else {
-                            COUITheme.colorScheme.onSurface
-                        },
-                    )
-                }
-            }
-        }
-    }
 }

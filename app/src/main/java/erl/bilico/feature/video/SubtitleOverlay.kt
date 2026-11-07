@@ -24,8 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import erl.bilico.data.model.PlayerAuxiliaryInfo
 import erl.bilico.data.model.SubtitleCue
 import erl.bilico.data.model.SubtitleTrack
@@ -192,10 +190,11 @@ internal fun SubtitleDialog(
     selectedKey: String?,
     onSelect: (String?) -> Unit,
     onDismiss: () -> Unit,
+    inlineInStage: Boolean = false,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    PlayerModalHost(
+        inlineInStage = inlineInStage,
+        onDismiss = onDismiss,
     ) {
         Column(
             modifier = Modifier
