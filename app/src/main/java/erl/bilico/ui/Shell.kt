@@ -61,6 +61,12 @@ import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.live.LiveListScreen
 import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.search.SearchPanel
+import erl.bilico.ui.components.NavDynamicFilledIcon
+import erl.bilico.ui.components.NavDynamicOutlineIcon
+import erl.bilico.ui.components.NavHomeFilledIcon
+import erl.bilico.ui.components.NavHomeOutlineIcon
+import erl.bilico.ui.components.NavLiveFilledIcon
+import erl.bilico.ui.components.NavLiveOutlineIcon
 import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBar
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarItem
@@ -75,10 +81,7 @@ import io.github.suqi8.coui.kmp.blur.layerBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.basic.Search
-import io.github.suqi8.coui.kmp.icon.extended.Community
 import io.github.suqi8.coui.kmp.icon.extended.Contacts
-import io.github.suqi8.coui.kmp.icon.extended.Home
-import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.abs
@@ -474,21 +477,24 @@ private fun FloatingBottomBar(
             BottomFloatingNavigationBarItem(
                 selected = tab == 0,
                 onClick = { onTab(0) },
-                icon = COUIIcons.Home,
+                icon = NavHomeOutlineIcon,
+                selectedIcon = NavHomeFilledIcon,
                 label = "推荐",
                 modifier = Modifier.testTag("bottom_tab_feed"),
             )
             BottomFloatingNavigationBarItem(
                 selected = tab == 1,
                 onClick = { onTab(1) },
-                icon = COUIIcons.Community,
+                icon = NavDynamicOutlineIcon,
+                selectedIcon = NavDynamicFilledIcon,
                 label = "动态",
                 modifier = Modifier.testTag("bottom_tab_dynamic"),
             )
             BottomFloatingNavigationBarItem(
                 selected = tab == 2,
                 onClick = { onTab(2) },
-                icon = COUIIcons.Play,
+                icon = NavLiveOutlineIcon,
+                selectedIcon = NavLiveFilledIcon,
                 label = "直播",
                 modifier = Modifier.testTag("bottom_tab_live"),
             )
