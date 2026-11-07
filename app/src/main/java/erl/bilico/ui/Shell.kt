@@ -141,12 +141,17 @@ fun MainShell(nav: NavState, container: AppContainer) {
     // 传 lambda 而不是数值：折叠每帧都在变，读值的地方都在绘制阶段，不会把整页重组一遍。
     val collapsed: () -> Float = { collapseShown.value }
 
+    val topEntry = nav.stack.lastOrNull()
+    val mainVisible = topEntry == null ||
+        topEntry.route == Route.Main ||
+        (nav.stack.size == 2 && (topEntry.progress.value < 1f || topEntry.exiting || topEntry.previewing))
+
     Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalTopBarBounds provides topBarBounds) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .layerBackdropIf(BlurEffectsEnabled, backdrop)
+                    .layerBackdropIf(BlurEffectsEnabled && mainVisible, backdrop)
                     .background(pageContainerColor())
             ) {
                 // 底栏只在点击时切换，页面自己承担转场：两边都留在同一个状态容器里交叉淡入。

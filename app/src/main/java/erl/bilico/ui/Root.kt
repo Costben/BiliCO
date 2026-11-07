@@ -43,6 +43,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -252,6 +255,18 @@ private fun RouteLayer(
                 }
             }
         }
+        .drawWithContent {
+            val covered = !isTop && (
+                !belowTop || (
+                    topProgress() >= 1f &&
+                        top?.exiting != true &&
+                        top?.previewing != true
+                    )
+                )
+            if (!covered) {
+                drawContent()
+            }
+        }
 
     val transition = remember(entry) {
         RouteTransition(
@@ -283,9 +298,19 @@ private fun ExpandLayer(
 ) {
     val origin = entry.origin ?: return
     val bounds = origin.bounds ?: return
+    val view = LocalView.current
     val density = LocalDensity.current
-    val statusBarTop = with(density) {
-        WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
+    val statusBarTop = remember(view, density) {
+        val fromInsets = ViewCompat.getRootWindowInsets(view)
+            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars())
+            ?.top
+            ?: 0
+        if (fromInsets > 0) {
+            fromInsets.toFloat()
+        } else {
+            val resId = view.resources.getIdentifier("status_bar_height", "dimen", "android")
+            if (resId > 0) view.resources.getDimensionPixelSize(resId).toFloat() else with(density) { 28.dp.toPx() }
+        }
     }
     val surface = pageContainerColor()
     val exiting = entry.exiting || entry.previewing
