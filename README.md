@@ -16,7 +16,7 @@
 - **消息**：回复我的、@ 我的、收到的赞、系统通知
 - **追番**：番剧列表与播放
 - **直播**：直播流播放与实时弹幕
-- **登录**：扫码登录
+- **登录**：扫码登录与网页登录
 
 ## 构建
 
@@ -49,7 +49,7 @@ keyPassword=********
 - `versionName` 用 `MAJOR.MINOR.PATCH`。MAJOR 给不兼容的大改版，MINOR 给成批新功能，PATCH 给修 bug。
 - `versionCode` 由 `versionName` 推出：`MAJOR * 10000 + MINOR * 100 + PATCH`，保证单调递增且与名称对得上。
 
-当前的 `0.1.0` 对应 `versionCode 100`。
+当前的 `0.1.1-pre` 对应 `versionCode 101`。
 
 ## 目录
 
