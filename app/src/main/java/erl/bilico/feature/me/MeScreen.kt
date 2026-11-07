@@ -62,7 +62,12 @@ fun MeScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (current == null) {
-            item(key = "login") { LoginSection(container) }
+            item(key = "login") {
+                LoginSection(
+                    container = container,
+                    onWebLogin = { nav.push(Route.WebLogin) },
+                )
+            }
         } else {
             item(key = "profile") { ProfileCard(current) }
         }
@@ -129,7 +134,7 @@ fun MeScreen(
     if (confirmLogout) {
         ConfirmDialog(
             title = "退出登录",
-            message = "会清除本地保存的 Cookie，下次需要重新扫码登录。",
+            message = "会清除本地保存的 Cookie，下次需要重新扫码或网页登录。",
             confirmText = "退出",
             onDismiss = { confirmLogout = false },
             onConfirm = {
@@ -141,7 +146,10 @@ fun MeScreen(
 }
 
 @Composable
-private fun LoginSection(container: AppContainer) {
+private fun LoginSection(
+    container: AppContainer,
+    onWebLogin: () -> Unit,
+) {
     val loginViewModel: LoginViewModel = viewModel {
         LoginViewModel(container.session)
     }
@@ -149,7 +157,11 @@ private fun LoginSection(container: AppContainer) {
     DisposableEffect(loginViewModel) {
         onDispose { loginViewModel.stop() }
     }
-    LoginContent(state = loginState, onRefresh = loginViewModel::refreshQr)
+    LoginContent(
+        state = loginState,
+        onRefresh = loginViewModel::refreshQr,
+        onWebLogin = onWebLogin,
+    )
 }
 
 @Composable

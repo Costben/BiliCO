@@ -51,7 +51,7 @@ import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.article.ArticleScreen
-import erl.bilico.feature.article.DynamicArticleScreen
+import erl.bilico.feature.dynamic.DynamicDetailScreen
 import erl.bilico.feature.dynamic.DynamicScreen
 import erl.bilico.feature.favorite.FavoriteFolderScreen
 import erl.bilico.feature.favorite.FavoriteFoldersScreen
@@ -60,6 +60,7 @@ import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.history.HistoryScreen
 import erl.bilico.feature.live.LiveListScreen
 import erl.bilico.feature.live.LiveRoomScreen
+import erl.bilico.feature.login.WebLoginScreen
 import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.message.MessageScreen
 import erl.bilico.feature.pgc.BangumiFollowScreen
@@ -416,6 +417,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
 
         Route.Messages -> MessageScreen(container, nav)
         Route.BangumiFollow -> BangumiFollowScreen(container, nav)
+        Route.WebLogin -> WebLoginScreen(container, nav)
         is Route.Article -> ArticleScreen(
             container = container,
             nav = nav,
@@ -423,11 +425,10 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
             initialTitle = route.title,
         )
 
-        is Route.Opus -> DynamicArticleScreen(
+        is Route.Opus -> DynamicDetailScreen(
             container = container,
             nav = nav,
             dynamicId = route.dynamicId,
-            initialTitle = route.title,
         )
     }
 }

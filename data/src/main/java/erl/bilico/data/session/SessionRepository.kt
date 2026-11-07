@@ -1,6 +1,7 @@
 package erl.bilico.data.session
 
 import android.content.Context
+import android.webkit.CookieManager
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import erl.bilico.data.biliDataStore
@@ -72,6 +73,15 @@ class SessionRepository(
         state to data
     }
 
+    /** 网页登录完成后把 WebView 的 Cookie 写入 CookieStore 并拉取账号信息。 */
+    suspend fun loginWithCookies(cookieMap: Map<String, String>): Result<Account> = runCatching {
+        val sessData = cookieMap["SESSDATA"]?.trim().orEmpty()
+        require(sessData.isNotEmpty()) { "未检测到登录凭证（SESSDATA）" }
+        cookies.putAll(cookieMap)
+        buvid.ensure()
+        refreshProfile() ?: error("读取账号信息失败，请重试")
+    }
+
     /** nav 是唯一可信的登录态来源；-101 时清掉失效 Cookie。 */
     suspend fun refreshProfile(): Account? {
         return runCatching {
@@ -92,6 +102,10 @@ class SessionRepository(
 
     suspend fun logout() {
         cookies.clear()
+        runCatching {
+            CookieManager.getInstance().removeAllCookies(null)
+            CookieManager.getInstance().flush()
+        }
         context.biliDataStore.edit {
             it.remove(KEY_ACCOUNT)
             it.remove(KEY_ACCESS_TOKEN)

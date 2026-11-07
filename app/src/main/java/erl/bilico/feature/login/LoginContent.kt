@@ -4,27 +4,31 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.suqi8.coui.kmp.basic.Button
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 @Composable
 fun LoginContent(
     state: LoginUiState,
     onRefresh: () -> Unit,
+    onWebLogin: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
@@ -72,8 +76,27 @@ fun LoginContent(
                     )
                 }
 
-                if (state.isExpired || (state.qrCode == null && !state.isLoading)) {
-                    Button(onClick = onRefresh) { Text("刷新二维码") }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    if (state.isExpired || (state.qrCode == null && !state.isLoading)) {
+                        Button(onClick = onRefresh) { Text("刷新二维码") }
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    Button(
+                        onClick = onWebLogin,
+                        modifier = Modifier.testTag("btn_web_login"),
+                    ) {
+                        Text("网页登录")
+                    }
+                }
+
+                if (!state.isExpired && state.qrCode != null) {
+                    TextButton(
+                        text = "刷新二维码",
+                        onClick = onRefresh,
+                    )
                 }
             }
         }
@@ -81,7 +104,7 @@ fun LoginContent(
         Spacer(Modifier.height(20.dp))
 
         Text(
-            text = "登录后默认 1080P，未登录播放接口允许的最高清晰度",
+            text = "支持 App 扫码与网页登录（短信验证码 / 密码），登录后默认 1080P",
             style = COUITheme.textStyles.footnote2,
             color = COUITheme.colorScheme.onSurfaceVariantSummary,
             textAlign = TextAlign.Center,
