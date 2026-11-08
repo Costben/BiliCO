@@ -38,6 +38,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -101,6 +102,10 @@ fun LiveRoomScreen(
     val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
+    // 视频本身的宽高比（宽 / 高），来自解码器上报的首帧尺寸；0 表示还没拿到。
+    var videoAspect by remember { mutableFloatStateOf(0f) }
+    // 竖屏视频的全屏方向跟着视频走：窗口不转，画面在竖屏里放到最大。
+    val portraitVideo = videoAspect > 0f && videoAspect < 1f
     val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
     var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
     var lastManualActionTime by remember { mutableLongStateOf(0L) }
@@ -109,7 +114,7 @@ fun LiveRoomScreen(
         lastManualActionTime = SystemClock.uptimeMillis()
         if (value) {
             manualFullscreenExit = false
-            manualEnterAwaitingLandscape = deviceSide == 0
+            manualEnterAwaitingLandscape = !portraitVideo && deviceSide == 0
             fullscreen = true
         } else {
             manualFullscreenExit = true
@@ -171,9 +176,19 @@ fun LiveRoomScreen(
     }
 
     DisposableEffect(player) {
+        val initialSize = player.videoSize
+        if (initialSize.width > 0 && initialSize.height > 0) {
+            videoAspect = (initialSize.width * initialSize.pixelWidthHeightRatio) / initialSize.height
+        }
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoAspect = (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -272,9 +287,15 @@ fun LiveRoomScreen(
         consumedDanmakuSeq = state.danmakuSeq
     }
 
+    // 竖屏视频不受手机朝向影响：全屏方向由视频决定，转手机不进也不退。
     var wasLandscape by remember { mutableStateOf(deviceSide != 0) }
-    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape) {
+    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape, portraitVideo) {
         if (inPipMode) return@LaunchedEffect
+        if (portraitVideo) {
+            manualEnterAwaitingLandscape = false
+            wasLandscape = deviceSide != 0
+            return@LaunchedEffect
+        }
         val now = SystemClock.uptimeMillis()
         val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
         if (deviceSide != 0) {
@@ -334,6 +355,7 @@ fun LiveRoomScreen(
         inPipMode = inPipMode,
         activity = activity,
         darkMode = darkMode,
+        videoAspect = videoAspect,
         playerContent = {
             VideoPlayer(
                 player = player,
@@ -346,6 +368,7 @@ fun LiveRoomScreen(
                 qualityLabel = state.qualityLabel(),
                 speed = speed,
                 fullscreen = fullscreen,
+                portraitFullscreen = fullscreen && portraitVideo,
                 onPlayPause = {
                     if (player.isPlaying) player.pause() else player.play()
                 },

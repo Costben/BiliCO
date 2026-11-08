@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -64,12 +65,12 @@ fun CommentTab(
     onOpenUser: (Long) -> Unit,
     modifier: Modifier = Modifier,
     type: Int = 1,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val viewModel: CommentViewModel = viewModel(key = "comment-$type-$oid") {
         CommentViewModel(container.comments, oid, type)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val listState = rememberLazyListState()
     var dialogRoot by remember { mutableStateOf<Comment?>(null) }
     var composeTarget by remember { mutableStateOf<ComposeTarget?>(null) }
     var imageViewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }

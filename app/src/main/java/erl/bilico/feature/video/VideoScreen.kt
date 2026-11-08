@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -83,6 +84,10 @@ fun VideoScreen(
     val player = remember { buildConfiguredExoPlayer(context) }
 
     var fullscreen by rememberSaveable { mutableStateOf(false) }
+    // 视频本身的宽高比（宽 / 高），来自解码器上报的首帧尺寸；0 表示还没拿到。
+    var videoAspect by remember { mutableFloatStateOf(0f) }
+    // 竖屏视频的全屏方向跟着视频走：窗口不转，画面在竖屏里放到最大。
+    val portraitVideo = videoAspect > 0f && videoAspect < 1f
     val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
     // 用户主动退出全屏、而手机还横着时，先锁竖屏，等手机真的竖过来再交还给传感器。
     var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
@@ -92,7 +97,7 @@ fun VideoScreen(
         lastManualActionTime = SystemClock.uptimeMillis()
         if (value) {
             manualFullscreenExit = false
-            manualEnterAwaitingLandscape = deviceSide == 0
+            manualEnterAwaitingLandscape = !portraitVideo && deviceSide == 0
             fullscreen = true
         } else {
             manualFullscreenExit = true
@@ -112,6 +117,10 @@ fun VideoScreen(
             .distinctUntilChanged()
             .collect { tab = it }
     }
+    // 两页各自一条竖向列表。视频槽位能不能被拉回去，要看当前这一页是不是滚到了顶：
+    // 只有到顶之后继续下拉才把视频拉出来，否则一下滑视频就弹出来，列表反而没动。
+    val infoListState = rememberLazyListState()
+    val commentListState = rememberLazyListState()
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
     var subtitleDialogVisible by remember { mutableStateOf(false) }
@@ -180,6 +189,7 @@ fun VideoScreen(
             // 线路坏了先换一条，候选表走完才把错误抛给界面。
             if (!playbackAttempts.next()) playerError = describePlaybackError(error)
         },
+        onVideoAspectChanged = { videoAspect = it },
     )
 
     LaunchedEffect(state.selectedCid, state.detail?.aid) {
@@ -229,9 +239,15 @@ fun VideoScreen(
 
     // 手机横过来就进全屏；只有「横屏转回竖屏」才退出。
     // 手势或按钮手动触发全屏后，享受冷却与物理朝向豁免保护，防止手机还没转过来就被强行切回。
+    // 竖屏视频不受手机朝向影响：全屏方向由视频决定，转手机不进也不退。
     var wasLandscape by remember { mutableStateOf(deviceSide != 0) }
-    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape) {
+    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape, portraitVideo) {
         if (inPipMode) return@LaunchedEffect
+        if (portraitVideo) {
+            manualEnterAwaitingLandscape = false
+            wasLandscape = deviceSide != 0
+            return@LaunchedEffect
+        }
         val now = SystemClock.uptimeMillis()
         val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
 
@@ -273,6 +289,13 @@ fun VideoScreen(
         inPipMode = inPipMode,
         activity = activity,
         darkMode = darkMode,
+        videoAspect = videoAspect,
+        portraitResizable = true,
+        playing = isPlaying,
+        canExpand = {
+            val list = if (tab == 0) infoListState else commentListState
+            list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0
+        },
         playerContent = {
             VideoPlayer(
                 player = player,
@@ -285,6 +308,7 @@ fun VideoScreen(
                 qualityLabel = state.qualityLabel(),
                 speed = speed,
                 fullscreen = fullscreen,
+                portraitFullscreen = fullscreen && portraitVideo,
                 onPlayPause = {
                     if (player.isPlaying) player.pause() else player.play()
                 },
@@ -455,6 +479,7 @@ fun VideoScreen(
                                     bvid = bvid,
                                 )
                             },
+                            listState = infoListState,
                             modifier = Modifier.fillMaxSize(),
                         )
 
@@ -467,6 +492,7 @@ fun VideoScreen(
                                     onOpenUser = { mid ->
                                         if (mid > 0L) nav.push(Route.Space(mid))
                                     },
+                                    listState = commentListState,
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
@@ -477,6 +503,25 @@ fun VideoScreen(
         },
         portraitOverlay = {
             VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = false)
+        },
+        portraitCollapsedBar = {
+            val slotHeight = LocalPortraitSlotHeight.current
+            CollapsedVideoBar(
+                isPlaying = isPlaying,
+                onBack = { nav.pop() },
+                onHome = { nav.popToMain() },
+                onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+                onExpand = { slotHeight.floatValue = 0f },
+                onDanmakuSettings = { danmakuSettingsDialogVisible = true },
+                onWatchLater = viewModel::addToWatchLater,
+                onShare = {
+                    shareVideo(
+                        context = context,
+                        title = state.detail?.title.orEmpty(),
+                        bvid = bvid,
+                    )
+                },
+            )
         },
     )
 

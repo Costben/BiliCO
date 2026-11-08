@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,9 +38,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,12 +53,10 @@ import erl.bilico.R
 import erl.bilico.data.model.QualityOption
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.CouiMenuItem
-import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.CouiStagePopupMenu
 import erl.bilico.ui.components.FullscreenExitIcon
 import erl.bilico.ui.components.FullscreenIcon
 import erl.bilico.ui.components.PiliGlyph
-import erl.bilico.ui.components.PiliIcon
 import erl.bilico.ui.components.PipIcon
 import erl.bilico.ui.components.PlayerScrim
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -89,6 +88,7 @@ internal fun VideoPlayer(
     qualityLabel: String?,
     speed: Float,
     fullscreen: Boolean,
+    portraitFullscreen: Boolean = false,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onToggleFullscreen: () -> Unit,
@@ -145,21 +145,39 @@ internal fun VideoPlayer(
         if (!fullscreen || !showChrome) fullscreenMoreOpen = false
     }
     val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
+    // 竖屏全屏时顶栏贴着屏幕顶端，得让开状态栏和挖孔，否则第一行会被挖孔吃进去。
+    // 用固定高度而不是实时 inset：全屏收系统栏不会让这两行跟着上下跳。
+    val portraitTopPad = if (portraitFullscreen) {
+        with(LocalDensity.current) { rememberStableStatusBarHeightPx().toDp() }
+    } else {
+        0.dp
+    }
 
-    Box(modifier.background(Color.Black)) {
+    // 黑底由全屏舞台决定：横屏转场靠它撑住整窗，竖屏全屏则让画面浮在页面上。
+    // 详情页里横屏视频收窄时改成「填满再裁」：宽度保持屏幕宽，只把下面裁掉。
+    val cropVideoWidth = LocalCropVideoWidth.current
+    val resizeMode = if (cropVideoWidth) {
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+    } else {
+        AspectRatioFrameLayout.RESIZE_MODE_FIT
+    }
+    Box(if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier) {
         AndroidView(
             factory = { context ->
                 (LayoutInflater.from(context)
                     .inflate(R.layout.view_exo_texture_player, null, false) as PlayerView).apply {
                     useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    this.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
                         requestedFrameRate = 120f
                         videoSurfaceView?.requestedFrameRate = 120f
                     }
                 }
             },
-            update = { view -> view.player = player },
+            update = { view ->
+                view.player = player
+                view.resizeMode = resizeMode
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -192,19 +210,13 @@ internal fun VideoPlayer(
         }
 
         if (showChrome) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent)),
-                    )
-                    .padding(PaddingValues(horizontal = horizontalBarPad, vertical = 8.dp)),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PlayerIconButton(COUIIcons.Back, "返回", onBack)
-                if (fullscreen && onHome != null) {
-                    PlayerIconButton(COUIIcons.Home, "首页", onHome)
+            // 照 COUI 顶栏：左边最多一个按钮（返回），其余都在右端，首页紧挨着更多菜单。
+            // 竖屏全屏画面只有屏幕宽，单行会把两组挤在一起，所以拆成上下两行，右组单独靠右。
+            val leadingActions: @Composable RowScope.() -> Unit = {
+                // 竖屏全屏下第一行只留标题：返回挪到下面的「只剩顶栏」状态里，
+                // 全屏时画面就是全部，这个键也基本按不到。
+                if (!portraitFullscreen) {
+                    PlayerIconButton(COUIIcons.Back, "返回", onBack)
                 }
                 Text(
                     text = title,
@@ -216,6 +228,8 @@ internal fun VideoPlayer(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            val trailingActions: @Composable RowScope.() -> Unit = {
                 // 竖屏非全屏时弹幕开关在简介那一行的胶囊右端，弹幕设置收在右侧更多菜单里；全屏时两者都在顶栏。
                 if (fullscreen) {
                     if (onDanmakuSettingsClick != null) {
@@ -238,6 +252,9 @@ internal fun VideoPlayer(
                 if (onEnterPip != null) {
                     PlayerIconButton(PipIcon, "小窗", onEnterPip)
                 }
+                if (fullscreen && onHome != null) {
+                    PlayerIconButton(COUIIcons.Home, "首页", onHome)
+                }
                 if (onWatchLater != null || onShare != null || onDanmakuSettingsClick != null) {
                     if (fullscreen) {
                         PlayerIconButton(COUIIcons.More, "更多", onClick = { fullscreenMoreOpen = !fullscreenMoreOpen })
@@ -247,6 +264,53 @@ internal fun VideoPlayer(
                             onWatchLater = onWatchLater,
                             onShare = onShare,
                         )
+                    }
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .background(
+                        // 两行顶栏比单行高得多，第二行下方就是画面，单段渐变淡到那里已经几乎看不见，
+                        // 所以多给一段并留出淡出余量，让白色图标始终压在暗底上。
+                        if (portraitFullscreen) {
+                            Brush.verticalGradient(
+                                listOf(Color(0xE6000000), Color(0xB3000000), Color.Transparent),
+                            )
+                        } else {
+                            Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))
+                        },
+                    )
+                    .padding(
+                        PaddingValues(
+                            start = horizontalBarPad,
+                            end = horizontalBarPad,
+                            top = 8.dp + portraitTopPad,
+                            bottom = if (portraitFullscreen) 20.dp else 8.dp,
+                        ),
+                    ),
+            ) {
+                if (portraitFullscreen) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            content = leadingActions,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            content = trailingActions,
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        leadingActions()
+                        trailingActions()
                     }
                 }
             }
@@ -455,72 +519,6 @@ private fun PlayerProgress(
                     .background(Color.White),
             )
         }
-    }
-}
-
-@Composable
-private fun PlayerIconButton(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    tint: Color = Color.White,
-) {
-    Icon(
-        imageVector = icon,
-        contentDescription = label,
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick)
-            .padding(9.dp),
-        tint = tint,
-    )
-}
-
-/** 字体图标按钮：字形占满 40dp 的触摸区，按下感与图标按钮一致。 */
-@Composable
-private fun PlayerGlyphButton(
-    glyph: String,
-    label: String,
-    onClick: () -> Unit,
-    tint: Color = Color.White,
-) {
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        PiliIcon(
-            glyph = glyph,
-            contentDescription = label,
-            size = 20.dp,
-            tint = tint,
-        )
-    }
-}
-
-/** 顶栏右端的三个点：弹幕设置、稍后再看与分享。 */
-@Composable
-private fun PlayerMoreMenu(
-    onDanmakuSettings: (() -> Unit)?,
-    onWatchLater: (() -> Unit)?,
-    onShare: (() -> Unit)?,
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Box {
-        PlayerIconButton(COUIIcons.More, "更多", onClick = { expanded = true })
-        CouiPopupMenu(
-            show = expanded,
-            onDismiss = { expanded = false },
-            items = buildList {
-                onDanmakuSettings?.let { add(CouiMenuItem("弹幕设置", it)) }
-                onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
-                onShare?.let { add(CouiMenuItem("分享", it)) }
-            },
-        )
     }
 }
 

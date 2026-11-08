@@ -98,18 +98,23 @@ internal val VolumeIcon: ImageVector by lazy {
 /**
  * 全屏 / 退出全屏：字体里的 `open_in_full_rotate_45` 其实画的是水平双向箭头，
  * 拿来当全屏会读成「调整宽度」，所以这两个用 Material 的四角括号。
+ *
+ * Material 原路径只占 24 视口的 5..19，和 COUII 图标并排时小一圈，
+ * 这里绕中心放大 1.4 倍（占 2.2..21.8），视觉大小才和旁边的图标一致。
  */
 internal val FullscreenIcon: ImageVector by lazy {
     icon(
         name = "Fullscreen",
-        path = "M7,14H5v5h5v-2H7v-3zM5,10h2V7h3V5H5v5zM17,17h-3v2h5v-5h-2v3zM14,5v2h3v3h2V5h-4z",
+        path = "M5,14.8H2.2v7h7v-2.8H5v-4.2zM2.2,9.2h2.8V5h4.2V2.2H2.2v7z" +
+            "M19,19h-4.2v2.8h7v-7h-2.8v4.2zM14.8,2.2v2.8h4.2v4.2h2.8V2.2h-5.6z",
     )
 }
 
 internal val FullscreenExitIcon: ImageVector by lazy {
     icon(
         name = "FullscreenExit",
-        path = "M5,16h3v3h2v-5H5v2zM8,8H5v2h5V5H8v3zM14,19h2v-3h3v-2h-5v5zM16,8V5h-2v5h5V8h-3z",
+        path = "M2.2,17.6h4.2v4.2h2.8v-7H2.2v2.8zM6.4,6.4H2.2v2.8h7V2.2H6.4v4.2z" +
+            "M14.8,21.8h2.8v-4.2h4.2v-2.8h-7v7zM17.6,6.4V2.2h-2.8v7h7V6.4h-4.2z",
     )
 }
 

@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -102,6 +104,7 @@ internal fun VideoInfoTab(
     onWatchLater: () -> Unit,
     onFollow: () -> Unit,
     onShare: () -> Unit,
+    listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier,
 ) {
     when {
@@ -134,6 +137,7 @@ internal fun VideoInfoTab(
             onWatchLater = onWatchLater,
             onFollow = onFollow,
             onShare = onShare,
+            listState = listState,
             modifier = modifier,
         )
     }
@@ -161,6 +165,7 @@ private fun InfoContent(
     onWatchLater: () -> Unit,
     onFollow: () -> Unit,
     onShare: () -> Unit,
+    listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
     // 标题与简介共用一次展开：点一下标题，标题放开的同时简介也跟着放开。
@@ -175,6 +180,7 @@ private fun InfoContent(
     val measurer = rememberTextMeasurer()
 
     LazyColumn(
+        state = listState,
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
