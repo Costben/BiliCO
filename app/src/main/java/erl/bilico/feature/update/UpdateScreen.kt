@@ -37,6 +37,7 @@ import erl.bilico.ui.components.SectionTitle
 import erl.bilico.update.AppUpdater
 import erl.bilico.update.UpdateInfo
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -165,7 +166,9 @@ fun UpdateScreen(
         item(key = "update-options") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
                 insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
             ) {
                 SwitchPreference(
                     title = "自动检查更新",

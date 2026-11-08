@@ -32,6 +32,7 @@ import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.components.SectionTitle
 import erl.bilico.ui.Route
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DropdownImpl
 import io.github.suqi8.coui.kmp.basic.DropdownItem
@@ -80,7 +81,9 @@ fun SettingsScreen(
         item(key = "display") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
                 insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
             ) {
                 OverlayDropdownPreference(
                     items = DARK_MODE_OPTIONS,
@@ -165,7 +168,9 @@ fun SettingsScreen(
         item(key = "danmaku") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
                 insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
             ) {
                 SwitchPreference(
                     checked = danmakuEnabled,
@@ -189,7 +194,9 @@ fun SettingsScreen(
         item(key = "storage") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
                 insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
             ) {
                 ArrowPreference(
                     title = "清除图片缓存",
@@ -213,7 +220,9 @@ fun SettingsScreen(
         item(key = "update") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
                 insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
             ) {
                 ArrowPreference(
                     title = "检查更新",
@@ -266,7 +275,9 @@ fun SettingsScreen(
         item(key = "about") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
                 insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
             ) {
                 ArrowPreference(
                     title = "关于 BiliCO",
@@ -284,7 +295,9 @@ fun SettingsScreen(
             item(key = "account") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = CardDefaults.GroupCornerRadius,
                     insideMargin = PaddingValues(0.dp),
+                    weight = CardDefaults.GroupWeight,
                 ) {
                     ArrowPreference(
                         title = "退出登录",

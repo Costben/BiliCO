@@ -139,10 +139,14 @@ fun ErrorState(
 }
 
 @Composable
-fun SectionTitle(text: String, modifier: Modifier = Modifier) {
+fun SectionTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+    horizontalPadding: Dp = 16.dp,
+) {
     Text(
         text = text,
-        modifier = modifier.padding(horizontal = 6.dp, vertical = 10.dp),
+        modifier = modifier.padding(horizontal = horizontalPadding, vertical = 10.dp),
         fontSize = 13.sp,
         fontWeight = FontWeight.Medium,
         color = COUITheme.colorScheme.onSurfaceSecondary,

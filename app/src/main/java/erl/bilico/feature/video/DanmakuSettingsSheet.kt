@@ -20,11 +20,12 @@ import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.SectionTitle
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
-import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Refresh
+import io.github.suqi8.coui.kmp.layout.SheetActionButton
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
 import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
 import io.github.suqi8.coui.kmp.preference.SliderPreference
@@ -50,7 +51,7 @@ internal fun DanmakuSettingsSheet(
         show = show,
         title = "弹幕设置",
         endAction = {
-            HighlightedIconButton(
+            SheetActionButton(
                 onClick = { confirmReset = true },
                 modifier = Modifier.testTag("dm_reset"),
             ) {
@@ -63,7 +64,12 @@ internal fun DanmakuSettingsSheet(
         LazyColumn(Modifier.testTag("danmaku_settings_sheet")) {
             item(key = "display-title") { SectionTitle("显示") }
             item(key = "display") {
-                Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(0.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = CardDefaults.GroupCornerRadius,
+                    insideMargin = PaddingValues(0.dp),
+                    weight = CardDefaults.GroupWeight,
+                ) {
                     SliderPreference(
                         value = settings.opacity.toFloat(),
                         onValueChange = { repository.setDanmakuOpacity(it.roundToInt()) },
@@ -92,7 +98,12 @@ internal fun DanmakuSettingsSheet(
 
             item(key = "filter-title") { SectionTitle("显示的弹幕类型") }
             item(key = "filter") {
-                Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(0.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = CardDefaults.GroupCornerRadius,
+                    insideMargin = PaddingValues(0.dp),
+                    weight = CardDefaults.GroupWeight,
+                ) {
                     SwitchPreference(
                         checked = settings.allowScroll,
                         onCheckedChange = repository::setDanmakuAllowScroll,
@@ -128,7 +139,12 @@ internal fun DanmakuSettingsSheet(
 
             item(key = "feature-title") { SectionTitle("功能") }
             item(key = "feature") {
-                Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(0.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = CardDefaults.GroupCornerRadius,
+                    insideMargin = PaddingValues(0.dp),
+                    weight = CardDefaults.GroupWeight,
+                ) {
                     SwitchPreference(
                         checked = settings.mergeDuplicates,
                         onCheckedChange = repository::setDanmakuMergeDuplicates,
@@ -146,7 +162,12 @@ internal fun DanmakuSettingsSheet(
 
             item(key = "style-title") { SectionTitle("样式") }
             item(key = "style") {
-                Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(0.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = CardDefaults.GroupCornerRadius,
+                    insideMargin = PaddingValues(0.dp),
+                    weight = CardDefaults.GroupWeight,
+                ) {
                     SliderPreference(
                         value = settings.speed.toFloat(),
                         onValueChange = { repository.setDanmakuSpeed(it.roundToInt()) },
@@ -184,7 +205,7 @@ internal fun DanmakuSettingsSheet(
                 }
             }
 
-            item(key = "bottom-space") { Spacer(Modifier.height(12.dp)) }
+            item(key = "bottom-space") { Spacer(Modifier.height(24.dp)) }
         }
     }
 

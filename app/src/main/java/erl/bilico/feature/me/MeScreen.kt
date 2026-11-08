@@ -35,6 +35,7 @@ import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.navBottomPadding
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
@@ -75,7 +76,9 @@ fun MeScreen(
         item(key = "entries") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
                 insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
             ) {
                 ArrowPreference(
                     title = "历史记录",
@@ -119,7 +122,9 @@ fun MeScreen(
             item(key = "logout") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = CardDefaults.GroupCornerRadius,
                     insideMargin = PaddingValues(0.dp),
+                    weight = CardDefaults.GroupWeight,
                 ) {
                     ArrowPreference(
                         title = "退出登录",

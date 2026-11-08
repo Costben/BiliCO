@@ -266,7 +266,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.suggestions(
     if (history.isNotEmpty()) {
         item(key = "history-title") {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("搜索历史", Modifier.weight(1f))
+                SectionTitle("搜索历史", Modifier.weight(1f), horizontalPadding = 6.dp)
                 Text(
                     text = "清空",
                     modifier = Modifier
@@ -283,7 +283,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.suggestions(
         }
     }
 
-    item(key = "hot-title") { SectionTitle("热搜") }
+    item(key = "hot-title") { SectionTitle("热搜", horizontalPadding = 6.dp) }
 
     if (hotLoading && hot.isEmpty()) {
         item(key = "hot-loading") { LoadingState() }

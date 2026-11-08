@@ -82,7 +82,7 @@ fun SpaceScreen(
             item(key = "profile") { ProfileCard(profile) }
         }
 
-        item(key = "videos-title") { SectionTitle("投稿") }
+        item(key = "videos-title") { SectionTitle("投稿", horizontalPadding = 6.dp) }
 
         if (state.videos.isEmpty() && !state.isLoading) {
             item(key = "empty") {
