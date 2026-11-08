@@ -62,6 +62,15 @@ class LiveRoomViewModel(
         viewModelScope.launch {
             danmakuClient.state.collect { state -> _state.update { it.copy(danmakuState = state) } }
         }
+        viewModelScope.launch {
+            danmakuClient.watchers.collect { watchers ->
+                _state.update { state ->
+                    val detail = state.detail ?: return@update state
+                    if (watchers.count <= 0L) return@update state
+                    state.copy(detail = detail.copy(watched = watchers.count))
+                }
+            }
+        }
     }
 
     fun load() {
@@ -94,16 +103,7 @@ class LiveRoomViewModel(
 
     /** 弹幕 token 与真实房号绑定，短号进房要先换成详情里的 roomId。 */
     private fun connectDanmaku(realRoomId: Long) {
-        // 服务端只给登录用户下发弹幕：uid 为 0 时连接会被立刻关闭，没必要重试。
-        if (uid <= 0L) {
-            _state.update {
-                it.copy(
-                    danmakuState = LiveDanmakuState.Failed,
-                    danmakuError = "登录后查看弹幕",
-                )
-            }
-            return
-        }
+        // 直播弹幕对未登录用户同样开放：uid 传 0，服务端照常下发弹幕和「看过」人数。
         viewModelScope.launch {
             repository.danmakuServer(realRoomId)
                 .onSuccess { server ->

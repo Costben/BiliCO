@@ -30,6 +30,24 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
     var player: Player? = null
 
+    /**
+     * 外部时间轴。设置后弹幕时间轴改由它驱动，不再跟随 [Player.currentPosition]：
+     * 直播（FLV/HLS 滑窗）下 `currentPosition` 会来回跳甚至归零，拿它当时间轴会让弹幕
+     * 全挤在同一时刻，入轨时互相顶掉，画面上一条都出不来。
+     *
+     * 时钟本身按帧间隔累加，缓冲/暂停期间不往前走，恢复时从暂停处接着走 —— 直接用墙钟
+     * 会出现「卡住一下、然后整屏弹幕窜出去一截」。
+     */
+    var timeline: DanmakuTimeline? = null
+        set(value) {
+            if (field === value) return
+            field = value
+            lastFrameNanos = 0L
+            lastExternalMs = 0L
+            renderTimeMs = -1.0
+            invalidate()
+        }
+
     var items: List<DanmakuItem> = emptyList()
         set(value) {
             if (field === value) return
@@ -82,6 +100,7 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
     private var loopRunning = false
     private var lastFrameNanos = 0L
+    private var lastExternalMs = 0L
     private var renderTimeMs = -1.0
 
     init {
@@ -170,6 +189,29 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
         if (!isAttachedToWindow || !settings.enabled || placed.isEmpty() || p == null) {
             loopRunning = false
             lastFrameNanos = 0L
+            return
+        }
+
+        val external = timeline
+        if (external != null) {
+            // 时间轴按帧间隔累加：缓冲、卡顿这段不往前走，恢复时从暂停处接着走。
+            val now = external.source()
+            if (renderTimeMs < 0.0) renderTimeMs = external.nowMs.toDouble()
+            if (lastExternalMs != 0L) {
+                val delta = (now - lastExternalMs).coerceIn(0L, MAX_FRAME_MS.toLong())
+                renderTimeMs += delta
+            }
+            lastExternalMs = now
+            external.nowMs = renderTimeMs.toLong()
+            lastFrameNanos = frameTimeNanos
+            invalidate()
+            if (p.isPlaying && playing) {
+                Choreographer.getInstance().postFrameCallback(this)
+            } else {
+                loopRunning = false
+                lastFrameNanos = 0L
+                lastExternalMs = 0L
+            }
             return
         }
 
@@ -262,10 +304,11 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
     override fun onDraw(canvas: Canvas) {
         if (!settings.enabled || placed.isEmpty()) return
         val p = player ?: return
-        val nowMs = if (loopRunning && renderTimeMs >= 0.0) {
-            renderTimeMs
-        } else {
-            p.currentPosition.coerceAtLeast(0L).toDouble().also { renderTimeMs = it }
+        val nowMs = when {
+            // 直播走的是一条自维护的时间轴，暂停时保持不动。
+            timeline != null -> if (renderTimeMs >= 0.0) renderTimeMs else 0.0
+            loopRunning && renderTimeMs >= 0.0 -> renderTimeMs
+            else -> p.currentPosition.coerceAtLeast(0L).toDouble().also { renderTimeMs = it }
         }
 
         val density = resources.displayMetrics.density
@@ -382,6 +425,19 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
         const val MAX_SPRITE_CACHE_BYTES = 48 * 1024 * 1024
     }
+}
+
+/**
+ * 直播弹幕时间轴：墙钟只用来量帧间隔，弹幕时间按帧间隔累加，
+ * 缓冲、后台、暂停这些空档不会计入，恢复时从暂停处接着走。
+ */
+internal class DanmakuTimeline {
+    /** 单调时钟，毫秒。 */
+    var source: () -> Long = { 0L }
+
+    /** 弹幕时间轴上的「现在」，由渲染循环每帧写入；入队方按它打时间戳。 */
+    @Volatile
+    var nowMs: Long = 0L
 }
 
 internal data class FilteredDanmaku(

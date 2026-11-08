@@ -54,6 +54,7 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
+import erl.bilico.feature.video.DanmakuTimeline
 import erl.bilico.feature.video.MANUAL_FULLSCREEN_COOLDOWN_MS
 import erl.bilico.feature.video.QualityDialog
 import erl.bilico.feature.video.SpeedDialog
@@ -140,6 +141,12 @@ fun LiveRoomScreen(
 
     val overlayItems = remember { mutableStateListOf<DanmakuItem>() }
     var consumedDanmakuSeq by remember { mutableLongStateOf(0L) }
+    var lastOverlayStamp by remember { mutableLongStateOf(0L) }
+    // 直播弹幕走自己的时间轴：播放器在 FLV 直播里 currentPosition 会来回跳，
+    // 拿它当时间轴会让同一秒进来的弹幕挤在同一时刻、入轨互相顶掉。
+    val overlayTimeline = remember {
+        DanmakuTimeline().apply { source = { SystemClock.elapsedRealtime() } }
+    }
 
     fun clearDanmakuOverlay() {
         overlayItems.clear()
@@ -271,7 +278,8 @@ fun LiveRoomScreen(
             consumedDanmakuSeq = state.danmakuSeq
             return@LaunchedEffect
         }
-        val nowMs = player.currentPosition.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        val nowMs = overlayTimeline.nowMs.coerceAtLeast(lastOverlayStamp + 1L).toInt()
+        lastOverlayStamp = nowMs.toLong()
         val firstId = state.danmakuSeq - count
         state.danmaku.takeLast(count).forEachIndexed { index, message ->
             overlayItems += DanmakuItem(
@@ -401,11 +409,14 @@ fun LiveRoomScreen(
                 longPressSpeedValue = boostSpeed,
                 onLongPressSpeedChange = { longPressSpeed = it },
                 overlay = {
+                    // 弹幕视图按引用判断列表有没有换过：这里必须给一份新列表，
+                    // 直接传可变的 SnapshotStateList 会让它永远认为「没变」，直播弹幕一条都画不出来。
                     DanmakuOverlay(
                         player = player,
-                        items = overlayItems,
+                        items = overlayItems.toList(),
                         isPlaying = isPlaying,
                         settings = danmakuSettings,
+                        timeline = overlayTimeline,
                     )
                 },
             )
@@ -498,6 +509,10 @@ private fun LiveRoomInfo(detail: LiveRoomDetail, modifier: Modifier = Modifier) 
                     text = buildString {
                         if (detail.areaName.isNotBlank()) append(detail.areaName).append(" · ")
                         if (detail.isLive) {
+                            // 先给真实观众数（本场看过），人气是加权热度，标清楚免得又混在一起。
+                            if (detail.watched > 0L) {
+                                append(Formatters.formatStat(detail.watched)).append("人看过 · ")
+                            }
                             append(Formatters.formatStat(detail.online)).append("人气")
                         } else {
                             append("未开播")
