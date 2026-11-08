@@ -2,7 +2,9 @@ package erl.bilico.data.repository
 
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.PlaybackSource
+import erl.bilico.data.model.VideoCollection
 import erl.bilico.data.model.VideoDetail
+import erl.bilico.data.model.VideoEpisode
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BuvidManager
@@ -33,6 +35,24 @@ class VideoRepository(
                     durationSec = page.duration,
                 )
             }
+            val collection = data.ugcSeason?.let { season ->
+                val episodes = season.sections
+                    .flatMap { it.episodes }
+                    .mapNotNull { episode ->
+                        val arc = episode.arc
+                        val episodeBvid = episode.bvid.ifBlank { arc.bvid }
+                        if (episodeBvid.isBlank()) return@mapNotNull null
+                        VideoEpisode(
+                            bvid = episodeBvid,
+                            cid = episode.cid,
+                            title = episode.title.ifBlank { arc.title },
+                            durationSec = arc.duration,
+                        )
+                    }
+                season.id.takeIf { episodes.isNotEmpty() }?.let {
+                    VideoCollection(id = it, title = season.title, episodes = episodes)
+                }
+            }
             VideoDetail(
                 bvid = data.bvid,
                 aid = data.aid,
@@ -52,6 +72,7 @@ class VideoRepository(
                 coin = data.stat.coin,
                 favorite = data.stat.favorite,
                 pages = pages,
+                collection = collection,
             )
         }
     }

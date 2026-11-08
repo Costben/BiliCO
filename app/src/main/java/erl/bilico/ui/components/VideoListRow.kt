@@ -38,6 +38,7 @@ fun LibraryVideoRow(
     video: LibraryVideo,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val coverWidthPx = remember(density) { with(density) { RowCoverWidth.roundToPx() } }
@@ -117,6 +118,15 @@ fun LibraryVideoRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+            }
+            if (trailing != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Bottom)
+                        .padding(start = 6.dp, bottom = 2.dp),
+                ) {
+                    trailing()
                 }
             }
         }

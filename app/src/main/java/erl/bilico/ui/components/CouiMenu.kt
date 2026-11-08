@@ -34,8 +34,12 @@ import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import kotlinx.coroutines.launch
 
-/** 菜单里的一行：文案加要做的事。 */
-internal class CouiMenuItem(val label: String, val onClick: () -> Unit)
+/** 菜单里的一行：文案加要做的事；[selected] 为 true 时带选中标记。 */
+internal class CouiMenuItem(
+    val label: String,
+    val onClick: () -> Unit,
+    val selected: Boolean = false,
+)
 
 /**
  * COUI 那套弹层菜单：面板半透明，后面是背景模糊，边缘有一圈高光和内阴影，
@@ -60,7 +64,7 @@ internal fun CouiPopupMenu(
                 DropdownImpl(
                     item = DropdownItem(text = item.label),
                     optionSize = items.size,
-                    isSelected = false,
+                    isSelected = item.selected,
                     index = index,
                     groupKey = "menu",
                     role = Role.Button,

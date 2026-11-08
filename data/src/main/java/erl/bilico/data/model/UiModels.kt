@@ -24,6 +24,20 @@ data class VideoPart(
     val durationSec: Long,
 )
 
+/** 合集里的一集：换 bvid 就是另一条视频，同一 bvid 下按 cid 区分分 P。 */
+data class VideoEpisode(
+    val bvid: String,
+    val cid: Long,
+    val title: String,
+    val durationSec: Long,
+)
+
+data class VideoCollection(
+    val id: Long,
+    val title: String,
+    val episodes: List<VideoEpisode>,
+)
+
 data class VideoDetail(
     val bvid: String,
     val aid: Long,
@@ -43,6 +57,7 @@ data class VideoDetail(
     val coin: Long,
     val favorite: Long,
     val pages: List<VideoPart>,
+    val collection: VideoCollection? = null,
 )
 
 data class QualityOption(

@@ -429,10 +429,13 @@ internal fun VideoPlayer(
                 items = buildList {
                     onDanmakuSettingsClick?.let { openDm ->
                         add(
-                            CouiMenuItem("弹幕设置") {
-                                controlsVisible = false
-                                openDm()
-                            },
+                            CouiMenuItem(
+                                label = "弹幕设置",
+                                onClick = {
+                                    controlsVisible = false
+                                    openDm()
+                                },
+                            ),
                         )
                     }
                     onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }

@@ -371,12 +371,14 @@ internal fun BindPlayerEvents(
     onBufferingChanged: (Boolean) -> Unit,
     onError: (PlaybackException) -> Unit,
     onVideoAspectChanged: (Float) -> Unit = {},
+    onPlaybackEnded: (() -> Unit)? = null,
 ) {
     // 监听器只注册一次，回调要用最新值，否则换线时会读到首次组合时的空候选表。
     val currentOnPlaying by rememberUpdatedState(onPlayingChanged)
     val currentOnBuffering by rememberUpdatedState(onBufferingChanged)
     val currentOnError by rememberUpdatedState(onError)
     val currentOnAspect by rememberUpdatedState(onVideoAspectChanged)
+    val currentOnEnded by rememberUpdatedState(onPlaybackEnded)
 
     DisposableEffect(player) {
         val initialSize = player.videoSize
@@ -404,7 +406,8 @@ internal fun BindPlayerEvents(
                     viewModel.markPlaybackStarted()
                 } else if (playbackState == Player.STATE_ENDED) {
                     viewModel.flushHeartbeat(player.duration.coerceAtLeast(0L) / 1000, container.scope)
-                    viewModel.playNextPart()
+                    val ended = currentOnEnded
+                    if (ended != null) ended() else viewModel.playNextPart()
                 }
             }
 

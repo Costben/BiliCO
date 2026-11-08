@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.VideoDetail
+import erl.bilico.data.model.VideoEpisode
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
@@ -88,6 +89,7 @@ internal fun VideoInfoTab(
     selectedCid: Long,
     onRetry: () -> Unit,
     onSelectPart: (Int) -> Unit,
+    onSelectEpisode: (VideoEpisode) -> Unit,
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     related: List<FeedVideo>,
@@ -121,6 +123,7 @@ internal fun VideoInfoTab(
             detail = detail,
             selectedCid = selectedCid,
             onSelectPart = onSelectPart,
+            onSelectEpisode = onSelectEpisode,
             onOpenUser = onOpenUser,
             onOpenVideo = onOpenVideo,
             related = related,
@@ -149,6 +152,7 @@ private fun InfoContent(
     detail: VideoDetail,
     selectedCid: Long,
     onSelectPart: (Int) -> Unit,
+    onSelectEpisode: (VideoEpisode) -> Unit,
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     related: List<FeedVideo>,
@@ -311,6 +315,31 @@ private fun InfoContent(
                     text = "分享",
                     active = false,
                     onClick = onShare,
+                )
+            }
+        }
+
+        val collection = detail.collection
+        if (collection != null && collection.episodes.size > 1) {
+            item(key = "collection-title") {
+                Text(
+                    text = "${collection.title.ifBlank { "合集" }}（${collection.episodes.size}）",
+                    style = COUITheme.textStyles.body1,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            itemsIndexed(
+                collection.episodes,
+                key = { _, episode -> "collection-${episode.bvid}-${episode.cid}" },
+            ) { index, episode ->
+                CollectionRow(
+                    index = index + 1,
+                    episode = episode,
+                    selected = episode.bvid == detail.bvid &&
+                        (episode.cid <= 0L || episode.cid == selectedCid),
+                    onClick = { onSelectEpisode(episode) },
                 )
             }
         }
@@ -577,6 +606,53 @@ private fun VideoAction(
         Icon(icon, label, Modifier.size(22.dp), tint = tint)
         Spacer(Modifier.height(3.dp))
         Text(text, fontSize = 11.sp, color = tint, maxLines = 1)
+    }
+}
+
+@Composable
+private fun CollectionRow(
+    index: Int,
+    episode: VideoEpisode,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (selected) COUITheme.colorScheme.pressBackground else COUITheme.colorScheme.surface,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = index.toString(),
+            modifier = Modifier.width(28.dp),
+            style = COUITheme.textStyles.footnote1,
+            color = if (selected) {
+                COUITheme.colorScheme.primary
+            } else {
+                COUITheme.colorScheme.onSurfaceSecondary
+            },
+        )
+        Text(
+            text = episode.title.ifBlank { "第 $index 集" },
+            modifier = Modifier.weight(1f),
+            style = COUITheme.textStyles.body2,
+            color = if (selected) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (episode.durationSec > 0) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = Formatters.formatDuration(episode.durationSec),
+                style = COUITheme.textStyles.footnote2,
+                color = COUITheme.colorScheme.onSurfaceSecondary,
+            )
+        }
     }
 }
 

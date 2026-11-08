@@ -3,10 +3,12 @@ package erl.bilico.feature.video
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -23,7 +25,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
@@ -37,6 +43,11 @@ import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import io.github.suqi8.coui.kmp.basic.FloatingActionButton
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Playlist
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -122,6 +133,7 @@ fun VideoScreen(
     val infoListState = rememberLazyListState()
     val commentListState = rememberLazyListState()
     var qualityDialogVisible by remember { mutableStateOf(false) }
+    var queueSheetVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
     var subtitleDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
@@ -190,7 +202,20 @@ fun VideoScreen(
             if (!playbackAttempts.next()) playerError = describePlaybackError(error)
         },
         onVideoAspectChanged = { videoAspect = it },
+        onPlaybackEnded = {
+            // 先看当前视频还有没有下一 P；没有就顺着「播放全部」的队列往下走。
+            if (!viewModel.playNextPart()) {
+                nav.playQueue.next()?.let { next ->
+                    nav.replaceTop(Route.Video(next.video.bvid, next.startSec))
+                }
+            }
+        },
     )
+
+    // 播放页放的不是队列里那条，说明是用户另开的视频，队列作废。
+    LaunchedEffect(bvid) {
+        nav.playQueue.sync(bvid)
+    }
 
     LaunchedEffect(state.selectedCid, state.detail?.aid) {
         val cid = state.selectedCid
@@ -432,56 +457,85 @@ fun VideoScreen(
                     key = { DETAIL_PAGES[it] },
                 ) { page ->
                     when (page) {
-                        0 -> VideoInfoTab(
-                            detail = state.detail,
-                            isLoading = state.isLoading,
-                            error = state.error,
-                            selectedCid = state.selectedCid,
-                            onRetry = viewModel::load,
-                            onSelectPart = { index ->
-                                viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-                                viewModel.selectPart(index, player.currentPosition)
-                            },
-                            onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
-                            onOpenVideo = { next -> nav.push(Route.Video(next)) },
-                            related = state.related,
-                            container = container,
-                            liked = state.liked,
-                            disliked = state.disliked,
-                            coined = state.coined,
-                            favorited = state.favorited,
-                            following = state.following,
-                            upFollowers = state.upFollowers,
-                            onLike = viewModel::toggleLike,
-                            onDislike = viewModel::toggleDislike,
-                            onCoin = { coinDialogVisible = true },
-                            onFavorite = {
-                                if (!container.session.isLoggedIn()) {
-                                    viewModel.showLoginHint()
-                                } else {
-                                    scope.launch {
-                                        container.favorites.folders(container.session.mid())
-                                            .onSuccess { favoriteFolders = it }
-                                            .onFailure {
-                                                viewModel.showMessage(
-                                                    it.message ?: "收藏夹加载失败",
-                                                )
-                                            }
+                        0 -> Box(Modifier.fillMaxSize()) {
+                            VideoInfoTab(
+                                detail = state.detail,
+                                isLoading = state.isLoading,
+                                error = state.error,
+                                selectedCid = state.selectedCid,
+                                onRetry = viewModel::load,
+                                onSelectPart = { index ->
+                                    viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                                    viewModel.selectPart(index, player.currentPosition)
+                                },
+                                onSelectEpisode = { episode ->
+                                    val partIndex = state.detail?.pages
+                                        ?.indexOfFirst { it.cid == episode.cid }
+                                        ?: -1
+                                    if (episode.bvid == bvid && partIndex >= 0) {
+                                        viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                                        viewModel.selectPart(partIndex, player.currentPosition)
+                                    } else {
+                                        nav.push(Route.Video(episode.bvid, 0L, episode.cid))
                                     }
+                                },
+                                onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                                onOpenVideo = { next -> nav.push(Route.Video(next)) },
+                                related = state.related,
+                                container = container,
+                                liked = state.liked,
+                                disliked = state.disliked,
+                                coined = state.coined,
+                                favorited = state.favorited,
+                                following = state.following,
+                                upFollowers = state.upFollowers,
+                                onLike = viewModel::toggleLike,
+                                onDislike = viewModel::toggleDislike,
+                                onCoin = { coinDialogVisible = true },
+                                onFavorite = {
+                                    if (!container.session.isLoggedIn()) {
+                                        viewModel.showLoginHint()
+                                    } else {
+                                        scope.launch {
+                                            container.favorites.folders(container.session.mid())
+                                                .onSuccess { favoriteFolders = it }
+                                                .onFailure {
+                                                    viewModel.showMessage(
+                                                        it.message ?: "收藏夹加载失败",
+                                                    )
+                                                }
+                                        }
+                                    }
+                                },
+                                onWatchLater = viewModel::addToWatchLater,
+                                onFollow = viewModel::toggleFollow,
+                                onShare = {
+                                    shareVideo(
+                                        context = context,
+                                        title = state.detail?.title.orEmpty(),
+                                        bvid = bvid,
+                                    )
+                                },
+                                listState = infoListState,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            if (nav.playQueue.items.isNotEmpty()) {
+                                FloatingActionButton(
+                                    onClick = { queueSheetVisible = true },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(16.dp)
+                                        .semantics { contentDescription = "播放队列" },
+                                ) {
+                                    Icon(
+                                        imageVector = COUIIcons.Playlist,
+                                        contentDescription = "播放队列",
+                                        modifier = Modifier.size(24.dp),
+                                        tint = COUITheme.colorScheme.onPrimary,
+                                    )
                                 }
-                            },
-                            onWatchLater = viewModel::addToWatchLater,
-                            onFollow = viewModel::toggleFollow,
-                            onShare = {
-                                shareVideo(
-                                    context = context,
-                                    title = state.detail?.title.orEmpty(),
-                                    bvid = bvid,
-                                )
-                            },
-                            listState = infoListState,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                            }
+                        }
 
                         else -> {
                             val aid = state.detail?.aid ?: 0L
@@ -564,4 +618,18 @@ fun VideoScreen(
             inlineInStage = false,
         )
     }
+
+    PlayQueueSheet(
+        visible = queueSheetVisible,
+        queue = nav.playQueue,
+        onDismiss = { queueSheetVisible = false },
+        onPlay = { queued ->
+            queueSheetVisible = false
+            // 点的是正在播的那条就只收面板，别把它重开一遍。
+            if (queued.video.bvid != nav.playQueue.playingBvid) {
+                nav.playQueue.jumpTo(nav.playQueue.items.indexOf(queued))
+                nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
+            }
+        },
+    )
 }
