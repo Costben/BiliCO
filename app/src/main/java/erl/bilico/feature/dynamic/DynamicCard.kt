@@ -85,9 +85,13 @@ internal fun DynamicCard(
             )
         }
 
-        if (item.content.isNotBlank() || item.emotes.isNotEmpty()) {
+        // 正文图还在取的时候不画那串「[图片]」，直接把位置让给下面的占位块。
+        val pendingImages = item.pendingImages
+        val content = if (pendingImages) item.content.withoutImagePlaceholders() else item.content
+
+        if (content.isNotBlank() || item.emotes.isNotEmpty()) {
             RichCommentText(
-                content = item.content,
+                content = content,
                 emotes = item.emotes,
                 modifier = Modifier.padding(top = 8.dp),
                 style = COUITheme.textStyles.body1.copy(
@@ -120,6 +124,8 @@ internal fun DynamicCard(
                 onOpenDynamic = onOpenDynamic,
                 modifier = Modifier.padding(top = 8.dp),
             )
+
+            pendingImages -> OpusImagePlaceholder(modifier = Modifier.padding(top = 8.dp))
 
             item.images.isNotEmpty() -> DynamicImageGrid(
                 images = item.images,
@@ -347,6 +353,41 @@ private fun ForwardBox(
         }
     }
 }
+
+/**
+ * 长文型动态的正文图还在取时占位：形状和后面的真实九宫格一致（三列方格），
+ * 取到图直接换成同一块，卡片不会先闪一串「[图片]」再重排。
+ */
+@Composable
+private fun OpusImagePlaceholder(modifier: Modifier = Modifier) {
+    val cell = COUITheme.colorScheme.surfaceContainer
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        repeat(3) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(cell),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** feed 里长文图片的占位写法。 */
+private const val IMAGE_PLACEHOLDER = "[图片]"
+
+/** 去掉占位标记，顺便把因此空出来的行收掉。 */
+private fun String.withoutImagePlaceholders(): String =
+    replace(IMAGE_PLACEHOLDER, "")
+        .lines()
+        .map { it.trimEnd() }
+        .filter { it.isNotBlank() }
+        .joinToString("\n")
 
 @Composable
 private fun DynamicImageGrid(

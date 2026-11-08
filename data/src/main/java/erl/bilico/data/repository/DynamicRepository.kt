@@ -18,7 +18,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.util.concurrent.ConcurrentHashMap
 
 enum class DynamicFeedType(val apiValue: String) {
@@ -31,6 +33,12 @@ data class DynamicFeedPage(
     val offset: String,
     val hasMore: Boolean,
     val baseline: String,
+)
+
+/** 长文型 opus 的正文与内嵌图片：feed 卡片给不了，要 opus/detail 才有。 */
+data class DynamicOpusContent(
+    val text: String,
+    val images: List<DynamicImage>,
 )
 
 class DynamicRepository(
@@ -68,16 +76,68 @@ class DynamicRepository(
             )
             val parsed = response.data?.item?.toUi(0)
             if (response.code == 0 && parsed != null) {
-                rememberSeed(parsed)
-                parsed
+                withOpusContent(parsed).also(::rememberSeed)
             } else {
-                detailSeedCache[id]
-                    ?: error(response.message.ifBlank { "动态加载失败(${response.code})" })
+                detailSeedCache[id]?.let { seed ->
+                    withOpusContent(seed)
+                } ?: error(response.message.ifBlank { "动态加载失败(${response.code})" })
             }
         }.recoverCatching { err ->
-            detailSeedCache[id] ?: throw err
+            detailSeedCache[id]?.let { seed -> withOpusContent(seed) } ?: throw err
         }
     }
+
+    /**
+     * 长文型 opus（专栏搬过来的图文）在 feed 和详情里都只有一张封面加一串「[图片]」占位，
+     * 真正的正文和图片要按动态编号再取一次。不是这类卡片就原样返回，一次请求都不发。
+     */
+    suspend fun withOpusContent(item: DynamicItemUi): DynamicItemUi {
+        if (item.dynamicId.isBlank() || !item.content.contains(OPUS_IMAGE_PLACEHOLDER)) return item
+        val blocks = opusContent(item.dynamicId).getOrNull() ?: return item
+        return item.copy(
+            content = blocks.text.ifBlank { item.content },
+            images = blocks.images.ifEmpty { item.images },
+            kind = if (blocks.images.isNotEmpty()) DynamicKind.IMAGES else item.kind,
+        )
+    }
+
+    /**
+     * 长文型 opus 的完整正文与图片。feed 卡片里这类动态只有一张封面和一堆「[图片]」占位，
+     * 真正的图文段落要再按 opus 编号取一次。
+     */
+    suspend fun opusContent(dynamicId: String): Result<DynamicOpusContent> =
+        withContext(Dispatchers.IO) {
+            val id = dynamicId.trim()
+            runCatching {
+                require(id.isNotEmpty()) { "动态编号无效" }
+                buvid.ensure()
+                val response = api.opusDetail(
+                    mapOf(
+                        "id" to id,
+                        "timezone_offset" to "-480",
+                        "features" to DETAIL_FEATURES,
+                    ),
+                )
+                if (response.code != 0) {
+                    error(response.message.ifBlank { "正文加载失败(${response.code})" })
+                }
+                val blocks = response.data?.item?.modules.decodeOpusParagraphs()
+                require(blocks.text.isNotBlank() || blocks.images.isNotEmpty()) { "正文为空" }
+                DynamicOpusContent(
+                    text = blocks.text,
+                    images = blocks.images
+                        .filter { it.displayUrl.isNotBlank() }
+                        .take(9)
+                        .map {
+                            DynamicImage(
+                                Formatters.normalizeImageUrl(it.displayUrl),
+                                it.width,
+                                it.height,
+                            )
+                        },
+                )
+            }
+        }
 
     suspend fun feed(
         type: DynamicFeedType,
@@ -117,6 +177,10 @@ class DynamicRepository(
         val content = modules?.content
         val stat = modules?.stat
         val major = content?.major
+        // 长文型 opus（专栏搬过来的图文）正文和图片只存在于 `module_content.paragraphs`：
+        // 文字段是正文，图片段是内嵌大图。feed 卡片给的 desc 里只有一串「[图片]」占位，
+        // opus/detail 才带真正的段落，所以这里两种载体都收。
+        val blocks = this.modules.decodeOpusParagraphs()
         // 图文动态的正文在 major.opus.summary.text，desc 通常为空；
         // itemOpusStyle 下整条卡片只有 summary 这一个载体。
         val opusSummary = major?.opus?.summary?.text.orEmpty().trim()
@@ -135,6 +199,7 @@ class DynamicRepository(
             .ifBlank { opusSummary }
             .ifBlank { articleDesc }
             .ifBlank { nodesFallbackText }
+            .ifBlank { blocks.text }
             .ifBlank { resolvedTitle }
 
         val emotes = buildMap {
@@ -151,10 +216,10 @@ class DynamicRepository(
         }
 
         val nested = orig?.takeIf { depth < 2 }?.toUi(depth + 1)
-        // opus 的图字段叫 url，draw 的叫 src，专栏封面在 article.covers，三处都收。
-        val rawImages = (major?.draw?.items ?: major?.opus?.pics).orEmpty().ifEmpty {
-            major?.article?.covers.orEmpty().map { DynamicImageData(src = it) }
-        }
+        // opus 的图字段叫 url，draw 的叫 src，专栏封面在 article.covers，长文在段落里，几处都收。
+        val rawImages = (major?.draw?.items ?: major?.opus?.pics).orEmpty()
+            .ifEmpty { major?.article?.covers.orEmpty().map { DynamicImageData(src = it) } }
+            .ifEmpty { blocks.images }
         val images = rawImages
             .asSequence()
             .filter { it.displayUrl.isNotBlank() }
@@ -265,8 +330,79 @@ class DynamicRepository(
         }.getOrNull()
     }
 
+    /**
+     * 长文型 opus 的正文与图片全在 `module_content.paragraphs` 里：
+     * 图片段（`para_type == 2`）是内嵌大图，文字段（`para_type == 1`）的 `text.nodes` 里
+     * 每个节点要么是 `word.words`，要么是 `rich.text`。feed 卡片里同一份正文只给「[图片]」占位，
+     * 所以这条路径主要给 opus/detail 用。
+     */
+    private fun JsonElement?.decodeOpusParagraphs(): OpusBlocks {
+        val modules = when (this) {
+            is JsonArray -> mapNotNull { it as? JsonObject }
+            is JsonObject -> listOf(this)
+            else -> return OpusBlocks()
+        }
+        val content = modules.firstNotNullOfOrNull { it["module_content"] as? JsonObject }
+            ?: return OpusBlocks()
+        val paragraphs = (content["paragraphs"] as? JsonArray).orEmpty()
+        val text = StringBuilder()
+        val images = mutableListOf<DynamicImageData>()
+        paragraphs.forEach paragraph@{ element ->
+            val paragraph = element as? JsonObject ?: return@paragraph
+            val pic = paragraph["pic"] as? JsonObject
+            if (pic != null) {
+                (pic["pics"] as? JsonArray).orEmpty().forEach picItem@{ item ->
+                    val obj = item as? JsonObject ?: return@picItem
+                    val url = obj.text("url")
+                    if (url.isBlank()) return@picItem
+                    images += DynamicImageData(
+                        src = url,
+                        url = url,
+                        width = obj.int("width"),
+                        height = obj.int("height"),
+                    )
+                }
+                return@paragraph
+            }
+            val paragraphText = (paragraph["text"] as? JsonObject)
+                ?.let { it["nodes"] as? JsonArray }
+                .orEmpty()
+                .mapNotNull { node ->
+                    val obj = node as? JsonObject ?: return@mapNotNull null
+                    (obj["word"] as? JsonObject)?.text("words")
+                        ?: (obj["rich"] as? JsonObject)?.text("text")
+                        ?: (obj["formula"] as? JsonObject)?.text("latex")
+                }
+                .joinToString("")
+                .trim()
+            if (paragraphText.isNotEmpty()) {
+                if (text.isNotEmpty()) text.append('\n')
+                text.append(paragraphText)
+            }
+        }
+        return OpusBlocks(text.toString(), images)
+    }
+
+    /** 段落解析结果：正文文本 + 内嵌图片。 */
+    private data class OpusBlocks(
+        val text: String = "",
+        val images: List<DynamicImageData> = emptyList(),
+    )
+
+    private fun JsonObject.text(key: String): String {
+        val value = this[key] as? JsonPrimitive ?: return ""
+        if (value is JsonNull) return ""
+        return value.content.takeIf { it != "null" }.orEmpty()
+    }
+
+    private fun JsonObject.int(key: String): Int =
+        (this[key] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+
     private companion object {
         const val MAJOR_TYPE_OPUS = "MAJOR_TYPE_OPUS"
+
+        /** 长文型 opus 在 feed/详情正文里给图片占位用的写法。 */
+        const val OPUS_IMAGE_PLACEHOLDER = "[图片]"
 
         const val FEED_FEATURES =
             "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote,decorationCard," +

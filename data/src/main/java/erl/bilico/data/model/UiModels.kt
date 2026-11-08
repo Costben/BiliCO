@@ -165,6 +165,8 @@ data class DynamicItemUi(
     val likeCount: Int = 0,
     val commentOid: Long = 0L,
     val commentType: Int = 17,
+    /** 长文型动态的正文图还在取：此时 content 里只剩「[图片]」占位，界面先用灰块顶上。 */
+    val pendingImages: Boolean = false,
 )
 
 data class HistoryItem(
