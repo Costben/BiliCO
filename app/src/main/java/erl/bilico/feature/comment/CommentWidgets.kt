@@ -37,11 +37,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import erl.bilico.data.model.Comment
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.CoverImage
+import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -253,8 +253,8 @@ private fun CommentPicturesGrid(
                 .clip(RoundedCornerShape(8.dp))
                 .clickable { onOpenImage(pictures, 0) },
         ) {
-            AsyncImage(
-                model = url,
+            LoadingImage(
+                url = url,
                 contentDescription = "评论图片",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -283,8 +283,8 @@ private fun CommentPicturesGrid(
                             .clip(RoundedCornerShape(6.dp))
                             .clickable { onOpenImage(pictures, index) },
                     ) {
-                        AsyncImage(
-                            model = url,
+                        LoadingImage(
+                            url = url,
                             contentDescription = "评论图片",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,

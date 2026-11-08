@@ -31,13 +31,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.Avatar
+import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Text
@@ -231,9 +231,8 @@ private fun DynamicVideoCardView(
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(10.dp)),
         ) {
-            AsyncImage(
-                model = coverUrl,
-                contentDescription = null,
+            LoadingImage(
+                url = coverUrl,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
@@ -419,9 +418,8 @@ private fun DynamicImageGrid(
                 .clip(RoundedCornerShape(8.dp))
                 .clickable { onOpenImage(images, 0) },
         ) {
-            AsyncImage(
-                model = url,
-                contentDescription = null,
+            LoadingImage(
+                url = url,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
@@ -452,9 +450,8 @@ private fun DynamicImageGrid(
                             .clip(RoundedCornerShape(6.dp))
                             .clickable(onClick = onClick),
                     ) {
-                        AsyncImage(
-                            model = url,
-                            contentDescription = null,
+                        LoadingImage(
+                            url = url,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                         )

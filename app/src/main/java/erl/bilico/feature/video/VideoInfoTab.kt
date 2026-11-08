@@ -65,6 +65,7 @@ import erl.bilico.feature.feed.rememberWatchLaterAction
 import erl.bilico.feature.feed.shareVideo
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.LoadingState
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -492,7 +493,7 @@ private fun RelatedVideoRow(
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(8.dp)),
         ) {
-            CoverImage(
+            LoadingImage(
                 url = Formatters.sizedImageUrl(video.cover, coverWidthPx, coverHeightPx),
                 modifier = Modifier.fillMaxSize(),
             )
