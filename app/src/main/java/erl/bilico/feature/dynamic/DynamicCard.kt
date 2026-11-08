@@ -59,17 +59,23 @@ internal fun DynamicCard(
 ) {
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val linkBlue = if (isDark) Color(0xFF5CA8FF) else Color(0xFF1367B1)
+    val video = item.video
+
+    // 视频动态整张卡片都进播放页：只有头像、点赞这类显式控件才拦下点击。
+    val onCardClick: () -> Unit = {
+        if (video != null) onOpenVideo(video.bvid) else onOpenDynamic(item)
+    }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (!isDetail) Modifier.clickable { onOpenDynamic(item) } else Modifier),
+            .then(if (!isDetail) Modifier.clickable(onClick = onCardClick) else Modifier),
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
     ) {
         DynamicHeader(
             item = item,
             avatarSize = 40.dp,
-            onClick = { if (item.authorMid > 0L) onOpenUser(item.authorMid) else if (!isDetail) onOpenDynamic(item) },
+            onClick = { if (item.authorMid > 0L) onOpenUser(item.authorMid) else onCardClick() },
         )
 
         if (item.title.isNotBlank() && item.title != item.content) {
@@ -104,7 +110,6 @@ internal fun DynamicCard(
             )
         }
 
-        val video = item.video
         val forward = item.forward
         when {
             video != null -> DynamicVideoCardView(
