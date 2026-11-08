@@ -42,6 +42,7 @@ import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.BiliCommentItem
+import erl.bilico.feature.comment.CommentComposerSheet
 import erl.bilico.feature.comment.CommentViewModel
 import erl.bilico.feature.comment.ReplyDialog
 import erl.bilico.ui.BlurEffectsEnabled
@@ -51,7 +52,6 @@ import erl.bilico.ui.Route
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
-import erl.bilico.ui.components.InputDialog
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.glassBarContentTop
@@ -366,26 +366,24 @@ fun DynamicDetailScreen(
 
     if (commentViewModel != null) {
         when (val target = composeTarget) {
-            DynComposeTarget.Main -> InputDialog(
-                title = "发表评论",
+            DynComposeTarget.Main -> CommentComposerSheet(
+                container = container,
                 hint = "发一条友善的评论",
-                confirmText = "发送",
-                onDismiss = { composeTarget = null },
-                onConfirm = { text ->
+                onSubmit = { text, pictures, atMids ->
                     composeTarget = null
-                    commentViewModel.postComment(text)
+                    commentViewModel.postComment(text, pictures, atMids)
                 },
+                onDismiss = { composeTarget = null },
             )
 
-            is DynComposeTarget.Reply -> InputDialog(
-                title = "回复 @${target.root.userName}",
-                hint = "写回复",
-                confirmText = "发送",
-                onDismiss = { composeTarget = null },
-                onConfirm = { text ->
+            is DynComposeTarget.Reply -> CommentComposerSheet(
+                container = container,
+                hint = "回复 @${target.root.userName}",
+                onSubmit = { text, pictures, atMids ->
                     composeTarget = null
-                    commentViewModel.postReply(target.root, text)
+                    commentViewModel.postReply(target.root, text, pictures, atMids)
                 },
+                onDismiss = { composeTarget = null },
             )
 
             null -> Unit

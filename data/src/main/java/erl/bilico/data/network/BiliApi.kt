@@ -6,6 +6,7 @@ import erl.bilico.data.model.BangumiFollowResponse
 import erl.bilico.data.model.BaseResponse
 import erl.bilico.data.model.DynamicDetailResponse
 import erl.bilico.data.model.DynamicFeedResponse
+import erl.bilico.data.model.EmotePanelResponse
 import erl.bilico.data.model.MessageAtResponse
 import erl.bilico.data.model.MessageLikeResponse
 import erl.bilico.data.model.MessageReplyResponse
@@ -39,13 +40,18 @@ import erl.bilico.data.model.SearchTypeResponse
 import erl.bilico.data.model.SpaceInfoResponse
 import erl.bilico.data.model.SpaceVideoResponse
 import erl.bilico.data.model.UpStatResponse
+import erl.bilico.data.model.UploadBfsResponse
 import erl.bilico.data.model.VideoInfoResponse
 import erl.bilico.data.model.WatchLaterResponse
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.FieldMap
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Headers
+import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Query
 import retrofit2.http.QueryMap
 
@@ -86,6 +92,20 @@ interface BiliApi {
     @FormUrlEncoded
     @POST("x/v2/reply/add")
     suspend fun addComment(@FieldMap fields: Map<String, String>): AddReplyResponse
+
+    /** 评论输入框的表情面板（B 站官方表情包，需要登录态）。 */
+    @GET("x/emote/user/panel/web")
+    suspend fun emotePanel(@Query("business") business: String = "reply"): EmotePanelResponse
+
+    /** 评论配图上传：返回 `image_url` 和宽高，直接拼进 `pictures` 字段。 */
+    @Multipart
+    @POST("x/dynamic/feed/draw/upload_bfs")
+    suspend fun uploadBfs(
+        @Part file: MultipartBody.Part,
+        @Part("category") category: RequestBody,
+        @Part("biz") biz: RequestBody,
+        @Part("csrf") csrf: RequestBody,
+    ): UploadBfsResponse
 
     @FormUrlEncoded
     @POST("x/v2/reply/action")

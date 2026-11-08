@@ -3,6 +3,7 @@ package erl.bilico.feature.comment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.Comment
+import erl.bilico.data.model.UploadedPicture
 import erl.bilico.data.repository.CommentRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -97,11 +98,21 @@ class CommentViewModel(
         }
     }
 
-    fun postComment(content: String) {
+    fun postComment(
+        content: String,
+        pictures: List<UploadedPicture> = emptyList(),
+        atMids: Map<String, Long> = emptyMap(),
+    ) {
         if (_state.value.isSending) return
         _state.update { it.copy(isSending = true) }
         viewModelScope.launch {
-            repository.addComment(oid = oid, message = content, type = type)
+            repository.addComment(
+                oid = oid,
+                message = content,
+                type = type,
+                pictures = pictures,
+                atMids = atMids,
+            )
                 .onSuccess { created ->
                     _state.update { s ->
                         s.copy(
@@ -119,7 +130,12 @@ class CommentViewModel(
         }
     }
 
-    fun postReply(rootComment: Comment, content: String) {
+    fun postReply(
+        rootComment: Comment,
+        content: String,
+        pictures: List<UploadedPicture> = emptyList(),
+        atMids: Map<String, Long> = emptyMap(),
+    ) {
         if (_state.value.isSending) return
         _state.update { it.copy(isSending = true) }
         viewModelScope.launch {
@@ -129,6 +145,8 @@ class CommentViewModel(
                 root = rootComment.id,
                 parent = rootComment.id,
                 type = type,
+                pictures = pictures,
+                atMids = atMids,
             )
                 .onSuccess { created ->
                     _state.update { it.copy(isSending = false) }

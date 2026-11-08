@@ -1,12 +1,15 @@
 package erl.bilico.data.repository
 
 import erl.bilico.data.model.Comment
+import erl.bilico.data.model.CommentEmote
+import erl.bilico.data.model.CommentEmotePackage
 import erl.bilico.data.model.CommentPage
 import erl.bilico.data.model.CommentSailing
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.ReplyData
 import erl.bilico.data.model.ReplyItem
+import erl.bilico.data.model.UploadedPicture
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.BuvidManager
@@ -16,6 +19,9 @@ import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.TreeMap
 
 /**
@@ -94,6 +100,8 @@ class CommentRepository(
         root: Long = 0L,
         parent: Long = 0L,
         type: Int = 1,
+        pictures: List<UploadedPicture> = emptyList(),
+        atMids: Map<String, Long> = emptyMap(),
     ): Result<Comment> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -109,6 +117,18 @@ class CommentRepository(
                 put("plat", "1")
                 if (root > 0L) put("root", root.toString())
                 if (parent > 0L) put("parent", parent.toString())
+                if (pictures.isNotEmpty()) {
+                    put("pictures", pictures.joinToString(",", "[", "]") { it.toJson() })
+                }
+                // @ 的人要单独声明，正文里的「@名字」才会变成可点的主页链接。
+                if (atMids.isNotEmpty()) {
+                    put(
+                        "at_name_to_mid",
+                        atMids.entries.joinToString(",", "{", "}") { (name, mid) ->
+                            "\"${escapeJsonString(name)}\":$mid"
+                        },
+                    )
+                }
                 put("csrf", csrf)
             }
             val response = api.addComment(fields)
@@ -151,13 +171,74 @@ class CommentRepository(
         }
     }
 
+    /** 表情面板：未登录时服务端不给包，直接返回空表，界面只显示「登录后可用表情」。 */
+    suspend fun emotePanel(): Result<List<CommentEmotePackage>> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!session.isLoggedIn()) return@runCatching emptyList()
+            val response = api.emotePanel()
+            if (response.code != 0) return@runCatching emptyList()
+            response.data?.packages.orEmpty().mapNotNull { pkg ->
+                val textOnly = pkg.type == 4
+                val emotes = pkg.emote.mapNotNull { emote ->
+                    val text = emote.text.trim()
+                    if (text.isBlank()) return@mapNotNull null
+                    if (textOnly) {
+                        // 颜文字：没有图，正文里直接放原文。
+                        CommentEmote(text = text, url = "", insert = text)
+                    } else {
+                        val url = Formatters.normalizeImageUrl(emote.url)
+                        if (url.isBlank()) return@mapNotNull null
+                        CommentEmote(
+                            text = text,
+                            url = url,
+                            large = (emote.meta?.size ?: 1) >= 2,
+                            insert = if (text.startsWith("[")) text else "[$text]",
+                        )
+                    }
+                }
+                if (emotes.isEmpty()) null else CommentEmotePackage(emotes)
+            }
+        }
+    }
+
+    /** 评论配图先传到 B 站图床，拿回 img_src 与宽高再随评论一起发。 */
+    suspend fun uploadPicture(
+        bytes: ByteArray,
+        fileName: String,
+        mime: String,
+    ): Result<UploadedPicture> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val csrf = session.csrf()
+            require(csrf.isNotBlank()) { "登录后可用" }
+            require(bytes.isNotEmpty()) { "图片是空的" }
+            val part = MultipartBody.Part.createFormData(
+                "file_up",
+                fileName.ifBlank { "image.jpg" },
+                bytes.toRequestBody(mime.toMediaTypeOrNull()),
+            )
+            val response = api.uploadBfs(
+                file = part,
+                category = "daily".toRequestBody(FORM_TEXT),
+                biz = "new_dyn".toRequestBody(FORM_TEXT),
+                csrf = csrf.toRequestBody(FORM_TEXT),
+            )
+            if (response.code != 0) {
+                error(response.message.ifBlank { "图片上传失败(${response.code})" })
+            }
+            val data = response.data ?: error("图片上传失败")
+            val url = Formatters.normalizeImageUrl(data.imageUrl)
+            require(url.isNotBlank()) { "图片上传失败" }
+            UploadedPicture(url = url, width = data.imageWidth, height = data.imageHeight)
+        }
+    }
+
     suspend fun likeComment(
         oid: Long,
         rpid: Long,
         liked: Boolean,
         type: Int = 1,
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+    ): Result<Unit> = withContext(Dispatchers.IO) {        runCatching {
             buvid.ensure()
             val csrf = session.csrf()
             require(csrf.isNotBlank()) { "登录后可用" }
@@ -328,4 +409,11 @@ class CommentRepository(
             replies = replies.orEmpty().map { it.toComment(upMid = upMid) },
         )
     }
+
+    private companion object {
+        val FORM_TEXT = "text/plain".toMediaTypeOrNull()
+    }
 }
+
+private fun escapeJsonString(text: String): String =
+    text.replace("\\", "\\\\").replace("\"", "\\\"")

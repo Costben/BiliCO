@@ -69,6 +69,19 @@ data class EmoteImage(
     val large: Boolean = false,
 )
 
+/** 评论输入框表情面板里的一个表情：点一下往正文里插 [insert]。 */
+data class CommentEmote(
+    val text: String,
+    val url: String,
+    val large: Boolean = false,
+    /** 纯文字表情（颜文字）直接插原文，图片表情插 `[名字]`。 */
+    val insert: String = text,
+)
+
+data class CommentEmotePackage(
+    val emotes: List<CommentEmote>,
+)
+
 data class CommentSailing(
     val imageUrl: String,
     val numPrefix: String = "",
@@ -205,6 +218,8 @@ data class LiveRoomDetail(
     val description: String,
     val areaName: String,
     val isLive: Boolean,
+    /** 本场「看过」人数，官方客户端显示的就是它；0 表示接口没给。 */
+    val watched: Long = 0L,
 )
 
 data class LivePlayback(

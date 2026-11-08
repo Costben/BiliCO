@@ -42,7 +42,6 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
-import erl.bilico.ui.components.InputDialog
 import erl.bilico.ui.components.LoadingState
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
@@ -238,26 +237,24 @@ fun CommentTab(
     }
 
     when (val target = composeTarget) {
-        ComposeTarget.Main -> InputDialog(
-            title = "发表评论",
+        ComposeTarget.Main -> CommentComposerSheet(
+            container = container,
             hint = "发一条友善的评论",
-            confirmText = "发送",
-            onDismiss = { composeTarget = null },
-            onConfirm = { text ->
+            onSubmit = { text, pictures, atMids ->
                 composeTarget = null
-                viewModel.postComment(text)
+                viewModel.postComment(text, pictures, atMids)
             },
+            onDismiss = { composeTarget = null },
         )
 
-        is ComposeTarget.Reply -> InputDialog(
-            title = "回复 @${target.root.userName}",
-            hint = "写回复",
-            confirmText = "发送",
-            onDismiss = { composeTarget = null },
-            onConfirm = { text ->
+        is ComposeTarget.Reply -> CommentComposerSheet(
+            container = container,
+            hint = "回复 @${target.root.userName}",
+            onSubmit = { text, pictures, atMids ->
                 composeTarget = null
-                viewModel.postReply(target.root, text)
+                viewModel.postReply(target.root, text, pictures, atMids)
             },
+            onDismiss = { composeTarget = null },
         )
 
         null -> Unit
