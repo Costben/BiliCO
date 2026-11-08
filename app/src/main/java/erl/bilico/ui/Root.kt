@@ -335,6 +335,7 @@ private fun RouteLayer(
 
     CompositionLocalProvider(
         LocalRouteTransition provides transition,
+        LocalRouteIsTop provides isTop,
         LocalConfiguration provides layerConfiguration,
     ) {
         Box(layer.then(freezeLayout)) {

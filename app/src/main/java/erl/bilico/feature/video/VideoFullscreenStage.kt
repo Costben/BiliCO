@@ -52,6 +52,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import erl.bilico.ui.BiliCoTheme
+import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.isDarkTheme
 import erl.bilico.ui.pageContainerColor
 import kotlinx.coroutines.flow.first
@@ -173,14 +174,21 @@ internal fun VideoFullscreenStage(
         }
     }
 
-    DisposableEffect(activity, dark) {
+    // 页面栈里的页面都常驻，状态栏图标颜色只由栈顶这一页接管：
+    // 从上一个播放页返回时，它退场会把颜色还给主题，这一页重新成为栈顶要再定回白色。
+    val isTop = LocalRouteIsTop.current
+    DisposableEffect(activity, dark, isTop) {
         val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        controller?.isAppearanceLightStatusBars = false
-        controller?.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (isTop) {
+            controller?.isAppearanceLightStatusBars = false
+            controller?.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         onDispose {
-            controller?.isAppearanceLightStatusBars = !dark
-            controller?.show(WindowInsetsCompat.Type.systemBars())
+            if (isTop) {
+                controller?.isAppearanceLightStatusBars = !dark
+                controller?.show(WindowInsetsCompat.Type.systemBars())
+            }
         }
     }
 
@@ -224,6 +232,9 @@ internal fun VideoFullscreenStage(
                 }
             }
             if (!barsShown) controller?.show(WindowInsetsCompat.Type.systemBars())
+            // 转屏时窗口属性会被系统重新下发一遍，状态栏图标颜色可能被打回成跟随主题的深色，
+            // 在纯黑的播放页顶部就看不见了。落回竖屏后再把它定成白色。
+            controller?.isAppearanceLightStatusBars = false
         }
     }
 

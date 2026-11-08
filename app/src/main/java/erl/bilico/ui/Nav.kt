@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -52,6 +53,9 @@ const val ME_TAB_INDEX = 3
 class RouteTransition(val progress: () -> Float, val exiting: () -> Boolean)
 
 val LocalRouteTransition = staticCompositionLocalOf<RouteTransition?> { null }
+
+/** 当前路由是否在栈顶。窗口级的状态（比如状态栏图标颜色）只该由栈顶页面接管。 */
+val LocalRouteIsTop = compositionLocalOf { true }
 
 /**
  * 详情页从哪张卡片长出来。卡片在 [expandOrigin] 里把这一帧录进图层，
