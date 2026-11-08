@@ -74,6 +74,13 @@ object Formatters {
         return java.time.format.DateTimeFormatter.ofPattern(pattern).format(published)
     }
 
+    /** 投稿时间：精确到分钟，视频简介里跟播放、弹幕数排在同一行。 */
+    fun formatDateTime(timestampSeconds: Long): String {
+        if (timestampSeconds <= 0L) return ""
+        val published = Instant.ofEpochSecond(timestampSeconds).atZone(ZoneId.systemDefault())
+        return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(published)
+    }
+
     /** 补全协议并去掉旧缩放后缀，显示尺寸由调用方按控件尺寸重新拼。 */
     fun normalizeImageUrl(url: String?): String {
         if (url.isNullOrBlank()) return ""

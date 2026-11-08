@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -16,13 +17,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.feed.FeedSegmentRowHeight
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.FullPageRefreshHoldMillis
@@ -41,12 +45,38 @@ fun LiveListScreen(
     container: AppContainer,
     nav: NavState,
     topInset: Dp,
+    refreshTick: Int,
+    gridState: LazyGridState = rememberLazyGridState(),
+    active: Boolean = true,
+    onCollapse: ((Float) -> Unit)? = null,
 ) {
     val viewModel: LiveListViewModel = viewModel { LiveListViewModel(container.live) }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val pullState = rememberFullPagePullToRefreshState()
+    val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
+
+    // 顶上这一条胶囊的高度要一起让出去，否则第一排卡会钻到胶囊底下。
+    val contentTop = topInset + FeedSegmentRowHeight
+
+    // 嵌在推荐页里时，滚动要把顶栏一起折起来。
+    LaunchedEffect(gridState, onCollapse) {
+        val report = onCollapse ?: return@LaunchedEffect
+        snapshotFlow {
+            val first = gridState.layoutInfo.visibleItemsInfo.firstOrNull()
+            if (first == null || first.index > 0) titleHeightPx
+            else (-first.offset.y).toFloat().coerceIn(0f, titleHeightPx)
+        }
+            .distinctUntilChanged()
+            .collect(report)
+    }
+
+    // 双击顶栏：回到第一条并重新拉一遍。
+    LaunchedEffect(refreshTick) {
+        if (refreshTick == 0 || !active) return@LaunchedEffect
+        gridState.scrollToItem(0)
+        viewModel.refresh()
+    }
 
     LaunchedEffect(gridState) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -61,10 +91,15 @@ fun LiveListScreen(
 
     FullPagePullToRefresh(
         isRefreshing = state.isRefreshing,
-        onRefresh = { scope.launch { viewModel.refresh() } },
+        onRefresh = {
+            scope.launch {
+                if (gridState.firstVisibleItemIndex > 0) gridState.scrollToItem(0)
+                viewModel.refresh()
+            }
+        },
         modifier = Modifier.fillMaxSize(),
         state = pullState,
-        contentPadding = PaddingValues(top = topInset),
+        contentPadding = PaddingValues(top = contentTop),
         colors = fullPagePullToRefreshColors(backgroundColor = pageContainerColor()),
         refreshTexts = FullPageRefreshTexts,
         completeHoldDurationMillis = FullPageRefreshHoldMillis,
@@ -75,7 +110,7 @@ fun LiveListScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 12.dp,
-                top = topInset + 12.dp,
+                top = contentTop + 12.dp,
                 end = 12.dp,
                 bottom = 66.dp + navBottomPadding(),
             ),

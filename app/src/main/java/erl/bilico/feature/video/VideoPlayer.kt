@@ -216,7 +216,7 @@ internal fun VideoPlayer(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                // 竖屏非全屏时，弹幕设置与弹幕开关在简介那一行的胶囊右端，全屏时在顶栏展示。
+                // 竖屏非全屏时弹幕开关在简介那一行的胶囊右端，弹幕设置收在右侧更多菜单里；全屏时两者都在顶栏。
                 if (fullscreen) {
                     if (onDanmakuSettingsClick != null) {
                         PlayerGlyphButton(
@@ -548,5 +548,8 @@ internal fun speedLabel(speed: Float): String = when (speed) {
     1.25f -> "1.25x"
     1.5f -> "1.5x"
     2f -> "2.0x"
+    2.5f -> "2.5x"
+    3f -> "3.0x"
+    4f -> "4.0x"
     else -> "${speed}x"
 }

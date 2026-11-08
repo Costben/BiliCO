@@ -42,8 +42,7 @@ const val RouteSlideMillis = 320
 const val RouteParallaxDivisor = 4f
 const val FEED_TAB_INDEX = 0
 const val DYNAMIC_TAB_INDEX = 1
-const val LIVE_TAB_INDEX = 2
-const val ME_TAB_INDEX = 3
+const val ME_TAB_INDEX = 2
 
 /**
  * 当前路由在自己的登场动画里走了多远：0 还没到，1 已就位。

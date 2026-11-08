@@ -31,6 +31,7 @@ import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.feed.FeedSegmentRowHeight
 import erl.bilico.ui.NavState
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.Route
@@ -59,6 +60,7 @@ fun DynamicScreen(
     onFilterSelect: (Int) -> Unit,
     pagerState: PagerState,
     onCollapse: (Float) -> Unit,
+    refreshTick: Int,
 ) {
     val account by container.session.account.collectAsStateWithLifecycle()
     val loggedIn = account != null
@@ -107,6 +109,7 @@ fun DynamicScreen(
                     topInset = topInset,
                     active = pagerState.settledPage == page,
                     onCollapse = onCollapse,
+                    refreshTick = refreshTick,
                 )
 
                 DynamicFilter.ALL, DynamicFilter.VIDEO -> {
@@ -124,6 +127,7 @@ fun DynamicScreen(
                         topInset = topInset,
                         active = pagerState.settledPage == page,
                         onCollapse = onCollapse,
+                        refreshTick = refreshTick,
                         onOpenUser = { nav.push(Route.Space(it)) },
                         onOpenVideo = { nav.push(Route.Video(it)) },
                         onOpenImage = { images, index -> viewer = images to index },
@@ -160,6 +164,7 @@ private fun DynamicContent(
     topInset: Dp,
     active: Boolean,
     onCollapse: (Float) -> Unit,
+    refreshTick: Int,
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
@@ -195,13 +200,27 @@ private fun DynamicContent(
 
     val segmentTop = topInset + 8.dp
 
+    // 双击当前筛选或双击顶栏：回到第一条并重新拉一遍。
+    LaunchedEffect(refreshTick) {
+        if (refreshTick == 0 || !active) return@LaunchedEffect
+        listState.scrollToItem(0)
+        viewModel.refresh()
+    }
+
     Box(Modifier.fillMaxSize()) {
         FullPagePullToRefresh(
             isRefreshing = state.isRefreshing,
-            onRefresh = { scope.launch { viewModel.refresh() } },
+            onRefresh = {
+                scope.launch {
+                    // 刷新会把新内容填到最前面，列表先归位，刷完直接看到最新的那条。
+                    if (listState.firstVisibleItemIndex > 0) listState.scrollToItem(0)
+                    viewModel.refresh()
+                }
+            },
             modifier = Modifier.fillMaxSize(),
             state = pullState,
-            contentPadding = PaddingValues(top = segmentTop),
+            // 和列表一样让出分段胶囊高度，刷新球才不会被胶囊压住。
+            contentPadding = PaddingValues(top = segmentTop + FeedSegmentRowHeight),
             colors = fullPagePullToRefreshColors(backgroundColor = pageContainerColor()),
             refreshTexts = FullPageRefreshTexts,
             completeHoldDurationMillis = FullPageRefreshHoldMillis,
@@ -211,7 +230,7 @@ private fun DynamicContent(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 12.dp,
-                    top = segmentTop + 40.dp,
+                    top = segmentTop + FeedSegmentRowHeight,
                     end = 12.dp,
                     bottom = 66.dp + navBottomPadding(),
                 ),

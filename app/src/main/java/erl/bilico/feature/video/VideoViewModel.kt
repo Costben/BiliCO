@@ -33,9 +33,11 @@ data class VideoUiState(
     val resumePositionMs: Long = 0,
     val message: String? = null,
     val liked: Boolean = false,
+    val disliked: Boolean = false,
     val coined: Int = 0,
     val favorited: Boolean = false,
     val following: Boolean = false,
+    val upFollowers: Long? = null,
     val interactionBusy: Boolean = false,
 )
 
@@ -79,6 +81,7 @@ class VideoViewModel(
                         )
                     }
                     loadRelation(detail.aid, detail.upMid)
+                    loadUpFollowers(detail.upMid)
                     loadRelated()
                     loadPlayback(
                         qn = settings.defaultQuality.value,
@@ -241,7 +244,32 @@ class VideoViewModel(
                     val delta = if (target) 1L else -1L
                     state.copy(
                         liked = target,
+                        // 点赞与点踩互斥，点上赞就把踩收回去。
+                        disliked = if (target) false else state.disliked,
                         detail = current.copy(like = (current.like + delta).coerceAtLeast(0L)),
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleDislike() {
+        val detail = _state.value.detail ?: return
+        if (!requireLogin()) return
+        val target = !_state.value.disliked
+        interact {
+            interactions.dislike(detail.aid, target).onSuccess {
+                _state.update { state ->
+                    val current = state.detail ?: return@update state
+                    val wasLiked = state.liked
+                    state.copy(
+                        disliked = target,
+                        liked = if (target) false else state.liked,
+                        detail = if (target && wasLiked) {
+                            current.copy(like = (current.like - 1L).coerceAtLeast(0L))
+                        } else {
+                            current
+                        },
                     )
                 }
             }
@@ -327,6 +355,15 @@ class VideoViewModel(
             if (upMid > 0L) {
                 val following = interactions.isFollowing(upMid)
                 _state.update { it.copy(following = following) }
+            }
+        }
+    }
+
+    private fun loadUpFollowers(mid: Long) {
+        if (mid <= 0L) return
+        viewModelScope.launch {
+            interactions.upFollowers(mid)?.let { count ->
+                _state.update { it.copy(upFollowers = count) }
             }
         }
     }

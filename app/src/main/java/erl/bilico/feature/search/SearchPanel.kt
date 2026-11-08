@@ -34,7 +34,6 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,9 +57,7 @@ import erl.bilico.ui.components.SegmentCapsule
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.SearchBar
-import io.github.suqi8.coui.kmp.basic.SearchBarActionButton
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -138,30 +135,23 @@ fun SearchPanel(
                 )
                 .background(pageColor),
         ) {
+            // 用 COUI 自带「取消」的那版 SearchBar：胶囊按钮和搜索框之间是原生的 12dp，
+            // 开了模糊还会走融球。通用的 outsideEndAction 槽位是给旧的纯文字取消按钮算的边距，
+            // 塞胶囊按钮进去会空出 20dp。
             SearchBar(
-                inputField = {
-                    InputField(
-                        query = state.query,
-                        onQueryChange = viewModel::onQueryChange,
-                        onSearch = { keyword ->
-                            container.settings.addSearchHistory(keyword)
-                            viewModel.submit(keyword)
-                        },
-                        expanded = true,
-                        onExpandedChange = { if (!it) dismiss() },
-                        label = "搜索视频 / 用户 / 专栏",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("search_bar"),
-                    )
+                query = state.query,
+                onQueryChange = viewModel::onQueryChange,
+                onSearch = { keyword ->
+                    container.settings.addSearchHistory(keyword)
+                    viewModel.submit(keyword)
                 },
                 onExpandedChange = { if (!it) dismiss() },
-                expanded = true,
                 modifier = Modifier.statusBarsPadding(),
-                outsideEndAction = {
-                    SearchBarActionButton(text = "取消", onClick = dismiss)
-                },
-            ) { }
+                expanded = true,
+                label = "搜索视频 / 用户 / 专栏",
+                cancelText = "取消",
+                onCancel = dismiss,
+            )
 
             LazyColumn(
                 state = listState,

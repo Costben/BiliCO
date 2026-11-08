@@ -1,5 +1,6 @@
 package erl.bilico.ui
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
@@ -7,12 +8,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,13 +27,13 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,10 +41,11 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -51,56 +53,59 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
-import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicFilters
 import erl.bilico.feature.dynamic.DynamicScreen
 import erl.bilico.feature.feed.FEED_SEGMENTS
 import erl.bilico.feature.feed.FeedScreen
-import erl.bilico.feature.live.LiveListScreen
 import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.search.SearchPanel
+import erl.bilico.ui.components.CouiSegmentCapsuleShape
 import erl.bilico.ui.components.NavDynamicFilledIcon
 import erl.bilico.ui.components.NavDynamicOutlineIcon
 import erl.bilico.ui.components.NavHomeFilledIcon
 import erl.bilico.ui.components.NavHomeOutlineIcon
-import erl.bilico.ui.components.NavLiveFilledIcon
-import erl.bilico.ui.components.NavLiveOutlineIcon
+import erl.bilico.ui.components.NavMeFilledIcon
+import erl.bilico.ui.components.NavMeOutlineIcon
 import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBar
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarItem
-import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
+import io.github.suqi8.coui.kmp.basic.SpotLightDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
-import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
+import io.github.suqi8.coui.kmp.basic.couiTouchMotion
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
-import io.github.suqi8.coui.kmp.blur.layerBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.basic.Search
-import io.github.suqi8.coui.kmp.icon.extended.Contacts
-import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /** 底栏切页的交叉淡入时长。 */
 private const val MainTabFadeMillis = 220
 
+/** 底栏双击判定窗口，和系统双击超时一致。 */
+private const val BottomBarDoubleTapMillis = 300L
+
 /** 顶栏标题行高度；列表滚动时标题就折这么高。 */
 internal val TitleRowHeight = 44.dp
-
-/** 顶栏左上角头像的直径。 */
-private val AvatarSize = 32.dp
 
 /** 底栏三格的总宽：三格各 50dp、两处间距 8dp、左右内边距各 12dp，加起来 190dp。 */
 private val BottomBarWidth = 190.dp
 
-/** 推荐与动态的标题行会跟着列表折起来，直播页固定一条。 */
-private val tabTitles = listOf("推荐", "动态", "直播", "我的")
+/** 底栏三格：推荐、动态、我的。直播收进推荐页顶部的分段胶囊里。 */
+private val tabTitles = listOf("推荐", "动态", "我的")
+
+/** 分段胶囊每段的默认宽度，和 Cobo 的分段一致。 */
+private val DefaultSegmentWidth = 84.dp
+
+/**
+ * 分段胶囊轨道左右各留的边距，和下面卡片列表的 12dp 缩进对齐。
+ * 列表跟着系统密度走，顶栏钉在 360dp 密度上，所以这是「页面 dp」，用的时候要换算。
+ */
+private val CapsuleSideMargin = 12.dp
+
+/** SegmentCapsule 轨道自带的左右内边距（各 4dp），算每段宽度时要扣掉。 */
+private val CapsuleTrackPadding = 8.dp
 
 @Composable
 fun MainShell(nav: NavState, container: AppContainer) {
@@ -115,6 +120,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
     var dynamicFilterIndex by rememberSaveable { mutableIntStateOf(0) }
     // 双击当前分段回顶刷新：每双击一次加一，分段那边看到变化就归位重拉。
     var feedRefreshTick by remember { mutableIntStateOf(0) }
+    var dynamicRefreshTick by remember { mutableIntStateOf(0) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     val account by container.session.account.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableIntStateOf(0) }
@@ -182,12 +188,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 onFilterSelect = { dynamicFilterIndex = it },
                                 pagerState = dynamicPager,
                                 onCollapse = { dynamicCollapse = it },
-                            )
-
-                            2 -> LiveListScreen(
-                                container = container,
-                                nav = nav,
-                                topInset = topBarHeight,
+                                refreshTick = dynamicRefreshTick,
                             )
 
                             else -> MeScreen(
@@ -212,7 +213,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     nav = nav,
                     collapsed = collapsed,
                     avatarUrl = account?.face,
-                    onAvatarClick = { nav.setTab(3) },
+                    onAvatarClick = { nav.setTab(ME_TAB_INDEX) },
                     segment = segment,
                     onSegment = { segment = it },
                     dynamicFilterIndex = dynamicFilterIndex,
@@ -220,6 +221,14 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     pager = feedPager,
                     dynamicPager = dynamicPager,
                     onFeedReselect = { feedRefreshTick++ },
+                    onDynamicReselect = { dynamicRefreshTick++ },
+                    onDoubleTap = {
+                        // 双击状态栏 / 标题空白：当前 tab 回到顶部并重新刷新。
+                        when (tab) {
+                            0 -> feedRefreshTick++
+                            1 -> dynamicRefreshTick++
+                        }
+                    },
                     onSearch = { searchOpen = true },
                     bounds = topBarBounds,
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
@@ -232,6 +241,13 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 FloatingBottomBar(
                     tab = tab,
                     onTab = nav::setTab,
+                    onReselect = { index ->
+                        // 双击当前 tab：回到顶部并重新刷新。
+                        when (index) {
+                            0 -> feedRefreshTick++
+                            1 -> dynamicRefreshTick++
+                        }
+                    },
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
@@ -267,6 +283,8 @@ private fun MainTopBar(
     pager: PagerState,
     dynamicPager: PagerState,
     onFeedReselect: () -> Unit,
+    onDynamicReselect: () -> Unit,
+    onDoubleTap: () -> Unit,
     onSearch: () -> Unit,
     bounds: TopBarBounds,
     modifier: Modifier = Modifier,
@@ -283,7 +301,14 @@ private fun MainTopBar(
             containerColor = pageContainerColor(),
             scrollFraction = { 1f },
         ) {
-            Box(Modifier.fillMaxWidth().height(pageBarHeight))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(pageBarHeight)
+                    .pointerInput(onDoubleTap) {
+                        detectTapGestures(onDoubleTap = { onDoubleTap() })
+                    },
+            )
         }
         Crossfade(
             targetState = tab,
@@ -303,6 +328,7 @@ private fun MainTopBar(
                 pager = pager,
                 dynamicPager = dynamicPager,
                 onFeedReselect = onFeedReselect,
+                onDynamicReselect = onDynamicReselect,
                 onSearch = onSearch,
             )
         }
@@ -323,6 +349,7 @@ private fun BarContent(
     pager: PagerState,
     dynamicPager: PagerState,
     onFeedReselect: () -> Unit,
+    onDynamicReselect: () -> Unit,
     onSearch: () -> Unit,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
@@ -383,82 +410,59 @@ private fun BarContent(
 
         // 分段胶囊画在顶栏这一层：盖在玻璃之上才不会随折叠一起被模糊掉。
         // 推荐 tab 的胶囊跟着 pager 连续移动，动态 tab 的筛选只有点击切换。
+        // 弹性（按下缩放、拖动橡皮筋形变、跟随手指的高光）由 COUI 的 couiTouchMotion 提供；
+        // 轮廓用我们自己的连续曲率 CouiSegmentCapsuleShape —— COUI 的 TabRowWithContour 在
+        // 40dp 高度下会因浮点比较掉进 addRoundRect 分支，画出正圆端，所以不用它。
         val capsuleLabels = when (tab) {
             0 -> FEED_SEGMENTS
             1 -> DynamicFilters.map { it.second }
             else -> null
         }
         if (capsuleLabels != null) {
-            Box(
+            val dark = COUITheme.colorScheme.background.luminance() < 0.5f
+            BoxWithConstraints(
                 Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp)
                     .graphicsLayer { translationY = -collapsed() * titleHeightPx },
                 contentAlignment = Alignment.TopCenter,
             ) {
+                // 推荐 tab 现在是四段，84dp 一段会在窄屏上顶出边界：按可用宽度均分再封顶。
+                // 轨道外缘 = 段宽 × 段数 + 轨道内边距，要和卡片列表左右缩进对齐。
+                val barDensity = LocalDensity.current.density
+                val pageDensity = LocalContext.current.resources.displayMetrics.density
+                val sideMargin = CapsuleSideMargin * (pageDensity / barDensity)
+                val capsuleWidth = minOf(
+                    DefaultSegmentWidth,
+                    ((maxWidth - sideMargin * 2 - CapsuleTrackPadding) / capsuleLabels.size)
+                        .coerceAtLeast(1.dp),
+                )
                 SegmentCapsule(
                     labels = capsuleLabels,
                     selectedIndex = if (tab == 0) segment else dynamicFilterIndex,
                     onSelect = if (tab == 0) onSegment else onDynamicFilter,
                     // 两个 tab 的胶囊都跟着各自的 pager 走，拖动时指示块贴住手指。
                     pager = if (tab == 0) pager else dynamicPager,
-                    onReselect = if (tab == 0) onFeedReselect else null,
+                    segmentWidth = capsuleWidth,
+                    // 双击当前选中项回顶刷新：推荐 tab 刷当前分段，动态 tab 刷当前筛选（含直播）。
+                    onReselect = when (tab) {
+                        0 -> onFeedReselect
+                        1 -> onDynamicReselect
+                        else -> null
+                    },
+                    modifier = Modifier.couiTouchMotion(
+                        enabled = true,
+                        shape = CouiSegmentCapsuleShape,
+                        lightParams = SpotLightDefaults.capsuleParams2(dark),
+                        // 胶囊自己画背景，这里只借它的形变和缩放，不接管绘制。
+                        surface = Modifier,
+                        pressScaleEnabled = true,
+                        // 拖动留给胶囊内的点击和 pager，形变只做观察。
+                        consumeDrag = false,
+                        lightEnabled = true,
+                    ),
                 )
             }
-        }
-    }
-}
-
-/** 顶栏左上角的账号头像；未登录时退回一个中性图标。 */
-@Composable
-private fun FeedAvatar(
-    url: String?,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val sizePx = with(LocalDensity.current) { AvatarSize.roundToPx() }
-    val model = remember(url, sizePx) { Formatters.sizedImageUrl(url, sizePx, sizePx) }
-    Box(
-        modifier = modifier
-            .size(AvatarSize)
-            .clip(CircleShape)
-            .background(COUITheme.colorScheme.surfaceContainerHigh)
-            .clickable(onClick = onClick)
-            .testTag("top_avatar"),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (model.isBlank()) {
-            Icon(COUIIcons.Contacts, "我的", Modifier.size(20.dp))
-        } else {
-            AsyncImage(
-                model = model,
-                contentDescription = "我的",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        }
-    }
-}
-
-@Composable
-private fun RowScope.TabActions(tab: Int, nav: NavState, onSearch: () -> Unit) {
-    when (tab) {
-        0 -> HighlightedIconButton(
-            onClick = onSearch,
-            modifier = Modifier
-                .couiTopAppBarActionItem()
-                .testTag("top_search"),
-        ) {
-            Icon(COUIIcons.Basic.Search, "搜索", Modifier.size(24.dp))
-        }
-
-        3 -> HighlightedIconButton(
-            onClick = { nav.push(Route.Settings) },
-            modifier = Modifier
-                .couiTopAppBarActionItem()
-                .testTag("top_settings"),
-        ) {
-            Icon(COUIIcons.Settings, "设置", Modifier.size(24.dp))
         }
     }
 }
@@ -467,21 +471,45 @@ private fun RowScope.TabActions(tab: Int, nav: NavState, onSearch: () -> Unit) {
 private fun FloatingBottomBar(
     tab: Int,
     onTab: (Int) -> Unit,
+    onReselect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 底栏 item 用的是 combinedClickable，没有双击回调：自己记上一次点在同一格的时刻，
+    // 判定窗口内再点一次就当双击，回顶刷新当前 tab。
+    var lastTapTab by remember { mutableIntStateOf(-1) }
+    var lastTapTime by remember { mutableLongStateOf(0L) }
+    val click: (Int) -> Unit = { index ->
+        val now = SystemClock.uptimeMillis()
+        when {
+            index != tab -> {
+                lastTapTab = -1
+                onTab(index)
+            }
+
+            lastTapTab == index && now - lastTapTime < BottomBarDoubleTapMillis -> {
+                lastTapTab = -1
+                onReselect(index)
+            }
+
+            else -> {
+                lastTapTab = index
+                lastTapTime = now
+            }
+        }
+    }
     Box(
         modifier
             .fillMaxWidth()
             .navigationBarsPadding(),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        // 底栏就三个 tab。个人页从顶栏头像进，不再占底栏的位置。
+        // 底栏就三个 tab：推荐、动态、我的。直播是推荐页里的第四个分段。
         // 宽度收在 190dp：三格各 50dp，和 Cobo 底栏的格子一样宽；放开的话每格会用满 70dp，
         // 三个 tab 撑得很散。
         BottomFloatingNavigationBar(modifier = Modifier.width(BottomBarWidth)) {
             BottomFloatingNavigationBarItem(
                 selected = tab == 0,
-                onClick = { onTab(0) },
+                onClick = { click(0) },
                 icon = NavHomeOutlineIcon,
                 selectedIcon = NavHomeFilledIcon,
                 label = "推荐",
@@ -489,19 +517,19 @@ private fun FloatingBottomBar(
             )
             BottomFloatingNavigationBarItem(
                 selected = tab == 1,
-                onClick = { onTab(1) },
+                onClick = { click(1) },
                 icon = NavDynamicOutlineIcon,
                 selectedIcon = NavDynamicFilledIcon,
                 label = "动态",
                 modifier = Modifier.testTag("bottom_tab_dynamic"),
             )
             BottomFloatingNavigationBarItem(
-                selected = tab == 2,
-                onClick = { onTab(2) },
-                icon = NavLiveOutlineIcon,
-                selectedIcon = NavLiveFilledIcon,
-                label = "直播",
-                modifier = Modifier.testTag("bottom_tab_live"),
+                selected = tab == ME_TAB_INDEX,
+                onClick = { click(ME_TAB_INDEX) },
+                icon = NavMeOutlineIcon,
+                selectedIcon = NavMeFilledIcon,
+                label = "我的",
+                modifier = Modifier.testTag("bottom_tab_me"),
             )
         }
     }

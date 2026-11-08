@@ -22,7 +22,6 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Community
 import io.github.suqi8.coui.kmp.icon.extended.Home
-import io.github.suqi8.coui.kmp.icon.extended.Play
 
 /**
  * PiliPlus 那套图标字体。
@@ -274,61 +273,51 @@ internal val NavDynamicFilledIcon: ImageVector by lazy {
     }.build()
 }
 
-internal val NavLiveOutlineIcon: ImageVector
-    get() = COUIIcons.Play
-
-internal val NavLiveFilledIcon: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "NavLiveFilled",
-        defaultWidth = 24.0f.dp,
-        defaultHeight = 24.0f.dp,
-        viewportWidth = 1168.8f,
-        viewportHeight = 1168.8f,
-    ).apply {
-        group(scaleY = -1.0f, translationY = 1168.8f) {
-            addPath(
-                pathData = listOf(
-                    // 外播放三角实心轮廓（与 COUIIcons.Regular.Play 严格同源，去除内部镂空环）
-                    PathNode.MoveTo(419.9f, 161.4f),
-                    PathNode.LineTo(878.9f, 427.4f),
-                    PathNode.QuadTo(944.9f, 465.4f, 971.9f, 485.4f),
-                    PathNode.QuadTo(998.9f, 505.4f, 1010.9f, 532.4f),
-                    PathNode.QuadTo(1021.9f, 557.4f, 1021.9f, 585.4f),
-                    PathNode.QuadTo(1021.9f, 613.4f, 1010.9f, 638.4f),
-                    PathNode.QuadTo(998.9f, 664.4f, 971.9f, 684.9f),
-                    PathNode.QuadTo(944.9f, 705.4f, 878.9f, 742.4f),
-                    PathNode.LineTo(419.9f, 1008.4f),
-                    PathNode.QuadTo(357.9f, 1044.4f, 324.9f, 1057.9f),
-                    PathNode.QuadTo(291.9f, 1071.4f, 263.9f, 1068.4f),
-                    PathNode.QuadTo(236.9f, 1066.4f, 212.9f, 1052.9f),
-                    PathNode.QuadTo(188.9f, 1039.4f, 171.9f, 1016.4f),
-                    PathNode.QuadTo(154.9f, 994.4f, 150.9f, 960.9f),
-                    PathNode.QuadTo(146.9f, 927.4f, 146.9f, 851.4f),
-                    PathNode.VerticalTo(320.4f),
-                    PathNode.QuadTo(146.9f, 242.4f, 150.4f, 209.4f),
-                    PathNode.QuadTo(153.9f, 176.4f, 170.9f, 152.4f),
-                    PathNode.QuadTo(187.9f, 130.4f, 212.4f, 116.4f),
-                    PathNode.QuadTo(236.9f, 102.4f, 262.9f, 100.4f),
-                    PathNode.QuadTo(291.9f, 97.4f, 324.4f, 110.9f),
-                    PathNode.QuadTo(356.9f, 124.4f, 419.9f, 161.4f),
-                    PathNode.Close,
-                ),
-                fill = SolidColor(Color.Black),
-                fillAlpha = 1f,
-                pathFillType = PathFillType.NonZero,
-            )
-        }
-    }.build()
+/** 「我的」线性图标：Material 的 person_outline，放大到和 COUI 那套同宽。 */
+internal val NavMeOutlineIcon: ImageVector by lazy {
+    icon(
+        name = "NavMeOutline",
+        path = "M12,5.9c1.16,0 2.1,0.94 2.1,2.1s-0.94,2.1 -2.1,2.1S9.9,9.16 9.9,8 " +
+            "10.84,5.9 12,5.9m0,9c2.97,0 6.1,1.46 6.1,2.1v1.1H5.9v-1.1c0,-0.64 3.13,-2.1 6.1,-2.1" +
+            "M12,4C9.79,4 8,5.79 8,8s1.79,4 4,4 4,-1.79 4,-4 -1.79,-4 -4,-4z" +
+            "M12,13c-2.67,0 -8,1.34 -8,4v3h16v-3c0,-2.66 -5.33,-4 -8,-4z",
+        scale = MeIconScale,
+    )
 }
 
-private fun icon(name: String, path: String): ImageVector =
+/** 「我的」面性图标：Material 的 person，和线性版同源，边界零跳动。 */
+internal val NavMeFilledIcon: ImageVector by lazy {
+    icon(
+        name = "NavMeFilled",
+        path = "M12,12c2.21,0 4,-1.79 4,-4s-1.79,-4 -4,-4 -4,1.79 -4,4 1.79,4 4,4z" +
+            "M12,14c-2.67,0 -8,1.34 -8,4v2h16v-2c0,-2.66 -5.33,-4 -8,-4z",
+        scale = MeIconScale,
+    )
+}
+
+/** 人形字形本身只铺 4..20，放大 1.234 之后正好铺到 2.1..21.9，和 COUI 的底栏图标一样大。 */
+private const val MeIconScale = 1.234f
+
+private fun icon(name: String, path: String, scale: Float = 1f): ImageVector =
     ImageVector.Builder(
         name = name,
         defaultWidth = 24.dp,
         defaultHeight = 24.dp,
         viewportWidth = 24f,
         viewportHeight = 24f,
-    ).addPath(
-        pathData = addPathNodes(path),
-        fill = SolidColor(Color.Black),
-    ).build()
+    ).apply {
+        // Material 的字形只占 4..20，COUI 那套铺到 2.1..21.9；放进底栏时按中心放大对齐。
+        if (scale != 1f) {
+            group(scaleX = scale, scaleY = scale, pivotX = 12f, pivotY = 12f) {
+                addPath(
+                    pathData = addPathNodes(path),
+                    fill = SolidColor(Color.Black),
+                )
+            }
+        } else {
+            addPath(
+                pathData = addPathNodes(path),
+                fill = SolidColor(Color.Black),
+            )
+        }
+    }.build()

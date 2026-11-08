@@ -20,8 +20,8 @@ import kotlin.math.max
 /**
  * 120Hz 原生高刷弹幕渲染视图：
  * 1. 使用 [Choreographer.FrameCallback] 的纳秒级硬件 VSync 时间戳驱动连续浮点时钟 [renderTimeMs]，
- *    与播放器粗粒度整数毫秒 `currentPosition` 解耦（仅做 2% 微小漂移锁定，超 120ms 才重锚定），
- *    彻底消除弹幕被 24/30/60fps 视频帧率或整数毫秒截断拖慢的阶梯感；
+ *    与播放器粗粒度整数毫秒 `currentPosition` 解耦：落后就按比例追、超前就放慢等，
+ *    时钟只往前走进不退，只有真跳变（seek / 切线路）才重锚定；
  * 2. 在 Android 15+ 显式投票 120Hz 帧率，防止 VRR 随视频纹理降频至 30/60Hz；
  * 3. 采用 GPU 友好的圓角描边（Stroke）+ 填充（Fill）+ `SUBPIXEL_TEXT_FLAG`，取代耗时的 `setShadowLayer` 高斯阴影；
  * 4. 缓存文本测量宽度，使横竖屏旋转 `onSizeChanged` 重排耗时降至 0.1ms 以内，不阻塞转屏首帧。
@@ -180,13 +180,20 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
         if (lastFrameNanos == 0L || renderTimeMs < 0.0 || !isActuallyPlaying) {
             renderTimeMs = playerPos
         } else {
-            val dtMs = ((frameTimeNanos - lastFrameNanos) / 1_000_000.0).coerceIn(0.0, 50.0)
-            renderTimeMs += dtMs * playSpeed
-            val drift = playerPos - renderTimeMs
-            if (abs(drift) > DRIFT_SNAP_THRESHOLD_MS) {
-                renderTimeMs = playerPos
-            } else {
-                renderTimeMs += drift * DRIFT_CORRECTION_FACTOR
+            // 帧间隔一律按真实值算：掉帧、主线程忙的时候长帧不能截断，
+            // 否则倍速下每掉一帧就少走一截，攒够阈值再被硬拽一下，观感就是一跳一跳。
+            val dtMs = ((frameTimeNanos - lastFrameNanos) / 1_000_000.0).coerceIn(0.0, MAX_FRAME_MS)
+            val previous = renderTimeMs
+            val advanced = previous + dtMs * playSpeed
+            val drift = playerPos - advanced
+            renderTimeMs = when {
+                // 真跳变（seek、切线路、缓冲回来）才允许重锚。
+                abs(drift) > DRIFT_SNAP_THRESHOLD_MS -> playerPos
+                // 落后播放器：按比例追一点，慢慢贴合，不做整段拉回。
+                drift >= 0.0 -> advanced + drift * DRIFT_CATCHUP_FACTOR
+                // 跑在播放器前面（倍速刚切上去那一瞬间最常见）：放慢等它，
+                // 最多压到这一帧原地不动，绝不倒退 —— 倒退就是用户看到的「弹幕回退」。
+                else -> max(previous, advanced + drift * DRIFT_SLOWDOWN_FACTOR)
             }
         }
         lastFrameNanos = frameTimeNanos
@@ -360,9 +367,20 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
     private companion object {
         const val STROKE_COLOR = 0xE6000000.toInt()
-        const val DRIFT_SNAP_THRESHOLD_MS = 120.0
-        const val DRIFT_CORRECTION_FACTOR = 0.02
-        const val MAX_SPRITE_CACHE_BYTES = 16 * 1024 * 1024
+
+        /** 单帧最多算这么长；再长就是主线程被别的事占住了，按真实值补上即可。 */
+        const val MAX_FRAME_MS = 120.0
+
+        /** 只有超过这个量的偏差才算真跳变（seek、切线路），普通漂移一律慢慢磨。 */
+        const val DRIFT_SNAP_THRESHOLD_MS = 500.0
+
+        /** 落后时每帧补掉差距的这个比例：约 0.5～0.7s 追平，且单帧不会突然快一大截。 */
+        const val DRIFT_CATCHUP_FACTOR = 0.1
+
+        /** 超前时每帧只压掉差距的这个比例，压到原地等待为止，永不倒退。 */
+        const val DRIFT_SLOWDOWN_FACTOR = 0.1
+
+        const val MAX_SPRITE_CACHE_BYTES = 48 * 1024 * 1024
     }
 }
 

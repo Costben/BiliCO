@@ -28,7 +28,10 @@ internal val PlayerScrim = Color(0x66000000)
 /** 播放器底部控件条的通用内边距。 */
 internal val PlayerControlsPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
 
-/** 弹幕设置与弹幕开关，图标取自 PiliPlus 的 dm_settings / dm_on / dm_off 字形。 */
+/**
+ * 弹幕开关，图标取自 PiliPlus 的 dm_on / dm_off 字形。
+ * 传了 [onOpenSettings] 时在左边多出一个弹幕设置入口，分隔线跟着一起出现。
+ */
 @Composable
 internal fun DanmakuToggle(
     enabled: Boolean,
@@ -37,14 +40,14 @@ internal fun DanmakuToggle(
 ) {
     val scheme = COUITheme.colorScheme
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .padding(start = 6.dp)
-                .width(1.dp)
-                .height(14.dp)
-                .background(scheme.dividerLine),
-        )
         if (onOpenSettings != null) {
+            Box(
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .width(1.dp)
+                    .height(14.dp)
+                    .background(scheme.dividerLine),
+            )
             Box(
                 modifier = Modifier
                     .size(32.dp)

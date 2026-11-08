@@ -128,6 +128,7 @@ internal fun PlayerGestureLayer(
                         tryAwaitRelease()
                         if (longPressed) {
                             longPressed = false
+                            if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
                             currentOnLongPress(false)
                         }
                     },
@@ -135,6 +136,7 @@ internal fun PlayerGestureLayer(
                     onDoubleTap = { currentOnDoubleTap() },
                     onLongPress = {
                         longPressed = true
+                        if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
                         currentOnLongPress(true)
                     },
                 )
@@ -387,34 +389,37 @@ internal fun PlayerGestureLayer(
         }
 
         // 仅在成功触发进入/退出全屏后短暂淡入淡出，拖动过程中保持画面干净无遮挡
-        AnimatedVisibility(
-            visible = triggeredFullscreenHint != null,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.Center),
-        ) {
-            val isEnter = triggeredFullscreenHint == true
-            val icon = if (isEnter) FullscreenIcon else FullscreenExitIcon
-            val text = if (isEnter) "已进入全屏" else "已退出全屏"
-            Column(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xCC000000))
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+        // 外层和播放器一样大，用来抵消转屏动画的缩放：提示跟着视频转，但大小不变。
+        Box(Modifier.fillMaxSize().stageCounterScale()) {
+            AnimatedVisibility(
+                visible = triggeredFullscreenHint != null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.Center),
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(26.dp),
-                    tint = Color.White,
-                )
-                Text(
-                    text = text,
-                    style = COUITheme.textStyles.footnote1,
-                    color = Color.White,
-                )
+                val isEnter = triggeredFullscreenHint == true
+                val icon = if (isEnter) FullscreenIcon else FullscreenExitIcon
+                val text = if (isEnter) "已进入全屏" else "已退出全屏"
+                Column(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xCC000000))
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(26.dp),
+                        tint = Color.White,
+                    )
+                    Text(
+                        text = text,
+                        style = COUITheme.textStyles.footnote1,
+                        color = Color.White,
+                    )
+                }
             }
         }
     }

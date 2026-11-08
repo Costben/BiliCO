@@ -17,6 +17,10 @@ data class FeedUiState(
     val isLoadingMore: Boolean = false,
     val isEnd: Boolean = false,
     val error: String? = null,
+    /** 最近一次刷新插到列表最前面的新内容条数；0 表示这次没有拼接出新的边界。 */
+    val refreshInsertedCount: Int = 0,
+    /** 每完成一次刷新加一；列表据此把位置拉回新内容顶部。 */
+    val refreshSerial: Int = 0,
 )
 
 class FeedViewModel(
@@ -47,13 +51,33 @@ class FeedViewModel(
             repository.recommend(1)
                 .onSuccess { list ->
                     nextPage = 2
-                    _state.update {
-                        it.copy(
-                            items = list,
-                            isInitialLoading = false,
-                            isRefreshing = false,
-                            isEnd = list.isEmpty(),
-                        )
+                    _state.update { current ->
+                        val oldItems = current.items
+                        if (oldItems.isEmpty()) {
+                            current.copy(
+                                items = list,
+                                refreshInsertedCount = 0,
+                                refreshSerial = current.refreshSerial + 1,
+                                isInitialLoading = false,
+                                isRefreshing = false,
+                                isEnd = list.isEmpty(),
+                            )
+                        } else {
+                            // 刷新不清空列表：只把这次真正新增的稿件叠到最前面，
+                            // 拼接边界留给列表画「回到顶部」的占位。
+                            val knownIds = oldItems.mapTo(HashSet()) { it.bvid }
+                            val fresh = list
+                                .filterNot { it.bvid in knownIds }
+                                .distinctBy { it.bvid }
+                            current.copy(
+                                items = fresh + oldItems,
+                                refreshInsertedCount = fresh.size,
+                                refreshSerial = current.refreshSerial + 1,
+                                isInitialLoading = false,
+                                isRefreshing = false,
+                                isEnd = false,
+                            )
+                        }
                     }
                 }
                 .onFailure { error ->

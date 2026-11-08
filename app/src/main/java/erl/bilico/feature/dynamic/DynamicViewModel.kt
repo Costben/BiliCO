@@ -37,11 +37,11 @@ class DynamicViewModel(
     private var generation = 0
 
     init {
-        if (session.isLoggedIn()) refresh()
+        if (session.isLoggedIn()) initialLoad()
     }
 
     fun onLoginStateChanged(loggedIn: Boolean) {
-        if (loggedIn && _state.value.items.isEmpty() && !inFlight) refresh()
+        if (loggedIn && _state.value.items.isEmpty() && !inFlight) initialLoad()
     }
 
     fun setFilter(filter: DynamicFeedType) {
@@ -64,15 +64,18 @@ class DynamicViewModel(
         load(firstPage = true)
     }
 
+    /** 首次进入或刚登录：整页显示加载中，不走下拉刷新。 */
+    private fun initialLoad() {
+        _state.update { it.copy(isInitialLoading = true, isRefreshing = false, error = null) }
+        load(firstPage = true)
+    }
+
     fun refresh() {
+        // 下拉刷新只认 isRefreshing 的「升起 → 落下」：列表为空或已有请求在路上也得升起来，
+        // 否则刷新球等不到落下的信号会一直转。空列表时保留原来的空态 / 错误态，不再换成整页加载。
+        _state.update { it.copy(isInitialLoading = false, isRefreshing = true) }
         if (inFlight) return
-        _state.update {
-            it.copy(
-                isInitialLoading = it.items.isEmpty(),
-                isRefreshing = it.items.isNotEmpty(),
-                error = null,
-            )
-        }
+        _state.update { it.copy(error = null) }
         load(firstPage = true)
     }
 

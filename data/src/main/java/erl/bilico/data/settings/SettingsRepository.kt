@@ -62,6 +62,10 @@ class SettingsRepository(
     private val _gestureHaptic = MutableStateFlow(true)
     val gestureHaptic: StateFlow<Boolean> = _gestureHaptic.asStateFlow()
 
+    /** 长按倍速的倍数，按百分比存：200 = 2x。 */
+    private val _longPressSpeed = MutableStateFlow(DEFAULT_LONG_PRESS_SPEED)
+    val longPressSpeed: StateFlow<Int> = _longPressSpeed.asStateFlow()
+
     private val _autoRotateMode = MutableStateFlow(1)
     val autoRotateMode: StateFlow<Int> = _autoRotateMode.asStateFlow()
 
@@ -118,6 +122,8 @@ class SettingsRepository(
             _backgroundPlay.value = prefs[KEY_BACKGROUND_PLAY] ?: true
             _autoPip.value = prefs[KEY_AUTO_PIP] ?: true
             _gestureHaptic.value = prefs[KEY_GESTURE_HAPTIC] ?: true
+            _longPressSpeed.value = (prefs[KEY_LONG_PRESS_SPEED] ?: DEFAULT_LONG_PRESS_SPEED)
+                .coerceIn(125, 400)
             _autoRotateMode.value = prefs[KEY_AUTO_ROTATE_MODE] ?: 1
             _gestureVolumeBrightness.value = prefs[KEY_GESTURE_VOL_BRIGHT] ?: true
             _fullscreenGestureHint.value = prefs[KEY_FS_GESTURE_HINT] ?: true
@@ -151,6 +157,11 @@ class SettingsRepository(
     fun setFullscreenGestureHint(enabled: Boolean) {
         _fullscreenGestureHint.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_FS_GESTURE_HINT] = enabled } }
+    }
+
+    fun setLongPressSpeed(percent: Int) {
+        _longPressSpeed.value = percent.coerceIn(125, 400)
+        scope.launch { context.biliDataStore.edit { it[KEY_LONG_PRESS_SPEED] = _longPressSpeed.value } }
     }
 
     fun setGestureHaptic(enabled: Boolean) {
@@ -362,6 +373,8 @@ class SettingsRepository(
         val KEY_AUTO_PIP = booleanPreferencesKey("auto_pip")
         val KEY_GESTURE_HAPTIC = booleanPreferencesKey("gesture_haptic")
         val KEY_AUTO_ROTATE_MODE = intPreferencesKey("auto_rotate_mode")
+        val KEY_LONG_PRESS_SPEED = intPreferencesKey("long_press_speed")
+        const val DEFAULT_LONG_PRESS_SPEED = 200
         val KEY_GESTURE_VOL_BRIGHT = booleanPreferencesKey("gesture_vol_bright")
         val KEY_FS_GESTURE_HINT = booleanPreferencesKey("fullscreen_gesture_hint")
         val KEY_AUTO_CHECK_UPDATE = booleanPreferencesKey("auto_check_update")

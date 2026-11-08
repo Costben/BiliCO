@@ -97,6 +97,7 @@ fun PgcScreen(
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
+    val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
@@ -135,7 +136,7 @@ fun PgcScreen(
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
     var longPressSpeed by remember { mutableStateOf(false) }
 
-    val boostSpeed = if (speed >= 2f) 3f else 2f
+    val boostSpeed = longPressSpeedPercent / 100f
     val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
 
     var positionMs by remember { mutableLongStateOf(0L) }

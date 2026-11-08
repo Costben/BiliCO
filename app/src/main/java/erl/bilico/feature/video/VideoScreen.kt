@@ -68,6 +68,7 @@ fun VideoScreen(
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
+    val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
@@ -143,7 +144,7 @@ fun VideoScreen(
         }
     }
 
-    val boostSpeed = if (speed >= 2f) 3f else 2f
+    val boostSpeed = longPressSpeedPercent / 100f
     val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
 
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -384,9 +385,9 @@ fun VideoScreen(
                     selected = tab,
                     onSelect = { tab = it },
                     pager = detailPager,
+                    commentCount = state.detail?.reply ?: 0L,
                     danmakuEnabled = danmakuEnabled,
                     onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                    onOpenDanmakuSettings = { danmakuSettingsDialogVisible = true },
                     composing = danmakuComposing,
                     draft = danmakuDraft,
                     onDraftChange = { danmakuDraft = it },
@@ -422,10 +423,13 @@ fun VideoScreen(
                             related = state.related,
                             container = container,
                             liked = state.liked,
+                            disliked = state.disliked,
                             coined = state.coined,
                             favorited = state.favorited,
                             following = state.following,
+                            upFollowers = state.upFollowers,
                             onLike = viewModel::toggleLike,
+                            onDislike = viewModel::toggleDislike,
                             onCoin = { coinDialogVisible = true },
                             onFavorite = {
                                 if (!container.session.isLoggedIn()) {
@@ -444,6 +448,13 @@ fun VideoScreen(
                             },
                             onWatchLater = viewModel::addToWatchLater,
                             onFollow = viewModel::toggleFollow,
+                            onShare = {
+                                shareVideo(
+                                    context = context,
+                                    title = state.detail?.title.orEmpty(),
+                                    bvid = bvid,
+                                )
+                            },
                             modifier = Modifier.fillMaxSize(),
                         )
 

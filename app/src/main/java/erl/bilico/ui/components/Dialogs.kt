@@ -17,6 +17,7 @@ import io.github.suqi8.coui.kmp.basic.TextFieldMode
 import io.github.suqi8.coui.kmp.layout.DialogButtonBar
 import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 统一确认弹窗。点击按钮先收窗，收完再回调，避免弹窗关闭动画还没走就把页面拆了。
@@ -32,6 +33,9 @@ fun ConfirmDialog(
     var show by remember { mutableStateOf(false) }
     var confirmed by remember { mutableStateOf(false) }
     var settled by remember { mutableStateOf(false) }
+    val colors = COUITheme.colorScheme
+    val textStyles = COUITheme.textStyles
+    val dimens = COUITheme.dimens
     LaunchedEffect(Unit) { show = true }
     OverlayDialog(
         show = show,
@@ -46,16 +50,18 @@ fun ConfirmDialog(
             }
         },
     ) {
-        DialogButtonBar(
-            negative = DialogButtonBarAction(text = "取消", onClick = { show = false }),
-            positive = DialogButtonBarAction(
-                text = confirmText,
-                onClick = {
-                    confirmed = true
-                    show = false
-                },
-            ),
-        )
+        COUITheme(colors = colors, textStyles = textStyles, dimens = dimens) {
+            DialogButtonBar(
+                negative = DialogButtonBarAction(text = "取消", onClick = { show = false }),
+                positive = DialogButtonBarAction(
+                    text = confirmText,
+                    onClick = {
+                        confirmed = true
+                        show = false
+                    },
+                ),
+            )
+        }
     }
 }
 

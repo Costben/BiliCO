@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -28,6 +29,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -265,6 +267,31 @@ internal fun VideoFullscreenStage(
     // 横屏窗口里详情页仍按竖屏尺寸测量，退出全屏时不用重排，滚动位置也不会跳。
     var portraitWidth by remember { mutableIntStateOf(0) }
     var portraitHeight by remember { mutableIntStateOf(0) }
+    // 最近一次按「舞台尺寸」量出来的播放器大小（宽 = 竖屏高，高 = 竖屏宽）。
+    // 播放器那一层拿它和实测尺寸比对来决定用不用转场矩阵，不靠 inStage：
+    // 进度归零那一帧画面已经要按竖屏画了，可重排要等到下一帧，
+    // 按 inStage 切分支就会拿竖屏的变换去画横屏尺寸的画面，收尾闪一帧特别大。
+    val stageBox = remember { IntArray(2) }
+    val currentLandscapeForLayer by rememberUpdatedState(windowLandscape)
+    // 播放器图层当前的缩放；null = 没在转场，按原尺寸平铺。
+    // 只有确实按舞台尺寸量出来的那一帧才算转场：切换发生在尺寸真正变掉之后，首尾两帧都不会用错坐标系。
+    val stageScale: (Size) -> Float? = remember {
+        { size ->
+            val stageW = stageBox[0]
+            val stageH = stageBox[1]
+            val measured = stageW > 0 &&
+                size.width.roundToInt() == stageW &&
+                size.height.roundToInt() == stageH
+            if (currentLandscapeForLayer || !measured) {
+                null
+            } else {
+                val portW = size.height
+                val portH = size.width
+                val videoH = min(portW * 9f / 16f, portH * 0.7f)
+                lerp(videoH / portW.coerceAtLeast(1f), 1f, progress.value).coerceAtLeast(0.01f)
+            }
+        }
+    }
 
     Layout(
         content = {
@@ -296,7 +323,8 @@ internal fun VideoFullscreenStage(
             // 2: 播放器。竖屏窗口转屏途中按横屏尺寸布局一次，由 GPU 矩阵完成缩放 + ±90° 旋转。
             Box(
                 modifier = Modifier.graphicsLayer {
-                    if (windowLandscape || !inStage) {
+                    val s = stageScale(size)
+                    if (s == null) {
                         transformOrigin = TransformOrigin.Center
                         translationX = 0f
                         translationY = if (windowLandscape) 0f else statusBarPx
@@ -309,7 +337,6 @@ internal fun VideoFullscreenStage(
                         val portH = size.width
                         val videoH = min(portW * 9f / 16f, portH * 0.7f)
                         val p = progress.value
-                        val s = lerp(videoH / portW.coerceAtLeast(1f), 1f, p).coerceAtLeast(0.01f)
                         transformOrigin = TransformOrigin.Center
                         translationX = portW * 0.5f - portH * 0.5f
                         translationY = lerp(statusBarPx + videoH * 0.5f, portH * 0.5f, p) - portW * 0.5f
@@ -319,7 +346,9 @@ internal fun VideoFullscreenStage(
                         clip = false
                     }
                 },
-                content = playerContent,
+                content = {
+                    CompositionLocalProvider(LocalStageScale provides stageScale) { playerContent() }
+                },
             )
 
             // 3: 竖屏附加层（返回按钮等）。
@@ -354,13 +383,17 @@ internal fun VideoFullscreenStage(
             Constraints.fixed(portW, (portH - detailTop).coerceAtLeast(1)),
         )
         val backdrop = measurables[1].measure(Constraints.fixed(winW, winH))
-        val player = measurables[2].measure(
-            when {
-                windowLandscape -> Constraints.fixed(winW, winH)
-                inStage -> Constraints.fixed(portH, portW)
-                else -> Constraints.fixed(portW, videoH.roundToInt().coerceAtLeast(1))
-            },
-        )
+        val playerConstraints = when {
+            windowLandscape -> Constraints.fixed(winW, winH)
+            inStage -> {
+                // 转场期间播放器按「竖屏高 × 竖屏宽」量一次，交给 GPU 矩阵缩放旋转。
+                stageBox[0] = portH
+                stageBox[1] = portW
+                Constraints.fixed(portH, portW)
+            }
+            else -> Constraints.fixed(portW, videoH.roundToInt().coerceAtLeast(1))
+        }
+        val player = measurables[2].measure(playerConstraints)
         val overlay = measurables[3].measure(Constraints.fixed(winW, winH))
         layout(winW, winH) {
             detail.place(0, if (windowLandscape) 0 else detailTop)
@@ -368,6 +401,27 @@ internal fun VideoFullscreenStage(
             player.place(0, 0)
             overlay.place(0, 0)
         }
+    }
+}
+
+/**
+ * 舞台给播放器图层的缩放（按播放器图层自身尺寸求值）。
+ * 播放器里要保持真实大小的浮层（比如「已退出全屏」提示）用 [Modifier.stageCounterScale] 抵消掉它。
+ */
+internal val LocalStageScale = staticCompositionLocalOf<(Size) -> Float?> { { null } }
+
+/**
+ * 抵消舞台转场缩放：转屏途中跟着视频一起转，但大小始终等于竖屏视频页上的大小，
+ * 收尾那一帧不会从缩小状态突然弹回原尺寸。必须挂在和播放器一样大的容器上。
+ */
+@Composable
+internal fun Modifier.stageCounterScale(): Modifier {
+    val scaleOf = LocalStageScale.current
+    return graphicsLayer {
+        val s = scaleOf(size) ?: 1f
+        transformOrigin = TransformOrigin.Center
+        scaleX = 1f / s
+        scaleY = 1f / s
     }
 }
 

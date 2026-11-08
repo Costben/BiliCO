@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.feed.FeedSegmentRowHeight
 import erl.bilico.feature.live.LiveListViewModel
 import erl.bilico.feature.live.LiveRoomCard
 import erl.bilico.ui.NavState
@@ -53,6 +54,7 @@ internal fun DynamicLiveTab(
     topInset: Dp,
     active: Boolean,
     onCollapse: (Float) -> Unit,
+    refreshTick: Int,
 ) {
     val viewModel: LiveListViewModel = viewModel(key = "dynamic-live") {
         LiveListViewModel(container.live, following = true)
@@ -87,12 +89,25 @@ internal fun DynamicLiveTab(
 
     val segmentTop = topInset + 8.dp
 
+    // 双击「直播」筛选或双击顶栏：回到第一条并重新拉一遍。
+    LaunchedEffect(refreshTick) {
+        if (refreshTick == 0 || !active) return@LaunchedEffect
+        gridState.scrollToItem(0)
+        viewModel.refresh()
+    }
+
     FullPagePullToRefresh(
         isRefreshing = state.isRefreshing,
-        onRefresh = { scope.launch { viewModel.refresh() } },
+        onRefresh = {
+            scope.launch {
+                if (gridState.firstVisibleItemIndex > 0) gridState.scrollToItem(0)
+                viewModel.refresh()
+            }
+        },
         modifier = Modifier.fillMaxSize(),
         state = pullState,
-        contentPadding = PaddingValues(top = segmentTop),
+        // 和网格一样让出分段胶囊高度，刷新球才不会被胶囊压住。
+        contentPadding = PaddingValues(top = segmentTop + FeedSegmentRowHeight),
         colors = fullPagePullToRefreshColors(backgroundColor = pageContainerColor()),
         refreshTexts = FullPageRefreshTexts,
         completeHoldDurationMillis = FullPageRefreshHoldMillis,
@@ -103,7 +118,7 @@ internal fun DynamicLiveTab(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 12.dp,
-                top = segmentTop + 40.dp,
+                top = segmentTop + FeedSegmentRowHeight,
                 end = 12.dp,
                 bottom = 66.dp + navBottomPadding(),
             ),

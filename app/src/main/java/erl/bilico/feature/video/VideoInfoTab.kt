@@ -1,9 +1,11 @@
 package erl.bilico.feature.video
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -34,8 +36,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.FeedVideo
@@ -43,6 +53,10 @@ import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.comment.DislikeFilledIcon
+import erl.bilico.feature.comment.DislikeOutlineIcon
+import erl.bilico.feature.comment.LikeFilledIcon
+import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.feature.feed.MoreMenu
 import erl.bilico.feature.feed.StatLabel
 import erl.bilico.feature.feed.rememberWatchLaterAction
@@ -54,11 +68,11 @@ import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.AddCircle
 import io.github.suqi8.coui.kmp.icon.extended.Favorites
+import io.github.suqi8.coui.kmp.icon.extended.Info
 import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.Play
-import io.github.suqi8.coui.kmp.icon.extended.Promotions
+import io.github.suqi8.coui.kmp.icon.extended.Share
 import io.github.suqi8.coui.kmp.icon.extended.Stopwatch
 import io.github.suqi8.coui.kmp.icon.extended.Store
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -76,14 +90,18 @@ internal fun VideoInfoTab(
     related: List<FeedVideo>,
     container: AppContainer,
     liked: Boolean,
+    disliked: Boolean,
     coined: Int,
     favorited: Boolean,
     following: Boolean,
+    upFollowers: Long?,
     onLike: () -> Unit,
+    onDislike: () -> Unit,
     onCoin: () -> Unit,
     onFavorite: () -> Unit,
     onWatchLater: () -> Unit,
     onFollow: () -> Unit,
+    onShare: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when {
@@ -104,14 +122,18 @@ internal fun VideoInfoTab(
             related = related,
             container = container,
             liked = liked,
+            disliked = disliked,
             coined = coined,
             favorited = favorited,
             following = following,
+            upFollowers = upFollowers,
             onLike = onLike,
+            onDislike = onDislike,
             onCoin = onCoin,
             onFavorite = onFavorite,
             onWatchLater = onWatchLater,
             onFollow = onFollow,
+            onShare = onShare,
             modifier = modifier,
         )
     }
@@ -127,70 +149,110 @@ private fun InfoContent(
     related: List<FeedVideo>,
     container: AppContainer,
     liked: Boolean,
+    disliked: Boolean,
     coined: Int,
     favorited: Boolean,
     following: Boolean,
+    upFollowers: Long?,
     onLike: () -> Unit,
+    onDislike: () -> Unit,
     onCoin: () -> Unit,
     onFavorite: () -> Unit,
     onWatchLater: () -> Unit,
     onFollow: () -> Unit,
+    onShare: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var descExpanded by rememberSaveable(detail.bvid) { mutableStateOf(false) }
+    // 标题与简介共用一次展开：点一下标题，标题放开的同时简介也跟着放开。
+    var expanded by rememberSaveable(detail.bvid) { mutableStateOf(false) }
     val density = LocalDensity.current
-    val avatarPx = with(density) { 40.dp.roundToPx() }
+    val avatarPx = with(density) { 44.dp.roundToPx() }
+    val desc = detail.desc.trim()
+    // 收起时把换行压成空格：简介里的空行会让省略号单独占一行，白吃一行高度。
+    val descPreview = remember(desc) { desc.replace(Regex("\\s*\\n+\\s*"), " ").trim() }
+    val accent = COUITheme.colorScheme.primary
+    val descStyle = COUITheme.textStyles.body2
+    val measurer = rememberTextMeasurer()
 
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item(key = "title") {
-            Text(
-                text = detail.title,
-                style = COUITheme.textStyles.title3,
-                fontWeight = FontWeight.Medium,
+        item(key = "up") {
+            UpRow(
+                detail = detail,
+                followers = upFollowers,
+                following = following,
+                avatarPx = avatarPx,
+                onOpenUser = onOpenUser,
+                onFollow = onFollow,
             )
         }
 
-        item(key = "stats") {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                StatCell("播放", Formatters.formatStat(detail.view), Modifier.weight(1f))
-                StatCell("点赞", Formatters.formatStat(detail.like), Modifier.weight(1f))
-                StatCell("投币", Formatters.formatStat(detail.coin), Modifier.weight(1f))
-                StatCell("收藏", Formatters.formatStat(detail.favorite), Modifier.weight(1f))
-            }
-        }
-
-        item(key = "up") {
-            Row(
+        item(key = "intro") {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable(enabled = detail.upMid > 0L) { onOpenUser(detail.upMid) },
-                verticalAlignment = Alignment.CenterVertically,
+                    .clickable { expanded = !expanded }
+                    .animateContentSize(),
             ) {
-                CoverImage(
-                    url = Formatters.sizedImageUrl(detail.upFace, avatarPx, avatarPx),
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape),
+                Text(
+                    text = detail.title,
+                    style = COUITheme.textStyles.title3,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = if (expanded) Int.MAX_VALUE else TITLE_COLLAPSED_LINES,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
+
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatLabel(COUIIcons.Play, Formatters.formatStat(detail.view))
+                    Spacer(Modifier.width(10.dp))
+                    StatLabel(COUIIcons.Messages, Formatters.formatStat(detail.danmaku))
+                    Spacer(Modifier.width(10.dp))
                     Text(
-                        text = detail.upName.ifBlank { "未知 UP" },
-                        style = COUITheme.textStyles.body2,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = Formatters.formatTimeAgo(detail.pubdate),
+                        text = Formatters.formatDateTime(detail.pubdate),
                         style = COUITheme.textStyles.footnote2,
                         color = COUITheme.colorScheme.onSurfaceSecondary,
+                        maxLines = 1,
                     )
+                }
+
+                if (desc.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        // 留一点右侧余量，免得「…展开」正好顶到边缘。
+                        val textWidthPx = with(density) {
+                            (maxWidth - DESC_ICON_SIZE - DESC_ICON_GAP - DESC_END_RESERVE).roundToPx()
+                        }
+                        val descText = if (expanded) {
+                            AnnotatedString(desc)
+                        } else {
+                            remember(descPreview, accent, textWidthPx) {
+                                collapsedDescText(measurer, descPreview, descStyle, accent, textWidthPx)
+                            }
+                        }
+                        Row {
+                            Icon(
+                                imageVector = COUIIcons.Info,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .size(DESC_ICON_SIZE),
+                                tint = COUITheme.colorScheme.onSurfaceSecondary,
+                            )
+                            Spacer(Modifier.width(DESC_ICON_GAP))
+                            Text(
+                                text = descText,
+                                style = descStyle,
+                                color = COUITheme.colorScheme.onSurfaceSecondary,
+                                maxLines = if (expanded) Int.MAX_VALUE else DESC_COLLAPSED_LINES,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -198,69 +260,51 @@ private fun InfoContent(
         item(key = "actions") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 VideoAction(
-                    icon = COUIIcons.Promotions,
-                    label = if (liked) "已赞" else "点赞",
+                    icon = if (liked) LikeFilledIcon else LikeOutlineIcon,
+                    label = if (liked) "取消点赞" else "点赞",
+                    text = Formatters.formatStat(detail.like),
                     active = liked,
                     onClick = onLike,
                 )
                 VideoAction(
+                    icon = if (disliked) DislikeFilledIcon else DislikeOutlineIcon,
+                    label = if (disliked) "取消点踩" else "点踩",
+                    text = "点踩",
+                    active = disliked,
+                    onClick = onDislike,
+                )
+                VideoAction(
                     icon = COUIIcons.Store,
                     label = if (coined > 0) "已投币" else "投币",
+                    text = Formatters.formatStat(detail.coin),
                     active = coined > 0,
                     onClick = onCoin,
                 )
                 VideoAction(
                     icon = COUIIcons.Favorites,
-                    label = if (favorited) "已收藏" else "收藏",
+                    label = if (favorited) "取消收藏" else "收藏",
+                    text = Formatters.formatStat(detail.favorite),
                     active = favorited,
                     onClick = onFavorite,
                 )
                 VideoAction(
                     icon = COUIIcons.Stopwatch,
                     label = "稍后再看",
+                    text = "再看",
                     active = false,
                     onClick = onWatchLater,
                 )
                 VideoAction(
-                    icon = COUIIcons.AddCircle,
-                    label = if (following) "已关注" else "关注",
-                    active = following,
-                    onClick = onFollow,
+                    icon = COUIIcons.Share,
+                    label = "分享",
+                    text = "分享",
+                    active = false,
+                    onClick = onShare,
                 )
-            }
-        }
-
-        val desc = detail.desc.trim()
-        if (desc.isNotEmpty()) {
-            item(key = "desc") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(COUITheme.colorScheme.surfaceVariant)
-                        .clickable { descExpanded = !descExpanded }
-                        .padding(12.dp),
-                ) {
-                    Text(
-                        text = desc,
-                        style = COUITheme.textStyles.body2,
-                        color = COUITheme.colorScheme.onSurface,
-                        maxLines = if (descExpanded) Int.MAX_VALUE else 5,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (!descExpanded && desc.length > 80) {
-                        Text(
-                            text = "展开",
-                            modifier = Modifier.padding(top = 6.dp),
-                            style = COUITheme.textStyles.footnote2,
-                            color = COUITheme.colorScheme.primary,
-                        )
-                    }
-                }
             }
         }
 
@@ -302,6 +346,119 @@ private fun InfoContent(
             }
         }
     }
+}
+
+/** UP 主行：头像、名字与粉丝数，右侧是关注按钮。 */
+@Composable
+private fun UpRow(
+    detail: VideoDetail,
+    followers: Long?,
+    following: Boolean,
+    avatarPx: Int,
+    onOpenUser: (Long) -> Unit,
+    onFollow: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CoverImage(
+            url = Formatters.sizedImageUrl(detail.upFace, avatarPx, avatarPx),
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .clickable(enabled = detail.upMid > 0L) { onOpenUser(detail.upMid) },
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = detail.upName.ifBlank { "未知 UP" },
+                style = COUITheme.textStyles.body1,
+                fontWeight = FontWeight.Medium,
+                color = COUITheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = upMetaText(followers, detail.pubdate),
+                style = COUITheme.textStyles.footnote2,
+                color = COUITheme.colorScheme.onSurfaceSecondary,
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        FollowButton(following = following, onClick = onFollow)
+    }
+}
+
+private fun upMetaText(followers: Long?, pubdate: Long): String = buildList {
+    if (followers != null && followers > 0L) add("${Formatters.formatStat(followers)}粉丝")
+    Formatters.formatTimeAgo(pubdate).takeIf { it.isNotBlank() }?.let(::add)
+}.joinToString("  ")
+
+@Composable
+private fun FollowButton(following: Boolean, onClick: () -> Unit) {
+    val scheme = COUITheme.colorScheme
+    Text(
+        text = if (following) "已关注" else "关注",
+        modifier = Modifier
+            .clip(RoundedCornerShape(100.dp))
+            .background(if (following) scheme.surfaceContainer else scheme.primary)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        style = COUITheme.textStyles.footnote1,
+        fontWeight = FontWeight.Medium,
+        color = if (following) scheme.onSurfaceSecondary else scheme.onPrimary,
+    )
+}
+
+private const val TITLE_COLLAPSED_LINES = 2
+private const val DESC_COLLAPSED_LINES = 2
+
+private val DESC_ICON_SIZE = 14.dp
+private val DESC_ICON_GAP = 5.dp
+
+/** 量「…展开」时在右侧留出的余量，避免它正好顶到内容边缘。 */
+private val DESC_END_RESERVE = 8.dp
+
+/**
+ * 收起态简介：整段塞得进两行就原样返回，塞不下就裁到恰好放得下「…展开」。
+ * 交给省略号自己截断的话，「展开」会被一起吃掉，只剩一个孤零零的省略号。
+ */
+private fun collapsedDescText(
+    measurer: TextMeasurer,
+    preview: String,
+    style: TextStyle,
+    accent: Color,
+    widthPx: Int,
+): AnnotatedString {
+    val maxWidth = widthPx.coerceAtLeast(1)
+
+    fun fits(text: AnnotatedString): Boolean = !measurer.measure(
+        text = text,
+        style = style,
+        maxLines = DESC_COLLAPSED_LINES,
+        constraints = Constraints(maxWidth = maxWidth),
+    ).hasVisualOverflow
+
+    val plain = AnnotatedString(preview)
+    if (fits(plain)) return plain
+
+    fun withSuffix(count: Int) = buildAnnotatedString {
+        append(preview.take(count))
+        append("…")
+        withStyle(SpanStyle(color = accent)) { append("展开") }
+    }
+
+    var low = 0
+    var high = preview.length
+    while (low < high) {
+        val mid = (low + high + 1) / 2
+        if (fits(withSuffix(mid))) low = mid else high = mid - 1
+    }
+    // 别把代理对劈开。
+    val end = if (low in 1 until preview.length && Character.isLowSurrogate(preview[low])) low - 1 else low
+    return withSuffix(end)
 }
 
 /** 简介下面那一栏：左边缩略图，右边标题、播放弹幕数与 UP 行（含三点菜单）。 */
@@ -393,6 +550,7 @@ private fun RelatedVideoRow(
 private fun VideoAction(
     icon: ImageVector,
     label: String,
+    text: String,
     active: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -411,24 +569,7 @@ private fun VideoAction(
     ) {
         Icon(icon, label, Modifier.size(22.dp), tint = tint)
         Spacer(Modifier.height(3.dp))
-        Text(label, fontSize = 11.sp, color = tint, maxLines = 1)
-    }
-}
-
-@Composable
-private fun StatCell(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = value,
-            style = COUITheme.textStyles.body1,
-            fontWeight = FontWeight.Medium,
-        )
-        Box(Modifier.height(2.dp))
-        Text(
-            text = label,
-            style = COUITheme.textStyles.footnote2,
-            color = COUITheme.colorScheme.onSurfaceSecondary,
-        )
+        Text(text, fontSize = 11.sp, color = tint, maxLines = 1)
     }
 }
 

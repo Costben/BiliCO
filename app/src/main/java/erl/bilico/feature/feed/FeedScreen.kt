@@ -12,13 +12,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.live.LiveListScreen
 import erl.bilico.feature.pgc.BangumiRankSection
 import erl.bilico.feature.rank.RankingSection
 import erl.bilico.ui.NavState
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
- * 推荐 tab 的三段：推荐流、排行榜、番剧。左右滑动翻页，胶囊点击也一样翻。
+ * 推荐 tab 的四段：推荐流、排行榜、番剧、直播。左右滑动翻页，胶囊点击也一样翻。
  *
  * 分段胶囊不在这里画：它要跟着标题行折进顶栏，得画在顶栏那一层才不会被玻璃盖住，
  * 所以 [segment] 与 [onSegment] 都由外壳持有。
@@ -37,6 +38,7 @@ fun FeedScreen(
     val recommendState = rememberLazyGridState()
     val rankingState = rememberLazyGridState()
     val bangumiState = rememberLazyGridState()
+    val liveState = rememberLazyGridState()
     val segmentTop = topInset + 8.dp
 
     // 点胶囊翻页；滑完一页再把选中态写回去。
@@ -78,12 +80,22 @@ fun FeedScreen(
                     refreshTick = refreshTick,
                 )
 
-                else -> BangumiRankSection(
+                2 -> BangumiRankSection(
                     container = container,
                     nav = nav,
                     topInset = segmentTop,
                     gridState = bangumiState,
                     active = segment == 2,
+                    onCollapse = onCollapse,
+                    refreshTick = refreshTick,
+                )
+
+                3 -> LiveListScreen(
+                    container = container,
+                    nav = nav,
+                    topInset = segmentTop,
+                    gridState = liveState,
+                    active = segment == 3,
                     onCollapse = onCollapse,
                     refreshTick = refreshTick,
                 )
@@ -98,5 +110,5 @@ internal val FeedSegmentRowHeight = 44.dp
 /** 推荐与排行榜的列数：竖屏一律两列，和番剧榜对齐。 */
 internal const val FeedColumns = 2
 
-/** 推荐 tab 的三个分段标题。 */
-internal val FEED_SEGMENTS = listOf("推荐", "排行榜", "番剧")
+/** 推荐 tab 的四个分段标题；直播原先占一个底栏格子，现在收在这里。 */
+internal val FEED_SEGMENTS = listOf("推荐", "排行榜", "番剧", "直播")

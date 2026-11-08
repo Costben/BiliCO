@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -24,10 +25,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.DanmakuToggle
 import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.InputField
@@ -48,6 +54,7 @@ internal fun VideoDetailBar(
     selected: Int,
     onSelect: (Int) -> Unit,
     pager: PagerState,
+    commentCount: Long,
     danmakuEnabled: Boolean,
     onToggleDanmaku: () -> Unit,
     composing: Boolean,
@@ -56,11 +63,38 @@ internal fun VideoDetailBar(
     onComposingChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
-    onOpenDanmakuSettings: (() -> Unit)? = null,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val scheme = COUITheme.colorScheme
     val fieldColors = SearchBarDefaults.searchBarColors(backgroundColor = scheme.surfaceContainer)
+
+    // 「评论」后面带上评论数；数字没拿到之前维持原来的两段等宽。
+    val tabs = remember(commentCount) {
+        if (commentCount > 0L) {
+            listOf(DETAIL_TABS[0], "评论 ${Formatters.formatStat(commentCount)}")
+        } else {
+            DETAIL_TABS
+        }
+    }
+    val density = LocalDensity.current
+    val labelStyle = COUITheme.textStyles.main.copy(
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+    )
+    val measurer = rememberTextMeasurer()
+    val segmentWidths = remember(tabs, density) {
+        tabs.map { label ->
+            val textWidth = measurer.measure(
+                text = label,
+                style = labelStyle,
+                maxLines = 1,
+                softWrap = false,
+            ).size.width
+            val width = with(density) { textWidth.toDp() } + DETAIL_LABEL_PADDING
+            if (width > DETAIL_SEGMENT_WIDTH) width else DETAIL_SEGMENT_WIDTH
+        }
+    }
+    val tabsWidth = segmentWidths.fold(0.dp) { sum, width -> sum + width } + 8.dp
 
     // 收起态靠这条间距把胶囊从分段后面拉开，展开时归零，跟着分段一起收。
     val gap by animateDpAsState(
@@ -82,19 +116,19 @@ internal fun VideoDetailBar(
     ) {
         Box(
             modifier = Modifier
-                .width(DETAIL_TABS_WIDTH * (1f - collapse))
+                .width(tabsWidth * (1f - collapse))
                 .clipToBounds(),
         ) {
             Box(
                 modifier = Modifier
-                    .requiredWidth(DETAIL_TABS_WIDTH)
+                    .requiredWidth(tabsWidth)
                     .fadeTrailingEdge(fade = collapse, band = 24.dp),
             ) {
                 SegmentCapsule(
-                    labels = DETAIL_TABS,
+                    labels = tabs,
                     selectedIndex = selected,
                     onSelect = onSelect,
-                    segmentWidth = DETAIL_SEGMENT_WIDTH,
+                    segmentWidths = segmentWidths,
                     pager = pager,
                 )
             }
@@ -111,7 +145,7 @@ internal fun VideoDetailBar(
                     },
                     expanded = composing,
                     onExpandedChange = onComposingChange,
-                    label = "发个友善的弹幕",
+                    label = "发弹幕",
                     colors = fieldColors,
                     stroke = null,
                     glowColor = null,
@@ -120,7 +154,6 @@ internal fun VideoDetailBar(
                         DanmakuToggle(
                             enabled = danmakuEnabled,
                             onToggle = onToggleDanmaku,
-                            onOpenSettings = onOpenDanmakuSettings,
                         )
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -183,7 +216,8 @@ private val DETAIL_TABS = listOf("简介", "评论")
 /** 每段的宽度；两段加 8dp 内边距就是整条分段胶囊的宽度。 */
 private val DETAIL_SEGMENT_WIDTH = 56.dp
 
-private val DETAIL_TABS_WIDTH = DETAIL_SEGMENT_WIDTH * DETAIL_TABS.size + 8.dp
+/** 标签两侧的留白：文字宽度加上它才是这一段的宽度。 */
+private val DETAIL_LABEL_PADDING = 26.dp
 
 /** COUI 搜索栏背景变形的时长，让分段收起与胶囊铺开同一条节奏。 */
 private const val DETAIL_RESIZE_MILLIS = 450

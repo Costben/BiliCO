@@ -57,6 +57,7 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -360,6 +361,17 @@ private class CouiSegmentIndicatorMotion(
     val isRunning: Boolean
         get() = position.isRunning || widthSpring.isRunning || heightSpring.isRunning
 
+    /** 分段宽度变了（比如标签里多出一个数字）时直接落到新尺寸，不留在旧宽度上。 */
+    fun reset(center: Float, width: Float, height: Float) {
+        position.snapTo(center)
+        widthSpring.snapTo(width)
+        heightSpring.snapTo(height)
+        centerX = center
+        this.width = width
+        this.height = height
+        active = false
+    }
+
     /** 手指拖动时直接贴合：弹簧在跑的时候不接管，免得和换项动画抢位置。 */
     fun updateDrag(center: Float, dynamicWidth: Float, dynamicHeight: Float) {
         if (isRunning) return
@@ -387,6 +399,7 @@ fun SegmentCapsule(
     modifier: Modifier = Modifier,
     height: Dp = 32.dp,
     segmentWidth: Dp = 84.dp,
+    segmentWidths: List<Dp>? = null,
     pager: PagerState? = null,
     onReselect: (() -> Unit)? = null,
 ) {
@@ -397,11 +410,23 @@ fun SegmentCapsule(
     val indicatorColor = if (dark) Color(0x33FFFFFF) else Color(0xB2FFFFFF)
 
     val density = LocalDensity.current
-    val segmentWidthPx = with(density) { segmentWidth.toPx() }
+    // 每段可以单独给宽度：标签长短不一时胶囊按内容撑开，不再强行等分。
+    val widthsDp = remember(segmentWidths, segmentWidth, labels.size) {
+        List(labels.size) { index -> segmentWidths?.getOrNull(index) ?: segmentWidth }
+    }
+    val widthsPx = remember(widthsDp, density) {
+        FloatArray(widthsDp.size) { with(density) { widthsDp[it].toPx() } }
+    }
+    val offsetsPx = remember(widthsPx) {
+        FloatArray(widthsPx.size + 1).also { offsets ->
+            widthsPx.indices.forEach { offsets[it + 1] = offsets[it] + widthsPx[it] }
+        }
+    }
+    val totalWidth = remember(widthsDp) { widthsDp.fold(0.dp) { sum, width -> sum + width } }
     val restHeightPx = with(density) { height.toPx() }
     val padPx = with(density) { 4.dp.toPx() }
 
-    fun centerFor(index: Int): Float = padPx + index * segmentWidthPx + segmentWidthPx / 2f
+    fun centerFor(index: Int): Float = padPx + offsetsPx[index] + widthsPx[index] / 2f
     val firstCenter = centerFor(0)
     val lastCenter = centerFor(labels.lastIndex)
 
@@ -409,19 +434,23 @@ fun SegmentCapsule(
     val motion = remember {
         CouiSegmentIndicatorMotion(
             center = centerFor(initial),
-            width = segmentWidthPx,
+            width = widthsPx[initial],
             height = restHeightPx,
         )
     }
     LaunchedEffect(motion) { motion.animate() }
 
     var settled by remember { mutableIntStateOf(initial) }
+    // 标签宽度变化时把指示块对齐到新的分段中心，否则它会停在旧位置。
+    LaunchedEffect(widthsPx, restHeightPx) {
+        motion.reset(centerFor(settled), widthsPx[settled], restHeightPx)
+    }
     val selectTarget: (Int) -> Unit = { target ->
         if (target != settled) {
             settled = target
             motion.select(
                 targetCenter = centerFor(target),
-                targetWidth = segmentWidthPx,
+                targetWidth = widthsPx[target],
                 restHeight = restHeightPx,
                 firstCenter = firstCenter,
                 lastCenter = lastCenter,
@@ -430,7 +459,7 @@ fun SegmentCapsule(
         }
     }
     if (pager != null) {
-        LaunchedEffect(pager.currentPage, segmentWidthPx) {
+        LaunchedEffect(pager.currentPage, widthsPx) {
             selectTarget(pager.currentPage.coerceIn(0, labels.lastIndex))
         }
         // 拖动与惯性阶段每帧贴住翻页进度，而不是等停下来再追。
@@ -438,17 +467,24 @@ fun SegmentCapsule(
             if (pager.isScrollInProgress && !motion.isRunning) {
                 val pageFloat = (pager.currentPage + pager.currentPageOffsetFraction)
                     .coerceIn(0f, labels.lastIndex.toFloat())
+                val lower = floor(pageFloat).toInt().coerceIn(0, labels.lastIndex)
+                val upper = min(lower + 1, labels.lastIndex)
+                val fraction = pageFloat - lower
+                val lowerCenter = padPx + offsetsPx[lower] + widthsPx[lower] / 2f
+                val upperCenter = padPx + offsetsPx[upper] + widthsPx[upper] / 2f
                 val stretch = sin(abs(pager.currentPageOffsetFraction) * PI.toFloat())
                     .coerceIn(0f, 1f)
                 motion.updateDrag(
-                    center = padPx + pageFloat * segmentWidthPx + segmentWidthPx / 2f,
-                    dynamicWidth = segmentWidthPx + with(density) { 14.dp.toPx() } * stretch,
+                    center = lowerCenter + (upperCenter - lowerCenter) * fraction,
+                    dynamicWidth = widthsPx[lower] +
+                        (widthsPx[upper] - widthsPx[lower]) * fraction +
+                        with(density) { 14.dp.toPx() } * stretch,
                     dynamicHeight = restHeightPx * (1f - 0.1f * stretch),
                 )
             }
         }
     } else {
-        LaunchedEffect(selectedIndex, segmentWidthPx) {
+        LaunchedEffect(selectedIndex, widthsPx) {
             selectTarget(selectedIndex.coerceIn(0, labels.lastIndex))
         }
     }
@@ -461,13 +497,19 @@ fun SegmentCapsule(
         label = "segmentIndicatorScale",
     )
 
-    val effectivePage = ((motion.centerX - padPx - segmentWidthPx / 2f) / segmentWidthPx)
-        .coerceIn(0f, labels.lastIndex.toFloat())
+    // 指示块中心反推回「第几页 + 小数」，让两侧标签的颜色跟着指示块走。
+    val effectivePage = run {
+        val x = (motion.centerX - padPx).coerceIn(0f, offsetsPx[labels.lastIndex])
+        var index = 0
+        while (index < labels.lastIndex && x >= offsetsPx[index + 1]) index++
+        val local = ((x - offsetsPx[index]) / widthsPx[index]).coerceIn(0f, 1f)
+        (index + local - 0.5f).coerceIn(0f, labels.lastIndex.toFloat())
+    }
 
     BoxWithConstraints(
         modifier
             .height(height + 8.dp)
-            .width(segmentWidth * labels.size + 8.dp)
+            .width(totalWidth + 8.dp)
             .clip(CouiSegmentCapsuleShape)
             .background(containerColor),
     ) {
@@ -491,7 +533,7 @@ fun SegmentCapsule(
                 val reselect = onReselect
                 Box(
                     modifier = Modifier
-                        .weight(1f)
+                        .width(widthsDp[index])
                         .fillMaxHeight()
                         .then(
                             // 已选中那一项换成双击手势：单击不做任何事，双击通知外层回顶刷新。

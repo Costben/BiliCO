@@ -35,6 +35,26 @@ class InteractionRepository(
         )
     }
 
+    /** 点踩走同一个接口，3 点踩、4 取消点踩；点赞与点踩互斥由服务端处理。 */
+    suspend fun dislike(aid: Long, disliked: Boolean): Result<Unit> = post {
+        api.likeVideo(
+            mapOf(
+                "aid" to aid.toString(),
+                "like" to if (disliked) "3" else "4",
+                "csrf" to csrf(),
+            )
+        )
+    }
+
+    /** UP 主粉丝数；拿不到就返回 null，界面上直接不显示这一段。 */
+    suspend fun upFollowers(mid: Long): Long? = withContext(Dispatchers.IO) {
+        if (mid <= 0L) return@withContext null
+        runCatching {
+            buvid.ensure()
+            api.relationStat(mid).data?.follower
+        }.getOrNull()
+    }
+
     suspend fun coin(aid: Long, count: Int): Result<Unit> = post {
         api.coinVideo(
             mapOf(

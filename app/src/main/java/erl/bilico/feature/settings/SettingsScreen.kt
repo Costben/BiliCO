@@ -24,6 +24,7 @@ import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.settings.DefaultQuality
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.video.DanmakuSettingsDialog
+import erl.bilico.feature.video.speedLabel
 import erl.bilico.ui.NavState
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.PreferenceDivider
@@ -39,6 +40,7 @@ import io.github.suqi8.coui.kmp.layout.DialogButtonBar
 import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
+import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import kotlinx.coroutines.launch
 
@@ -55,25 +57,18 @@ fun SettingsScreen(
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
+    val longPressSpeed by container.settings.longPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
-    val danmakuOpacity by container.settings.danmakuOpacity.collectAsStateWithLifecycle()
-    val danmakuFontScale by container.settings.danmakuFontScale.collectAsStateWithLifecycle()
-    val danmakuArea by container.settings.danmakuArea.collectAsStateWithLifecycle()
     val autoCheckUpdate by container.settings.autoCheckUpdate.collectAsStateWithLifecycle()
     val acceptPrerelease by container.settings.acceptPrerelease.collectAsStateWithLifecycle()
     val inAppUpdate by container.settings.inAppUpdate.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
 
-    var pickQuality by remember { mutableStateOf(false) }
     var pickCdn by remember { mutableStateOf(false) }
-    var pickAutoRotate by remember { mutableStateOf(false) }
-    var pickOpacity by remember { mutableStateOf(false) }
-    var pickFontScale by remember { mutableStateOf(false) }
-    var pickArea by remember { mutableStateOf(false) }
     var showDanmakuSettings by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
@@ -87,26 +82,22 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 insideMargin = PaddingValues(0.dp),
             ) {
-                ArrowPreference(
+                OverlayDropdownPreference(
+                    items = DARK_MODE_OPTIONS,
+                    selectedIndex = darkMode.coerceIn(0, DARK_MODE_OPTIONS.lastIndex),
                     title = "深色模式",
                     modifier = Modifier.testTag("settings_dark"),
-                    summary = when (darkMode) {
-                        1 -> "浅色"
-                        2 -> "深色"
-                        else -> "跟随系统"
-                    },
                     cardListPosition = CardListPosition.Head,
-                    onClick = { container.settings.setDarkMode((darkMode + 1) % 3) },
+                    onSelectedIndexChange = container.settings::setDarkMode,
                 )
-                ArrowPreference(
+                OverlayDropdownPreference(
+                    items = QUALITY_LABELS,
+                    selectedIndex = DefaultQuality.entries.indexOfFirst { it.id == quality }
+                        .coerceAtLeast(0),
                     title = "默认清晰度",
                     modifier = Modifier.testTag("settings_quality"),
-                    summary = DefaultQuality.entries
-                        .firstOrNull { it.id == quality }
-                        ?.label
-                        ?: "跟随接口",
                     cardListPosition = CardListPosition.Middle,
-                    onClick = { pickQuality = true },
+                    onSelectedIndexChange = { container.settings.setDefaultQuality(DefaultQuality.entries[it].id) },
                 )
                 ArrowPreference(
                     title = "播放线路",
@@ -115,53 +106,56 @@ fun SettingsScreen(
                     cardListPosition = CardListPosition.Middle,
                     onClick = { pickCdn = true },
                 )
-                ArrowPreference(
+                SwitchPreference(
+                    checked = backgroundPlay,
+                    onCheckedChange = container.settings::setBackgroundPlay,
                     title = "后台播放",
                     modifier = Modifier.testTag("settings_bg_play"),
-                    summary = if (backgroundPlay) "开" else "关",
                     cardListPosition = CardListPosition.Middle,
-                    onClick = { container.settings.setBackgroundPlay(!backgroundPlay) },
                 )
-                ArrowPreference(
+                SwitchPreference(
+                    checked = autoPip,
+                    onCheckedChange = container.settings::setAutoPip,
                     title = "自动画中画",
                     modifier = Modifier.testTag("settings_auto_pip"),
-                    summary = if (autoPip) "开" else "关",
                     cardListPosition = CardListPosition.Middle,
-                    onClick = { container.settings.setAutoPip(!autoPip) },
                 )
-                ArrowPreference(
+                OverlayDropdownPreference(
+                    items = AUTO_ROTATE_OPTIONS,
+                    selectedIndex = autoRotateMode.coerceIn(0, AUTO_ROTATE_OPTIONS.lastIndex),
                     title = "自动横屏",
                     modifier = Modifier.testTag("settings_auto_rotate"),
-                    summary = when (autoRotateMode) {
-                        0 -> "关闭"
-                        1 -> "迟钝 (防误触)"
-                        2 -> "标准"
-                        3 -> "灵敏"
-                        else -> "迟钝 (防误触)"
-                    },
                     cardListPosition = CardListPosition.Middle,
-                    onClick = { pickAutoRotate = true },
+                    onSelectedIndexChange = container.settings::setAutoRotateMode,
                 )
-                ArrowPreference(
+                OverlayDropdownPreference(
+                    items = LONG_PRESS_SPEED_LABELS,
+                    selectedIndex = LONG_PRESS_SPEED_OPTIONS.indexOf(longPressSpeed).coerceAtLeast(0),
+                    title = "长按倍速",
+                    modifier = Modifier.testTag("settings_long_press_speed"),
+                    cardListPosition = CardListPosition.Middle,
+                    onSelectedIndexChange = { container.settings.setLongPressSpeed(LONG_PRESS_SPEED_OPTIONS[it]) },
+                )
+                SwitchPreference(
+                    checked = gestureVolBright,
+                    onCheckedChange = container.settings::setGestureVolumeBrightness,
                     title = "手势调节亮度与音量",
                     modifier = Modifier.testTag("settings_gesture_vol_bright"),
-                    summary = if (gestureVolBright) "开 (双侧滑动)" else "关",
                     cardListPosition = CardListPosition.Middle,
-                    onClick = { container.settings.setGestureVolumeBrightness(!gestureVolBright) },
                 )
-                ArrowPreference(
+                SwitchPreference(
+                    checked = fullscreenGestureHint,
+                    onCheckedChange = container.settings::setFullscreenGestureHint,
                     title = "全屏切换提示",
                     modifier = Modifier.testTag("settings_fs_hint"),
-                    summary = if (fullscreenGestureHint) "开 (触发后淡入淡出)" else "关",
                     cardListPosition = CardListPosition.Middle,
-                    onClick = { container.settings.setFullscreenGestureHint(!fullscreenGestureHint) },
                 )
-                ArrowPreference(
+                SwitchPreference(
+                    checked = gestureHaptic,
+                    onCheckedChange = container.settings::setGestureHaptic,
                     title = "手势震动",
                     modifier = Modifier.testTag("settings_gesture_haptic"),
-                    summary = if (gestureHaptic) "开" else "关",
                     cardListPosition = CardListPosition.Tail,
-                    onClick = { container.settings.setGestureHaptic(!gestureHaptic) },
                 )
             }
         }
@@ -173,40 +167,19 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 insideMargin = PaddingValues(0.dp),
             ) {
-                ArrowPreference(
+                SwitchPreference(
+                    checked = danmakuEnabled,
+                    onCheckedChange = container.settings::setDanmakuEnabled,
                     title = "弹幕",
                     modifier = Modifier.testTag("settings_danmaku"),
-                    summary = if (danmakuEnabled) "开" else "关",
                     cardListPosition = CardListPosition.Head,
-                    onClick = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
                 )
                 ArrowPreference(
-                    title = "弹幕详细设置",
+                    title = "弹幕设置",
                     modifier = Modifier.testTag("settings_danmaku_detail"),
-                    summary = "类型屏蔽 · 速度 · 描边 · 字重 · 行距",
-                    cardListPosition = CardListPosition.Middle,
-                    onClick = { showDanmakuSettings = true },
-                )
-                ArrowPreference(
-                    title = "不透明度",
-                    modifier = Modifier.testTag("settings_danmaku_opacity"),
-                    summary = "$danmakuOpacity%",
-                    cardListPosition = CardListPosition.Middle,
-                    onClick = { pickOpacity = true },
-                )
-                ArrowPreference(
-                    title = "字号",
-                    modifier = Modifier.testTag("settings_danmaku_font"),
-                    summary = "$danmakuFontScale%",
-                    cardListPosition = CardListPosition.Middle,
-                    onClick = { pickFontScale = true },
-                )
-                ArrowPreference(
-                    title = "显示区域",
-                    modifier = Modifier.testTag("settings_danmaku_area"),
-                    summary = danmakuAreaLabel(danmakuArea),
+                    summary = "不透明度 · 字号 · 显示区域 · 类型屏蔽 · 速度",
                     cardListPosition = CardListPosition.Tail,
-                    onClick = { pickArea = true },
+                    onClick = { showDanmakuSettings = true },
                 )
             }
         }
@@ -325,20 +298,6 @@ fun SettingsScreen(
         }
     }
 
-    if (pickQuality) {
-        OptionPicker(
-            title = "默认清晰度",
-            options = DefaultQuality.entries.map { it.label },
-            selectedIndex = DefaultQuality.entries.indexOfFirst { it.id == quality }
-                .coerceAtLeast(0),
-            onPick = { index ->
-                container.settings.setDefaultQuality(DefaultQuality.entries[index].id)
-                pickQuality = false
-            },
-            onDismiss = { pickQuality = false },
-        )
-    }
-
     if (pickCdn) {
         OptionPicker(
             title = "播放线路",
@@ -350,59 +309,6 @@ fun SettingsScreen(
                 pickCdn = false
             },
             onDismiss = { pickCdn = false },
-        )
-    }
-
-    if (pickAutoRotate) {
-        val rotateOptions = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
-        OptionPicker(
-            title = "自动横屏灵敏度",
-            options = rotateOptions,
-            selectedIndex = autoRotateMode.coerceIn(0, rotateOptions.lastIndex),
-            onPick = { index ->
-                container.settings.setAutoRotateMode(index)
-                pickAutoRotate = false
-            },
-            onDismiss = { pickAutoRotate = false },
-        )
-    }
-
-    if (pickOpacity) {
-        OptionPicker(
-            title = "弹幕不透明度",
-            options = OPACITY_OPTIONS.map { "$it%" },
-            selectedIndex = OPACITY_OPTIONS.indexOf(danmakuOpacity).coerceAtLeast(0),
-            onPick = { index ->
-                container.settings.setDanmakuOpacity(OPACITY_OPTIONS[index])
-                pickOpacity = false
-            },
-            onDismiss = { pickOpacity = false },
-        )
-    }
-
-    if (pickFontScale) {
-        OptionPicker(
-            title = "弹幕字号",
-            options = FONT_SCALE_OPTIONS.map { "$it%" },
-            selectedIndex = FONT_SCALE_OPTIONS.indexOf(danmakuFontScale).coerceAtLeast(0),
-            onPick = { index ->
-                container.settings.setDanmakuFontScale(FONT_SCALE_OPTIONS[index])
-                pickFontScale = false
-            },
-            onDismiss = { pickFontScale = false },
-        )
-    }
-
-    if (pickArea) {
-        OptionPicker(
-            title = "弹幕显示区域",
-            options = AREA_OPTIONS.map(::danmakuAreaLabel),
-            selectedIndex = danmakuArea.coerceIn(0, AREA_OPTIONS.lastIndex),
-            onPick = { index ->
-                container.settings.setDanmakuArea(index)
-                pickArea = false
-            },
-            onDismiss = { pickArea = false },
         )
     }
 
@@ -490,13 +396,9 @@ private fun OptionPicker(
     }
 }
 
-private val OPACITY_OPTIONS = listOf(25, 50, 75, 100)
-private val FONT_SCALE_OPTIONS = listOf(75, 100, 125, 150)
-private val AREA_OPTIONS = listOf(0, 1, 2, 3)
-
-private fun danmakuAreaLabel(area: Int): String = when (area) {
-    0 -> "1/4 屏"
-    1 -> "半屏"
-    2 -> "3/4 屏"
-    else -> "全屏"
-}
+/** 下标即存储值：0 跟随系统，1 浅色，2 深色。 */
+private val DARK_MODE_OPTIONS = listOf("跟随系统", "浅色", "深色")
+private val QUALITY_LABELS = DefaultQuality.entries.map { it.label }
+private val AUTO_ROTATE_OPTIONS = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
+private val LONG_PRESS_SPEED_OPTIONS = listOf(150, 200, 250, 300, 400)
+private val LONG_PRESS_SPEED_LABELS = LONG_PRESS_SPEED_OPTIONS.map { speedLabel(it / 100f) }

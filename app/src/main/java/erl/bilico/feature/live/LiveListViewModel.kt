@@ -32,18 +32,15 @@ class LiveListViewModel(
     private var inFlight = false
 
     init {
-        refresh()
+        load(page = 1, firstPage = true)
     }
 
     fun refresh() {
+        // 下拉刷新只认 isRefreshing 的「升起 → 落下」：列表为空或已有请求在路上也得升起来，
+        // 否则刷新球等不到落下的信号会一直转。空列表时保留原来的空态 / 错误态，不再换成整页加载。
+        _state.update { it.copy(isInitialLoading = false, isRefreshing = true) }
         if (inFlight) return
-        _state.update {
-            it.copy(
-                isInitialLoading = it.items.isEmpty(),
-                isRefreshing = it.items.isNotEmpty(),
-                error = null,
-            )
-        }
+        _state.update { it.copy(error = null) }
         load(page = 1, firstPage = true)
     }
 

@@ -13,11 +13,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,15 +32,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
+import erl.bilico.ui.components.ConfirmDialog
+import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Slider
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Refresh
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * 播放器内弹幕设置面板（迁移自霹雳派 DanmakuSettingsPanel 与霹雳Plus PlDanmakuPanel）：
+ * 弹幕设置。竖屏走 [DanmakuSettingsSheet]；全屏横屏时是下面这块贴在播放器舞台里的深色面板。
+ *
+ * 舞台内面板（迁移自霹雳派 DanmakuSettingsPanel 与霹雳Plus PlDanmakuPanel）：
  * - 按类型屏蔽（滚动 / 顶部 / 底部 / 彩色 / 高级）
  * - 功能开关（合并重复弹幕 / 海量弹幕模式）
  * - 显示区域（1/4 屏 / 半屏 / 3/4 屏 / 全屏）
@@ -49,11 +61,16 @@ internal fun DanmakuSettingsDialog(
     onDismiss: () -> Unit,
     inlineInStage: Boolean = false,
 ) {
-    val scheme = COUITheme.colorScheme
+    if (!inlineInStage) {
+        DanmakuSettingsSheet(settings, repository, onDismiss)
+        return
+    }
+    var confirmReset by remember { mutableStateOf(false) }
     PlayerModalHost(
         inlineInStage = inlineInStage,
         onDismiss = onDismiss,
     ) {
+        val scheme = COUITheme.colorScheme
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -76,16 +93,12 @@ internal fun DanmakuSettingsDialog(
                     color = scheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
-                Text(
-                    text = "恢复默认",
-                    style = COUITheme.textStyles.footnote1,
-                    color = scheme.primary,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { repository.resetDanmakuSettings() }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .testTag("dm_reset"),
-                )
+                HighlightedIconButton(
+                    onClick = { confirmReset = true },
+                    modifier = Modifier.testTag("dm_reset"),
+                ) {
+                    Icon(COUIIcons.Refresh, "恢复默认", Modifier.size(24.dp))
+                }
             }
 
             Column(
@@ -204,6 +217,19 @@ internal fun DanmakuSettingsDialog(
                 )
             }
         }
+
+        if (confirmReset) {
+            ConfirmDialog(
+                title = "恢复默认",
+                message = "确定要将弹幕设置恢复为默认值吗？",
+                confirmText = "恢复",
+                onDismiss = { confirmReset = false },
+                onConfirm = {
+                    confirmReset = false
+                    repository.resetDanmakuSettings()
+                },
+            )
+        }
     }
 }
 
@@ -282,4 +308,4 @@ private fun SliderSettingRow(
     }
 }
 
-private val AREA_LABELS = listOf("1/4 屏", "半屏", "3/4 屏", "全屏")
+internal val AREA_LABELS = listOf("1/4 屏", "半屏", "3/4 屏", "全屏")
