@@ -86,6 +86,8 @@ internal fun LiveRoomCard(room: LiveRoomItem, onClick: () -> Unit) {
                 lineHeight = 18.sp,
                 fontWeight = FontWeight.Medium,
                 color = COUITheme.colorScheme.onSurface,
+                // 固定按两行排版：单行标题也占两行高，两列卡片才不会一高一低。
+                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
