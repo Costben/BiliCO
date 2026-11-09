@@ -1,11 +1,15 @@
 package erl.bilico.ui.components
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -20,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.util.Formatters
@@ -65,16 +70,32 @@ fun RichCommentText(
         val inline = LinkedHashMap<String, InlineTextContent>()
         val builder = AnnotatedString.Builder()
         if (!badgeLabel.isNullOrBlank()) {
-            builder.withStyle(
-                SpanStyle(
-                    color = Color(0xFFFB7299),
-                    fontWeight = FontWeight.SemiBold,
+            val badgeId = "comment-badge"
+            inline[badgeId] = InlineTextContent(
+                Placeholder(
+                    width = 1.9.em,
+                    height = 1.1.em,
+                    placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
                 ),
             ) {
-                append("[")
-                append(badgeLabel)
-                append("] ")
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(1.dp, prefixColor, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = badgeLabel,
+                        color = prefixColor,
+                        fontSize = 10.sp,
+                        lineHeight = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
             }
+            builder.appendInlineContent(badgeId, badgeLabel)
+            builder.append(" ")
         }
         if (!prefixUserName.isNullOrBlank()) {
             builder.withStyle(SpanStyle(color = prefixColor, fontWeight = FontWeight.Medium)) {

@@ -75,7 +75,7 @@ internal fun BiliCommentItem(
     }
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val linkBlue = if (isDark) Color(0xFF5CA8FF) else Color(0xFF1367B1)
-    val subBoxBg = if (isDark) Color(0xFF25262A) else Color(0xFFF4F5F7)
+    val subBoxBg = if (isDark) Color(0xFF383B41) else Color(0xFFD7DAE2)
     val defaultNameColor = if (isDark) Color(0xFFB8BCC4) else Color(0xFF61666D)
     val nameColor = remember(comment.vipColorHex, defaultNameColor) {
         parseCommentColor(comment.vipColorHex) ?: defaultNameColor
@@ -137,7 +137,7 @@ internal fun BiliCommentItem(
                 RichCommentText(
                     content = comment.content,
                     emotes = comment.emotes,
-                    badgeLabel = if (!isSubReply && comment.isTop) "置顶" else null,
+                    badgeLabel = if (!isSubReply && comment.isTop) "TOP" else null,
                     modifier = Modifier.clickable { expanded = !expanded },
                     style = COUITheme.textStyles.body1.copy(
                         fontSize = 15.sp,
