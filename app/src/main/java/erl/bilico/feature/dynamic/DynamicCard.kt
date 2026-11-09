@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -36,7 +35,6 @@ import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.util.Formatters
-import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.Card
@@ -56,6 +54,7 @@ internal fun DynamicCard(
     onOpenDynamic: (DynamicItemUi) -> Unit,
     modifier: Modifier = Modifier,
     isDetail: Boolean = false,
+    onWatchLater: ((DynamicVideoCard) -> Unit)? = null,
 ) {
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val linkBlue = if (isDark) Color(0xFF5CA8FF) else Color(0xFF1367B1)
@@ -76,6 +75,7 @@ internal fun DynamicCard(
             item = item,
             avatarSize = 40.dp,
             onClick = { if (item.authorMid > 0L) onOpenUser(item.authorMid) else onCardClick() },
+            onWatchLater = onWatchLater,
         )
 
         if (item.title.isNotBlank() && item.title != item.content) {
@@ -146,6 +146,13 @@ internal fun DynamicCard(
             )
         }
 
+        if (!isDetail) {
+            DynamicHotReplies(
+                replies = item.hotReplies,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -165,50 +172,6 @@ internal fun DynamicCard(
                 color = COUITheme.colorScheme.onSurfaceSecondary,
                 maxLines = 1,
             )
-        }
-    }
-}
-
-@Composable
-private fun DynamicHeader(
-    item: DynamicItemUi,
-    avatarSize: Dp,
-    onClick: () -> Unit,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .clip(CircleShape)
-                .clickable(onClick = onClick),
-        ) {
-            Avatar(
-                url = remember(item.authorFace, avatarSize) {
-                    val px = avatarSize.value.toInt()
-                    Formatters.sizedImageUrl(item.authorFace, px * 3, px * 3)
-                },
-                size = avatarSize,
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = item.authorName.ifBlank { "未知用户" },
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = COUITheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable(onClick = onClick),
-            )
-            val time = item.displayTime()
-            if (time.isNotBlank()) {
-                Text(
-                    text = time,
-                    fontSize = 11.sp,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                    maxLines = 1,
-                )
-            }
         }
     }
 }
@@ -470,7 +433,7 @@ private fun DynamicImageGrid(
     }
 }
 
-private fun DynamicItemUi.displayTime(): String {
+internal fun DynamicItemUi.displayTime(): String {
     if (timeSec > 0L) return Formatters.formatTimeAgo(timeSec)
     return pubTimeText
 }

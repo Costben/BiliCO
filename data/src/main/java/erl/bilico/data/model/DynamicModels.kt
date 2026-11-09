@@ -49,6 +49,21 @@ data class DynamicModules(
     @SerialName("module_author") val author: DynamicAuthor? = null,
     @SerialName("module_dynamic") val content: DynamicContent? = null,
     @SerialName("module_stat") val stat: DynamicStatModule? = null,
+    /** 热度评论：动态卡片下面外露的那条「精选评论」。 */
+    @SerialName("module_interaction") val interaction: DynamicInteraction? = null,
+)
+
+/** `module_interaction` 里混着点赞和评论，`type == 1` 才是评论。 */
+@Serializable
+data class DynamicInteraction(
+    val items: List<DynamicInteractionItem> = emptyList(),
+)
+
+@Serializable
+data class DynamicInteractionItem(
+    @Serializable(with = FlexibleIntSerializer::class)
+    val type: Int = 0,
+    val desc: DynamicDesc? = null,
 )
 
 @Serializable
@@ -62,7 +77,46 @@ data class DynamicAuthor(
     val pubTs: Long = 0,
     @SerialName("pub_time") val pubTime: String = "",
     @SerialName("pub_action") val pubAction: String = "",
+    /** 头像框。 */
+    val pendant: DynamicPendant? = null,
+    val vip: DynamicVip? = null,
+    /** 装扮卡片：右侧的名牌图与粉丝编号。 */
+    val decorate: DynamicDecorate? = null,
+    /** opus 详情里装扮字段换了个名字，两种都收。 */
+    @SerialName("decoration_card") val decorationCard: DynamicDecorate? = null,
+) {
+    val decorateCard: DynamicDecorate? get() = decorate ?: decorationCard
+}
+
+@Serializable
+data class DynamicPendant(
+    val image: String = "",
 )
+
+@Serializable
+data class DynamicVip(
+    @Serializable(with = FlexibleIntSerializer::class)
+    val type: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
+    val status: Int = 0,
+    @SerialName("nickname_color") val nicknameColor: String = "",
+)
+
+@Serializable
+data class DynamicDecorate(
+    @SerialName("card_url") val cardUrl: String = "",
+    val fan: DynamicFan? = null,
+)
+
+@Serializable
+data class DynamicFan(
+    val color: String = "",
+    @SerialName("num_str") val numStr: String = "",
+    @SerialName("num_desc") val numDesc: String = "",
+    @SerialName("num_prefix") val numPrefix: String = "",
+) {
+    val numberText: String get() = numStr.ifBlank { numDesc }
+}
 
 @Serializable
 data class DynamicContent(
@@ -123,6 +177,8 @@ data class ArticleMajor(
 
 @Serializable
 data class ArchiveMajor(
+    @Serializable(with = FlexibleLongSerializer::class)
+    val aid: Long = 0,
     val bvid: String = "",
     val title: String = "",
     val cover: String = "",

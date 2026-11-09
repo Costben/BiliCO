@@ -29,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
+import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.feed.FeedSegmentRowHeight
@@ -65,6 +66,7 @@ fun DynamicScreen(
     val account by container.session.account.collectAsStateWithLifecycle()
     val loggedIn = account != null
     var viewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
+    val onWatchLater = rememberDynamicWatchLater(container)
 
     // 点胶囊翻页；滑完一页再把选中态写回去。
     // 回写必须等翻页停稳：动画途中 currentPage 会先经过中间那页，写回去会把动画打断在半路。
@@ -142,6 +144,7 @@ fun DynamicScreen(
                                 video != null -> nav.push(Route.Video(video.bvid))
                             }
                         },
+                        onWatchLater = onWatchLater,
                     )
                 }
             }
@@ -169,6 +172,7 @@ private fun DynamicContent(
     onOpenVideo: (String) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
     onOpenDynamic: (DynamicItemUi) -> Unit,
+    onWatchLater: (DynamicVideoCard) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -259,6 +263,7 @@ private fun DynamicContent(
                         onOpenVideo = onOpenVideo,
                         onOpenImage = onOpenImage,
                         onOpenDynamic = onOpenDynamic,
+                        onWatchLater = onWatchLater,
                     )
                 }
                 if (state.items.isNotEmpty()) {

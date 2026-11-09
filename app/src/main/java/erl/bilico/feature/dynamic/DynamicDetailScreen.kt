@@ -94,6 +94,7 @@ fun DynamicDetailScreen(
     var error by remember(cleanId) { mutableStateOf<String?>(null) }
     var reloadTrigger by remember(cleanId) { mutableStateOf(0) }
     var imageViewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
+    val onWatchLater = rememberDynamicWatchLater(container)
 
     LaunchedEffect(cleanId, reloadTrigger) {
         if (item == null) isLoading = true
@@ -192,6 +193,7 @@ fun DynamicDetailScreen(
                                         video != null -> nav.push(Route.Video(video.bvid))
                                     }
                                 },
+                                onWatchLater = onWatchLater,
                             )
                         }
 

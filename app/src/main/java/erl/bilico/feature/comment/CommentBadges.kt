@@ -207,7 +207,7 @@ internal fun BiliUpBadge(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PixelSerialText(
+internal fun PixelSerialText(
     text: String,
     color: Color,
     glyphHeight: Dp,

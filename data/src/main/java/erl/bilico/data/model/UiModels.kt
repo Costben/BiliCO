@@ -162,6 +162,13 @@ data class DynamicVideoCard(
     val title: String,
     val cover: String,
     val durationText: String,
+    val aid: Long = 0L,
+)
+
+/** 动态卡片下方外露的精选/热评：整段文字已经拼好，表情单独给图。 */
+data class DynamicHotReply(
+    val text: String,
+    val emotes: Map<String, EmoteImage> = emptyMap(),
 )
 
 /** 卡片点开后要跳去哪：有 cv 号走专栏，否则把这个动态自己的 id 交给阅读页。 */
@@ -178,6 +185,16 @@ data class DynamicItemUi(
     val authorMid: Long = 0L,
     val authorName: String,
     val authorFace: String,
+    /** 头像框；空串就是不挂框。 */
+    val authorPendant: String = "",
+    /** 大会员昵称色（`#RRGGBB`），空串用默认前景色。 */
+    val authorNameColor: String = "",
+    /** 右侧装扮卡片图与粉丝编号。 */
+    val nameplateUrl: String = "",
+    val nameplateNumber: String = "",
+    val nameplateColor: String = "",
+    /** 卡片下方外露的精选评论。 */
+    val hotReplies: List<DynamicHotReply> = emptyList(),
     val timeSec: Long,
     val pubTimeText: String,
     val title: String = "",

@@ -2,12 +2,15 @@ package erl.bilico.data.repository
 
 import erl.bilico.data.model.ArchiveMajor
 import erl.bilico.data.model.DynamicArticleCard
+import erl.bilico.data.model.DynamicDesc
+import erl.bilico.data.model.DynamicHotReply
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicImageData
 import erl.bilico.data.model.DynamicItem
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
 import erl.bilico.data.model.DynamicModules
+import erl.bilico.data.model.DynamicRichTextNode
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.network.BiliApi
@@ -202,18 +205,7 @@ class DynamicRepository(
             .ifBlank { blocks.text }
             .ifBlank { resolvedTitle }
 
-        val emotes = buildMap {
-            rawNodes.forEach { node ->
-                val emoji = node.emoji ?: node.rich?.emoji ?: return@forEach
-                val url = Formatters.normalizeImageUrl(emoji.displayUrl)
-                if (url.isBlank()) return@forEach
-                val emoteImg = EmoteImage(url = url, large = emoji.size >= 2)
-                listOf(node.text, node.origText, emoji.text, node.rich?.text.orEmpty(), node.rich?.origText.orEmpty())
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-                    .forEach { key -> put(key, emoteImg) }
-            }
-        }
+        val emotes = rawNodes.toEmoteMap()
 
         val nested = orig?.takeIf { depth < 2 }?.toUi(depth + 1)
         // opus 的图字段叫 url，draw 的叫 src，专栏封面在 article.covers，长文在段落里，几处都收。
@@ -256,6 +248,23 @@ class DynamicRepository(
             ?: articleId.takeIf { it > 0L }
             ?: 0L
 
+        val hotReplies = modules?.interaction?.items.orEmpty()
+            .asSequence()
+            .filter { it.type == 1 }
+            .mapNotNull { it.desc?.toHotReply() }
+            .take(2)
+            .toList()
+
+        val vip = author?.vip
+        val nameColor = when {
+            vip == null || vip.status <= 0 -> ""
+            vip.nicknameColor.isNotBlank() -> vip.nicknameColor
+            vip.type == 2 -> "#FB7299"
+            else -> ""
+        }
+        val decorate = author?.decorateCard
+        val nameplateNumber = decorate?.fan?.numberText.orEmpty()
+
         return DynamicItemUi(
             // 前缀区分转发层级，避免同一条动态在不同层级撞 key；dynamicId 留给详情页用。
             id = "$depth:${selfId.ifBlank { fallbackId }}",
@@ -264,6 +273,12 @@ class DynamicRepository(
             authorMid = author?.mid ?: 0L,
             authorName = author?.name.orEmpty(),
             authorFace = Formatters.normalizeImageUrl(author?.face),
+            authorPendant = Formatters.normalizeImageUrl(author?.pendant?.image),
+            authorNameColor = nameColor,
+            nameplateUrl = Formatters.normalizeImageUrl(decorate?.cardUrl),
+            nameplateNumber = nameplateNumber,
+            nameplateColor = decorate?.fan?.color.orEmpty(),
+            hotReplies = hotReplies,
             timeSec = author?.pubTs ?: 0L,
             pubTimeText = author?.pubTime.orEmpty(),
             title = resolvedTitle,
@@ -297,7 +312,39 @@ class DynamicRepository(
             title = title,
             cover = Formatters.normalizeImageUrl(cover),
             durationText = durationText,
+            aid = aid,
         )
+    }
+
+    /** 富文本节点里的表情：评论正文和精选评论共用一套收集逻辑。 */
+    private fun List<DynamicRichTextNode>.toEmoteMap(): Map<String, EmoteImage> {
+        val result = LinkedHashMap<String, EmoteImage>()
+        forEach { node ->
+            val emoji = node.emoji ?: node.rich?.emoji ?: return@forEach
+            val url = Formatters.normalizeImageUrl(emoji.displayUrl)
+            if (url.isBlank()) return@forEach
+            val emoteImg = EmoteImage(url = url, large = emoji.size >= 2)
+            listOf(node.text, node.origText, emoji.text, node.rich?.text.orEmpty(), node.rich?.origText.orEmpty())
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .forEach { key -> result[key] = emoteImg }
+        }
+        return result
+    }
+
+    /**
+     * 精选评论的 `desc.text` 有时只留了表情，昵称和正文都在 `rich_text_nodes` 里，
+     * 所以按节点拼一遍；节点为空才退回 `text`。
+     */
+    private fun DynamicDesc.toHotReply(): DynamicHotReply? {
+        val nodes = richTextNodes
+        val body = if (nodes.isNotEmpty()) {
+            nodes.joinToString("") { it.text.ifBlank { it.origText } }.trim()
+        } else {
+            text.trim()
+        }
+        if (body.isBlank()) return null
+        return DynamicHotReply(text = body, emotes = nodes.toEmoteMap())
     }
 
     /**
@@ -322,6 +369,7 @@ class DynamicRepository(
                             author = acc.author ?: next.author,
                             content = acc.content ?: next.content,
                             stat = acc.stat ?: next.stat,
+                            interaction = acc.interaction ?: next.interaction,
                         )
                     }
 
