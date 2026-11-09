@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -22,9 +23,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -35,10 +40,15 @@ import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.util.Formatters
+import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Community
+import io.github.suqi8.coui.kmp.icon.extended.Share
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 卡片内可用宽度：屏宽减去列表留白（24dp）与卡片内边距（28dp）。 */
@@ -163,26 +173,73 @@ internal fun DynamicCard(
             )
         }
 
+        // 转评赞三个按钮：左右各贴到正文边，中间那组真正居中。时间已经挪到昵称下面，这里不再重复。
+        val context = LocalContext.current
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 10.dp),
+                .padding(top = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = item.displayTime(),
-                fontSize = 11.sp,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = item.statsText(),
-                fontSize = 11.sp,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-                maxLines = 1,
-            )
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                DynamicStatAction(
+                    icon = COUIIcons.Share,
+                    label = "转发",
+                    count = item.forwardCount,
+                    onClick = { shareDynamic(context, item) },
+                )
+            }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                DynamicStatAction(
+                    icon = COUIIcons.Community,
+                    label = "评论",
+                    count = item.commentCount,
+                    onClick = { onOpenDynamic(item) },
+                )
+            }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                DynamicStatAction(
+                    icon = LikeOutlineIcon,
+                    label = "赞",
+                    count = item.likeCount,
+                    onClick = { onOpenDynamic(item) },
+                )
+            }
         }
+    }
+}
+
+/** 卡片底部的单个统计按钮：图标 22dp、计数 15sp，整块可点。 */
+@Composable
+private fun DynamicStatAction(
+    icon: ImageVector,
+    label: String,
+    count: Int,
+    onClick: () -> Unit,
+) {
+    val tint = COUITheme.colorScheme.onSurfaceSecondary
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            // 横向不留内边距：左边那组的图标正好压在正文左边缘上，右边那组贴到右边缘。
+            .padding(vertical = 8.dp)
+            .semantics { contentDescription = label },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = tint,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = Formatters.formatStat(count.toLong()),
+            fontSize = 15.sp,
+            color = tint,
+            maxLines = 1,
+        )
     }
 }
 
@@ -446,11 +503,4 @@ private fun DynamicImageGrid(
 internal fun DynamicItemUi.displayTime(): String {
     if (timeSec > 0L) return Formatters.formatTimeAgo(timeSec)
     return pubTimeText
-}
-
-private fun DynamicItemUi.statsText(): String {
-    val forward = Formatters.formatStat(forwardCount.toLong())
-    val comment = Formatters.formatStat(commentCount.toLong())
-    val like = Formatters.formatStat(likeCount.toLong())
-    return "转发 $forward · 评论 $comment · 赞 $like"
 }

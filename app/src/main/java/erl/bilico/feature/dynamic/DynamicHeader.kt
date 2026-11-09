@@ -68,15 +68,25 @@ internal fun DynamicHeader(
         DynamicAvatar(item = item, size = avatarSize, onClick = onClick)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = item.authorName.ifBlank { "未知用户" },
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = nameColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable(onClick = onClick),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // 昵称占满这一行剩下的宽度，名牌靠右，中间自然留出间距；
+                // 昵称只在真的放不下时才省略，不再被名牌挤成「龙哥哥今天又…」。
+                Text(
+                    text = item.authorName.ifBlank { "未知用户" },
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = nameColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onClick),
+                )
+                if (item.nameplateUrl.isNotBlank() || item.nameplateNumber.isNotBlank()) {
+                    Spacer(Modifier.width(10.dp))
+                    DynamicNameplate(item = item)
+                }
+            }
             val time = item.displayTime()
             val hasBadge = item.authorBadgeIcon.isNotBlank() || item.authorBadge.isNotBlank()
             if (time.isNotBlank() || hasBadge) {
@@ -93,13 +103,10 @@ internal fun DynamicHeader(
                 }
             }
         }
-        if (item.nameplateUrl.isNotBlank() || item.nameplateNumber.isNotBlank()) {
-            DynamicNameplate(item = item, modifier = Modifier.padding(start = 6.dp))
-        }
         DynamicMoreButton(
             item = item,
             onWatchLater = onWatchLater,
-            modifier = Modifier.padding(start = 2.dp),
+            modifier = Modifier.padding(start = 4.dp),
         )
     }
 }
@@ -229,7 +236,7 @@ private fun DynamicMoreButton(
             Icon(
                 imageVector = COUIIcons.More,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(20.dp),
                 tint = COUITheme.colorScheme.onSurfaceSecondary,
             )
         }
