@@ -5,6 +5,7 @@ import erl.bilico.data.model.CommentEmote
 import erl.bilico.data.model.CommentEmotePackage
 import erl.bilico.data.model.CommentPage
 import erl.bilico.data.model.CommentSailing
+import erl.bilico.data.model.CommentSort
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.ReplyData
@@ -38,6 +39,7 @@ class CommentRepository(
         oid: Long,
         cursor: String?,
         type: Int = 1,
+        sort: CommentSort = CommentSort.Hot,
     ): Result<CommentPage> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -45,7 +47,7 @@ class CommentRepository(
             val params = TreeMap<String, String>().apply {
                 put("oid", oid.toString())
                 put("type", type.toString())
-                put("mode", "3")
+                put("mode", sort.mode.toString())
                 put("ps", "20")
                 put("plat", "1")
                 put("web_location", "1315875")
@@ -64,8 +66,45 @@ class CommentRepository(
             if (response != null && response.code == 0 && response.data?.hasContent() == true) {
                 response.data.toPage()
             } else {
-                legacyFirstPage(oid, type)
+                legacyFirstPage(oid, type, sort)
             }
+        }
+    }
+
+    /**
+     * 按时间翻页：`reply/wbi/main` 的 `mode=2` 只回一页，第二页起改走旧版 `x/v2/reply` 的
+     * `pn` 分页（`sort=0`），否则「最新」列表会在 20 条之后直接断掉。
+     */
+    suspend fun newestPage(
+        oid: Long,
+        page: Int,
+        type: Int = 1,
+        pageSize: Int = 20,
+    ): Result<CommentPage> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val response = api.legacyComments(
+                mapOf(
+                    "oid" to oid.toString(),
+                    "type" to type.toString(),
+                    "pn" to page.coerceAtLeast(1).toString(),
+                    "ps" to pageSize.toString(),
+                    "sort" to "0",
+                ),
+            )
+            if (response.code != 0) {
+                error(response.message.ifBlank { "评论加载失败(${response.code})" })
+            }
+            val data = response.data ?: return@runCatching CommentPage(emptyList(), null, true, 0)
+            val upMid = data.upper?.mid ?: 0L
+            val items = data.replies.orEmpty().distinctBy { it.rpid }
+            val total = maxOf(data.page.acount, data.page.count, items.size)
+            CommentPage(
+                comments = items.map { it.toComment(upMid = upMid) },
+                nextOffset = null,
+                isEnd = items.isEmpty() || page * pageSize >= total,
+                total = total,
+            )
         }
     }
 
@@ -282,14 +321,14 @@ class CommentRepository(
         }
     }
 
-    private suspend fun legacyFirstPage(oid: Long, type: Int): CommentPage {
+    private suspend fun legacyFirstPage(oid: Long, type: Int, sort: CommentSort): CommentPage {
         val response = api.legacyComments(
             mapOf(
                 "oid" to oid.toString(),
                 "type" to type.toString(),
                 "pn" to "1",
                 "ps" to "20",
-                "sort" to "1",
+                "sort" to if (sort == CommentSort.Hot) "1" else "0",
             ),
         )
         if (response.code != 0) {
@@ -298,7 +337,8 @@ class CommentRepository(
         val data = response.data ?: return CommentPage(emptyList(), null, true, 0)
         val upMid = data.upper?.mid ?: 0L
         val items = buildList {
-            addAll(data.hots.orEmpty())
+            // 按时间排序时不能把「热门评论」混进来，否则最新列表头部还是热评。
+            if (sort == CommentSort.Hot) addAll(data.hots.orEmpty())
             addAll(data.replies.orEmpty())
         }.distinctBy { it.rpid }
         return CommentPage(

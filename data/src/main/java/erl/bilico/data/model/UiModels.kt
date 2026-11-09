@@ -136,6 +136,12 @@ data class CommentPage(
     val total: Int,
 )
 
+/** 主楼评论排序：B 站 `mode=3` 按热度，`mode=2` 按时间。 */
+enum class CommentSort(val mode: Int) {
+    Hot(3),
+    New(2),
+}
+
 @kotlinx.serialization.Serializable
 data class Account(
     val mid: Long,

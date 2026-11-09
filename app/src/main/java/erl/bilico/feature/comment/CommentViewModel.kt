@@ -3,6 +3,7 @@ package erl.bilico.feature.comment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.Comment
+import erl.bilico.data.model.CommentSort
 import erl.bilico.data.model.UploadedPicture
 import erl.bilico.data.repository.CommentRepository
 import kotlinx.coroutines.Job
@@ -22,6 +23,7 @@ data class CommentUiState(
     val error: String? = null,
     val total: Int = 0,
     val message: String? = null,
+    val sort: CommentSort = CommentSort.Hot,
 )
 
 /** 评论主楼：按热度分页、发表评论与楼层回复、点赞主楼。 */
@@ -35,6 +37,7 @@ class CommentViewModel(
     val state: StateFlow<CommentUiState> = _state.asStateFlow()
 
     private var cursor: String? = null
+    private var newestPage = 0
     private var messageJob: Job? = null
 
     init {
@@ -45,15 +48,23 @@ class CommentViewModel(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             cursor = null
-            repository.mainComments(oid, null, type)
+            newestPage = 0
+            val sort = _state.value.sort
+            repository.mainComments(oid, null, type, sort)
                 .onSuccess { page ->
                     cursor = page.nextOffset
+                    if (sort == CommentSort.New) newestPage = 1
                     _state.update {
                         it.copy(
                             items = page.comments,
                             isLoading = false,
                             isLoadingMore = false,
-                            isEnd = page.isEnd || page.nextOffset == null,
+                            // 按时间那一页的 is_end 不可信，按总条数判断还有没有下一页。
+                            isEnd = if (sort == CommentSort.New) {
+                                page.comments.size >= page.total
+                            } else {
+                                page.isEnd || page.nextOffset == null
+                            },
                             total = if (page.total > 0) page.total else page.comments.size,
                         )
                     }
@@ -66,13 +77,32 @@ class CommentViewModel(
         }
     }
 
+    /** 热度 / 时间来回切：先清空列表再重新拉第一页，避免两种顺序的条目混在一起。 */
+    fun toggleSort() {
+        val next = if (_state.value.sort == CommentSort.Hot) CommentSort.New else CommentSort.Hot
+        _state.update {
+            it.copy(
+                sort = next,
+                items = emptyList(),
+                total = 0,
+                isEnd = false,
+                isLoadingMore = false,
+            )
+        }
+        refresh()
+    }
+
     fun loadMore() {
         val current = _state.value
         if (current.isLoading || current.isLoadingMore || current.isEnd) return
+        if (current.sort == CommentSort.New) {
+            loadNewestMore()
+            return
+        }
         val offset = cursor ?: return
         _state.update { it.copy(isLoadingMore = true, error = null) }
         viewModelScope.launch {
-            repository.mainComments(oid, offset, type)
+            repository.mainComments(oid, offset, type, current.sort)
                 .onSuccess { page ->
                     cursor = page.nextOffset
                     _state.update { state ->
@@ -91,6 +121,36 @@ class CommentViewModel(
                         it.copy(
                             isLoadingMore = false,
                             isEnd = true,
+                            error = error.message ?: "评论加载失败",
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun loadNewestMore() {
+        val nextPage = newestPage + 1
+        _state.update { it.copy(isLoadingMore = true, error = null) }
+        viewModelScope.launch {
+            repository.newestPage(oid, nextPage, type)
+                .onSuccess { page ->
+                    newestPage = nextPage
+                    _state.update { state ->
+                        val known = state.items.mapTo(HashSet()) { it.id }
+                        val fresh = page.comments.filter { it.id !in known }
+                        state.copy(
+                            items = state.items + fresh,
+                            isLoadingMore = false,
+                            isEnd = page.isEnd || fresh.isEmpty(),
+                            total = if (page.total > 0) page.total else state.total,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    // 失败别把 isEnd 钉死，滑到底再试还能继续拉。
+                    _state.update {
+                        it.copy(
+                            isLoadingMore = false,
                             error = error.message ?: "评论加载失败",
                         )
                     }
