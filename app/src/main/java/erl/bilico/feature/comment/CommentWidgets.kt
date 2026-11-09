@@ -1,6 +1,7 @@
 package erl.bilico.feature.comment
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,7 +76,10 @@ internal fun BiliCommentItem(
     }
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val linkBlue = if (isDark) Color(0xFF5CA8FF) else Color(0xFF1367B1)
-    val subBoxBg = if (isDark) Color(0xFF383B41) else Color(0xFFD7DAE2)
+    // 楼中楼：白卡片上压一块中性浅灰，和列表底色拉开层次（取微博的配色）。
+    val subBoxBg = if (isDark) Color(0xFF2B2D31) else Color(0xFFF2F3F5)
+    // 灰块和白卡的亮度差只有 12 级，补一根极淡的描边，免得看着像没渲染出来。
+    val subBoxOutline = if (isDark) Color(0xFF3A3D42) else Color(0xFFE6E8EC)
     val defaultNameColor = if (isDark) Color(0xFFB8BCC4) else Color(0xFF61666D)
     val nameColor = remember(comment.vipColorHex, defaultNameColor) {
         parseCommentColor(comment.vipColorHex) ?: defaultNameColor
@@ -184,6 +188,7 @@ internal fun BiliCommentItem(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(subBoxBg)
+                        .border(0.5.dp, subBoxOutline, RoundedCornerShape(8.dp))
                         .clickable { onOpenReplies(comment) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),

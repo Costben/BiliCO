@@ -46,6 +46,7 @@ import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -145,10 +146,12 @@ fun CommentTab(
                         }
                     }
                     items(state.items, key = { it.id }) { comment ->
-                        Column(
+                        // 灰底页面 → 白卡片 → 浅灰楼中楼，三层配色照微博评论那套来。
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 14.dp, bottom = 6.dp),
+                                .padding(top = 10.dp),
+                            insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                         ) {
                             BiliCommentItem(
                                 comment = comment,
