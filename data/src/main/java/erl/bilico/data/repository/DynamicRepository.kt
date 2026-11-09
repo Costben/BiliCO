@@ -2,6 +2,7 @@ package erl.bilico.data.repository
 
 import erl.bilico.data.model.ArchiveMajor
 import erl.bilico.data.model.DynamicArticleCard
+import erl.bilico.data.model.DynamicBlocked
 import erl.bilico.data.model.DynamicDesc
 import erl.bilico.data.model.DynamicHotReply
 import erl.bilico.data.model.DynamicImage
@@ -9,6 +10,7 @@ import erl.bilico.data.model.DynamicImageData
 import erl.bilico.data.model.DynamicItem
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
+import erl.bilico.data.model.DynamicLockedUi
 import erl.bilico.data.model.DynamicModules
 import erl.bilico.data.model.DynamicRichTextNode
 import erl.bilico.data.model.DynamicVideoCard
@@ -79,7 +81,7 @@ class DynamicRepository(
             )
             val parsed = response.data?.item?.toUi(0)
             if (response.code == 0 && parsed != null) {
-                withOpusContent(parsed).also(::rememberSeed)
+                withOpusContent(parsed).withLockedInfo().also(::rememberSeed)
             } else {
                 detailSeedCache[id]?.let { seed ->
                     withOpusContent(seed)
@@ -141,6 +143,40 @@ class DynamicRepository(
                 )
             }
         }
+
+    /**
+     * 详情接口走的是旧版 `/v1/detail`，里面没有 `module_blocked`；
+     * 充电专属的卡片要再取一次 opus/detail 才能拿到锁定面板。
+     */
+    private suspend fun DynamicItemUi.withLockedInfo(): DynamicItemUi {
+        if (!chargeLocked || locked != null) return this
+        val info = lockedInfo(dynamicId).getOrNull() ?: return this
+        return copy(locked = info)
+    }
+
+    /**
+     * 充电专属的动态在 feed 里只有空壳（`is_only_fans` 为真、正文为空），
+     * 锁定面板的标题、说明、按钮和跳转都只在 opus/detail 的 `module_blocked` 里。
+     */
+    suspend fun lockedInfo(dynamicId: String): Result<DynamicLockedUi> = withContext(Dispatchers.IO) {
+        val id = dynamicId.trim()
+        runCatching {
+            require(id.isNotEmpty()) { "动态编号无效" }
+            buvid.ensure()
+            val response = api.opusDetail(
+                mapOf(
+                    "id" to id,
+                    "timezone_offset" to "-480",
+                    "features" to DETAIL_FEATURES,
+                ),
+            )
+            if (response.code != 0) {
+                error(response.message.ifBlank { "锁定信息加载失败(${response.code})" })
+            }
+            response.data?.item?.modules.decodeModules()?.blocked?.toLockedUi()
+                ?: error("没有锁定信息")
+        }
+    }
 
     suspend fun feed(
         type: DynamicFeedType,
@@ -293,6 +329,12 @@ class DynamicRepository(
             likeCount = stat?.like?.count ?: 0,
             commentOid = resolvedCommentOid,
             commentType = resolvedCommentType,
+            authorBadge = author?.iconBadge?.text.orEmpty(),
+            authorBadgeIcon = Formatters.normalizeImageUrl(
+                author?.iconBadge?.renderImg.orEmpty().ifBlank { author?.iconBadge?.icon.orEmpty() },
+            ),
+            chargeLocked = basic?.isOnlyFans == true || modules?.blocked != null,
+            locked = modules?.blocked?.toLockedUi(),
         )
     }
 
@@ -303,6 +345,27 @@ class DynamicRepository(
             value.toLongOrNull()?.takeIf { it > 0L }?.let { return it }
         }
         return null
+    }
+
+    /**
+     * 锁定卡片的文案都在 `hint_message` 里，用换行把标题和说明分开：
+     * 第一行是「剥壳员专属动态」这类标题，后面的才是说明；`title` 字段本身通常是空的。
+     */
+    private fun DynamicBlocked.toLockedUi(): DynamicLockedUi? {
+        val lines = hintMessage.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val explicitTitle = title.trim()
+        val resolvedTitle = explicitTitle.ifBlank { lines.firstOrNull().orEmpty() }
+        val hint = (if (explicitTitle.isEmpty()) lines.drop(1) else lines).joinToString("\n")
+        val action = button
+        val buttonText = action?.text.orEmpty().trim()
+        if (resolvedTitle.isEmpty() && hint.isEmpty() && buttonText.isEmpty()) return null
+        return DynamicLockedUi(
+            title = resolvedTitle,
+            hint = hint,
+            buttonText = buttonText,
+            buttonIcon = Formatters.normalizeImageUrl(action?.icon.orEmpty()),
+            jumpUrl = action?.jumpUrl.orEmpty(),
+        )
     }
 
     private fun ArchiveMajor.toCard(): DynamicVideoCard? {
@@ -370,6 +433,7 @@ class DynamicRepository(
                             content = acc.content ?: next.content,
                             stat = acc.stat ?: next.stat,
                             interaction = acc.interaction ?: next.interaction,
+                            blocked = acc.blocked ?: next.blocked,
                         )
                     }
 

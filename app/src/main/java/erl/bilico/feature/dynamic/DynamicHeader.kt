@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
@@ -77,13 +78,19 @@ internal fun DynamicHeader(
                 modifier = Modifier.clickable(onClick = onClick),
             )
             val time = item.displayTime()
-            if (time.isNotBlank()) {
-                Text(
-                    text = time,
-                    fontSize = 11.sp,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                    maxLines = 1,
-                )
+            val hasBadge = item.authorBadgeIcon.isNotBlank() || item.authorBadge.isNotBlank()
+            if (time.isNotBlank() || hasBadge) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (time.isNotBlank()) {
+                        Text(
+                            text = time,
+                            fontSize = 11.sp,
+                            color = COUITheme.colorScheme.onSurfaceSecondary,
+                            maxLines = 1,
+                        )
+                    }
+                    DynamicAuthorBadge(item = item)
+                }
             }
         }
         if (item.nameplateUrl.isNotBlank() || item.nameplateNumber.isNotBlank()) {
@@ -93,6 +100,30 @@ internal fun DynamicHeader(
             item = item,
             onWatchLater = onWatchLater,
             modifier = Modifier.padding(start = 2.dp),
+        )
+    }
+}
+
+/** 昵称下方的小角标（如「充电专属」）：接口给的是小图，取不到就退回文字。 */
+@Composable
+private fun DynamicAuthorBadge(item: DynamicItemUi) {
+    val iconUrl = item.authorBadgeIcon
+    if (iconUrl.isNotBlank()) {
+        AsyncImage(
+            model = iconUrl,
+            contentDescription = item.authorBadge.ifBlank { null },
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .padding(start = 6.dp)
+                .height(14.dp),
+        )
+    } else if (item.authorBadge.isNotBlank()) {
+        Text(
+            text = item.authorBadge,
+            fontSize = 11.sp,
+            color = COUITheme.colorScheme.onSurfaceSecondary,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 6.dp),
         )
     }
 }

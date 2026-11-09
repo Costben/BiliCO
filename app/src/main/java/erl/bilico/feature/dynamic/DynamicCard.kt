@@ -91,6 +91,16 @@ internal fun DynamicCard(
             )
         }
 
+        // 充电专属：正文被锁，接口只给一段锁定说明，面板顶在正文位置。
+        if (item.chargeLocked) {
+            val locked = item.locked
+            if (locked != null) {
+                ChargeLockedPanel(locked = locked, modifier = Modifier.padding(top = 8.dp))
+            } else {
+                ChargeLockedPlaceholder(modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+
         // 正文图还在取的时候不画那串「[图片]」，直接把位置让给下面的占位块。
         val pendingImages = item.pendingImages
         val content = if (pendingImages) item.content.withoutImagePlaceholders() else item.content

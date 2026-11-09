@@ -42,6 +42,8 @@ data class DynamicBasic(
     val commentType: Int = 0,
     @SerialName("rid_str") val ridStr: String = "",
     @SerialName("jump_url") val jumpUrl: String = "",
+    /** 充电专属：只有给 UP 主充电过才看得到正文。 */
+    @SerialName("is_only_fans") val isOnlyFans: Boolean = false,
 )
 
 @Serializable
@@ -51,6 +53,50 @@ data class DynamicModules(
     @SerialName("module_stat") val stat: DynamicStatModule? = null,
     /** 热度评论：动态卡片下面外露的那条「精选评论」。 */
     @SerialName("module_interaction") val interaction: DynamicInteraction? = null,
+    /** 充电专属之类被拦下的正文：只在 opus/detail 的数组形式里出现。 */
+    @SerialName("module_blocked") val blocked: DynamicBlocked? = null,
+)
+
+/** `module_author.icon_badge`：作者名旁边的灰底小角标。 */
+@Serializable
+data class DynamicIconBadge(
+    val text: String = "",
+    val icon: String = "",
+    @SerialName("render_img") val renderImg: String = "",
+)
+
+/**
+ * 充电专属动态的锁定卡片。`hint_message` 用换行分成两段：
+ * 第一行是标题（如「剥壳员专属动态」），第二行才是说明，`title` 字段通常是空的。
+ */
+@Serializable
+data class DynamicBlocked(
+    @SerialName("blocked_type")
+    @Serializable(with = FlexibleIntSerializer::class)
+    val blockedType: Int = 0,
+    val icon: DynamicBlockedImage? = null,
+    @SerialName("bg_img") val bgImg: DynamicBlockedImage? = null,
+    val title: String = "",
+    @SerialName("hint_message") val hintMessage: String = "",
+    val button: DynamicBlockedButton? = null,
+)
+
+@Serializable
+data class DynamicBlockedImage(
+    @SerialName("img_day") val imgDay: String = "",
+    @SerialName("img_dark") val imgDark: String = "",
+) {
+    val url: String get() = imgDay.ifBlank { imgDark }
+}
+
+@Serializable
+data class DynamicBlockedButton(
+    val icon: String = "",
+    val text: String = "",
+    @SerialName("jump_url") val jumpUrl: String = "",
+    @SerialName("handle_type")
+    @Serializable(with = FlexibleIntSerializer::class)
+    val handleType: Int = 0,
 )
 
 /** `module_interaction` 里混着点赞和评论，`type == 1` 才是评论。 */
@@ -84,6 +130,8 @@ data class DynamicAuthor(
     val decorate: DynamicDecorate? = null,
     /** opus 详情里装扮字段换了个名字，两种都收。 */
     @SerialName("decoration_card") val decorationCard: DynamicDecorate? = null,
+    /** 动态名片的灰色小标签，充电专属之类的角标就在这里。 */
+    @SerialName("icon_badge") val iconBadge: DynamicIconBadge? = null,
 ) {
     val decorateCard: DynamicDecorate? get() = decorate ?: decorationCard
 }

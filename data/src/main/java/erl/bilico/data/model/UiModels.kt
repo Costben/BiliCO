@@ -218,6 +218,21 @@ data class DynamicItemUi(
     val commentType: Int = 17,
     /** 长文型动态的正文图还在取：此时 content 里只剩「[图片]」占位，界面先用灰块顶上。 */
     val pendingImages: Boolean = false,
+    /** 头像那一行的灰标签（如「充电专属」）：接口给的是小图，文字兜底。 */
+    val authorBadge: String = "",
+    val authorBadgeIcon: String = "",
+    /** 充电专属：正文被锁。feed 只给标记，面板文案要等详情补上。 */
+    val chargeLocked: Boolean = false,
+    val locked: DynamicLockedUi? = null,
+)
+
+/** 充电专属动态的锁定面板，文案与按钮都来自接口的 `module_blocked`。 */
+data class DynamicLockedUi(
+    val title: String = "",
+    val hint: String = "",
+    val buttonText: String = "",
+    val buttonIcon: String = "",
+    val jumpUrl: String = "",
 )
 
 data class HistoryItem(

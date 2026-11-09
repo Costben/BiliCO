@@ -3,6 +3,7 @@ package erl.bilico.feature.dynamic
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.DynamicItemUi
+import erl.bilico.data.model.DynamicLockedUi
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.data.repository.DynamicRepository
 import erl.bilico.data.session.SessionRepository
@@ -37,6 +38,8 @@ class DynamicViewModel(
     private var generation = 0
     /** 已经补过正文的动态编号，重新加载同一页时不重复请求。 */
     private val enriched = mutableSetOf<String>()
+    /** 已经补过锁定面板的动态编号。 */
+    private val lockedEnriched = mutableSetOf<String>()
 
     init {
         if (session.isLoggedIn()) initialLoad()
@@ -102,7 +105,10 @@ class DynamicViewModel(
                     baseline = page.baseline
                     // 刷新会把整页换成没补过图的原始数据，「补过哪些」的记录要一起清掉，
                     // 否则同一批编号第二次就被当成已处理，图片又退回一张封面加占位。
-                    if (firstPage) enriched.clear()
+                    if (firstPage) {
+                        enriched.clear()
+                        lockedEnriched.clear()
+                    }
                     _state.update {
                         it.copy(
                             items = if (firstPage) {
@@ -117,6 +123,7 @@ class DynamicViewModel(
                         )
                     }
                     enrichOpus(page.items)
+                    enrichLocked(page.items)
                 }
                 .onFailure { error ->
                     if (requestGeneration != generation) return@onFailure
@@ -169,6 +176,43 @@ class DynamicViewModel(
                                 current.dynamicId != id -> current
                                 filled == item -> current.copy(pendingImages = false)
                                 else -> filled.copy(pendingImages = false)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * 充电专属的动态在 feed 里只有空壳，锁定面板的文案要按编号去详情里补。
+     * 补不到就用本地文案兜底，别让卡片留成一片空白。
+     */
+    private fun enrichLocked(items: List<DynamicItemUi>) {
+        val requestGeneration = generation
+        val targets = items.filter { item ->
+            val id = item.dynamicId
+            id.isNotBlank() && item.chargeLocked && item.locked == null && lockedEnriched.add(id)
+        }
+        if (targets.isEmpty()) return
+        targets.forEach { item ->
+            val id = item.dynamicId
+            viewModelScope.launch {
+                val fetched = repository.lockedInfo(id).getOrNull()
+                if (requestGeneration != generation) return@launch
+                val locked = fetched ?: DynamicLockedUi(
+                    title = "${item.authorName}专属动态",
+                    hint = "该动态为充电专属，给 UP 主充电后即可查看",
+                    buttonText = "去充电",
+                    jumpUrl = "https://space.bilibili.com/${item.authorMid}",
+                )
+                _state.update { state ->
+                    state.copy(
+                        items = state.items.map { current ->
+                            if (current.dynamicId == id) {
+                                current.copy(locked = current.locked ?: locked)
+                            } else {
+                                current
                             }
                         },
                     )
