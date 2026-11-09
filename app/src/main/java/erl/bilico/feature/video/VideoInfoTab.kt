@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -66,8 +65,10 @@ import erl.bilico.feature.feed.rememberWatchLaterAction
 import erl.bilico.feature.feed.shareVideo
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.components.ExpandableSectionHeader
 import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.LoadingState
+import io.github.suqi8.coui.kmp.basic.ExpandableList
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -175,6 +176,9 @@ private fun InfoContent(
 ) {
     // 标题与简介共用一次展开：点一下标题，标题放开的同时简介也跟着放开。
     var expanded by rememberSaveable(detail.bvid) { mutableStateOf(false) }
+    // 分P 与合集默认收起，几十条剧集不会一进页面就铺满。
+    var collectionExpanded by rememberSaveable(detail.bvid) { mutableStateOf(false) }
+    var partsExpanded by rememberSaveable(detail.bvid) { mutableStateOf(false) }
     val density = LocalDensity.current
     val avatarPx = with(density) { 44.dp.roundToPx() }
     val desc = detail.desc.trim()
@@ -321,43 +325,51 @@ private fun InfoContent(
 
         val collection = detail.collection
         if (collection != null && collection.episodes.size > 1) {
-            item(key = "collection-title") {
-                Text(
-                    text = "${collection.title.ifBlank { "合集" }}（${collection.episodes.size}）",
-                    style = COUITheme.textStyles.body1,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            itemsIndexed(
-                collection.episodes,
-                key = { _, episode -> "collection-${episode.bvid}-${episode.cid}" },
-            ) { index, episode ->
-                CollectionRow(
-                    index = index + 1,
-                    episode = episode,
-                    selected = episode.bvid == detail.bvid &&
-                        (episode.cid <= 0L || episode.cid == selectedCid),
-                    onClick = { onSelectEpisode(episode) },
-                )
+            item(key = "collection-section") {
+                ExpandableList(
+                    groupCount = 1,
+                    childCount = { collection.episodes.size },
+                    expandedGroups = if (collectionExpanded) setOf(0) else emptySet(),
+                    onExpandedGroupsChange = { collectionExpanded = 0 in it },
+                    groupContent = { _, expanded ->
+                        ExpandableSectionHeader(
+                            text = "${collection.title.ifBlank { "合集" }}（${collection.episodes.size}）",
+                            expanded = expanded,
+                        )
+                    },
+                ) { _, index ->
+                    val episode = collection.episodes[index]
+                    CollectionRow(
+                        index = index + 1,
+                        episode = episode,
+                        selected = episode.bvid == detail.bvid &&
+                            (episode.cid <= 0L || episode.cid == selectedCid),
+                        onClick = { onSelectEpisode(episode) },
+                    )
+                }
             }
         }
 
         if (detail.pages.size > 1) {
-            item(key = "parts-title") {
-                Text(
-                    text = "分P（${detail.pages.size}）",
-                    style = COUITheme.textStyles.body1,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-            itemsIndexed(detail.pages, key = { _, part -> part.cid }) { index, part ->
-                PartRow(
-                    part = part,
-                    selected = part.cid == selectedCid,
-                    onClick = { onSelectPart(index) },
-                )
+            item(key = "parts-section") {
+                ExpandableList(
+                    groupCount = 1,
+                    childCount = { detail.pages.size },
+                    expandedGroups = if (partsExpanded) setOf(0) else emptySet(),
+                    onExpandedGroupsChange = { partsExpanded = 0 in it },
+                    groupContent = { _, expanded ->
+                        ExpandableSectionHeader(
+                            text = "分P（${detail.pages.size}）",
+                            expanded = expanded,
+                        )
+                    },
+                ) { _, index ->
+                    PartRow(
+                        part = detail.pages[index],
+                        selected = detail.pages[index].cid == selectedCid,
+                        onClick = { onSelectPart(index) },
+                    )
+                }
             }
         }
 
