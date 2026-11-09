@@ -66,14 +66,14 @@ internal fun DynamicHeader(
 
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         DynamicAvatar(item = item, size = avatarSize, onClick = onClick)
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // 昵称占满这一行剩下的宽度，名牌靠右，中间自然留出间距；
-                // 昵称只在真的放不下时才省略，不再被名牌挤成「龙哥哥今天又…」。
+                // 昵称先吃满这一行剩下的宽度，名牌跟在它后面；320dp 的屏上 14sp 才放得下
+                // 「龙哥哥今天又鸽了」这种八字的昵称。
                 Text(
                     text = item.authorName.ifBlank { "未知用户" },
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = nameColor,
                     maxLines = 1,
@@ -83,7 +83,7 @@ internal fun DynamicHeader(
                         .clickable(onClick = onClick),
                 )
                 if (item.nameplateUrl.isNotBlank() || item.nameplateNumber.isNotBlank()) {
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
                     DynamicNameplate(item = item)
                 }
             }
@@ -106,7 +106,7 @@ internal fun DynamicHeader(
         DynamicMoreButton(
             item = item,
             onWatchLater = onWatchLater,
-            modifier = Modifier.padding(start = 4.dp),
+            modifier = Modifier.padding(start = 2.dp),
         )
     }
 }
@@ -176,8 +176,8 @@ private fun DynamicNameplate(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val cardWidth = 86.dp
-    val cardHeight = 26.dp
+    val cardWidth = 72.dp
+    val cardHeight = 24.dp
     val widthPx = with(density) { cardWidth.roundToPx() }
     val heightPx = with(density) { cardHeight.roundToPx() }
     val cardUrl = remember(item.nameplateUrl, widthPx, heightPx) {
