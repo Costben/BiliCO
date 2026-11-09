@@ -105,6 +105,7 @@ dependencies {
     implementation(libs.coui.preference)
 
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
     implementation(libs.coil.network.okhttp)
 
     implementation(libs.media3.exoplayer)
