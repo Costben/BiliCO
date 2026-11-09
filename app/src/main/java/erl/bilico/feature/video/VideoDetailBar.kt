@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -20,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -131,11 +133,10 @@ internal fun VideoDetailBar(
                     segmentWidths = segmentWidths,
                     pager = pager,
                     // 不要底槽：未选中只留文字，选中项一块高亮，颜色与右侧发弹幕胶囊一致。
-                    // 高亮块比发弹幕矮一点，仍能读出主次。
                     height = DETAIL_CAPSULE_HEIGHT,
                     trackColor = Color.Transparent,
                     highlightColor = scheme.surfaceContainer,
-                    highlightElevation = 1.5.dp,
+                    highlightElevation = DETAIL_CAPSULE_ELEVATION,
                 )
             }
         }
@@ -164,7 +165,12 @@ internal fun VideoDetailBar(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(DETAIL_CAPSULE_HEIGHT),
+                        .height(DETAIL_CAPSULE_HEIGHT)
+                        .shadow(
+                            elevation = DETAIL_CAPSULE_ELEVATION,
+                            shape = DetailCapsuleShape,
+                            clip = false,
+                        ),
                 )
             },
             onExpandedChange = onComposingChange,
@@ -183,6 +189,11 @@ internal fun VideoDetailBar(
                     enabled = draft.isNotBlank(),
                     containerColor = scheme.surfaceContainer,
                     glowColor = null,
+                    modifier = Modifier.shadow(
+                        elevation = DETAIL_CAPSULE_ELEVATION,
+                        shape = DetailCapsuleShape,
+                        clip = false,
+                    ),
                 )
             },
         ) { }
@@ -223,6 +234,12 @@ private val DETAIL_TABS = listOf("简介", "评论")
 
 /** 分段高亮块与弹幕输入框共用的高度，两者同一行要对齐。 */
 private val DETAIL_CAPSULE_HEIGHT = 36.dp
+
+/** 高亮块、发弹幕输入框与发送按钮共用的阴影，三块材质看起来才是一套。 */
+private val DETAIL_CAPSULE_ELEVATION = 1.5.dp
+
+/** 胶囊轮廓，给阴影用；与 COUI 搜索框的胶囊形状一致。 */
+private val DetailCapsuleShape = RoundedCornerShape(percent = 50)
 
 /** 每段的宽度；两段加 8dp 内边距就是整条分段胶囊的宽度。 */
 private val DETAIL_SEGMENT_WIDTH = 56.dp

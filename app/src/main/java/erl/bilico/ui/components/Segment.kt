@@ -525,7 +525,15 @@ fun SegmentCapsule(
         modifier
             .height(height + 8.dp)
             .width(totalWidth + 8.dp)
-            .clip(CouiSegmentCapsuleShape)
+            // 有底槽时把高亮块裁回胶囊内；没有底槽（透明）就别裁，否则高亮块的阴影
+            // 只剩内缘一圈，和右边那个同样带投影的输入框对不上。
+            .then(
+                if (containerColor != Color.Transparent) {
+                    Modifier.clip(CouiSegmentCapsuleShape)
+                } else {
+                    Modifier
+                },
+            )
             .background(containerColor),
     ) {
         val drawW = with(density) { (motion.width * indicatorScale).toDp() }
