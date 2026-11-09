@@ -33,11 +33,20 @@ class SessionRepository(
     private val buvid: BuvidManager,
     private val scope: CoroutineScope,
 ) {
+    private val accounts = AccountStore(context, scope)
+
     private val _account = MutableStateFlow<Account?>(null)
     val account: StateFlow<Account?> = _account.asStateFlow()
 
+    /** 已登录过的账号名册，最近的在前；切换账号的面板直接读它。 */
+    private val _sessions = MutableStateFlow<List<StoredSession>>(emptyList())
+    val sessions: StateFlow<List<StoredSession>> = _sessions.asStateFlow()
+
     init {
-        scope.launch { restore() }
+        scope.launch {
+            _sessions.value = accounts.read()
+            restore()
+        }
     }
 
     fun isLoggedIn(): Boolean = !cookies.get("SESSDATA").isNullOrBlank()
@@ -68,7 +77,7 @@ class SessionRepository(
         }
         if (state == QrLoginState.SUCCESS) {
             buvid.ensure()
-            refreshProfile()
+            refreshProfile()?.let { upsertCurrentSession(it) }
         }
         state to data
     }
@@ -79,7 +88,9 @@ class SessionRepository(
         require(sessData.isNotEmpty()) { "未检测到登录凭证（SESSDATA）" }
         cookies.putAll(cookieMap)
         buvid.ensure()
-        refreshProfile() ?: error("读取账号信息失败，请重试")
+        val account = refreshProfile() ?: error("读取账号信息失败，请重试")
+        upsertCurrentSession(account)
+        account
     }
 
     /** nav 是唯一可信的登录态来源；-101 时清掉失效 Cookie。 */
@@ -100,18 +111,55 @@ class SessionRepository(
         }.getOrNull()
     }
 
+    /** 退出登录：先把当前会话留档（下次还能切回来），再清掉当前 Cookie。 */
     suspend fun logout() {
-        cookies.clear()
-        runCatching {
-            CookieManager.getInstance().removeAllCookies(null)
-            CookieManager.getInstance().flush()
+        upsertCurrentSession()
+        clearSession()
+    }
+
+    /**
+     * 切到名册里的另一个账号：把它的 Cookie 整份换回来，再校正画像。
+     * 换不回来就保持原账号不动。
+     */
+    suspend fun switchAccount(mid: Long): Boolean {
+        if (mid == _account.value?.mid && isLoggedIn()) return true
+        val target = _sessions.value.firstOrNull { it.mid == mid } ?: return false
+        if (target.cookies.isEmpty()) return false
+        upsertCurrentSession()
+        cookies.replaceAll(target.cookies)
+        val account = refreshProfile()
+        if (account == null || account.mid != mid) {
+            // 目标会话已失效：Cookie 已经换掉了，只能按退出处理，避免停在半登录态。
+            clearSession()
+            return false
         }
-        context.biliDataStore.edit {
-            it.remove(KEY_ACCOUNT)
-            it.remove(KEY_ACCESS_TOKEN)
-            it.remove(KEY_REFRESH_TOKEN)
-        }
-        _account.value = null
+        upsertCurrentSession(account)
+        return true
+    }
+
+    /** 从名册里删掉一个账号；删的正好是当前账号就一并退出。 */
+    suspend fun removeAccount(mid: Long) {
+        val activeMid = _account.value?.mid ?: this.mid()
+        if (mid == activeMid) clearSession()
+        _sessions.value = _sessions.value.filterNot { it.mid == mid }
+        accounts.write(_sessions.value)
+    }
+
+    /** 把当前 Cookie 连同画像存进名册；同一个 mid 覆盖旧的一份并排到最前。 */
+    private suspend fun upsertCurrentSession(account: Account? = _account.value) {
+        val current = account ?: return
+        val snapshot = cookies.snapshot()
+        if (snapshot.isEmpty()) return
+        val stored = StoredSession(
+            mid = current.mid,
+            name = current.name,
+            face = current.face,
+            cookies = snapshot,
+            savedAt = System.currentTimeMillis(),
+        )
+        _sessions.value = (listOf(stored) + _sessions.value.filterNot { it.mid == current.mid })
+            .take(MAX_STORED_ACCOUNTS)
+        accounts.write(_sessions.value)
     }
 
     suspend fun saveTokens(accessToken: String, refreshToken: String) {
@@ -133,7 +181,7 @@ class SessionRepository(
                 BiliClient.json.decodeFromString<Account>(raw)
             }.getOrNull()?.let { _account.value = it }
         }
-        if (isLoggedIn()) refreshProfile()
+        if (isLoggedIn()) refreshProfile()?.let { upsertCurrentSession(it) }
     }
 
     private suspend fun persistAccount(account: Account) {
@@ -143,7 +191,15 @@ class SessionRepository(
 
     private suspend fun clearSession() {
         cookies.clear()
-        context.biliDataStore.edit { it.remove(KEY_ACCOUNT) }
+        runCatching {
+            CookieManager.getInstance().removeAllCookies(null)
+            CookieManager.getInstance().flush()
+        }
+        context.biliDataStore.edit {
+            it.remove(KEY_ACCOUNT)
+            it.remove(KEY_ACCESS_TOKEN)
+            it.remove(KEY_REFRESH_TOKEN)
+        }
         _account.value = null
     }
 
@@ -151,5 +207,8 @@ class SessionRepository(
         val KEY_ACCOUNT = stringPreferencesKey("account")
         val KEY_ACCESS_TOKEN = stringPreferencesKey("tv_access_token")
         val KEY_REFRESH_TOKEN = stringPreferencesKey("tv_refresh_token")
+
+        /** 名册上限：够来回切几个号就行，不做无限堆积。 */
+        const val MAX_STORED_ACCOUNTS = 8
     }
 }

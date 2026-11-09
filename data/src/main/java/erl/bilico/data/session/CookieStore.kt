@@ -84,6 +84,16 @@ class CookieStore(
         }
     }
 
+    /** 切账号用：整份 Cookie 换成另一个账号的，一次落盘。 */
+    fun replaceAll(cookies: Map<String, String>) {
+        ensureLoaded()
+        values.clear()
+        cookies.forEach { (name, value) ->
+            if (name.isNotBlank() && value.isNotEmpty()) values[name] = value
+        }
+        persist()
+    }
+
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
         val host = url.host.lowercase()
         if (host != "bilibili.com" && !host.endsWith(".bilibili.com")) return emptyList()

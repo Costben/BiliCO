@@ -67,6 +67,7 @@ import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.history.HistoryScreen
 import erl.bilico.feature.live.LiveListScreen
 import erl.bilico.feature.live.LiveRoomScreen
+import erl.bilico.feature.login.LoginScreen
 import erl.bilico.feature.login.WebLoginScreen
 import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.message.MessageScreen
@@ -504,6 +505,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
 
         Route.Messages -> MessageScreen(container, nav)
         Route.BangumiFollow -> BangumiFollowScreen(container, nav)
+        Route.Login -> LoginScreen(container, nav)
         Route.WebLogin -> WebLoginScreen(container, nav)
         Route.Update -> UpdateScreen(container, nav)
         is Route.Article -> ArticleScreen(

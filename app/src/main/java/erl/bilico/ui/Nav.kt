@@ -141,6 +141,7 @@ sealed interface Route {
     data class Pgc(val seasonId: Long, val epId: Long = 0L, val startSec: Long = 0L) : Route
     data object Messages : Route
     data object BangumiFollow : Route
+    data object Login : Route
     data object WebLogin : Route
     data object Update : Route
     data class Article(val cvId: Long, val title: String = "") : Route
