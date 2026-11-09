@@ -132,7 +132,7 @@ internal fun VideoDetailBar(
                     pager = pager,
                     // 不要底槽：未选中只留文字，选中项一块高亮，颜色与右侧发弹幕胶囊一致。
                     // 高亮块比发弹幕矮一点，仍能读出主次。
-                    height = 36.dp,
+                    height = DETAIL_CAPSULE_HEIGHT,
                     trackColor = Color.Transparent,
                     highlightColor = scheme.surfaceContainer,
                     highlightElevation = 1.5.dp,
@@ -162,7 +162,9 @@ internal fun VideoDetailBar(
                             onToggle = onToggleDanmaku,
                         )
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(DETAIL_CAPSULE_HEIGHT),
                 )
             },
             onExpandedChange = onComposingChange,
@@ -218,6 +220,9 @@ private fun Modifier.fadeTrailingEdge(fade: Float, band: Dp): Modifier =
         }
 
 private val DETAIL_TABS = listOf("简介", "评论")
+
+/** 分段高亮块与弹幕输入框共用的高度，两者同一行要对齐。 */
+private val DETAIL_CAPSULE_HEIGHT = 36.dp
 
 /** 每段的宽度；两段加 8dp 内边距就是整条分段胶囊的宽度。 */
 private val DETAIL_SEGMENT_WIDTH = 56.dp
