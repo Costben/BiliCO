@@ -24,7 +24,7 @@ import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.basic.Search
 import io.github.suqi8.coui.kmp.icon.extended.Contacts
-import io.github.suqi8.coui.kmp.icon.extended.Messages
+import io.github.suqi8.coui.kmp.icon.extended.Email
 import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -80,7 +80,7 @@ internal fun RowScope.TabActions(tab: Int, nav: NavState, onSearch: () -> Unit) 
                     .couiTopAppBarActionItem()
                     .testTag("top_messages"),
             ) {
-                Icon(COUIIcons.Messages, "消息", Modifier.size(24.dp))
+                Icon(COUIIcons.Email, "消息", Modifier.size(24.dp))
             }
         }
 
