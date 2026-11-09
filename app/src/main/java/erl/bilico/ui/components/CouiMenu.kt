@@ -30,6 +30,7 @@ import io.github.suqi8.coui.kmp.basic.ListPopupColumn
 import io.github.suqi8.coui.kmp.basic.ListPopupContent
 import io.github.suqi8.coui.kmp.basic.ListPopupDefaults
 import io.github.suqi8.coui.kmp.basic.PopupLayoutPosition
+import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import kotlinx.coroutines.launch
@@ -53,10 +54,12 @@ internal fun CouiPopupMenu(
     show: Boolean,
     onDismiss: () -> Unit,
     items: List<CouiMenuItem>,
+    preciseClickState: PreciseClickState? = null,
 ) {
     OverlayListPopup(
         show = show,
         onDismissRequest = onDismiss,
+        preciseClickState = preciseClickState,
     ) {
         val dismiss = LocalDismissState.current
         ListPopupColumn {

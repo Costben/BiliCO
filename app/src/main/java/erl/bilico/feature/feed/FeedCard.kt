@@ -46,6 +46,8 @@ import erl.bilico.ui.components.CouiPopupMenu
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.More
@@ -67,12 +69,19 @@ internal fun FeedCard(
     }
     val context = LocalContext.current
     val scheme = COUITheme.colorScheme
+    // 长按卡片在手指位置弹同一个三点菜单，不跳到播放页也不走卡片点击。
+    val pressState = rememberPreciseClickState()
+    var menuExpanded by remember { mutableStateOf(false) }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(0.dp),
-        onClick = onOpen,
-    ) {
+    Box(modifier) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .preciseClickAnchor(pressState),
+            insideMargin = PaddingValues(0.dp),
+            onClick = onOpen,
+            onLongPress = { menuExpanded = true },
+        ) {
         // 封面顶到卡片上沿和两侧，圆角由卡片自己的轮廓裁出来，不再单独套内边距。
         Box(
             Modifier
@@ -143,6 +152,17 @@ internal fun FeedCard(
                 )
             }
         }
+    }
+
+        CouiPopupMenu(
+            show = menuExpanded,
+            onDismiss = { menuExpanded = false },
+            items = listOf(
+                CouiMenuItem("稍后再看", onWatchLater),
+                CouiMenuItem("分享", { shareVideo(context, video) }),
+            ),
+            preciseClickState = pressState,
+        )
     }
 }
 
