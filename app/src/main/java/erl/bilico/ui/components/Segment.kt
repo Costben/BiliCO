@@ -33,6 +33,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -390,6 +391,9 @@ private val SegmentPressSpring = spring<Float>(dampingRatio = 1f, stiffness = 43
  * 传了 [pager] 时指示块跟着翻页走：拖动中每帧贴住手指，松手后由弹簧把位置补齐。
  *
  * 传了 [onReselect] 时，双击当前选中项会回调它（用于回顶刷新）；选中项因此不再响应单击。
+ *
+ * [trackColor] 传 [Color.Transparent] 就没有底槽，只剩选中项一块高亮；
+ * [highlightColor] 与 [highlightElevation] 分别改高亮块的颜色和阴影。两者不传时保持原来的配色。
  */
 @Composable
 fun SegmentCapsule(
@@ -402,12 +406,23 @@ fun SegmentCapsule(
     segmentWidths: List<Dp>? = null,
     pager: PagerState? = null,
     onReselect: (() -> Unit)? = null,
+    trackColor: Color = Color.Unspecified,
+    highlightColor: Color = Color.Unspecified,
+    highlightElevation: Dp = 0.dp,
 ) {
     if (labels.isEmpty()) return
     val scheme = COUITheme.colorScheme
     val dark = scheme.background.luminance() < 0.5f
-    val containerColor = if (dark) Color(0xFF353535) else Color(0xFFE2E3E4)
-    val indicatorColor = if (dark) Color(0x33FFFFFF) else Color(0xB2FFFFFF)
+    val containerColor = when {
+        trackColor != Color.Unspecified -> trackColor
+        dark -> Color(0xFF353535)
+        else -> Color(0xFFE2E3E4)
+    }
+    val indicatorColor = when {
+        highlightColor != Color.Unspecified -> highlightColor
+        dark -> Color(0x33FFFFFF)
+        else -> Color(0xB2FFFFFF)
+    }
 
     val density = LocalDensity.current
     // 每段可以单独给宽度：标签长短不一时胶囊按内容撑开，不再强行等分。
@@ -521,6 +536,17 @@ fun SegmentCapsule(
             Modifier
                 .offset(x = drawCenterX - drawW / 2f, y = (height + 8.dp - drawH) / 2f)
                 .size(width = drawW, height = drawH)
+                .then(
+                    if (highlightElevation > 0.dp) {
+                        Modifier.shadow(
+                            elevation = highlightElevation,
+                            shape = CouiSegmentCapsuleShape,
+                            clip = false,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
                 .clip(CouiSegmentCapsuleShape)
                 .background(indicatorColor),
         )

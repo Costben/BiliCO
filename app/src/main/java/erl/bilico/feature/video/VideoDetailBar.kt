@@ -130,6 +130,12 @@ internal fun VideoDetailBar(
                     onSelect = onSelect,
                     segmentWidths = segmentWidths,
                     pager = pager,
+                    // 不要底槽：未选中只留文字，选中项一块高亮，颜色与右侧发弹幕胶囊一致。
+                    // 高亮块比发弹幕矮一点，仍能读出主次。
+                    height = 36.dp,
+                    trackColor = Color.Transparent,
+                    highlightColor = scheme.surfaceContainer,
+                    highlightElevation = 1.5.dp,
                 )
             }
         }
