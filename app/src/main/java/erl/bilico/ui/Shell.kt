@@ -71,6 +71,7 @@ import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBar
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarItem
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
+import io.github.suqi8.coui.kmp.basic.LocalPlatformBottomBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.SpotLightDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
@@ -236,7 +237,12 @@ fun MainShell(nav: NavState, container: AppContainer) {
             }
         }
 
-        CompositionLocalProvider(LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null) {
+        CompositionLocalProvider(
+            LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
+            // 窗口级材质在弹层开关引起 backdrop 录制切换时会丢帧导致底栏闪烁，
+            // 改用 COUI 的 Compose 玻璃引擎，采样同一块页面 backdrop。
+            LocalPlatformBottomBarMaterialEnabled provides false,
+        ) {
             PinnedBarDensity {
                 FloatingBottomBar(
                     tab = tab,
