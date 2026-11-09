@@ -3,9 +3,14 @@ package erl.bilico.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -15,10 +20,19 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.PinnedBarDensity
@@ -139,6 +153,78 @@ fun SecondaryGridPage(
                     showDivider = false,
                     gradientGlass = BlurEffectsEnabled,
                     navigationIcon = { BackIconButton(onClick = onBack) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * [SecondaryPage] 的横向分页版本：顶栏与一行标签钉住，内容按页左右滑动。
+ *
+ * [header] 画在顶栏下方、盖在页面之上，用页面底色挡住从底下滚过的内容；量出来的高度交给 [page]，
+ * 让每页列表把这一条让出来，于是列表照常滚到玻璃顶栏下面被采样。
+ */
+@Composable
+fun SecondaryPagerPage(
+    title: String,
+    onBack: () -> Unit,
+    pagerState: PagerState,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {},
+    header: @Composable () -> Unit,
+    page: @Composable (index: Int, contentTop: Dp) -> Unit,
+) {
+    val pageColor = pageContainerColor()
+    val backdrop = rememberLayerBackdrop()
+    val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
+    val contentTop = glassBarContentTop(topBarHeight, 10.dp)
+    val density = LocalDensity.current
+    var headerHeight by remember { mutableStateOf(0.dp) }
+
+    Box(modifier.fillMaxSize().background(pageColor)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .layerBackdropIf(BlurEffectsEnabled, backdrop)
+                .background(pageColor)
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = 1,
+            ) { index ->
+                page(index, contentTop + headerHeight)
+            }
+
+            Column(Modifier.fillMaxSize()) {
+                Spacer(Modifier.height(contentTop))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(pageColor)
+                        .padding(vertical = 6.dp)
+                        .onSizeChanged { headerHeight = with(density) { it.height.toDp() } },
+                ) {
+                    header()
+                }
+                Spacer(Modifier.weight(1f))
+            }
+        }
+
+        CompositionLocalProvider(
+            LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
+            LocalEdgeToEdge provides true,
+        ) {
+            PinnedBarDensity {
+                SmallTopAppBar(
+                    title = title,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    color = pageColor,
+                    showDivider = false,
+                    gradientGlass = BlurEffectsEnabled,
+                    navigationIcon = { BackIconButton(onClick = onBack) },
+                    actions = actions,
                 )
             }
         }

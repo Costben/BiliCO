@@ -7,21 +7,27 @@ import erl.bilico.data.model.MessageEntry
 import erl.bilico.data.model.MessageKind
 import erl.bilico.data.repository.MessageRepository
 import erl.bilico.data.session.SessionRepository
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class MessageUiState(
-    val kind: MessageKind = MessageKind.REPLY,
+/** 单个消息分类的一页内容；四类各自独立，左右滑动互不打断。 */
+data class MessageKindState(
     val items: List<MessageEntry> = emptyList(),
-    val isLoading: Boolean = true,
+    val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val isEnd: Boolean = false,
+    val loaded: Boolean = false,
     val error: String? = null,
 )
+
+data class MessageUiState(
+    val kinds: Map<MessageKind, MessageKindState> = emptyMap(),
+) {
+    fun of(kind: MessageKind): MessageKindState = kinds[kind] ?: MessageKindState()
+}
 
 class MessageViewModel(
     private val repository: MessageRepository,
@@ -31,62 +37,63 @@ class MessageViewModel(
     private val _state = MutableStateFlow(MessageUiState())
     val state: StateFlow<MessageUiState> = _state.asStateFlow()
 
-    private var cursor: MessageCursor? = null
-    private var inFlight = false
-    private var job: Job? = null
+    private val cursors = mutableMapOf<MessageKind, MessageCursor?>()
+    private val loading = mutableSetOf<MessageKind>()
 
     init {
-        refresh()
+        ensureLoaded(MessageKind.REPLY)
     }
 
-    fun select(kind: MessageKind) {
-        if (kind == _state.value.kind) return
-        _state.value = MessageUiState(kind = kind)
-        refresh()
+    /** 第一次滑到某一类时拉它的第一页。 */
+    fun ensureLoaded(kind: MessageKind) {
+        val current = _state.value.of(kind)
+        if (current.loaded || current.isLoading || loading.contains(kind)) return
+        load(kind, firstPage = true)
     }
 
-    fun refresh() {
-        job?.cancel()
+    /** 失败重试：丢掉这一类的游标和已有内容重来。 */
+    fun reload(kind: MessageKind) {
+        if (loading.contains(kind)) return
+        load(kind, firstPage = true)
+    }
+
+    fun loadMore(kind: MessageKind) {
+        val current = _state.value.of(kind)
+        if (loading.contains(kind) || current.isEnd || current.items.isEmpty()) return
+        load(kind, firstPage = false)
+    }
+
+    private fun load(kind: MessageKind, firstPage: Boolean) {
+        if (!loading.add(kind)) return
         if (!session.isLoggedIn()) {
-            _state.update { it.copy(isLoading = false, items = emptyList(), isEnd = true) }
+            loading -= kind
+            set(kind, MessageKindState())
             return
         }
-        cursor = null
-        inFlight = false
-        _state.update { it.copy(isLoading = true, error = null) }
-        load(firstPage = true)
-    }
-
-    fun loadMore() {
-        val current = _state.value
-        if (inFlight || current.isEnd || current.items.isEmpty()) return
-        _state.update { it.copy(isLoadingMore = true) }
-        load(firstPage = false)
-    }
-
-    private fun load(firstPage: Boolean) {
-        if (inFlight) return
-        inFlight = true
-        val kind = _state.value.kind
-        val pageCursor = if (firstPage) null else cursor
-        job = viewModelScope.launch {
+        if (firstPage) {
+            cursors[kind] = null
+            set(kind, MessageKindState(isLoading = true))
+        } else {
+            update(kind) { it.copy(isLoadingMore = true) }
+        }
+        val pageCursor = if (firstPage) null else cursors[kind]
+        viewModelScope.launch {
             repository.page(kind, pageCursor)
                 .onSuccess { page ->
-                    if (kind != _state.value.kind) return@onSuccess
-                    cursor = page.cursor
-                    _state.update {
-                        it.copy(
-                            items = if (firstPage) page.items else it.items + page.items,
+                    cursors[kind] = page.cursor
+                    update(kind) { state ->
+                        state.copy(
+                            items = if (firstPage) page.items else state.items + page.items,
                             isLoading = false,
                             isLoadingMore = false,
+                            loaded = true,
                             isEnd = page.isEnd || page.items.isEmpty(),
                             error = null,
                         )
                     }
                 }
                 .onFailure { error ->
-                    if (kind != _state.value.kind) return@onFailure
-                    _state.update {
+                    update(kind) {
                         it.copy(
                             isLoading = false,
                             isLoadingMore = false,
@@ -94,7 +101,17 @@ class MessageViewModel(
                         )
                     }
                 }
-            inFlight = false
+            loading -= kind
+        }
+    }
+
+    private fun set(kind: MessageKind, value: MessageKindState) {
+        _state.update { it.copy(kinds = it.kinds + (kind to value)) }
+    }
+
+    private fun update(kind: MessageKind, transform: (MessageKindState) -> MessageKindState) {
+        _state.update { current ->
+            current.copy(kinds = current.kinds + (kind to transform(current.of(kind))))
         }
     }
 }

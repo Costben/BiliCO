@@ -1,27 +1,27 @@
 package erl.bilico.feature.message
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,12 +35,16 @@ import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
-import erl.bilico.ui.components.SecondaryPage
+import erl.bilico.ui.components.SecondaryPagerPage
+import erl.bilico.ui.components.navBottomPadding
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.ChipTabData
+import io.github.suqi8.coui.kmp.basic.ChipTabGroup
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 @Composable
 fun MessageScreen(
@@ -52,41 +56,96 @@ fun MessageScreen(
         MessageViewModel(container.messages, container.session)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val listState = rememberLazyListState()
+    val pagerState = rememberPagerState { MESSAGE_KINDS.size }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+    // 滑停一页就补拉这一类；点标签走的是同一个入口。
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { viewModel.ensureLoaded(MESSAGE_KINDS[it].first) }
+    }
+    LaunchedEffect(account) {
+        if (account != null) viewModel.ensureLoaded(MESSAGE_KINDS[pagerState.settledPage].first)
+    }
+
+    SecondaryPagerPage(
+        title = "消息",
+        onBack = nav::pop,
+        pagerState = pagerState,
+        header = {
+            ChipTabGroup(
+                tabs = MESSAGE_KINDS.map { ChipTabData(label = it.second) },
+                selectedIndex = pagerState.currentPage,
+                onSelectedChange = { index ->
+                    scope.launch { pagerState.animateScrollToPage(index) }
+                },
+                contentPadding = PaddingValues(horizontal = 12.dp),
+            )
+        },
+    ) { index, contentTop ->
+        val kind = MESSAGE_KINDS[index].first
+        MessageList(
+            kind = kind,
+            state = state.of(kind),
+            loggedIn = account != null,
+            contentTop = contentTop,
+            viewModel = viewModel,
+            nav = nav,
+        )
+    }
+}
+
+@Composable
+private fun MessageList(
+    kind: MessageKind,
+    state: MessageKindState,
+    loggedIn: Boolean,
+    contentTop: Dp,
+    viewModel: MessageViewModel,
+    nav: NavState,
+) {
+    val listState = rememberLazyListState()
+    val itemCount by rememberUpdatedState(state.items.size)
+
+    LaunchedEffect(kind, listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
             .distinctUntilChanged()
             .collect { lastVisible ->
-                val size = viewModel.state.value.items.size
-                if (lastVisible != null && size > 0 && lastVisible >= size - 3) {
-                    viewModel.loadMore()
+                if (lastVisible >= 0 && itemCount > 0 && lastVisible >= itemCount - 3) {
+                    viewModel.loadMore(kind)
                 }
             }
     }
 
-    SecondaryPage(title = "消息", onBack = nav::pop, listState = listState) {
-        item(key = "kinds") {
-            MessageKindTabs(selected = state.kind, onSelect = viewModel::select)
-        }
-
-        if (account == null) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            top = contentTop + 4.dp,
+            end = 12.dp,
+            bottom = 24.dp + navBottomPadding(),
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (!loggedIn) {
             item(key = "login") {
                 EmptyState(
                     text = "登录后查看",
                     action = { TextButton(text = "去登录", onClick = nav::popToMe) },
                 )
             }
-            return@SecondaryPage
+            return@LazyColumn
         }
 
-        if (state.items.isEmpty()) {
-            item(key = "state") {
-                when {
-                    state.isLoading -> LoadingState()
-                    state.error != null -> ErrorState(state.error.orEmpty(), onRetry = viewModel::refresh)
-                    else -> EmptyState("暂时没有新消息")
-                }
+        when {
+            state.isLoading -> item(key = "state") { LoadingState() }
+            state.error != null -> item(key = "state") {
+                ErrorState(state.error.orEmpty(), onRetry = { viewModel.reload(kind) })
+            }
+            state.loaded && state.items.isEmpty() -> item(key = "state") {
+                EmptyState("暂时没有新消息")
             }
         }
 
@@ -100,42 +159,6 @@ fun MessageScreen(
 
         if (state.isLoadingMore) {
             item(key = "loading-more") { LoadingState() }
-        }
-    }
-}
-
-@Composable
-private fun MessageKindTabs(selected: MessageKind, onSelect: (MessageKind) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        MESSAGE_KINDS.forEach { kind ->
-            val active = kind.first == selected
-            Text(
-                text = kind.second,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        if (active) {
-                            COUITheme.colorScheme.primary.copy(alpha = 0.14f)
-                        } else {
-                            COUITheme.colorScheme.surfaceContainer
-                        },
-                    )
-                    .clickable { onSelect(kind.first) }
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
-                fontSize = 13.sp,
-                maxLines = 1,
-                softWrap = false,
-                color = if (active) {
-                    COUITheme.colorScheme.primary
-                } else {
-                    COUITheme.colorScheme.onSurfaceSecondary
-                },
-            )
         }
     }
 }
