@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
+import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 
@@ -34,6 +35,8 @@ fun LoadingImage(
     contentDescription: String? = null,
     contentScale: ContentScale = ContentScale.Crop,
     backgroundColor: Color = COUITheme.colorScheme.surfaceContainerHigh,
+    /** 转圈颜色；纯黑看图页要传白色，浅色主题默认色会糊在黑底上。 */
+    indicatorColor: Color? = null,
 ) {
     var loaded by remember(url) { mutableStateOf(false) }
     var showSpinner by remember(url) { mutableStateOf(false) }
@@ -57,7 +60,16 @@ fun LoadingImage(
             )
         }
         if (!loaded && showSpinner) {
-            CircularProgressIndicator(size = 22.dp)
+            CircularProgressIndicator(
+                size = 22.dp,
+                colors = if (indicatorColor != null) {
+                    ProgressIndicatorDefaults.circularProgressIndicatorColors(
+                        foregroundColor = indicatorColor,
+                    )
+                } else {
+                    ProgressIndicatorDefaults.circularProgressIndicatorColors()
+                },
+            )
         }
     }
 }

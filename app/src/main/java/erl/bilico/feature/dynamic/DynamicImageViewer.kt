@@ -196,6 +196,7 @@ fun DynamicImageViewer(
                             },
                         contentScale = ContentScale.Fit,
                         backgroundColor = Color.Transparent,
+                        indicatorColor = Color.White,
                     )
                 }
             }
