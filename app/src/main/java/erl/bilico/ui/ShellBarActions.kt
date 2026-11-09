@@ -24,6 +24,7 @@ import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.basic.Search
 import io.github.suqi8.coui.kmp.icon.extended.Contacts
+import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -64,13 +65,23 @@ internal fun FeedAvatar(
 @Composable
 internal fun RowScope.TabActions(tab: Int, nav: NavState, onSearch: () -> Unit) {
     when (tab) {
-        0 -> HighlightedIconButton(
-            onClick = onSearch,
-            modifier = Modifier
-                .couiTopAppBarActionItem()
-                .testTag("top_search"),
-        ) {
-            Icon(COUIIcons.Basic.Search, "搜索", Modifier.size(24.dp))
+        0 -> {
+            HighlightedIconButton(
+                onClick = onSearch,
+                modifier = Modifier
+                    .couiTopAppBarActionItem()
+                    .testTag("top_search"),
+            ) {
+                Icon(COUIIcons.Basic.Search, "搜索", Modifier.size(24.dp))
+            }
+            HighlightedIconButton(
+                onClick = { nav.push(Route.Messages) },
+                modifier = Modifier
+                    .couiTopAppBarActionItem()
+                    .testTag("top_messages"),
+            ) {
+                Icon(COUIIcons.Messages, "消息", Modifier.size(24.dp))
+            }
         }
 
         ME_TAB_INDEX -> HighlightedIconButton(
