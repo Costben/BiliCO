@@ -27,6 +27,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
@@ -40,6 +42,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import erl.bilico.ui.components.COUISmoothCapsuleShape
+import androidx.compose.ui.layout.Layout
+import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +59,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -539,6 +545,29 @@ private fun HistoryChip(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
+    // 弹簧驱动小叉展开收起 (ColorOS 规格：response 0.3s -> stiffness ≈ 438.65f, bounce 0 -> DampingRatioNoBouncy)
+    val animProgress = remember { Animatable(if (isDeleteMode) 1f else 0f) }
+    LaunchedEffect(isDeleteMode) {
+        animProgress.animateTo(
+            targetValue = if (isDeleteMode) 1f else 0f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = 438.65f,
+            ),
+        )
+    }
+    val animFraction = animProgress.value
+
+    // 按压反馈 (缩放与颜色)
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = 438.65f,
+        ),
+        label = "history-chip-press-scale",
+    )
+
     val baseBg = COUITheme.colorScheme.surfaceContainerHigh
     val pressedBg = remember(baseBg) {
         Color(
@@ -554,16 +583,58 @@ private fun HistoryChip(
         label = "history-chip-bg",
     )
 
-    Row(
+    Layout(
+        content = {
+            Text(
+                text = text,
+                fontSize = 13.sp,
+                color = COUITheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Box(
+                modifier = Modifier
+                    .size(width = 24.dp, height = 32.dp)
+                    .graphicsLayer {
+                        scaleX = 0.3f + 0.7f * animFraction
+                        scaleY = 0.3f + 0.7f * animFraction
+                        alpha = animFraction
+                    }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = isDeleteMode && animFraction > 0.5f,
+                        onClick = onDelete,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                val iconColor = COUITheme.colorScheme.onSurfaceSecondary
+                Canvas(modifier = Modifier.size(9.dp)) {
+                    val stroke = 1.3.dp.toPx()
+                    drawLine(
+                        color = iconColor,
+                        start = Offset(0f, 0f),
+                        end = Offset(size.width, size.height),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round,
+                    )
+                    drawLine(
+                        color = iconColor,
+                        start = Offset(size.width, 0f),
+                        end = Offset(0f, size.height),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+        },
         modifier = Modifier
             .height(32.dp)
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-            )
-            .clip(CircleShape)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .clip(COUISmoothCapsuleShape())
             .background(animatedBg)
             .combinedClickable(
                 interactionSource = interactionSource,
@@ -578,67 +649,26 @@ private fun HistoryChip(
                 onLongClick = {
                     isDeleteMode = !isDeleteMode
                 },
-            )
-            .padding(start = 12.dp, end = if (isDeleteMode) 6.dp else 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = text,
-            fontSize = 13.sp,
-            color = COUITheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+            ),
+    ) { measurables, constraints ->
+        val textPlaceable = measurables[0].measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val closePlaceable = measurables[1].measure(constraints.copy(minWidth = 0, minHeight = 0))
 
-        AnimatedVisibility(
-            visible = isDeleteMode,
-            enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-                expandFrom = Alignment.Start,
-            ),
-            exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
-                ),
-                shrinkTowards = Alignment.Start,
-            ),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .size(width = 24.dp, height = 32.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onDelete,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val iconColor = COUITheme.colorScheme.onSurfaceSecondary
-                    Canvas(modifier = Modifier.size(10.dp)) {
-                        val stroke = 1.4.dp.toPx()
-                        drawLine(
-                            color = iconColor,
-                            start = Offset(0f, 0f),
-                            end = Offset(size.width, size.height),
-                            strokeWidth = stroke,
-                            cap = StrokeCap.Round,
-                        )
-                        drawLine(
-                            color = iconColor,
-                            start = Offset(size.width, 0f),
-                            end = Offset(0f, size.height),
-                            strokeWidth = stroke,
-                            cap = StrokeCap.Round,
-                        )
-                    }
-                }
-            }
+        val paddingStartPx = 12.dp.roundToPx()
+        val paddingEndClosedPx = 12.dp.roundToPx()
+        val extraWidthPx = 18.dp.roundToPx()
+        val currentExtraPx = (extraWidthPx * animFraction).roundToInt()
+
+        val totalWidth = paddingStartPx + textPlaceable.width + paddingEndClosedPx + currentExtraPx
+        val totalHeight = constraints.maxHeight.coerceAtLeast(32.dp.roundToPx())
+
+        layout(totalWidth, totalHeight) {
+            val textY = (totalHeight - textPlaceable.height) / 2
+            textPlaceable.placeRelative(paddingStartPx, textY)
+
+            val closeY = (totalHeight - closePlaceable.height) / 2
+            val closeX = paddingStartPx + textPlaceable.width + (currentExtraPx - extraWidthPx) + 2.dp.roundToPx()
+            closePlaceable.placeRelative(closeX, closeY)
         }
     }
 }
@@ -655,6 +685,14 @@ private fun HotKeywordChips(keywords: List<String>, onPick: (String) -> Unit) {
             val rank = index + 1
             val interactionSource = remember { MutableInteractionSource() }
             val isPressed by interactionSource.collectIsPressedAsState()
+            val pressScale by animateFloatAsState(
+                targetValue = if (isPressed) 0.96f else 1.0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = 438.65f,
+                ),
+                label = "hot-chip-press-scale",
+            )
             val baseBg = COUITheme.colorScheme.surfaceContainerHigh
             val pressedBg = remember(baseBg) {
                 Color(
@@ -672,7 +710,11 @@ private fun HotKeywordChips(keywords: List<String>, onPick: (String) -> Unit) {
             Row(
                 modifier = Modifier
                     .height(32.dp)
-                    .clip(CircleShape)
+                    .graphicsLayer {
+                        scaleX = pressScale
+                        scaleY = pressScale
+                    }
+                    .clip(COUISmoothCapsuleShape())
                     .background(animatedBg)
                     .clickable(
                         interactionSource = interactionSource,
