@@ -7,10 +7,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -40,6 +42,7 @@ import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
@@ -162,8 +165,9 @@ fun SecondaryGridPage(
 /**
  * [SecondaryPage] 的横向分页版本：顶栏与一行标签钉住，内容按页左右滑动。
  *
- * [header] 画在顶栏下方、盖在页面之上，用页面底色挡住从底下滚过的内容；量出来的高度交给 [page]，
- * 让每页列表把这一条让出来，于是列表照常滚到玻璃顶栏下面被采样。
+ * 标签栏作为 [SmallTopAppBar] 的 bottomContent 挂接在顶栏毛玻璃内部，整体通透连续，
+ * 避免中途出现突兀不透明色块；列表内容从毛玻璃下方滑过被优雅采样；
+ * 首项内容通过动态测量的顶栏高度留出充足间距，绝不被标签栏遮挡。
  */
 @Composable
 fun SecondaryPagerPage(
@@ -177,10 +181,13 @@ fun SecondaryPagerPage(
 ) {
     val pageColor = pageContainerColor()
     val backdrop = rememberLayerBackdrop()
-    val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
-    val contentTop = glassBarContentTop(topBarHeight, 10.dp)
     val density = LocalDensity.current
-    var headerHeight by remember { mutableStateOf(0.dp) }
+    // 状态栏 + 顶栏标题行 44dp + 标签行约 48dp + 呼吸间距 6dp，避免首帧为 0 导致内容跳动
+    val defaultContentTop = with(density) {
+        val statusPx = WindowInsets.statusBars.getTop(density)
+        statusPx.toDp() + 44.dp + 48.dp + 6.dp
+    }
+    var measuredContentTop by remember { mutableStateOf(defaultContentTop) }
 
     Box(modifier.fillMaxSize().background(pageColor)) {
         Box(
@@ -194,21 +201,7 @@ fun SecondaryPagerPage(
                 modifier = Modifier.fillMaxSize(),
                 beyondViewportPageCount = 1,
             ) { index ->
-                page(index, contentTop + headerHeight)
-            }
-
-            Column(Modifier.fillMaxSize()) {
-                Spacer(Modifier.height(contentTop))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(pageColor)
-                        .padding(vertical = 6.dp)
-                        .onSizeChanged { headerHeight = with(density) { it.height.toDp() } },
-                ) {
-                    header()
-                }
-                Spacer(Modifier.weight(1f))
+                page(index, measuredContentTop)
             }
         }
 
@@ -219,12 +212,28 @@ fun SecondaryPagerPage(
             PinnedBarDensity {
                 SmallTopAppBar(
                     title = title,
-                    modifier = Modifier.align(Alignment.TopCenter),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .onSizeChanged {
+                            val h = with(density) { it.height.toDp() }
+                            // 顶栏物理底沿落在 ChipTab 胶囊下方 6dp；首项留出 6dp 使得第一张卡片
+                            // 距离 ChipTab 胶囊底沿正好 12dp，严丝合缝对齐系统便签规范。
+                            measuredContentTop = h + 6.dp
+                        },
                     color = pageColor,
                     showDivider = false,
                     gradientGlass = BlurEffectsEnabled,
                     navigationIcon = { BackIconButton(onClick = onBack) },
                     actions = actions,
+                    bottomContent = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp, bottom = 6.dp),
+                        ) {
+                            header()
+                        }
+                    },
                 )
             }
         }

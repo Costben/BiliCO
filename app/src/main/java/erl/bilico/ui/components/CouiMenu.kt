@@ -35,11 +35,12 @@ import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import kotlinx.coroutines.launch
 
-/** 菜单里的一行：文案加要做的事；[selected] 为 true 时带选中标记。 */
+/** 菜单里的一行：文案加要做的事；[selected] 为 true 时带选中标记；[icon] 可选左侧图标。 */
 internal class CouiMenuItem(
     val label: String,
     val onClick: () -> Unit,
     val selected: Boolean = false,
+    val icon: (@Composable (Modifier) -> Unit)? = null,
 )
 
 /**
@@ -65,7 +66,10 @@ internal fun CouiPopupMenu(
         ListPopupColumn {
             items.forEachIndexed { index, item ->
                 DropdownImpl(
-                    item = DropdownItem(text = item.label),
+                    item = DropdownItem(
+                        text = item.label,
+                        icon = item.icon,
+                    ),
                     optionSize = items.size,
                     isSelected = item.selected,
                     index = index,

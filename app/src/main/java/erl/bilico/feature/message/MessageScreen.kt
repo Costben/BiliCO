@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -50,11 +51,14 @@ import erl.bilico.data.model.MessageEntry
 import erl.bilico.data.model.MessageKind
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.BackIconButton
+import erl.bilico.ui.components.AtSignIcon
+import erl.bilico.ui.components.BellOutlineIcon
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.EmptyState
@@ -73,6 +77,7 @@ import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.GridView
+import io.github.suqi8.coui.kmp.icon.extended.Reply
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -102,6 +107,15 @@ fun MessageScreen(
             CouiChipTabItem(
                 key = index,
                 label = tab.label,
+                icon = tab.iconVector?.let { vector ->
+                    {
+                        Icon(
+                            imageVector = vector,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                },
             )
         }
     }
@@ -203,6 +217,15 @@ fun MessageScreen(
                                             CouiMenuItem(
                                                 label = tab.label,
                                                 selected = pagerState.currentPage == index,
+                                                icon = tab.iconVector?.let { vector ->
+                                                    { modifier ->
+                                                        Icon(
+                                                            imageVector = vector,
+                                                            contentDescription = null,
+                                                            modifier = modifier,
+                                                        )
+                                                    }
+                                                },
                                                 onClick = {
                                                     menuExpanded = false
                                                     scope.launch { pagerState.animateScrollToPage(index) }
@@ -352,11 +375,12 @@ private fun MessageRow(entry: MessageEntry) {
 private data class MessageTabItem(
     val kind: MessageKind,
     val label: String,
+    val iconVector: ImageVector? = null,
 )
 
 private val MESSAGE_TABS = listOf(
-    MessageTabItem(MessageKind.REPLY, "回复我的"),
-    MessageTabItem(MessageKind.AT, "@我的"),
-    MessageTabItem(MessageKind.LIKE, "收到的赞"),
-    MessageTabItem(MessageKind.SYSTEM, "系统通知"),
+    MessageTabItem(MessageKind.REPLY, "回复我的", COUIIcons.Reply),
+    MessageTabItem(MessageKind.AT, "提及我的", AtSignIcon),
+    MessageTabItem(MessageKind.LIKE, "收到的赞", LikeOutlineIcon),
+    MessageTabItem(MessageKind.SYSTEM, "系统消息", BellOutlineIcon),
 )

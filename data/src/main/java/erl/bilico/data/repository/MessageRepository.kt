@@ -88,26 +88,70 @@ class MessageRepository(
             )
         )
         if (response.code != 0) error(response.message.ifBlank { "消息加载失败(${response.code})" })
-        val bucket = response.data?.latest ?: response.data?.total
-        val items = bucket?.items.orEmpty().mapNotNull { item ->
-            val users = item.users.orEmpty()
-            val first = users.firstOrNull() ?: return@mapNotNull null
+        val totalBucket = response.data?.total
+        val latestBucket = response.data?.latest
+
+        // 将最新未读和全量历史项合并并按 id 去重；避免因 latestBucket.items 为空而遗漏 totalBucket
+        val rawItems = buildList {
+            latestBucket?.items?.let { addAll(it) }
+            totalBucket?.items?.let { addAll(it) }
+        }.distinctBy { it.id }
+
+        val effectiveItems = when {
+            rawItems.isNotEmpty() -> rawItems
+            totalBucket?.items != null -> totalBucket.items
+            else -> latestBucket?.items.orEmpty()
+        }
+        val effectiveCursor = totalBucket?.cursor ?: latestBucket?.cursor
+
+        val items = effectiveItems.mapNotNull { item ->
+            val allUsers = buildList {
+                item.user?.let { add(it) }
+                item.users?.let { addAll(it) }
+            }.distinctBy { it.mid }
+            val first = allUsers.firstOrNull()
             val name = when {
-                users.size > 1 -> "${first.nickname} 等 ${users.size} 人"
-                else -> first.nickname
+                allUsers.size > 1 -> "${first?.nickname ?: "用户"} 等 ${allUsers.size} 人"
+                first != null -> first.nickname
+                item.counts > 0 -> "${item.counts} 人"
+                else -> "有人"
             }
+            val business = item.item?.business.orEmpty()
+            val actionText = when (business) {
+                "archive" -> "赞了你的视频"
+                "article" -> "赞了你的专栏"
+                "dynamic" -> "赞了你的动态"
+                "reply" -> "赞了你的评论"
+                else -> if (business.isNotBlank()) "赞了你的内容" else "赞了你"
+            }
+            val sourceTitle = item.item?.title.orEmpty().ifBlank {
+                item.item?.detailTitle.orEmpty()
+            }.ifBlank {
+                item.item?.detailName.orEmpty()
+            }
+            val title = when {
+                sourceTitle.isNotBlank() -> "$actionText · $sourceTitle"
+                else -> actionText
+            }
+
+            val content = item.item?.sourceContent.orEmpty()
+                .ifBlank { item.item?.targetReplyContent.orEmpty() }
+                .ifBlank { item.item?.rootReplyContent.orEmpty() }
+                .ifBlank { item.item?.desc.orEmpty() }
+
+            val extra = item.counts.takeIf { it > 1 }?.let { "${it} 人点赞" }.orEmpty()
+
             MessageEntry(
                 key = "like-${item.id}",
-                avatar = Formatters.normalizeImageUrl(first.avatar),
+                avatar = Formatters.normalizeImageUrl(first?.avatar.orEmpty()),
                 name = name,
-                title = item.item?.title.orEmpty(),
-                content = item.item?.sourceContent.orEmpty()
-                    .ifBlank { item.item?.rootReplyContent.orEmpty() },
-                extra = item.counts.takeIf { it > 1 }?.let { "${it} 人点赞" }.orEmpty(),
+                title = title,
+                content = content,
+                extra = extra,
                 timeText = Formatters.formatTimeAgo(item.likeTime),
             )
         }
-        return MessagePage(items, bucket?.cursor, bucket?.cursor?.isEnd == true)
+        return MessagePage(items, effectiveCursor, effectiveCursor?.isEnd == true || effectiveItems.isEmpty())
     }
 
     private suspend fun system(cursor: MessageCursor?): MessagePage {
