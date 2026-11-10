@@ -62,6 +62,7 @@ fun SecondaryPage(
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     actions: @Composable RowScope.() -> Unit = {},
+    topBar: (@Composable () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val pageColor = pageContainerColor()
@@ -94,15 +95,21 @@ fun SecondaryPage(
             LocalEdgeToEdge provides true,
         ) {
             PinnedBarDensity {
-                SmallTopAppBar(
-                    title = title,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    color = pageColor,
-                    showDivider = false,
-                    gradientGlass = BlurEffectsEnabled,
-                    navigationIcon = { BackIconButton(onClick = onBack) },
-                    actions = actions,
-                )
+                if (topBar != null) {
+                    Box(Modifier.align(Alignment.TopCenter)) {
+                        topBar()
+                    }
+                } else {
+                    SmallTopAppBar(
+                        title = title,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        color = pageColor,
+                        showDivider = false,
+                        gradientGlass = BlurEffectsEnabled,
+                        navigationIcon = { BackIconButton(onClick = onBack) },
+                        actions = actions,
+                    )
+                }
             }
         }
     }

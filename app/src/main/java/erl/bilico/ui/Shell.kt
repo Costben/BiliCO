@@ -75,6 +75,7 @@ import erl.bilico.ui.components.NavHomeFilledIcon
 import erl.bilico.ui.components.NavHomeOutlineIcon
 import erl.bilico.ui.components.NavMeFilledIcon
 import erl.bilico.ui.components.NavMeOutlineIcon
+import erl.bilico.ui.components.SearchClearButton
 import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBar
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarItem
@@ -467,6 +468,7 @@ private fun BarContent(
                     extraActions = {
                         HighlightedIconButton(
                             onClick = { nav.push(Route.Messages) },
+                            enabled = !searchExpanded,
                             modifier = Modifier.couiTopAppBarActionItem(),
                         ) {
                             Icon(
@@ -478,16 +480,9 @@ private fun BarContent(
                     },
                     trailingIcon = {
                         if (searchState.query.isNotEmpty()) {
-                            HighlightedIconButton(
+                            SearchClearButton(
                                 onClick = { searchViewModel.onQueryChange("") },
-                                modifier = Modifier.size(36.dp),
-                            ) {
-                                Icon(
-                                    imageVector = COUIIcons.Close,
-                                    contentDescription = "清空",
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
+                            )
                         }
                     },
                 )

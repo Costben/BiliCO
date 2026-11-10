@@ -1,7 +1,10 @@
 package erl.bilico.ui.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,10 +20,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -225,3 +234,60 @@ const val FullPageRefreshHoldMillis = 200L
 @Composable
 fun navBottomPadding(): Dp =
     WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+/**
+ * 搜索输入框内的清空按钮：
+ * 纯平中灰实心圆盘（18dp）+ 纯白小叉（8dp），32dp 触摸响应区，无高光无阴影。
+ */
+@Composable
+fun SearchClearButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
+    val discColor = if (isDark) Color(0xFF696969) else Color(0x42000000)
+
+    Box(
+        modifier = modifier
+            .size(32.dp)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(discColor)
+                .graphicsLayer {
+                    alpha = if (isPressed) 0.65f else 1f
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(modifier = Modifier.size(8.dp)) {
+                val strokeWidth = 1.6.dp.toPx()
+                val cap = StrokeCap.Square
+                drawLine(
+                    color = Color.White,
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, size.height),
+                    strokeWidth = strokeWidth,
+                    cap = cap,
+                )
+                drawLine(
+                    color = Color.White,
+                    start = Offset(size.width, 0f),
+                    end = Offset(0f, size.height),
+                    strokeWidth = strokeWidth,
+                    cap = cap,
+                )
+            }
+        }
+    }
+}
+

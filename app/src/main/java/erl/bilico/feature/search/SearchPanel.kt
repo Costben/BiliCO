@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -130,7 +131,7 @@ fun SearchPanel(
                     if (showingResults) {
                         RectangleShape
                     } else {
-                        RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp)
+                        SquircleShape(topStart = 0.dp, topEnd = 0.dp, bottomEnd = 20.dp, bottomStart = 20.dp)
                     },
                 )
                 .background(pageColor),
@@ -321,7 +322,7 @@ fun FeedSearchDropdown(
                     if (showingResults) {
                         RectangleShape
                     } else {
-                        RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp)
+                        SquircleShape(topStart = 0.dp, topEnd = 0.dp, bottomEnd = 20.dp, bottomStart = 20.dp)
                     },
                 )
                 .background(pageColor),
@@ -444,7 +445,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.suggestions(
                 Text(
                     text = "清空",
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(SquircleShape(8.dp))
                         .clickable(onClick = onClearHistory)
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     fontSize = 12.sp,
@@ -501,7 +502,7 @@ private fun HotKeywordChips(keywords: List<String>, onPick: (String) -> Unit) {
             val rank = index + 1
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(SquircleShape(14.dp))
                     .background(COUITheme.colorScheme.surfaceContainerHigh)
                     .clickable(onClick = remember(keyword, onPick) { { onPick(keyword) } })
                     .padding(horizontal = 10.dp, vertical = 7.dp),
@@ -536,7 +537,7 @@ private fun Chip(text: String, onClick: () -> Unit) {
     Text(
         text = text,
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(SquircleShape(14.dp))
             .background(COUITheme.colorScheme.surfaceContainerHigh)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 7.dp),

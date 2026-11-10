@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -19,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -33,20 +37,26 @@ import erl.bilico.data.model.SpaceProfile
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicCard
+import erl.bilico.ui.AppBarSurface
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.Avatar
+import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LibraryVideoRow
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.SearchClearButton
 import erl.bilico.ui.components.SecondaryPage
+import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.SearchBar
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Close
 import io.github.suqi8.coui.kmp.icon.extended.Search
@@ -83,12 +93,66 @@ fun SpaceScreen(
         title = state.profile?.name?.ifBlank { "个人空间" } ?: "个人空间",
         onBack = nav::pop,
         listState = listState,
-        actions = {
-            IconButton(onClick = { viewModel.toggleSearch() }) {
-                Icon(
-                    imageVector = COUIIcons.Search,
-                    contentDescription = "搜索",
-                )
+        topBar = {
+            val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val pageBarHeight = statusBarTop + 44.dp
+            Box(Modifier.fillMaxWidth()) {
+                AppBarSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = pageContainerColor(),
+                    scrollFraction = { 1f },
+                ) {
+                    Box(Modifier.fillMaxWidth().height(pageBarHeight))
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = statusBarTop)
+                        .height(44.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TopAppBarSearchBar(
+                        query = state.searchKeyword,
+                        onQueryChange = viewModel::updateKeyword,
+                        expanded = state.isSearchActive,
+                        onExpandedChange = { active ->
+                            viewModel.toggleSearch(active)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = if (state.selectedTab == SpaceTab.VIDEOS) "搜索他的投稿" else "搜索他的动态",
+                        cancelText = "取消",
+                        onSearch = { kw ->
+                            viewModel.submitSearch(kw)
+                        },
+                        onCancel = {
+                            viewModel.toggleSearch(false)
+                        },
+                        gradientColor = Color.Transparent,
+                        titleContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                BackIconButton(onClick = nav::pop)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = state.profile?.name?.ifBlank { "个人空间" } ?: "个人空间",
+                                    style = COUITheme.textStyles.title2,
+                                    color = COUITheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        },
+                        trailingIcon = {
+                            if (state.searchKeyword.isNotEmpty()) {
+                                SearchClearButton(
+                                    onClick = {
+                                        viewModel.updateKeyword("")
+                                        viewModel.submitSearch("")
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
             }
         },
     ) {
@@ -103,56 +167,6 @@ fun SpaceScreen(
             }
         } else {
             item(key = "profile") { ProfileCard(profile) }
-        }
-
-        if (state.isSearchActive) {
-            item(key = "space-search-bar") {
-                val keyboard = LocalSoftwareKeyboardController.current
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                ) {
-                    SearchBar(
-                        inputField = {
-                            InputField(
-                                query = state.searchKeyword,
-                                onQueryChange = viewModel::updateKeyword,
-                                onSearch = {
-                                    keyboard?.hide()
-                                    viewModel.submitSearch()
-                                },
-                                expanded = false,
-                                onExpandedChange = {},
-                                label = if (state.selectedTab == SpaceTab.VIDEOS) "搜索他的投稿" else "搜索他的动态",
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = COUIIcons.Search,
-                                        contentDescription = null,
-                                        modifier = Modifier.padding(start = 12.dp).size(18.dp),
-                                    )
-                                },
-                                trailingIcon = {
-                                    if (state.searchKeyword.isNotBlank()) {
-                                        IconButton(onClick = { viewModel.submitSearch("") }) {
-                                            Icon(
-                                                imageVector = COUIIcons.Close,
-                                                contentDescription = "清空",
-                                                modifier = Modifier.size(16.dp),
-                                            )
-                                        }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(40.dp),
-                            )
-                        },
-                        onExpandedChange = {},
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { }
-                }
-            }
         }
 
         item(key = "space-tabs") {
