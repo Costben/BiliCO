@@ -89,10 +89,15 @@ internal fun DynamicLiveTab(
 
     val segmentTop = topInset + 8.dp
 
-    // 双击「直播」筛选或双击顶栏：回到第一条并重新拉一遍。
+    // 双击「直播」筛选或双击顶栏：回到顶部后再触发下拉刷新。
     LaunchedEffect(refreshTick) {
         if (refreshTick == 0 || !active) return@LaunchedEffect
-        gridState.scrollToItem(0)
+        if (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0) {
+            if (gridState.firstVisibleItemIndex > 6) {
+                gridState.scrollToItem(6)
+            }
+            gridState.animateScrollToItem(0)
+        }
         viewModel.refresh()
     }
 

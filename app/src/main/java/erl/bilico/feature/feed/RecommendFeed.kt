@@ -169,9 +169,15 @@ internal fun RecommendFeed(
             .collect(onCollapse)
     }
 
-    // 双击当前分段：重新拉一遍，旧列表原地等着，拿到结果后淡入新批次的顶部。
+    // 双击底栏当前 Tab / 双击分段标题：回到顶部后再触发下拉刷新。
     LaunchedEffect(refreshTick) {
         if (refreshTick == 0 || !active) return@LaunchedEffect
+        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+            if (listState.firstVisibleItemIndex > 6) {
+                listState.scrollToItem(6)
+            }
+            listState.animateScrollToItem(0)
+        }
         viewModel.refresh()
     }
 

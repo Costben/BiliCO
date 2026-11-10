@@ -94,10 +94,15 @@ fun BangumiRankSection(
             .collect(onCollapse)
     }
 
-    // 双击当前分段：回到第一条并重新拉一遍。
+    // 双击当前分段：回到顶部后再触发下拉刷新。
     LaunchedEffect(refreshTick) {
         if (refreshTick == 0 || !active) return@LaunchedEffect
-        gridState.scrollToItem(0)
+        if (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0) {
+            if (gridState.firstVisibleItemIndex > 6) {
+                gridState.scrollToItem(6)
+            }
+            gridState.animateScrollToItem(0)
+        }
         viewModel.refresh()
     }
 

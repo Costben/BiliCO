@@ -105,10 +105,15 @@ fun RankingSection(
             .collect(onCollapse)
     }
 
-    // 双击当前分段：回到第一条并重新拉一遍。
+    // 双击当前分段：回到顶部后再触发下拉刷新。
     LaunchedEffect(refreshTick) {
         if (refreshTick == 0 || !active) return@LaunchedEffect
-        listState.scrollToItem(0)
+        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+            if (listState.firstVisibleItemIndex > 6) {
+                listState.scrollToItem(6)
+            }
+            listState.animateScrollToItem(0)
+        }
         viewModel.refresh()
     }
 
