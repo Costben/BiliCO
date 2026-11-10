@@ -21,6 +21,9 @@ import erl.bilico.data.model.FavFolderResponse
 import erl.bilico.data.model.FavResourceResponse
 import erl.bilico.data.model.FollowingsResponse
 import erl.bilico.data.model.HistoryResponse
+import erl.bilico.data.model.ImFetchMsgsResponse
+import erl.bilico.data.model.ImSendMsgResponse
+import erl.bilico.data.model.ImSessionListResponse
 import erl.bilico.data.model.LiveDanmakuInfoResponse
 import erl.bilico.data.model.LiveFollowingResponse
 import erl.bilico.data.model.LiveListResponse
@@ -128,6 +131,9 @@ interface BiliApi {
 
     @GET("x/polymer/web-dynamic/v1/feed/all")
     suspend fun dynamicFeed(@QueryMap params: Map<String, String>): DynamicFeedResponse
+
+    @GET("x/polymer/web-dynamic/v1/feed/space")
+    suspend fun spaceDynamicFeed(@QueryMap params: Map<String, String>): DynamicFeedResponse
 
     // ---------- 专栏 / 图文 ----------
 
@@ -289,6 +295,18 @@ interface BiliApi {
 
     @GET("https://message.bilibili.com/x/sys-msg/query_notify_list")
     suspend fun systemNotices(@QueryMap params: Map<String, String>): SystemNoticeResponse
+
+    // ---------- 私信 IM ----------
+
+    @GET("https://api.vc.bilibili.com/session_svr/v1/session_svr/get_sessions")
+    suspend fun imSessions(@QueryMap params: Map<String, String>): ImSessionListResponse
+
+    @GET("https://api.vc.bilibili.com/svr_sync/v1/svr_sync/fetch_session_msgs")
+    suspend fun imFetchMsgs(@QueryMap params: Map<String, String>): ImFetchMsgsResponse
+
+    @FormUrlEncoded
+    @POST("https://api.vc.bilibili.com/web_im/v1/web_im/send_msg")
+    suspend fun imSendMsg(@FieldMap params: Map<String, String>): ImSendMsgResponse
 }
 
 interface PassportApi {

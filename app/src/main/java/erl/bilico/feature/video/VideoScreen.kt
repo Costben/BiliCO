@@ -3,6 +3,7 @@ package erl.bilico.feature.video
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,6 +35,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import com.itos.coui.backdrop.couiBackdrop
+import com.itos.coui.backdrop.rememberCouiBackdrop
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
@@ -44,6 +47,7 @@ import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
+import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Playlist
@@ -106,15 +110,9 @@ fun VideoScreen(
     var manualEnterAwaitingLandscape by remember { mutableStateOf(false) }
     val applyFullscreen: (Boolean) -> Unit = { value ->
         lastManualActionTime = SystemClock.uptimeMillis()
-        if (value) {
-            manualFullscreenExit = false
-            manualEnterAwaitingLandscape = !portraitVideo && deviceSide == 0
-            fullscreen = true
-        } else {
-            manualFullscreenExit = true
-            manualEnterAwaitingLandscape = false
-            fullscreen = false
-        }
+        manualFullscreenExit = !value
+        manualEnterAwaitingLandscape = value && !portraitVideo && deviceSide == 0
+        fullscreen = value
     }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     // 简介 / 评论两页横向翻；点标签翻页，滑完一页再把标签写回去。
@@ -128,8 +126,6 @@ fun VideoScreen(
             .distinctUntilChanged()
             .collect { tab = it }
     }
-    // 两页各自一条竖向列表。视频槽位能不能被拉回去，要看当前这一页是不是滚到了顶：
-    // 只有到顶之后继续下拉才把视频拉出来，否则一下滑视频就弹出来，列表反而没动。
     val infoListState = rememberLazyListState()
     val commentListState = rememberLazyListState()
     var qualityDialogVisible by remember { mutableStateOf(false) }
@@ -167,7 +163,6 @@ fun VideoScreen(
 
     val boostSpeed = longPressSpeedPercent / 100f
     val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
-
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -176,8 +171,7 @@ fun VideoScreen(
 
     val headers = remember(bvid) { container.client.mediaRequestHeaders(bvid) }
     val dataSourceFactory = remember(headers) {
-        OkHttpDataSource.Factory(container.client.mediaClient())
-            .setDefaultRequestProperties(headers)
+        OkHttpDataSource.Factory(container.client.mediaClient()).setDefaultRequestProperties(headers)
     }
     val playbackAttempts = remember(player) { PlaybackAttempts(player) { effectiveSpeed } }
 
@@ -212,10 +206,7 @@ fun VideoScreen(
         },
     )
 
-    // 播放页放的不是队列里那条，说明是用户另开的视频，队列作废。
-    LaunchedEffect(bvid) {
-        nav.playQueue.sync(bvid)
-    }
+    LaunchedEffect(bvid) { nav.playQueue.sync(bvid) }
 
     LaunchedEffect(state.selectedCid, state.detail?.aid) {
         val cid = state.selectedCid
@@ -429,11 +420,16 @@ fun VideoScreen(
         },
         detailContent = {
             val navBarBottom = rememberStableNavBarBottomDp()
-            Column(modifier = Modifier.fillMaxSize()) {
+            val detailBackdrop = rememberCouiBackdrop()
+            val pageBg = pageContainerColor()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(pageBg),
+            ) {
                 VideoDetailBar(
                     selected = tab,
                     onSelect = { tab = it },
-                    pager = detailPager,
                     commentCount = state.detail?.reply ?: 0L,
                     danmakuEnabled = danmakuEnabled,
                     onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
@@ -445,6 +441,7 @@ fun VideoScreen(
                         if (!it) danmakuDraft = ""
                     },
                     onSend = sendDanmaku,
+                    backdrop = detailBackdrop,
                 )
 
                 HorizontalPager(
@@ -452,7 +449,9 @@ fun VideoScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(bottom = navBarBottom),
+                        .padding(bottom = navBarBottom)
+                        .couiBackdrop(detailBackdrop)
+                        .background(pageBg),
                     beyondViewportPageCount = 0,
                     key = { DETAIL_PAGES[it] },
                 ) { page ->
@@ -469,9 +468,7 @@ fun VideoScreen(
                                     viewModel.selectPart(index, player.currentPosition)
                                 },
                                 onSelectEpisode = { episode ->
-                                    val partIndex = state.detail?.pages
-                                        ?.indexOfFirst { it.cid == episode.cid }
-                                        ?: -1
+                                    val partIndex = state.detail?.pages?.indexOfFirst { it.cid == episode.cid } ?: -1
                                     if (episode.bvid == bvid && partIndex >= 0) {
                                         viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
                                         viewModel.selectPart(partIndex, player.currentPosition)
@@ -499,23 +496,13 @@ fun VideoScreen(
                                         scope.launch {
                                             container.favorites.folders(container.session.mid())
                                                 .onSuccess { favoriteFolders = it }
-                                                .onFailure {
-                                                    viewModel.showMessage(
-                                                        it.message ?: "收藏夹加载失败",
-                                                    )
-                                                }
+                                                .onFailure { viewModel.showMessage(it.message ?: "收藏夹加载失败") }
                                         }
                                     }
                                 },
                                 onWatchLater = viewModel::addToWatchLater,
                                 onFollow = viewModel::toggleFollow,
-                                onShare = {
-                                    shareVideo(
-                                        context = context,
-                                        title = state.detail?.title.orEmpty(),
-                                        bvid = bvid,
-                                    )
-                                },
+                                onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
                                 listState = infoListState,
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -568,13 +555,7 @@ fun VideoScreen(
                 onExpand = { slotHeight.floatValue = 0f },
                 onDanmakuSettings = { danmakuSettingsDialogVisible = true },
                 onWatchLater = viewModel::addToWatchLater,
-                onShare = {
-                    shareVideo(
-                        context = context,
-                        title = state.detail?.title.orEmpty(),
-                        bvid = bvid,
-                    )
-                },
+                onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
             )
         },
     )
@@ -583,33 +564,21 @@ fun VideoScreen(
         VideoScreenDialogs(
             speedDialogVisible = speedDialogVisible,
             speed = speed,
-            onSpeedChange = { value ->
-                speed = value
-                speedDialogVisible = false
-            },
+            onSpeedChange = { speed = it; speedDialogVisible = false },
             onDismissSpeed = { speedDialogVisible = false },
             subtitleDialogVisible = subtitleDialogVisible,
             subtitleController = subtitleController,
             onDismissSubtitle = { subtitleDialogVisible = false },
             coinDialogVisible = coinDialogVisible,
             coined = state.coined,
-            onSelectCoin = { count ->
-                coinDialogVisible = false
-                viewModel.coin(count)
-            },
+            onSelectCoin = { count -> coinDialogVisible = false; viewModel.coin(count) },
             onDismissCoin = { coinDialogVisible = false },
             favoriteFolders = favoriteFolders,
-            onSelectFavorite = { mediaId ->
-                favoriteFolders = null
-                viewModel.favorite(mediaId)
-            },
+            onSelectFavorite = { mediaId -> favoriteFolders = null; viewModel.favorite(mediaId) },
             onDismissFavorite = { favoriteFolders = null },
             qualityDialogVisible = qualityDialogVisible,
             state = state,
-            onSelectQuality = { qn ->
-                qualityDialogVisible = false
-                viewModel.selectQuality(qn, player.currentPosition)
-            },
+            onSelectQuality = { qn -> qualityDialogVisible = false; viewModel.selectQuality(qn, player.currentPosition) },
             onDismissQuality = { qualityDialogVisible = false },
             danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
             danmakuSettings = danmakuSettings,
@@ -625,7 +594,6 @@ fun VideoScreen(
         onDismiss = { queueSheetVisible = false },
         onPlay = { queued ->
             queueSheetVisible = false
-            // 点的是正在播的那条就只收面板，别把它重开一遍。
             if (queued.video.bvid != nav.playQueue.playingBvid) {
                 nav.playQueue.jumpTo(nav.playQueue.items.indexOf(queued))
                 nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))

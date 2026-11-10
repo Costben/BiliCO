@@ -1,6 +1,7 @@
 package erl.bilico.feature.space
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -17,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,9 +27,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.itos.coui.backdrop.rememberCouiBackdrop
+import com.itos.coui.chip.ChipTab
 import erl.bilico.data.model.SpaceProfile
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.dynamic.DynamicCard
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.Avatar
@@ -35,9 +41,15 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LibraryVideoRow
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.SecondaryPage
-import erl.bilico.ui.components.SectionTitle
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.IconButton
+import io.github.suqi8.coui.kmp.basic.InputField
+import io.github.suqi8.coui.kmp.basic.SearchBar
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Close
+import io.github.suqi8.coui.kmp.icon.extended.Search
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -48,17 +60,20 @@ fun SpaceScreen(
     mid: Long,
 ) {
     val viewModel: SpaceViewModel = viewModel(key = "space-$mid") {
-        SpaceViewModel(container.space, mid)
+        SpaceViewModel(container.space, container.dynamic, mid)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
-    LaunchedEffect(listState) {
+    LaunchedEffect(listState, state.selectedTab) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .distinctUntilChanged()
             .collect { lastVisible ->
-                val size = viewModel.state.value.videos.size
-                if (lastVisible != null && size > 0 && lastVisible >= size - 2) {
+                val currentSize = when (viewModel.state.value.selectedTab) {
+                    SpaceTab.VIDEOS -> viewModel.state.value.videos.size
+                    SpaceTab.DYNAMICS -> viewModel.state.value.filteredDynamics.size
+                }
+                if (lastVisible != null && currentSize > 0 && lastVisible >= currentSize - 2) {
                     viewModel.loadMore()
                 }
             }
@@ -68,6 +83,14 @@ fun SpaceScreen(
         title = state.profile?.name?.ifBlank { "个人空间" } ?: "个人空间",
         onBack = nav::pop,
         listState = listState,
+        actions = {
+            IconButton(onClick = { viewModel.toggleSearch() }) {
+                Icon(
+                    imageVector = COUIIcons.Search,
+                    contentDescription = "搜索",
+                )
+            }
+        },
     ) {
         val profile = state.profile
         if (profile == null) {
@@ -82,28 +105,137 @@ fun SpaceScreen(
             item(key = "profile") { ProfileCard(profile) }
         }
 
-        item(key = "videos-title") { SectionTitle("投稿", horizontalPadding = 6.dp) }
-
-        if (state.videos.isEmpty() && !state.isLoading) {
-            item(key = "empty") {
-                EmptyState(if (state.error != null) state.error.orEmpty() else "还没有投稿")
+        if (state.isSearchActive) {
+            item(key = "space-search-bar") {
+                val keyboard = LocalSoftwareKeyboardController.current
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                ) {
+                    SearchBar(
+                        inputField = {
+                            InputField(
+                                query = state.searchKeyword,
+                                onQueryChange = viewModel::updateKeyword,
+                                onSearch = {
+                                    keyboard?.hide()
+                                    viewModel.submitSearch()
+                                },
+                                expanded = false,
+                                onExpandedChange = {},
+                                label = if (state.selectedTab == SpaceTab.VIDEOS) "搜索他的投稿" else "搜索他的动态",
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = COUIIcons.Search,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(start = 12.dp).size(18.dp),
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (state.searchKeyword.isNotBlank()) {
+                                        IconButton(onClick = { viewModel.submitSearch("") }) {
+                                            Icon(
+                                                imageVector = COUIIcons.Close,
+                                                contentDescription = "清空",
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp),
+                            )
+                        },
+                        onExpandedChange = {},
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { }
+                }
             }
         }
 
-        items(
-            count = state.videos.size,
-            key = { state.videos[it].bvid },
-            contentType = { "space-video" },
-        ) { index ->
-            val video = state.videos[index]
-            LibraryVideoRow(
-                video = video,
-                onClick = { nav.push(Route.Video(video.bvid)) },
-            )
+        item(key = "space-tabs") {
+            val backdrop = rememberCouiBackdrop()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SpaceTab.entries.forEach { tab ->
+                    ChipTab(
+                        selected = state.selectedTab == tab,
+                        onClick = { viewModel.selectTab(tab) },
+                        label = tab.title,
+                        backdrop = backdrop,
+                    )
+                }
+            }
         }
 
-        if (state.isLoadingMore) {
-            item(key = "loading-more") { LoadingState() }
+        when (state.selectedTab) {
+            SpaceTab.VIDEOS -> {
+                if (state.videos.isEmpty() && !state.isVideosLoading) {
+                    item(key = "videos-empty") {
+                        EmptyState(if (state.searchKeyword.isNotBlank()) "未找到相关投稿" else "还没有投稿")
+                    }
+                }
+
+                items(
+                    count = state.videos.size,
+                    key = { "v-${state.videos[it].bvid}" },
+                    contentType = { "space-video" },
+                ) { index ->
+                    val video = state.videos[index]
+                    LibraryVideoRow(
+                        video = video,
+                        onClick = { nav.push(Route.Video(video.bvid)) },
+                    )
+                }
+
+                if (state.isVideosLoadingMore) {
+                    item(key = "videos-loading-more") { LoadingState() }
+                }
+            }
+            SpaceTab.DYNAMICS -> {
+                val dynamicsList = state.filteredDynamics
+                if (dynamicsList.isEmpty() && !state.isDynamicsLoading) {
+                    item(key = "dynamics-empty") {
+                        EmptyState(if (state.searchKeyword.isNotBlank()) "未找到相关动态" else "还没有动态")
+                    }
+                }
+
+                items(
+                    count = dynamicsList.size,
+                    key = { "d-${dynamicsList[it].dynamicId}" },
+                    contentType = { "space-dynamic" },
+                ) { index ->
+                    val dyn = dynamicsList[index]
+                    DynamicCard(
+                        item = dyn,
+                        onOpenUser = { userMid -> if (userMid != mid) nav.push(Route.Space(userMid)) },
+                        onOpenVideo = { bvid -> nav.push(Route.Video(bvid)) },
+                        onOpenImage = { _, _ -> },
+                        onOpenDynamic = { target ->
+                            val articleId = target.article?.articleId ?: 0L
+                            val dynId = target.dynamicId.ifBlank { target.article?.dynamicId.orEmpty() }
+                            val headerTitle = target.title.ifBlank { target.authorName }
+                            if (articleId > 0L) {
+                                nav.push(Route.Article(articleId, headerTitle))
+                            } else if (dynId.isNotBlank()) {
+                                nav.push(Route.Opus(dynId, headerTitle))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                if (state.isDynamicsLoadingMore) {
+                    item(key = "dynamics-loading-more") { LoadingState() }
+                }
+            }
         }
     }
 }
@@ -113,59 +245,66 @@ private fun ProfileCard(profile: SpaceProfile) {
     val avatarUrl = remember(profile.face) { Formatters.sizedImageUrl(profile.face, 192, 192) }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Avatar(url = avatarUrl, size = 64.dp)
-            Column(Modifier.weight(1f).padding(start = 14.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Avatar(url = avatarUrl, size = 64.dp)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = profile.name,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = COUITheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        ProfileStatItem("粉丝", profile.followersText)
+                        ProfileStatItem("关注", profile.followingText)
+                        ProfileStatItem("获赞", profile.likesText)
+                    }
+                }
+            }
+
+            if (profile.sign.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
                 Text(
-                    text = profile.name.ifBlank { "UID ${profile.mid}" },
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = COUITheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = profile.sign.ifBlank { "这个人很神秘，什么都没有写" },
+                    text = profile.sign,
                     fontSize = 12.sp,
                     color = COUITheme.colorScheme.onSurfaceSecondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 17.sp,
                 )
             }
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            StatCell("粉丝", profile.followersText)
-            StatCell("关注", profile.followingText)
-            StatCell("获赞", profile.likesText)
         }
     }
 }
 
 @Composable
-private fun StatCell(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun ProfileStatItem(label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = value,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
             color = COUITheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
         )
+        Spacer(Modifier.width(3.dp))
         Text(
             text = label,
-            modifier = Modifier.padding(top = 2.dp),
             fontSize = 11.sp,
             color = COUITheme.colorScheme.onSurfaceSecondary,
         )
     }
-    Spacer(Modifier.width(8.dp))
 }

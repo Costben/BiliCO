@@ -21,6 +21,10 @@ data class DynamicUiState(
     val isLoadingMore: Boolean = false,
     val isEnd: Boolean = false,
     val error: String? = null,
+    /** 最近一次刷新插到列表最前面的新动态条数；0 表示这次没有拼接出新的边界。 */
+    val refreshInsertedCount: Int = 0,
+    /** 每完成一次刷新加一；列表据此把位置拉回新内容顶部。 */
+    val refreshSerial: Int = 0,
 )
 
 class DynamicViewModel(
@@ -64,6 +68,8 @@ class DynamicViewModel(
                 isLoadingMore = false,
                 isEnd = false,
                 error = null,
+                refreshInsertedCount = 0,
+                refreshSerial = 0,
             )
         }
         load(firstPage = true)
@@ -109,18 +115,64 @@ class DynamicViewModel(
                         enriched.clear()
                         lockedEnriched.clear()
                     }
-                    _state.update {
-                        it.copy(
-                            items = if (firstPage) {
-                                page.items
+                    _state.update { current ->
+                        val oldItems = current.items
+                        if (firstPage) {
+                            if (oldItems.isEmpty()) {
+                                offset = page.offset
+                                baseline = page.baseline
+                                current.copy(
+                                    items = page.items,
+                                    refreshInsertedCount = 0,
+                                    refreshSerial = current.refreshSerial + 1,
+                                    isInitialLoading = false,
+                                    isRefreshing = false,
+                                    isLoadingMore = false,
+                                    isEnd = !page.hasMore || page.items.isEmpty(),
+                                )
                             } else {
-                                (it.items + page.items).distinctBy { item -> item.id }
-                            },
-                            isInitialLoading = false,
-                            isRefreshing = false,
-                            isLoadingMore = false,
-                            isEnd = !page.hasMore || page.items.isEmpty(),
-                        )
+                                // 刷新不清空列表：只把这次真正新增的动态叠到最前面，
+                                // 拼接边界留给列表画「回到顶部」的占位。
+                                val knownIds = oldItems.mapTo(HashSet()) { it.id }
+                                val fresh = page.items
+                                    .filterNot { it.id in knownIds }
+                                    .distinctBy { it.id }
+                                if (offset.isEmpty()) {
+                                    offset = page.offset
+                                }
+                                if (page.baseline.isNotEmpty()) {
+                                    baseline = page.baseline
+                                }
+                                if (fresh.isNotEmpty()) {
+                                    current.copy(
+                                        items = fresh + oldItems,
+                                        refreshInsertedCount = fresh.size,
+                                        refreshSerial = current.refreshSerial + 1,
+                                        isInitialLoading = false,
+                                        isRefreshing = false,
+                                        isLoadingMore = false,
+                                        isEnd = false,
+                                    )
+                                } else {
+                                    current.copy(
+                                        refreshInsertedCount = 0,
+                                        isInitialLoading = false,
+                                        isRefreshing = false,
+                                        isLoadingMore = false,
+                                    )
+                                }
+                            }
+                        } else {
+                            offset = page.offset
+                            baseline = page.baseline
+                            current.copy(
+                                items = (current.items + page.items).distinctBy { item -> item.id },
+                                isInitialLoading = false,
+                                isRefreshing = false,
+                                isLoadingMore = false,
+                                isEnd = !page.hasMore || page.items.isEmpty(),
+                            )
+                        }
                     }
                     enrichOpus(page.items)
                     enrichLocked(page.items)

@@ -48,22 +48,30 @@ class SpaceRepository(
         }
     }
 
-    suspend fun videos(mid: Long, page: Int): Result<Pair<List<LibraryVideo>, Boolean>> =
+    suspend fun videos(
+        mid: Long,
+        page: Int,
+        keyword: String = "",
+    ): Result<Pair<List<LibraryVideo>, Boolean>> =
         withContext(Dispatchers.IO) {
             runCatching {
                 buvid.ensure()
                 val keys = wbi.getKeys()
                 val pn = page.coerceAtLeast(1)
+                val params = mutableMapOf(
+                    "mid" to mid.toString(),
+                    "pn" to pn.toString(),
+                    "ps" to PAGE_SIZE.toString(),
+                    "order" to "pubdate",
+                    "platform" to "web",
+                    "web_location" to "1550101",
+                )
+                if (keyword.isNotBlank()) {
+                    params["keyword"] = keyword.trim()
+                }
                 val response = api.spaceVideos(
                     WbiUtils.sign(
-                        mapOf(
-                            "mid" to mid.toString(),
-                            "pn" to pn.toString(),
-                            "ps" to PAGE_SIZE.toString(),
-                            "order" to "pubdate",
-                            "platform" to "web",
-                            "web_location" to "1550101",
-                        ),
+                        params,
                         keys.first,
                         keys.second,
                         includeRiskFingerprint = true,

@@ -47,6 +47,7 @@ import com.itos.coui.chip.ChipTabButton
 import com.itos.coui.chip.ChipTabRow
 import com.itos.coui.chip.CouiChipTabItem
 import com.itos.coui.effect.CouiFloatingRenderer
+import erl.bilico.data.model.ImSessionUi
 import erl.bilico.data.model.MessageEntry
 import erl.bilico.data.model.MessageKind
 import erl.bilico.data.util.Formatters
@@ -55,6 +56,7 @@ import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
+import erl.bilico.ui.Route
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.AtSignIcon
@@ -64,6 +66,7 @@ import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.MailOutlineIcon
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
@@ -89,7 +92,7 @@ fun MessageScreen(
 ) {
     val account by container.session.account.collectAsStateWithLifecycle()
     val viewModel: MessageViewModel = viewModel {
-        MessageViewModel(container.messages, container.session)
+        MessageViewModel(container.messages, container.im, container.session)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState { MESSAGE_TABS.size }
@@ -150,14 +153,24 @@ fun MessageScreen(
             beyondViewportPageCount = 1,
         ) { index ->
             val kind = MESSAGE_TABS[index].kind
-            MessageList(
-                kind = kind,
-                state = state.of(kind),
-                loggedIn = account != null,
-                contentTop = headerHeight + 8.dp,
-                viewModel = viewModel,
-                nav = nav,
-            )
+            if (kind == MessageKind.SESSION) {
+                SessionList(
+                    state = state,
+                    loggedIn = account != null,
+                    contentTop = headerHeight + 8.dp,
+                    viewModel = viewModel,
+                    nav = nav,
+                )
+            } else {
+                MessageList(
+                    kind = kind,
+                    state = state.of(kind),
+                    loggedIn = account != null,
+                    contentTop = headerHeight + 8.dp,
+                    viewModel = viewModel,
+                    nav = nav,
+                )
+            }
         }
 
         // 顶栏通过 bottomContent 承载分类页签栏，整块区域在同一个渐变毛玻璃材质下，
@@ -372,6 +385,146 @@ private fun MessageRow(entry: MessageEntry) {
     }
 }
 
+@Composable
+private fun SessionList(
+    state: MessageUiState,
+    loggedIn: Boolean,
+    contentTop: Dp,
+    viewModel: MessageViewModel,
+    nav: NavState,
+) {
+    val listState = rememberLazyListState()
+    val itemCount by rememberUpdatedState(state.sessions.size)
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { lastVisible ->
+                if (lastVisible >= 0 && itemCount > 0 && lastVisible >= itemCount - 3) {
+                    viewModel.loadMore(MessageKind.SESSION)
+                }
+            }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            top = contentTop,
+            end = 12.dp,
+            bottom = 24.dp + navBottomPadding(),
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (!loggedIn) {
+            item(key = "login") {
+                EmptyState(
+                    text = "登录后查看",
+                    action = { TextButton(text = "去登录", onClick = nav::popToMe) },
+                )
+            }
+            return@LazyColumn
+        }
+
+        when {
+            state.isSessionsLoading -> item(key = "state") { LoadingState() }
+            state.sessionsError != null -> item(key = "state") {
+                ErrorState(state.sessionsError.orEmpty(), onRetry = { viewModel.reload(MessageKind.SESSION) })
+            }
+            state.sessionsLoaded && state.sessions.isEmpty() -> item(key = "state") {
+                EmptyState("暂无私信消息")
+            }
+        }
+
+        items(
+            count = state.sessions.size,
+            key = { state.sessions[it].talkerId },
+            contentType = { "session" },
+        ) { index ->
+            val session = state.sessions[index]
+            SessionRow(
+                session = session,
+                onClick = {
+                    nav.push(Route.Chat(session.talkerId, session.name, session.face))
+                },
+            )
+        }
+
+        if (state.isSessionsLoadingMore) {
+            item(key = "loading-more") { LoadingState() }
+        }
+    }
+}
+
+@Composable
+private fun SessionRow(
+    session: ImSessionUi,
+    onClick: () -> Unit,
+) {
+    val avatarUrl = remember(session.face) { Formatters.sizedImageUrl(session.face, 132, 132) }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        insideMargin = PaddingValues(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box {
+                Avatar(url = avatarUrl, size = 44.dp)
+                if (session.unreadCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFA3E3E)),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = session.name.ifBlank { "用户 ${session.talkerId}" },
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = COUITheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (session.timeText.isNotBlank()) {
+                        Text(
+                            text = session.timeText,
+                            fontSize = 11.sp,
+                            color = COUITheme.colorScheme.onSurfaceSecondary,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+                if (session.lastMessage.isNotBlank()) {
+                    Text(
+                        text = session.lastMessage,
+                        modifier = Modifier.padding(top = 4.dp),
+                        fontSize = 13.sp,
+                        color = COUITheme.colorScheme.onSurfaceSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
 private data class MessageTabItem(
     val kind: MessageKind,
     val label: String,
@@ -379,6 +532,7 @@ private data class MessageTabItem(
 )
 
 private val MESSAGE_TABS = listOf(
+    MessageTabItem(MessageKind.SESSION, "我的私信", MailOutlineIcon),
     MessageTabItem(MessageKind.REPLY, "回复我的", COUIIcons.Reply),
     MessageTabItem(MessageKind.AT, "提及我的", AtSignIcon),
     MessageTabItem(MessageKind.LIKE, "收到的赞", LikeOutlineIcon),

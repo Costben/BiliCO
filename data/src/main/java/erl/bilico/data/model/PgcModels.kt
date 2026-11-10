@@ -251,6 +251,12 @@ data class MessageContent(
     @SerialName("source_content") val sourceContent: String = "",
     @SerialName("target_reply_content") val targetReplyContent: String = "",
     @SerialName("root_reply_content") val rootReplyContent: String = "",
+    @SerialName("business_id") val businessId: Long = 0,
+    @SerialName("detail_title") val detailTitle: String = "",
+    @SerialName("detail_name") val detailName: String = "",
+    val desc: String = "",
+    val image: String = "",
+    val uri: String = "",
 )
 
 @Serializable
@@ -303,6 +309,7 @@ data class MessageLikeBucket(
 @Serializable
 data class MessageLikeItem(
     @Serializable(with = FlexibleLongSerializer::class) val id: Long = 0,
+    val user: MessageUser? = null,
     val users: List<MessageUser>? = null,
     val item: MessageContent? = null,
     val counts: Int = 0,
@@ -357,6 +364,7 @@ enum class MessageKind {
     AT,
     LIKE,
     SYSTEM,
+    SESSION,
 }
 
 data class MessageEntry(

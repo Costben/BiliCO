@@ -58,6 +58,7 @@ import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.article.ArticleScreen
+import erl.bilico.feature.chat.ChatScreen
 import erl.bilico.feature.dynamic.DynamicDetailScreen
 import erl.bilico.feature.dynamic.DynamicScreen
 import erl.bilico.feature.favorite.FavoriteFolderScreen
@@ -519,6 +520,14 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
             container = container,
             nav = nav,
             dynamicId = route.dynamicId,
+        )
+
+        is Route.Chat -> ChatScreen(
+            container = container,
+            nav = nav,
+            talkerId = route.talkerId,
+            talkerName = route.talkerName,
+            talkerFace = route.talkerFace,
         )
     }
 }

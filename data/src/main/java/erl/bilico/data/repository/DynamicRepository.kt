@@ -210,6 +210,39 @@ class DynamicRepository(
         }
     }
 
+    /** 某个 UP 主（空间）的动态列表：使用 spaceDynamicFeed 接口。 */
+    suspend fun spaceFeed(
+        mid: Long,
+        offset: String = "",
+    ): Result<DynamicFeedPage> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val params = mutableMapOf(
+                "host_mid" to mid.toString(),
+                "features" to FEED_FEATURES,
+                "timezone_offset" to "-480",
+                "platform" to "web",
+                "web_location" to "333.999",
+            )
+            if (offset.isNotBlank()) {
+                params["offset"] = offset
+            }
+            val response = api.spaceDynamicFeed(params)
+            if (response.code != 0) {
+                error(response.message.ifBlank { "空间动态加载失败(${response.code})" })
+            }
+            val data = response.data ?: error("空间动态数据为空")
+            val items = data.items.mapNotNull { it.toUi(0) }
+            items.forEach(::rememberSeed)
+            DynamicFeedPage(
+                items = items,
+                offset = data.offset,
+                hasMore = data.hasMore,
+                baseline = data.updateBaseline,
+            )
+        }
+    }
+
     private fun DynamicItem.toUi(depth: Int): DynamicItemUi? {
         val modules = modules.decodeModules()
         val author = modules?.author

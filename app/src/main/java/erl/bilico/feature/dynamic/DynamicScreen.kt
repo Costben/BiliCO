@@ -1,10 +1,15 @@
 package erl.bilico.feature.dynamic
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,7 +26,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,6 +50,7 @@ import erl.bilico.ui.components.FullPageRefreshTexts
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.pageContainerColor
+import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.FullPagePullToRefresh
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
@@ -160,6 +168,20 @@ fun DynamicScreen(
     }
 }
 
+/** 刷新换批时旧列表淡出、新列表淡入的时长。 */
+private const val SwapFadeOutMillis = 90
+private const val SwapFadeInMillis = 150
+
+/** 刷新拼接线的固定 key，重排时不会和动态卡片抢位置。 */
+private const val RefreshDividerKey = "dynamic-refresh-divider"
+
+/** 列表当前真正画出来的那一批；刷新结果要等淡出完才换进来。 */
+private data class ShownDynamic(
+    val items: List<DynamicItemUi>,
+    val inserted: Int,
+    val serial: Int,
+)
+
 @Composable
 private fun DynamicContent(
     state: DynamicUiState,
@@ -204,23 +226,36 @@ private fun DynamicContent(
 
     val segmentTop = topInset + 8.dp
 
-    // 双击当前筛选或双击顶栏：回到第一条并重新拉一遍。
+    // 刷新结果不直接换上：旧列表原地淡出，看不见时换成新批次并回到第一条，再淡入。
+    // 这样不会先在顶上冒出拼接占位、再从中间闪回顶部。
+    var shown by remember {
+        mutableStateOf(ShownDynamic(state.items, state.refreshInsertedCount, state.refreshSerial))
+    }
+    val listAlpha = remember { Animatable(1f) }
+
+    LaunchedEffect(state.items, state.refreshSerial) {
+        val next = ShownDynamic(state.items, state.refreshInsertedCount, state.refreshSerial)
+        if (next.serial == shown.serial || shown.items.isEmpty()) {
+            shown = next
+            listAlpha.snapTo(1f)
+            return@LaunchedEffect
+        }
+        listAlpha.animateTo(0f, tween(SwapFadeOutMillis))
+        shown = next
+        listState.scrollToItem(0)
+        listAlpha.animateTo(1f, tween(SwapFadeInMillis))
+    }
+
+    // 双击当前筛选或双击顶栏：重新拉一遍，旧列表原地等着，拿到结果后淡入新批次的顶部。
     LaunchedEffect(refreshTick) {
         if (refreshTick == 0 || !active) return@LaunchedEffect
-        listState.scrollToItem(0)
         viewModel.refresh()
     }
 
     Box(Modifier.fillMaxSize()) {
         FullPagePullToRefresh(
             isRefreshing = state.isRefreshing,
-            onRefresh = {
-                scope.launch {
-                    // 刷新会把新内容填到最前面，列表先归位，刷完直接看到最新的那条。
-                    if (listState.firstVisibleItemIndex > 0) listState.scrollToItem(0)
-                    viewModel.refresh()
-                }
-            },
+            onRefresh = { viewModel.refresh() },
             modifier = Modifier.fillMaxSize(),
             state = pullState,
             // 和列表一样让出分段胶囊高度，刷新球才不会被胶囊压住。
@@ -231,7 +266,9 @@ private fun DynamicContent(
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = listAlpha.value },
                 contentPadding = PaddingValues(
                     start = 12.dp,
                     top = segmentTop + FeedSegmentRowHeight,
@@ -240,7 +277,7 @@ private fun DynamicContent(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (state.items.isEmpty()) {
+                if (shown.items.isEmpty()) {
                     item(key = "state") {
                         when {
                             state.isInitialLoading -> LoadingState()
@@ -252,11 +289,10 @@ private fun DynamicContent(
                         }
                     }
                 }
-                items(
-                    items = state.items,
-                    key = { it.id },
-                    contentType = { "dynamic-card" },
-                ) { item ->
+                val inserted = shown.inserted.coerceIn(0, shown.items.size)
+                val freshItems = shown.items.take(inserted)
+                val olderItems = shown.items.drop(inserted)
+                val card: @Composable (DynamicItemUi) -> Unit = { item ->
                     DynamicCard(
                         item = item,
                         onOpenUser = onOpenUser,
@@ -266,7 +302,26 @@ private fun DynamicContent(
                         onWatchLater = onWatchLater,
                     )
                 }
-                if (state.items.isNotEmpty()) {
+
+                items(
+                    items = freshItems,
+                    key = { it.id },
+                    contentType = { "dynamic-card" },
+                ) { card(it) }
+
+                if (inserted in 1 until shown.items.size) {
+                    item(key = RefreshDividerKey) {
+                        RefreshDivider(onBackToTop = { scope.launch { listState.animateScrollToItem(0) } })
+                    }
+                }
+
+                items(
+                    items = olderItems,
+                    key = { it.id },
+                    contentType = { "dynamic-card" },
+                ) { card(it) }
+
+                if (shown.items.isNotEmpty()) {
                     item(key = "footer") {
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             if (state.isLoadingMore) {
@@ -285,6 +340,40 @@ private fun DynamicContent(
             }
         }
 
+    }
+}
+
+/**
+ * 动态流刷新后的拼接占位：提示这批新内容看完了，点一下滚回列表顶部。
+ */
+@Composable
+private fun RefreshDivider(onBackToTop: () -> Unit) {
+    val scheme = COUITheme.colorScheme
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(88.dp),
+        insideMargin = PaddingValues(0.dp),
+        onClick = onBackToTop,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "本次刷新的内容已看完",
+                fontSize = 12.sp,
+                color = scheme.onSurfaceSecondary,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "回到顶部",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = scheme.primary,
+            )
+        }
     }
 }
 

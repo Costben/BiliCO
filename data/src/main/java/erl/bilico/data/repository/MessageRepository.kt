@@ -27,6 +27,7 @@ class MessageRepository(
                     MessageKind.AT -> at(cursor)
                     MessageKind.LIKE -> like(cursor)
                     MessageKind.SYSTEM -> system(cursor)
+                    MessageKind.SESSION -> MessagePage(emptyList(), null, true)
                 }
             }
         }

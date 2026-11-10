@@ -146,6 +146,7 @@ sealed interface Route {
     data object Update : Route
     data class Article(val cvId: Long, val title: String = "") : Route
     data class Opus(val dynamicId: String, val title: String = "") : Route
+    data class Chat(val talkerId: Long, val talkerName: String = "", val talkerFace: String = "") : Route
 }
 
 class NavEntry(

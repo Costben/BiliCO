@@ -10,6 +10,7 @@ import erl.bilico.data.repository.DynamicRepository
 import erl.bilico.data.repository.FavoriteRepository
 import erl.bilico.data.repository.FeedRepository
 import erl.bilico.data.repository.HeartbeatReporter
+import erl.bilico.data.repository.ImRepository
 import erl.bilico.data.repository.HistoryRepository
 import erl.bilico.data.repository.InteractionRepository
 import erl.bilico.data.repository.LiveRepository
@@ -89,6 +90,8 @@ class AppContainer(context: Context) {
     val interactions = InteractionRepository(client.api, client.buvid, session)
 
     val messages = MessageRepository(client.api, client.buvid)
+
+    val im = ImRepository(client.api, space, session)
 
     val subtitles = SubtitleRepository(client.api, client.wbi, client.buvid, client.okHttp)
 }

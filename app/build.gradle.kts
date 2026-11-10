@@ -103,6 +103,7 @@ dependencies {
     implementation(libs.coui.ui)
     implementation(libs.coui.icons)
     implementation(libs.coui.preference)
+    implementation(libs.coui.kit.lib)
 
     implementation(libs.coil.compose)
     implementation(libs.coil.gif)

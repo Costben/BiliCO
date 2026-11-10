@@ -75,11 +75,13 @@ internal fun DynamicCard(
         if (video != null) onOpenVideo(video.bvid) else onOpenDynamic(item)
     }
 
+    val cardCornerRadius = COUITheme.dimens.card.cornerRadius
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (!isDetail) Modifier.clickable(onClick = onCardClick) else Modifier),
+            .clip(RoundedCornerShape(cardCornerRadius)),
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+        onClick = if (!isDetail) onCardClick else null,
     ) {
         DynamicHeader(
             item = item,
@@ -259,7 +261,12 @@ private fun DynamicVideoCardView(
     }
     val onClick = remember(video.bvid, onOpenVideo) { { onOpenVideo(video.bvid) } }
 
-    Column(modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()

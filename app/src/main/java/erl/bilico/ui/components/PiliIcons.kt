@@ -123,6 +123,14 @@ internal val AtSignIcon: ImageVector by lazy {
     )
 }
 
+/** 私信信封线性图标：Material 的 mail_outline 矢量。 */
+internal val MailOutlineIcon: ImageVector by lazy {
+    icon(
+        name = "MailOutline",
+        path = "M20,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2zm0,14H4V8l8,5 8,-5v10zm-8,-7L4,6h16l-8,5z",
+    )
+}
+
 /**
  * 全屏 / 退出全屏：字体里的 `open_in_full_rotate_45` 其实画的是水平双向箭头，
  * 拿来当全屏会读成「调整宽度」，所以这两个用 Material 的四角括号。

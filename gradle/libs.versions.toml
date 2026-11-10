@@ -7,6 +7,7 @@ lifecycle = "2.11.0"
 navigation = "2.10.2"
 coreKtx = "1.19.0"
 coui = "1.2.0-SNAPSHOT"
+coui-kit = "0.0.1-alpha9"
 coil = "3.6.3"
 media3 = "1.11.1"
 retrofit = "3.0.0"
@@ -33,6 +34,8 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 coui-ui = { group = "io.github.suqi8.coui.kmp", name = "coui-ui-android", version.ref = "coui" }
 coui-icons = { group = "io.github.suqi8.coui.kmp", name = "coui-icons-android", version.ref = "coui" }
 coui-preference = { group = "io.github.suqi8.coui.kmp", name = "coui-preference-android", version.ref = "coui" }
+coui-kit-lib = { group = "io.github.itoseo", name = "coui", version.ref = "coui-kit" }
+coui-kit-icons = { group = "io.github.itoseo", name = "coui-icons", version.ref = "coui-kit" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-gif = { group = "io.coil-kt.coil3", name = "coil-gif", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
