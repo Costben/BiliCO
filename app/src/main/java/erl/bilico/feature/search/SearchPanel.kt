@@ -255,6 +255,180 @@ fun SearchPanel(
     }
 }
 
+/**
+ * 推荐页顶栏展开的搜索下拉内容区：紧贴在顶栏展开的搜索输入框下方向下展开。
+ *
+ * 展开状态下：
+ * - 尚未提交关键词时：向下展开搜索历史与热搜；
+ * - 提交关键词后：展示视频 / 用户 / 专栏分类结果；
+ * - 点击遮罩区域或按返回键收起。
+ */
+@Composable
+fun FeedSearchDropdown(
+    state: SearchUiState,
+    history: List<String>,
+    viewModel: SearchViewModel,
+    container: AppContainer,
+    nav: NavState,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val pageColor = pageContainerColor()
+    val focusManager = LocalFocusManager.current
+    val listState = rememberLazyListState()
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val showingResults = state.submitted.isNotBlank()
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .distinctUntilChanged()
+            .collect { lastVisible ->
+                val size = when (viewModel.state.value.tab) {
+                    0 -> viewModel.state.value.videos.size
+                    1 -> viewModel.state.value.users.size
+                    else -> viewModel.state.value.articles.size
+                }
+                if (lastVisible != null && size > 0 && lastVisible >= size - 2) {
+                    viewModel.loadMore()
+                }
+            }
+    }
+
+    val dismiss: () -> Unit = {
+        focusManager.clearFocus(force = true)
+        onClose()
+    }
+
+    Box(modifier) {
+        // 下方的半透明暗色遮罩：点击收起
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = dismiss,
+                ),
+        )
+
+        // 紧贴顶栏下方展开的内容卡片
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = if (showingResults) screenHeight else screenHeight * 0.72f)
+                .clip(
+                    if (showingResults) {
+                        RectangleShape
+                    } else {
+                        RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp)
+                    },
+                )
+                .background(pageColor),
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    top = 10.dp,
+                    end = 12.dp,
+                    bottom = 24.dp + navBottomPadding(),
+                ),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (state.submitted.isBlank()) {
+                    suggestions(
+                        hot = state.hot,
+                        hotLoading = state.hotLoading,
+                        history = history,
+                        onPick = { keyword ->
+                            container.settings.addSearchHistory(keyword)
+                            viewModel.onQueryChange(keyword)
+                            viewModel.submit(keyword)
+                        },
+                        onClearHistory = { container.settings.clearSearchHistory() },
+                    )
+                } else {
+                    stickyHeader(key = "tabs") {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(pageColor)
+                                .padding(vertical = 4.dp),
+                        ) {
+                            SegmentCapsule(
+                                labels = listOf("视频", "用户", "专栏"),
+                                selectedIndex = state.tab,
+                                onSelect = viewModel::setTab,
+                            )
+                        }
+                    }
+
+                    when {
+                        state.isLoading -> item(key = "loading") { LoadingState() }
+
+                        state.error != null -> item(key = "error") {
+                            ErrorState(state.error.orEmpty(), onRetry = viewModel::retry)
+                        }
+
+                        state.tab == 0 && state.videos.isEmpty() -> item(key = "empty") {
+                            EmptyState("没有找到相关视频")
+                        }
+
+                        state.tab == 1 && state.users.isEmpty() -> item(key = "empty") {
+                            EmptyState("没有找到相关用户")
+                        }
+
+                        state.tab == 2 && state.articles.isEmpty() -> item(key = "empty") {
+                            EmptyState("没有找到相关专栏")
+                        }
+                    }
+
+                    if (state.tab == 0) {
+                        items(
+                            items = state.videos,
+                            key = { it.bvid },
+                            contentType = { "search-video" },
+                        ) { video ->
+                            SearchVideoRow(
+                                video = video,
+                                onClick = { nav.push(Route.Video(video.bvid)) },
+                            )
+                        }
+                    } else if (state.tab == 1) {
+                        items(
+                            items = state.users,
+                            key = { it.mid },
+                            contentType = { "search-user" },
+                        ) { user ->
+                            SearchUserRow(
+                                user = user,
+                                onClick = { nav.push(Route.Space(user.mid)) },
+                            )
+                        }
+                    } else {
+                        items(
+                            items = state.articles,
+                            key = { "article-${it.id}" },
+                            contentType = { "search-article" },
+                        ) { article ->
+                            SearchArticleRow(
+                                article = article,
+                                onClick = { nav.push(Route.Article(article.id, article.title)) },
+                            )
+                        }
+                    }
+
+                    if (state.isLoadingMore) {
+                        item(key = "loading-more") { LoadingState() }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 private fun androidx.compose.foundation.lazy.LazyListScope.suggestions(
     hot: List<String>,
@@ -292,7 +466,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.suggestions(
             if (hot.isEmpty()) {
                 EmptyState("暂时没有热搜")
             } else {
-                KeywordChips(keywords = hot, onPick = onPick)
+                HotKeywordChips(keywords = hot, onPick = onPick)
             }
         }
     }
@@ -311,6 +485,48 @@ private fun KeywordChips(keywords: List<String>, onPick: (String) -> Unit) {
                 text = keyword,
                 onClick = remember(keyword, onPick) { { onPick(keyword) } },
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HotKeywordChips(keywords: List<String>, onPick: (String) -> Unit) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        keywords.forEachIndexed { index, keyword ->
+            val rank = index + 1
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(COUITheme.colorScheme.surfaceContainerHigh)
+                    .clickable(onClick = remember(keyword, onPick) { { onPick(keyword) } })
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = "$rank",
+                    fontSize = 12.sp,
+                    fontWeight = if (rank <= 3) FontWeight.Bold else FontWeight.Normal,
+                    color = when (rank) {
+                        1 -> Color(0xFFFF3B30)
+                        2 -> Color(0xFFFF9500)
+                        3 -> Color(0xFFFFCC00)
+                        else -> COUITheme.colorScheme.onSurfaceSecondary
+                    },
+                )
+                Text(
+                    text = keyword,
+                    fontSize = 13.sp,
+                    color = COUITheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

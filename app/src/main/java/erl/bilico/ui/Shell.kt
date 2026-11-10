@@ -4,9 +4,12 @@ import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
@@ -53,13 +57,17 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicFilters
 import erl.bilico.feature.dynamic.DynamicScreen
 import erl.bilico.feature.feed.FEED_SEGMENTS
 import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.me.MeScreen
+import erl.bilico.feature.search.FeedSearchDropdown
 import erl.bilico.feature.search.SearchPanel
+import erl.bilico.feature.search.SearchUiState
+import erl.bilico.feature.search.SearchViewModel
 import erl.bilico.ui.components.CouiSegmentCapsuleShape
 import erl.bilico.ui.components.NavDynamicFilledIcon
 import erl.bilico.ui.components.NavDynamicOutlineIcon
@@ -70,14 +78,21 @@ import erl.bilico.ui.components.NavMeOutlineIcon
 import erl.bilico.ui.components.SegmentCapsule
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBar
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarItem
+import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformBottomBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.SpotLightDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
+import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.basic.couiTouchMotion
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Close
+import io.github.suqi8.coui.kmp.icon.extended.Email
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.abs
 
@@ -122,7 +137,19 @@ fun MainShell(nav: NavState, container: AppContainer) {
     // 双击当前分段回顶刷新：每双击一次加一，分段那边看到变化就归位重拉。
     var feedRefreshTick by remember { mutableIntStateOf(0) }
     var dynamicRefreshTick by remember { mutableIntStateOf(0) }
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
+
+    val searchViewModel: SearchViewModel = viewModel { SearchViewModel(container.search) }
+    val searchState by searchViewModel.state.collectAsStateWithLifecycle()
+    val searchHistory by container.settings.searchHistory.collectAsStateWithLifecycle()
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(tab) {
+        if (tab != 0 && searchExpanded) {
+            searchExpanded = false
+            searchViewModel.reset()
+        }
+    }
+
     val account by container.session.account.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableIntStateOf(0) }
     // 翻页状态提到外壳：分段胶囊要跟着 pager 连续移动，不能等切完页再动。
@@ -131,9 +158,10 @@ fun MainShell(nav: NavState, container: AppContainer) {
 
     // 标题行的折叠量只在这里算一次：顶栏和分段胶囊读同一个值，滚动时才不会各折各的。
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
-    val collapsePx = when (tab) {
-        0 -> feedCollapse
-        1 -> dynamicCollapse
+    val collapsePx = when {
+        searchExpanded -> 0f
+        tab == 0 -> feedCollapse
+        tab == 1 -> dynamicCollapse
         else -> 0f
     }
     val collapseTarget = (collapsePx / titleHeightPx).coerceIn(0f, 1f)
@@ -203,6 +231,36 @@ fun MainShell(nav: NavState, container: AppContainer) {
             }
         }
 
+        // 展开之后，在搜索栏正下方同步向下展开热搜还有搜索历史
+        val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        AnimatedVisibility(
+            visible = searchExpanded && tab == 0,
+            enter = expandVertically(
+                expandFrom = Alignment.Top,
+                animationSpec = tween(320, easing = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)),
+            ) + fadeIn(animationSpec = tween(220)),
+            exit = shrinkVertically(
+                shrinkTowards = Alignment.Top,
+                animationSpec = tween(260, easing = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)),
+            ) + fadeOut(animationSpec = tween(180)),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = statusBarTop + TitleRowHeight),
+        ) {
+            FeedSearchDropdown(
+                state = searchState,
+                history = searchHistory,
+                viewModel = searchViewModel,
+                container = container,
+                nav = nav,
+                onClose = {
+                    searchExpanded = false
+                    searchViewModel.reset()
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
             // 内容铺到状态栏下面，顶栏玻璃才有东西可采样；否则 COUI 会把首行抹成平色横带。
@@ -230,7 +288,11 @@ fun MainShell(nav: NavState, container: AppContainer) {
                             1 -> dynamicRefreshTick++
                         }
                     },
-                    onSearch = { searchOpen = true },
+                    searchExpanded = searchExpanded,
+                    onSearchExpandedChange = { searchExpanded = it },
+                    searchState = searchState,
+                    searchViewModel = searchViewModel,
+                    container = container,
                     bounds = topBarBounds,
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
                 )
@@ -258,20 +320,6 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 )
             }
         }
-
-        // 搜索面板盖在整页之上：点放大镜就地展开，不另开一页。
-        AnimatedVisibility(
-            visible = searchOpen,
-            enter = fadeIn(animationSpec = tween(MainTabFadeMillis)),
-            exit = fadeOut(animationSpec = tween(MainTabFadeMillis)),
-        ) {
-            SearchPanel(
-                nav = nav,
-                container = container,
-                onClose = { searchOpen = false },
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
     }
 }
 
@@ -291,7 +339,11 @@ private fun MainTopBar(
     onFeedReselect: () -> Unit,
     onDynamicReselect: () -> Unit,
     onDoubleTap: () -> Unit,
-    onSearch: () -> Unit,
+    searchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    searchState: SearchUiState,
+    searchViewModel: SearchViewModel,
+    container: AppContainer,
     bounds: TopBarBounds,
     modifier: Modifier = Modifier,
 ) {
@@ -335,7 +387,11 @@ private fun MainTopBar(
                 dynamicPager = dynamicPager,
                 onFeedReselect = onFeedReselect,
                 onDynamicReselect = onDynamicReselect,
-                onSearch = onSearch,
+                searchExpanded = searchExpanded,
+                onSearchExpandedChange = onSearchExpandedChange,
+                searchState = searchState,
+                searchViewModel = searchViewModel,
+                container = container,
             )
         }
     }
@@ -356,7 +412,11 @@ private fun BarContent(
     dynamicPager: PagerState,
     onFeedReselect: () -> Unit,
     onDynamicReselect: () -> Unit,
-    onSearch: () -> Unit,
+    searchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    searchState: SearchUiState,
+    searchViewModel: SearchViewModel,
+    container: AppContainer,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
     Column(
@@ -364,26 +424,85 @@ private fun BarContent(
             .fillMaxWidth()
             .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
     ) {
-        Box(Modifier.fillMaxWidth().height(TitleRowHeight)) {
-            Box(Modifier.fillMaxSize().clipToBounds()) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
+        if (tab == 0) {
+            // 推荐页：使用前端库最新的按钮展开式搜索栏
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(TitleRowHeight)
+                    .graphicsLayer {
+                        if (!searchExpanded) {
                             translationY = -collapsed() * titleHeightPx
                             alpha = 1f - collapsed()
-                        },
-                ) {
-                    // 推荐页的左上角是登录用户自己的头像，其余 tab 仍是文字标题。
-                    if (tab == 0) {
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                TopAppBarSearchBar(
+                    query = searchState.query,
+                    onQueryChange = searchViewModel::onQueryChange,
+                    expanded = searchExpanded,
+                    onExpandedChange = { isExpanded ->
+                        onSearchExpandedChange(isExpanded)
+                        if (!isExpanded) searchViewModel.reset()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = "搜索视频 / 用户 / 专栏",
+                    cancelText = "取消",
+                    onSearch = { keyword ->
+                        container.settings.addSearchHistory(keyword)
+                        searchViewModel.submit(keyword)
+                    },
+                    onCancel = {
+                        onSearchExpandedChange(false)
+                        searchViewModel.reset()
+                    },
+                    gradientColor = Color.Transparent,
+                    titleContent = {
                         FeedAvatar(
                             url = avatarUrl,
                             onClick = onAvatarClick,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 16.dp, bottom = 8.dp),
                         )
-                    } else {
+                    },
+                    extraActions = {
+                        HighlightedIconButton(
+                            onClick = { nav.push(Route.Messages) },
+                            modifier = Modifier.couiTopAppBarActionItem(),
+                        ) {
+                            Icon(
+                                imageVector = COUIIcons.Email,
+                                contentDescription = "消息",
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    },
+                    trailingIcon = {
+                        if (searchState.query.isNotEmpty()) {
+                            HighlightedIconButton(
+                                onClick = { searchViewModel.onQueryChange("") },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(
+                                    imageVector = COUIIcons.Close,
+                                    contentDescription = "清空",
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    },
+                )
+            }
+        } else {
+            Box(Modifier.fillMaxWidth().height(TitleRowHeight)) {
+                Box(Modifier.fillMaxSize().clipToBounds()) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                translationY = -collapsed() * titleHeightPx
+                                alpha = 1f - collapsed()
+                            },
+                    ) {
                         Text(
                             tabTitles.getOrElse(tab) { "" },
                             color = COUITheme.colorScheme.onSurface,
@@ -395,79 +514,75 @@ private fun BarContent(
                         )
                     }
                 }
-            }
-            Row(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = TopAppBarDefaults.ActionIconPadding)
-                    .graphicsLayer {
-                        translationY = -collapsed() * titleHeightPx / 2f
-                        alpha = 1f - collapsed()
-                    },
-                horizontalArrangement = Arrangement.spacedBy(
-                    TopAppBarDefaults.ActionMenuItemSpacing,
-                    Alignment.End,
-                ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TabActions(tab, nav, onSearch)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = TopAppBarDefaults.ActionIconPadding)
+                        .graphicsLayer {
+                            translationY = -collapsed() * titleHeightPx / 2f
+                            alpha = 1f - collapsed()
+                        },
+                    horizontalArrangement = Arrangement.spacedBy(
+                        TopAppBarDefaults.ActionMenuItemSpacing,
+                        Alignment.End,
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TabActions(tab, nav, onSearch = {})
+                }
             }
         }
 
-        // 分段胶囊画在顶栏这一层：盖在玻璃之上才不会随折叠一起被模糊掉。
-        // 推荐 tab 的胶囊跟着 pager 连续移动，动态 tab 的筛选只有点击切换。
-        // 弹性（按下缩放、拖动橡皮筋形变、跟随手指的高光）由 COUI 的 couiTouchMotion 提供；
-        // 轮廓用我们自己的连续曲率 CouiSegmentCapsuleShape —— COUI 的 TabRowWithContour 在
-        // 40dp 高度下会因浮点比较掉进 addRoundRect 分支，画出正圆端，所以不用它。
+        // 分段胶囊画在顶栏这一层：搜索展开时自动折叠淡出
         val capsuleLabels = when (tab) {
             0 -> FEED_SEGMENTS
             1 -> DynamicFilters.map { it.second }
             else -> null
         }
         if (capsuleLabels != null) {
-            val dark = COUITheme.colorScheme.background.luminance() < 0.5f
-            BoxWithConstraints(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .graphicsLayer { translationY = -collapsed() * titleHeightPx },
-                contentAlignment = Alignment.TopCenter,
+            AnimatedVisibility(
+                visible = !searchExpanded || tab != 0,
+                enter = fadeIn(animationSpec = tween(200)),
+                exit = fadeOut(animationSpec = tween(150)),
             ) {
-                // 推荐 tab 现在是四段，84dp 一段会在窄屏上顶出边界：按可用宽度均分再封顶。
-                // 轨道外缘 = 段宽 × 段数 + 轨道内边距，要和卡片列表左右缩进对齐。
-                val barDensity = LocalDensity.current.density
-                val pageDensity = LocalContext.current.resources.displayMetrics.density
-                val sideMargin = CapsuleSideMargin * (pageDensity / barDensity)
-                val capsuleWidth = minOf(
-                    DefaultSegmentWidth,
-                    ((maxWidth - sideMargin * 2 - CapsuleTrackPadding) / capsuleLabels.size)
-                        .coerceAtLeast(1.dp),
-                )
-                SegmentCapsule(
-                    labels = capsuleLabels,
-                    selectedIndex = if (tab == 0) segment else dynamicFilterIndex,
-                    onSelect = if (tab == 0) onSegment else onDynamicFilter,
-                    // 两个 tab 的胶囊都跟着各自的 pager 走，拖动时指示块贴住手指。
-                    pager = if (tab == 0) pager else dynamicPager,
-                    segmentWidth = capsuleWidth,
-                    // 双击当前选中项回顶刷新：推荐 tab 刷当前分段，动态 tab 刷当前筛选（含直播）。
-                    onReselect = when (tab) {
-                        0 -> onFeedReselect
-                        1 -> onDynamicReselect
-                        else -> null
-                    },
-                    modifier = Modifier.couiTouchMotion(
-                        enabled = true,
-                        shape = CouiSegmentCapsuleShape,
-                        lightParams = SpotLightDefaults.capsuleParams2(dark),
-                        // 胶囊自己画背景，这里只借它的形变和缩放，不接管绘制。
-                        surface = Modifier,
-                        pressScaleEnabled = true,
-                        // 拖动留给胶囊内的点击和 pager，形变只做观察。
-                        consumeDrag = false,
-                        lightEnabled = true,
-                    ),
-                )
+                val dark = COUITheme.colorScheme.background.luminance() < 0.5f
+                BoxWithConstraints(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .graphicsLayer { translationY = -collapsed() * titleHeightPx },
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    val barDensity = LocalDensity.current.density
+                    val pageDensity = LocalContext.current.resources.displayMetrics.density
+                    val sideMargin = CapsuleSideMargin * (pageDensity / barDensity)
+                    val capsuleWidth = minOf(
+                        DefaultSegmentWidth,
+                        ((maxWidth - sideMargin * 2 - CapsuleTrackPadding) / capsuleLabels.size)
+                            .coerceAtLeast(1.dp),
+                    )
+                    SegmentCapsule(
+                        labels = capsuleLabels,
+                        selectedIndex = if (tab == 0) segment else dynamicFilterIndex,
+                        onSelect = if (tab == 0) onSegment else onDynamicFilter,
+                        pager = if (tab == 0) pager else dynamicPager,
+                        segmentWidth = capsuleWidth,
+                        onReselect = when (tab) {
+                            0 -> onFeedReselect
+                            1 -> onDynamicReselect
+                            else -> null
+                        },
+                        modifier = Modifier.couiTouchMotion(
+                            enabled = true,
+                            shape = CouiSegmentCapsuleShape,
+                            lightParams = SpotLightDefaults.capsuleParams2(dark),
+                            surface = Modifier,
+                            pressScaleEnabled = true,
+                            consumeDrag = false,
+                            lightEnabled = true,
+                        ),
+                    )
+                }
             }
         }
     }
