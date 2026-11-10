@@ -20,18 +20,40 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -173,6 +195,9 @@ fun SearchPanel(
                         onPick = { keyword ->
                             container.settings.addSearchHistory(keyword)
                             viewModel.submit(keyword)
+                        },
+                        onDeleteHistory = { keyword ->
+                            container.settings.removeSearchHistory(keyword)
                         },
                         onClearHistory = { container.settings.clearSearchHistory() },
                     )
@@ -348,6 +373,9 @@ fun FeedSearchDropdown(
                             viewModel.onQueryChange(keyword)
                             viewModel.submit(keyword)
                         },
+                        onDeleteHistory = { keyword ->
+                            container.settings.removeSearchHistory(keyword)
+                        },
                         onClearHistory = { container.settings.clearSearchHistory() },
                     )
                 } else {
@@ -436,6 +464,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.suggestions(
     hotLoading: Boolean,
     history: List<String>,
     onPick: (String) -> Unit,
+    onDeleteHistory: (String) -> Unit,
     onClearHistory: () -> Unit,
 ) {
     if (history.isNotEmpty()) {
@@ -445,7 +474,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.suggestions(
                 Text(
                     text = "清空",
                     modifier = Modifier
-                        .clip(SquircleShape(8.dp))
+                        .clip(CircleShape)
                         .clickable(onClick = onClearHistory)
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     fontSize = 12.sp,
@@ -454,7 +483,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.suggestions(
             }
         }
         item(key = "history") {
-            KeywordChips(keywords = history, onPick = onPick)
+            KeywordChips(
+                keywords = history,
+                onPick = onPick,
+                onDelete = onDeleteHistory,
+            )
         }
     }
 
@@ -475,17 +508,137 @@ private fun androidx.compose.foundation.lazy.LazyListScope.suggestions(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun KeywordChips(keywords: List<String>, onPick: (String) -> Unit) {
+private fun KeywordChips(
+    keywords: List<String>,
+    onPick: (String) -> Unit,
+    onDelete: (String) -> Unit,
+) {
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         keywords.forEach { keyword ->
-            Chip(
+            HistoryChip(
                 text = keyword,
                 onClick = remember(keyword, onPick) { { onPick(keyword) } },
+                onDelete = remember(keyword, onDelete) { { onDelete(keyword) } },
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HistoryChip(
+    text: String,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var isDeleteMode by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val baseBg = COUITheme.colorScheme.surfaceContainerHigh
+    val pressedBg = remember(baseBg) {
+        Color(
+            red = (baseBg.red * 0.72f + 0.28f).coerceIn(0f, 1f),
+            green = (baseBg.green * 0.72f + 0.28f).coerceIn(0f, 1f),
+            blue = (baseBg.blue * 0.72f + 0.28f).coerceIn(0f, 1f),
+            alpha = baseBg.alpha,
+        )
+    }
+    val animatedBg by animateColorAsState(
+        targetValue = if (isPressed) pressedBg else baseBg,
+        animationSpec = tween(durationMillis = 150),
+        label = "history-chip-bg",
+    )
+
+    Row(
+        modifier = Modifier
+            .height(32.dp)
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            )
+            .clip(CircleShape)
+            .background(animatedBg)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    if (isDeleteMode) {
+                        isDeleteMode = false
+                    } else {
+                        onClick()
+                    }
+                },
+                onLongClick = {
+                    isDeleteMode = !isDeleteMode
+                },
+            )
+            .padding(start = 12.dp, end = if (isDeleteMode) 6.dp else 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            fontSize = 13.sp,
+            color = COUITheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        AnimatedVisibility(
+            visible = isDeleteMode,
+            enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+                expandFrom = Alignment.Start,
+            ),
+            exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+                shrinkTowards = Alignment.Start,
+            ),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(width = 24.dp, height = 32.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDelete,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val iconColor = COUITheme.colorScheme.onSurfaceSecondary
+                    Canvas(modifier = Modifier.size(10.dp)) {
+                        val stroke = 1.4.dp.toPx()
+                        drawLine(
+                            color = iconColor,
+                            start = Offset(0f, 0f),
+                            end = Offset(size.width, size.height),
+                            strokeWidth = stroke,
+                            cap = StrokeCap.Round,
+                        )
+                        drawLine(
+                            color = iconColor,
+                            start = Offset(size.width, 0f),
+                            end = Offset(0f, size.height),
+                            strokeWidth = stroke,
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -500,12 +653,33 @@ private fun HotKeywordChips(keywords: List<String>, onPick: (String) -> Unit) {
     ) {
         keywords.forEachIndexed { index, keyword ->
             val rank = index + 1
+            val interactionSource = remember { MutableInteractionSource() }
+            val isPressed by interactionSource.collectIsPressedAsState()
+            val baseBg = COUITheme.colorScheme.surfaceContainerHigh
+            val pressedBg = remember(baseBg) {
+                Color(
+                    red = (baseBg.red * 0.72f + 0.28f).coerceIn(0f, 1f),
+                    green = (baseBg.green * 0.72f + 0.28f).coerceIn(0f, 1f),
+                    blue = (baseBg.blue * 0.72f + 0.28f).coerceIn(0f, 1f),
+                    alpha = baseBg.alpha,
+                )
+            }
+            val animatedBg by animateColorAsState(
+                targetValue = if (isPressed) pressedBg else baseBg,
+                animationSpec = tween(durationMillis = 150),
+                label = "hot-chip-bg",
+            )
             Row(
                 modifier = Modifier
-                    .clip(SquircleShape(14.dp))
-                    .background(COUITheme.colorScheme.surfaceContainerHigh)
-                    .clickable(onClick = remember(keyword, onPick) { { onPick(keyword) } })
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                    .height(32.dp)
+                    .clip(CircleShape)
+                    .background(animatedBg)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = remember(keyword, onPick) { { onPick(keyword) } },
+                    )
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -530,22 +704,6 @@ private fun HotKeywordChips(keywords: List<String>, onPick: (String) -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun Chip(text: String, onClick: () -> Unit) {
-    Text(
-        text = text,
-        modifier = Modifier
-            .clip(SquircleShape(14.dp))
-            .background(COUITheme.colorScheme.surfaceContainerHigh)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        fontSize = 13.sp,
-        color = COUITheme.colorScheme.onSurface,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
 }
 
 @Composable
