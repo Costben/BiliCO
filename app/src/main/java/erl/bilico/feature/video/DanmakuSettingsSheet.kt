@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
@@ -50,6 +51,7 @@ internal fun DanmakuSettingsSheet(
     OverlayBottomSheet(
         show = show,
         title = "弹幕设置",
+        insideMargin = DpSize(12.dp, 0.dp),
         endAction = {
             SheetActionButton(
                 onClick = { confirmReset = true },

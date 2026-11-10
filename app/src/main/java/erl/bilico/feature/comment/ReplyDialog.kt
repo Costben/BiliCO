@@ -2,26 +2,23 @@ package erl.bilico.feature.comment
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,26 +33,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import erl.bilico.data.model.Comment
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
+import io.github.suqi8.coui.kmp.basic.Button
+import io.github.suqi8.coui.kmp.basic.ButtonSize
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.TextField
 import io.github.suqi8.coui.kmp.basic.TextFieldMode
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Close
+import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
+import io.github.suqi8.coui.kmp.squircle.squircleSurface
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -73,6 +68,7 @@ internal fun ReplyDialog(
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    var show by remember(comment.id) { mutableStateOf(false) }
     var items by remember(comment.id) { mutableStateOf<List<Comment>>(emptyList()) }
     var page by remember(comment.id) { mutableIntStateOf(0) }
     var totalCount by remember(comment.id) { mutableIntStateOf(comment.replyCount) }
@@ -85,6 +81,8 @@ internal fun ReplyDialog(
     var toast by remember(comment.id) { mutableStateOf<String?>(null) }
     var imageViewer by remember(comment.id) { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
     val listState = rememberLazyListState()
+
+    LaunchedEffect(comment.id) { show = true }
 
     fun showToast(message: String) {
         toast = message
@@ -213,181 +211,159 @@ internal fun ReplyDialog(
             }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
+    val density = LocalDensity.current
+    val imeBottom = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+    val keyboardGapProgress = (imeBottom / 80.dp).coerceIn(0f, 1f)
+    val bottomGap = 24.dp + (6.dp - 24.dp) * keyboardGapProgress
+
+    OverlayBottomSheet(
+        show = show,
+        title = "回复（${maxOf(totalCount, items.size)}）",
+        showDragHandle = false,
+        insideMargin = DpSize(12.dp, bottomGap),
+        panelPaddingBottom = 0.dp,
+        onDismissRequest = { show = false },
+        onDismissFinished = onDismiss,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            Column(
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.78f)
-                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
-                    .background(COUITheme.colorScheme.background)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    )
-                    .navigationBarsPadding()
-                    .imePadding(),
+                    .heightIn(min = 200.dp, max = 460.dp),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "回复（${maxOf(totalCount, items.size)}）",
-                        style = COUITheme.textStyles.body1,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Icon(
-                        imageVector = COUIIcons.Close,
-                        contentDescription = "关闭",
+                when {
+                    items.isEmpty() && isLoading -> Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .clickable(onClick = onDismiss)
-                            .padding(6.dp),
-                        tint = COUITheme.colorScheme.onSurfaceSecondary,
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(size = 22.dp)
+                    }
+
+                    items.isEmpty() && error != null -> ErrorState(
+                        message = error.orEmpty(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        onRetry = { loadNext() },
                     )
-                }
-                HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
 
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                ) {
-                    when {
-                        items.isEmpty() && isLoading -> Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator(size = 22.dp)
+                    items.isEmpty() -> Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        EmptyState("还没有回复")
+                    }
+
+                    else -> LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(items, key = { it.id }) { reply ->
+                            BiliCommentItem(
+                                comment = reply,
+                                onLike = { toggleLike(reply) },
+                                onDislike = { toggleDislike(reply) },
+                                onReply = { replyTarget = reply },
+                                onOpenUser = onOpenUser,
+                                onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
+                                isSubReply = true,
+                            )
                         }
-
-                        items.isEmpty() && error != null -> ErrorState(
-                            message = error.orEmpty(),
-                            modifier = Modifier.fillMaxSize(),
-                            onRetry = { loadNext() },
-                        )
-
-                        items.isEmpty() -> EmptyState("还没有回复")
-
-                        else -> LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            items(items, key = { it.id }) { reply ->
-                                BiliCommentItem(
-                                    comment = reply,
-                                    onLike = { toggleLike(reply) },
-                                    onDislike = { toggleDislike(reply) },
-                                    onReply = { replyTarget = reply },
-                                    onOpenUser = onOpenUser,
-                                    onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
-                                    isSubReply = true,
-                                )
-                            }
-                            if (isLoading) {
-                                item(key = "loading") {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(40.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        CircularProgressIndicator(size = 16.dp)
-                                    }
+                        if (isLoading) {
+                            item(key = "loading") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(40.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(size = 16.dp)
                                 }
                             }
                         }
                     }
-
-                    toast?.let { msg ->
-                        Text(
-                            text = msg,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 12.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xCC000000))
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            style = COUITheme.textStyles.footnote2,
-                            color = Color.White,
-                        )
-                    }
                 }
 
-                HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
-                Column(
+                toast?.let { msg ->
+                    Text(
+                        text = msg,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 12.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xCC000000))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = COUITheme.textStyles.footnote2,
+                        color = Color.White,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            replyTarget?.let { target ->
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 2.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    replyTarget?.let { target ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "正在回复 @${target.userName}",
-                                style = COUITheme.textStyles.footnote2,
-                                color = COUITheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = "取消",
-                                style = COUITheme.textStyles.footnote2,
-                                color = COUITheme.colorScheme.onSurfaceSecondary,
-                                modifier = Modifier
-                                    .clickable { replyTarget = null }
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
-                    }
-                    Row(
+                    Text(
+                        text = "正在回复 @${target.userName}",
+                        style = COUITheme.textStyles.footnote2,
+                        color = COUITheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "取消",
+                        style = COUITheme.textStyles.footnote2,
+                        color = COUITheme.colorScheme.onSurfaceSecondary,
+                        modifier = Modifier
+                            .clickable { replyTarget = null }
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .squircleSurface(
+                            color = COUITheme.colorScheme.surfaceContainer,
+                            cornerRadius = 20.dp,
+                        ),
+                ) {
+                    TextField(
+                        value = draft,
+                        onValueChange = { draft = it },
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextField(
-                            value = draft,
-                            onValueChange = { draft = it },
-                            modifier = Modifier.weight(1f),
-                            label = "回复 @${(replyTarget ?: comment).userName}",
-                            backgroundMode = TextFieldMode.Rectangle,
-                            maxLines = 3,
-                            minLines = 1,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        TextButton(
-                            text = if (isSending) "发送中" else "发送",
-                            enabled = draft.isNotBlank() && !isSending,
-                            onClick = { sendReply() },
-                        )
-                    }
+                        label = "回复 @${(replyTarget ?: comment).userName}",
+                        backgroundMode = TextFieldMode.None,
+                        insideMargin = DpSize(12.dp, 10.dp),
+                        maxLines = 3,
+                        minLines = 1,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = { sendReply() },
+                    enabled = draft.isNotBlank() && !isSending,
+                    size = ButtonSize.Small,
+                ) {
+                    Text(
+                        text = if (isSending) "发送中" else "发送",
+                        modifier = Modifier.padding(end = 2.dp),
+                    )
                 }
             }
         }

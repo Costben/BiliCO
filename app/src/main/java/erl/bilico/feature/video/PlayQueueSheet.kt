@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import erl.bilico.ui.PlayQueue
 import erl.bilico.ui.QueuedVideo
@@ -49,7 +50,7 @@ internal fun PlayQueueSheet(
     OverlayBottomSheet(
         show = visible,
         title = "播放队列",
-        showDragHandle = true,
+        insideMargin = DpSize(12.dp, 0.dp),
         onDismissRequest = onDismiss,
         onDismissFinished = onDismiss,
     ) {
@@ -57,7 +58,7 @@ internal fun PlayQueueSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 520.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             itemsIndexed(
