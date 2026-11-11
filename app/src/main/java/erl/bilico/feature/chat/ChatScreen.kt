@@ -204,6 +204,9 @@ fun ChatScreen(
                 }
             },
             modifier = Modifier.weight(1f),
+            // 私信对话页的弹层（表情、发送失败重试、个人空间）一开一关就会让 backdrop 停止录制，
+            // 窗口级材质随即丢几帧模糊。改走 COUI 引擎，采样本页列表的 layerBackdrop。
+            platformBarMaterial = false,
         ) {
             if (state.isLoading) {
                 item(key = "loading") { LoadingState() }

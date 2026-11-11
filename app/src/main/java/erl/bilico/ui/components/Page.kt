@@ -44,6 +44,7 @@ import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
 import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
+import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -54,6 +55,10 @@ import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
  *
  * 列表录进 backdrop，顶栏浮在上面采样它做渐变模糊；末项靠 contentPadding 抬到导航条之上。
  * 页面内容全部以列表项给出，滚动时顶栏才有东西可采。
+ *
+ * 顶栏默认走窗口级材质（ColorOS 的系统模糊）。页面里有会开关 backdrop 录制的弹层时——
+ * 菜单、对话框——系统会在录制停止后丢几帧模糊，看起来就是顶栏闪一下；这种页面传
+ * [platformBarMaterial] = false，改用 COUI 自己的引擎采样 [backdrop]，不会掉。
  */
 @Composable
 fun SecondaryPage(
@@ -63,6 +68,7 @@ fun SecondaryPage(
     listState: LazyListState = rememberLazyListState(),
     actions: @Composable RowScope.() -> Unit = {},
     topBar: (@Composable () -> Unit)? = null,
+    platformBarMaterial: Boolean = true,
     content: LazyListScope.() -> Unit,
 ) {
     val pageColor = pageContainerColor()
@@ -93,6 +99,7 @@ fun SecondaryPage(
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
             LocalEdgeToEdge provides true,
+            LocalPlatformAppBarMaterialEnabled provides platformBarMaterial,
         ) {
             PinnedBarDensity {
                 if (topBar != null) {

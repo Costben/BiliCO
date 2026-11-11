@@ -41,12 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.itos.coui.backdrop.couiBackdrop
-import com.itos.coui.backdrop.rememberCouiBackdrop
-import com.itos.coui.chip.ChipTabButton
-import com.itos.coui.chip.ChipTabRow
-import com.itos.coui.chip.CouiChipTabItem
-import com.itos.coui.effect.CouiFloatingRenderer
 import erl.bilico.data.model.ImSessionUi
 import erl.bilico.data.model.MessageEntry
 import erl.bilico.data.model.MessageKind
@@ -65,6 +59,9 @@ import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.components.GlassChipButton
+import erl.bilico.ui.components.GlassChipItem
+import erl.bilico.ui.components.GlassChipRow
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.MailOutlineIcon
 import erl.bilico.ui.components.navBottomPadding
@@ -73,6 +70,7 @@ import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
+import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
@@ -99,28 +97,11 @@ fun MessageScreen(
     val scope = rememberCoroutineScope()
     val pageColor = pageContainerColor()
     val layerBackdrop = rememberLayerBackdrop()
-    val couiBackdrop = rememberCouiBackdrop()
-    val renderers = remember(MESSAGE_TABS.size) { List(MESSAGE_TABS.size) { CouiFloatingRenderer.standalone() } }
-    val leadingRenderer = remember { CouiFloatingRenderer.standalone() }
 
     var menuExpanded by remember { mutableStateOf(false) }
 
     val chipTabItems = remember(MESSAGE_TABS) {
-        MESSAGE_TABS.mapIndexed { index, tab ->
-            CouiChipTabItem(
-                key = index,
-                label = tab.label,
-                icon = tab.iconVector?.let { vector ->
-                    {
-                        Icon(
-                            imageVector = vector,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                },
-            )
-        }
+        MESSAGE_TABS.map { tab -> GlassChipItem(label = tab.label, icon = tab.iconVector) }
     }
 
     // 滑停一页就补拉这一类；点标签走的是同一个入口。
@@ -134,7 +115,6 @@ fun MessageScreen(
     }
 
     val density = LocalDensity.current
-    val dark = COUITheme.colorScheme.background.luminance() < 0.5f
     // 顶栏加分类栏的总高度；列表从它下面起排，静止时第一条不会被分类栏压住。
     var headerHeight by remember { mutableStateOf(HEADER_HEIGHT_FALLBACK) }
 
@@ -148,7 +128,6 @@ fun MessageScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .layerBackdropIf(BlurEffectsEnabled, layerBackdrop)
-                .couiBackdrop(couiBackdrop)
                 .background(pageColor),
             beyondViewportPageCount = 1,
         ) { index ->
@@ -178,6 +157,10 @@ fun MessageScreen(
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) layerBackdrop else null,
             LocalEdgeToEdge provides true,
+            // 窗口级材质在本页会掉帧：分类菜单、弹层开关都会让本页的 backdrop 录制启停，
+            // 系统随即丢几帧模糊（Shell 底栏当年就是同一个毛病）。改走 COUI 的引擎，
+            // 采样上面那块 layerBackdrop，录制是由我们掌控的图层，不会被合成器掐掉。
+            LocalPlatformAppBarMaterialEnabled provides false,
         ) {
             PinnedBarDensity {
                 SmallTopAppBar(
@@ -194,34 +177,21 @@ fun MessageScreen(
                     gradientGlassExtraHeight = 16.dp,
                     navigationIcon = { BackIconButton(onClick = nav::pop) },
                     bottomContent = {
-                        ChipTabRow(
+                        GlassChipRow(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(bottom = 6.dp),
                             items = chipTabItems,
-                            selectedKey = pagerState.currentPage,
-                            onSelectedKeyChange = { key ->
-                                scope.launch { pagerState.animateScrollToPage(key as Int) }
+                            selectedIndex = pagerState.currentPage,
+                            onSelected = { index ->
+                                scope.launch { pagerState.animateScrollToPage(index) }
                             },
-                            backdrop = couiBackdrop,
-                            dark = dark,
-                            renderers = renderers,
-                            leadingAction = {
+                            leading = {
                                 Box {
-                                    ChipTabButton(
-                                        onClick = { menuExpanded = true },
+                                    GlassChipButton(
+                                        icon = COUIIcons.GridView,
                                         contentDescription = "全部分类",
-                                        backdrop = couiBackdrop,
-                                        dark = dark,
-                                        contourGlowEnabled = true,
-                                        renderer = leadingRenderer,
-                                        icon = {
-                                            Icon(
-                                                imageVector = COUIIcons.GridView,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                        },
+                                        onClick = { menuExpanded = true },
                                     )
                                     CouiPopupMenu(
                                         show = menuExpanded,
