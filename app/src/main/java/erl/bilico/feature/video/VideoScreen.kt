@@ -115,14 +115,11 @@ fun VideoScreen(
         fullscreen = value
     }
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    // 简介 / 评论两页横向翻；点标签翻页，滑完一页再把标签写回去。
-    // 回写必须等翻页停稳：动画途中 currentPage 会先经过另一页，写回去会把动画打断在半路。
+    // 简介 / 评论两页横向翻。页签跟着 currentPage 走：手指把页面拖过半就切，
+    // 和私信页一致；点标签时直接开翻页动画，不再绕一圈回写状态。
     val detailPager = rememberPagerState(initialPage = tab, pageCount = { DETAIL_PAGES.size })
-    LaunchedEffect(tab) {
-        if (detailPager.settledPage != tab) detailPager.animateScrollToPage(tab)
-    }
     LaunchedEffect(detailPager) {
-        snapshotFlow { detailPager.settledPage }
+        snapshotFlow { detailPager.currentPage }
             .distinctUntilChanged()
             .collect { tab = it }
     }
