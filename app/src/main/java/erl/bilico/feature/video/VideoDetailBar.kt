@@ -332,21 +332,22 @@ private val MoveEase = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)
 /**
  * 专为播放页「简介 / 评论」标签栏打造的超平滑毛玻璃材质容器：
  *
- * 1. 顶部无痕衔接：
- *    在距离顶栏（或折叠态播放栏）最近的顶部区间，底色保持纯实色护航（Alpha ≈ 1.0f），
- *    导数平滑为零切入顶栏，向上滚动的任何内容在到达接缝前已完全被实色平滑隐没，与上方顶栏浑然一体，
- *    彻底消除顶部分界线。
+ * 1. 顶部无痕纯实色护航：
+ *    从顶部（y = 0）一直延伸覆盖至胶囊上半部（0.00f ~ 0.60f），底色保持 100% 纯实色（Alpha = 1.0f），
+ *    向上滚动的任何内容在到达胶囊上沿之前就已被实色完全彻底隐没遮挡；
+ *    与上方折叠顶栏（继续播放所在行）同为 pageContainerColor() 纯实色，两者视觉完全连为一体，
+ *    彻底消除顶栏与评论栏之间的任何横线、接缝与明暗凹槽。
  *
- * 2. 底部超宽自然羽化：
- *    消除任何人工折角与突变点，让渐进模糊（ProgressiveBlur）从顶部一路自然向下衰减消融，
- *    并在底部额外延伸，底色与模糊同步柔和归零，彻底消除突兀的“模糊起始线”。
+ * 2. 底部轻量羽化（刚好下来一点点）：
+ *    extraHeight 缩减为 8dp（总高 56dp，超出 32dp 胶囊底边仅 16dp），
+ *    在胶囊下方轻微自然羽化即完全归零，绝不遮挡大面积评论内容。
  */
 @Composable
 internal fun DetailBarGlassSurface(
     modifier: Modifier = Modifier,
     containerColor: Color = pageContainerColor(),
     backdrop: LayerBackdrop? = null,
-    extraHeight: Dp = 36.dp,
+    extraHeight: Dp = 10.dp,
     content: @Composable () -> Unit,
 ) {
     val isDark = containerColor.luminance() < 0.5f
@@ -354,46 +355,30 @@ internal fun DetailBarGlassSurface(
     val extraHeightPx = with(LocalDensity.current) { extraHeight.roundToPx() }
 
     val gradientBrush = remember(containerColor, isDark) {
-        if (isDark) {
-            Brush.verticalGradient(
-                0.00f to containerColor,
-                0.15f to containerColor.copy(alpha = 0.98f),
-                0.30f to containerColor.copy(alpha = 0.92f),
-                0.45f to containerColor.copy(alpha = 0.78f),
-                0.58f to containerColor.copy(alpha = 0.56f),
-                0.70f to containerColor.copy(alpha = 0.35f),
-                0.82f to containerColor.copy(alpha = 0.16f),
-                0.92f to containerColor.copy(alpha = 0.04f),
-                1.00f to containerColor.copy(alpha = 0.00f),
-            )
-        } else {
-            Brush.verticalGradient(
-                0.00f to containerColor,
-                0.15f to containerColor.copy(alpha = 0.99f),
-                0.30f to containerColor.copy(alpha = 0.94f),
-                0.45f to containerColor.copy(alpha = 0.82f),
-                0.58f to containerColor.copy(alpha = 0.62f),
-                0.70f to containerColor.copy(alpha = 0.40f),
-                0.82f to containerColor.copy(alpha = 0.20f),
-                0.92f to containerColor.copy(alpha = 0.05f),
-                1.00f to containerColor.copy(alpha = 0.00f),
-            )
-        }
+        Brush.verticalGradient(
+            0.00f to containerColor,
+            0.72f to containerColor,
+            0.82f to containerColor.copy(alpha = 0.85f),
+            0.90f to containerColor.copy(alpha = 0.45f),
+            0.96f to containerColor.copy(alpha = 0.15f),
+            1.00f to containerColor.copy(alpha = 0.00f),
+        )
     }
 
     val materialModifier = if (blurEnabled) {
+        val targetBackdrop = backdrop!!
         Modifier
             .layoutId("material")
             .fillMaxSize()
             .progressiveTextureBlur(
-                backdrop = backdrop!!,
+                backdrop = targetBackdrop,
                 shape = RectangleShape,
-                blurRadius = 26f,
+                blurRadius = 16f,
                 gradient = ProgressiveBlur(
                     angle = 90f,
-                    startFraction = 0.00f,
+                    startFraction = 0.65f,
                     endFraction = 1.00f,
-                    curve = 1.8f,
+                    curve = 1.2f,
                 ),
             )
             .background(gradientBrush)

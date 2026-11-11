@@ -116,15 +116,9 @@ fun VideoScreen(
         manualEnterAwaitingLandscape = value && !portraitVideo && deviceSide == 0
         fullscreen = value
     }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    // 简介 / 评论两页横向翻。页签跟着 currentPage 走：手指把页面拖过半就切，
-    // 和私信页一致；点标签时直接开翻页动画，不再绕一圈回写状态。
-    val detailPager = rememberPagerState(initialPage = tab, pageCount = { DETAIL_PAGES.size })
-    LaunchedEffect(detailPager) {
-        snapshotFlow { detailPager.currentPage }
-            .distinctUntilChanged()
-            .collect { tab = it }
-    }
+    // 简介 / 评论两页横向翻。直接读 detailPager.currentPage 同步驱动页签，
+    // 跟手无延迟，与私信页完全一致；点标签时开翻页动画。
+    val detailPager = rememberPagerState(pageCount = { DETAIL_PAGES.size })
     val infoListState = rememberLazyListState()
     val commentListState = rememberLazyListState()
     var qualityDialogVisible by remember { mutableStateOf(false) }
@@ -308,7 +302,7 @@ fun VideoScreen(
         portraitResizable = true,
         playing = isPlaying,
         canExpand = {
-            val list = if (tab == 0) infoListState else commentListState
+            val list = if (detailPager.currentPage == 0) infoListState else commentListState
             list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0
         },
         playerContent = {
@@ -535,7 +529,7 @@ fun VideoScreen(
                     backdrop = if (BlurEffectsEnabled) detailLayerBackdrop else null,
                 ) {
                     VideoDetailBar(
-                        selected = tab,
+                        selected = detailPager.currentPage,
                         onSelect = { page -> scope.launch { detailPager.animateScrollToPage(page) } },
                         commentCount = state.detail?.reply ?: 0L,
                         danmakuEnabled = danmakuEnabled,
