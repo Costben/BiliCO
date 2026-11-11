@@ -47,6 +47,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.FeedVideo
@@ -109,14 +110,15 @@ internal fun VideoInfoTab(
     onFollow: () -> Unit,
     onShare: () -> Unit,
     listState: LazyListState = rememberLazyListState(),
+    topInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     when {
-        detail == null && isLoading -> LoadingState(modifier)
+        detail == null && isLoading -> LoadingState(modifier.padding(top = topInset))
 
         detail == null -> ErrorState(
             message = error ?: "视频加载失败",
-            modifier = modifier,
+            modifier = modifier.padding(top = topInset),
             onRetry = onRetry,
         )
 
@@ -143,6 +145,7 @@ internal fun VideoInfoTab(
             onFollow = onFollow,
             onShare = onShare,
             listState = listState,
+            topInset = topInset,
             modifier = modifier,
         )
     }
@@ -172,6 +175,7 @@ private fun InfoContent(
     onFollow: () -> Unit,
     onShare: () -> Unit,
     listState: LazyListState,
+    topInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     // 标题与简介共用一次展开：点一下标题，标题放开的同时简介也跟着放开。
@@ -191,7 +195,12 @@ private fun InfoContent(
     LazyColumn(
         state = listState,
         modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 12.dp + topInset,
+            end = 16.dp,
+            bottom = 12.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "up") {

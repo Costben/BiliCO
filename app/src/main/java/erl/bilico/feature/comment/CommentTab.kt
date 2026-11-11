@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -70,6 +71,7 @@ fun CommentTab(
     modifier: Modifier = Modifier,
     type: Int = 1,
     listState: LazyListState = rememberLazyListState(),
+    topInset: Dp = 0.dp,
 ) {
     val viewModel: CommentViewModel = viewModel(key = "comment-$type-$oid") {
         CommentViewModel(container.comments, oid, type)
@@ -97,18 +99,28 @@ fun CommentTab(
                 .fillMaxWidth(),
         ) {
             when {
-                state.isLoading && state.items.isEmpty() -> LoadingState()
+                state.isLoading && state.items.isEmpty() ->
+                    LoadingState(Modifier.padding(top = topInset))
 
                 state.items.isEmpty() -> if (state.error != null) {
-                    ErrorState(state.error.orEmpty(), onRetry = viewModel::refresh)
+                    ErrorState(
+                        message = state.error.orEmpty(),
+                        modifier = Modifier.padding(top = topInset),
+                        onRetry = viewModel::refresh,
+                    )
                 } else {
-                    EmptyState("还没有评论")
+                    EmptyState("还没有评论", Modifier.padding(top = topInset))
                 }
 
                 else -> LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 88.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 12.dp + topInset,
+                        end = 16.dp,
+                        bottom = 88.dp,
+                    ),
                 ) {
                     item(key = "header") {
                         Row(

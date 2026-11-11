@@ -128,7 +128,7 @@ internal fun VideoDetailBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(DETAIL_BAR_HEIGHT)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -309,6 +309,14 @@ private fun DetailSendButton(
 
 /** 弹幕输入框与发送按钮共用的紧凑高度；与 COUI-Kit ChipTab 32dp 一致 */
 private val DETAIL_CAPSULE_HEIGHT = 32.dp
+
+/**
+ * 「简介 / 评论」标签栏的高度。
+ *
+ * 详情页把列表顶到整块区域的最上面，由这条栏浮在上面盖住滚过去的正文；
+ * 列表的顶部内边距要按这个高度留，静止时第一行才不会被栏压住。
+ */
+internal val DETAIL_BAR_HEIGHT = 48.dp
 
 /** COUI `SearchBar` 在 `outsideEndAction` 后面固定垫的 16dp，展开时补回来。 */
 private val ACTION_END_SLACK = 16.dp

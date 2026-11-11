@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,6 +13,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -28,6 +28,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -44,11 +45,18 @@ import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import erl.bilico.ui.layerBackdropIf
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlay
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
+import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Playlist
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -418,35 +426,34 @@ fun VideoScreen(
         detailContent = {
             val navBarBottom = rememberStableNavBarBottomDp()
             val detailBackdrop = rememberCouiBackdrop()
+            val detailLayerBackdrop = rememberLayerBackdrop()
             val pageBg = pageContainerColor()
-            Column(
+            val density = LocalDensity.current
+            // 列表整块铺到最上面，滚动时正文从标签栏底下穿过去，由栏的毛玻璃盖住；
+            // 静止时靠列表自己的顶部内边距让开这一条，第一行不会被栏压住。
+            val contentTop = DETAIL_BAR_HEIGHT + 12.dp
+            // 栏的材质跟着当前这页列表滚了多远淡入：静止时完全透明，滚过 30dp 到满强度，
+            // 与顶栏的 AppBarBlurOverlay 同一套规则。
+            val barScrollFraction: () -> Float = {
+                val list = if (detailPager.currentPage == 0) infoListState else commentListState
+                val scrolled = if (list.firstVisibleItemIndex > 0) {
+                    Float.MAX_VALUE
+                } else {
+                    list.firstVisibleItemScrollOffset.toFloat()
+                }
+                AppBarBlurOverlayDefaults.scrollAlpha(scrolled, density)
+            }
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(pageBg),
             ) {
-                VideoDetailBar(
-                    selected = tab,
-                    onSelect = { tab = it },
-                    commentCount = state.detail?.reply ?: 0L,
-                    danmakuEnabled = danmakuEnabled,
-                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                    composing = danmakuComposing,
-                    draft = danmakuDraft,
-                    onDraftChange = { danmakuDraft = it },
-                    onComposingChange = {
-                        danmakuComposing = it
-                        if (!it) danmakuDraft = ""
-                    },
-                    onSend = sendDanmaku,
-                    backdrop = detailBackdrop,
-                )
-
                 HorizontalPager(
                     state = detailPager,
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .padding(bottom = navBarBottom)
+                        .layerBackdropIf(BlurEffectsEnabled, detailLayerBackdrop)
                         .couiBackdrop(detailBackdrop)
                         .background(pageBg),
                     beyondViewportPageCount = 0,
@@ -501,6 +508,7 @@ fun VideoScreen(
                                 onFollow = viewModel::toggleFollow,
                                 onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
                                 listState = infoListState,
+                                topInset = contentTop,
                                 modifier = Modifier.fillMaxSize(),
                             )
                             if (nav.playQueue.items.isNotEmpty()) {
@@ -531,10 +539,41 @@ fun VideoScreen(
                                         if (mid > 0L) nav.push(Route.Space(mid))
                                     },
                                     listState = commentListState,
+                                    topInset = contentTop,
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
                         }
+                    }
+                }
+
+                CompositionLocalProvider(
+                    LocalBackdrop provides if (BlurEffectsEnabled) detailLayerBackdrop else null,
+                    LocalEdgeToEdge provides true,
+                ) {
+                    AppBarBlurOverlay(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth(),
+                        containerColor = pageBg,
+                        scrollFraction = barScrollFraction,
+                    ) {
+                        VideoDetailBar(
+                            selected = tab,
+                            onSelect = { page -> scope.launch { detailPager.animateScrollToPage(page) } },
+                            commentCount = state.detail?.reply ?: 0L,
+                            danmakuEnabled = danmakuEnabled,
+                            onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                            composing = danmakuComposing,
+                            draft = danmakuDraft,
+                            onDraftChange = { danmakuDraft = it },
+                            onComposingChange = {
+                                danmakuComposing = it
+                                if (!it) danmakuDraft = ""
+                            },
+                            onSend = sendDanmaku,
+                            backdrop = detailBackdrop,
+                        )
                     }
                 }
             }
