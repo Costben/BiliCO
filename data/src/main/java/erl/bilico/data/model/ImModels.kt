@@ -3,6 +3,7 @@ package erl.bilico.data.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -34,6 +35,19 @@ data class ImSessionItem(
     val maxSeqno: Long = 0,
     @SerialName("last_msg")
     val lastMsg: ImLastMsg? = null,
+    /** 系统会话类型，0 表示普通用户会话。 */
+    @SerialName("system_msg_type")
+    val systemMsgType: Int = 0,
+    /** 系统会话自带的名称与头像，普通用户会话为空。 */
+    @SerialName("account_info")
+    val accountInfo: ImAccountInfo? = null,
+)
+
+@Serializable
+data class ImAccountInfo(
+    val name: String = "",
+    @SerialName("pic_url")
+    val picUrl: String = "",
 )
 
 @Serializable
@@ -123,7 +137,13 @@ data class ImMessageUi(
 object ImContentParser {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    fun parse(content: String, msgType: Int): String {
+    /**
+     * 把私信 content 转成可读文本。
+     *
+     * @param preview 会话列表预览。系统通知这类卡片消息正文很长，列表里只取标题，
+     *   聊天记录里仍然展示完整正文。
+     */
+    fun parse(content: String, msgType: Int, preview: Boolean = false): String {
         if (content.isBlank()) return ""
         return runCatching {
             when (msgType) {
@@ -134,7 +154,7 @@ object ImContentParser {
                 2 -> "[图片]"
                 5 -> "[撤回了一条消息]"
                 7 -> "[分享了内容]"
-                10 -> "[系统通知]"
+                10 -> if (preview) notificationTitle(content) else "[系统通知]"
                 else -> {
                     val element = json.parseToJsonElement(content)
                     element.jsonObject["content"]?.jsonPrimitive?.content ?: content
@@ -142,4 +162,11 @@ object ImContentParser {
             }
         }.getOrDefault(content)
     }
+
+    private fun notificationTitle(content: String): String = runCatching {
+        val obj = json.parseToJsonElement(content).jsonObject
+        val title = obj["title"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val text = obj["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        title.ifBlank { text }
+    }.getOrDefault("").ifBlank { "[系统通知]" }
 }

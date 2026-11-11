@@ -43,28 +43,34 @@ class ImRepository(
                 val data = resp.data ?: error("私信会话数据为空")
                 val list = data.sessionList
 
-                // 批量获取未缓存的 talker 用户名和头像
+                // 系统会话（官方通知、各类小助手）的 talker_id 不是真实用户，空间资料接口查不到，
+                // 名称与头像只存在于 account_info 里，因此只为普通会话补齐资料。
                 coroutineScope {
-                    list.map { item ->
-                        async {
-                            ensureTalkerProfile(item.talkerId)
-                        }
-                    }.awaitAll()
+                    list.filter { it.accountInfo == null && it.systemMsgType == 0 }
+                        .map { item ->
+                            async {
+                                ensureTalkerProfile(item.talkerId)
+                            }
+                        }.awaitAll()
                 }
 
                 val uiList = list.map { item ->
                     val cached = profileCache[item.talkerId]
                     val lastMsg = item.lastMsg
                     val lastMsgContent = if (lastMsg != null) {
-                        ImContentParser.parse(lastMsg.content, lastMsg.msgType)
+                        ImContentParser.parse(lastMsg.content, lastMsg.msgType, preview = true)
                     } else {
                         ""
                     }
                     val ts = lastMsg?.timestamp ?: 0L
+                    val name = item.accountInfo?.name.orEmpty()
+                        .ifBlank { cached?.first.orEmpty() }
+                        .ifBlank { SYSTEM_SESSION_NAMES[item.systemMsgType] ?: "用户 ${item.talkerId}" }
                     ImSessionUi(
                         talkerId = item.talkerId,
-                        name = cached?.first?.ifBlank { "用户 ${item.talkerId}" } ?: "用户 ${item.talkerId}",
-                        face = cached?.second.orEmpty(),
+                        name = name,
+                        face = item.accountInfo?.picUrl.orEmpty()
+                            .ifBlank { cached?.second.orEmpty() },
                         lastMessage = lastMsgContent,
                         timeText = Formatters.formatTimeAgo(ts),
                         unreadCount = item.unreadCount,
@@ -161,3 +167,12 @@ class ImRepository(
         }
     }
 }
+
+/** `system_msg_type` 到名称的兜底映射，仅在接口没下发 account_info 时使用。 */
+private val SYSTEM_SESSION_NAMES = mapOf(
+    1 to "主播小助手",
+    5 to "系统通知",
+    7 to "UP主小助手",
+    8 to "客服消息",
+    9 to "支付小助手",
+)
