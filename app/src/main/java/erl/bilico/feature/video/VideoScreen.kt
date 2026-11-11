@@ -49,13 +49,9 @@ import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.layerBackdropIf
-import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlay
-import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
-import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Playlist
@@ -428,21 +424,9 @@ fun VideoScreen(
             val detailBackdrop = rememberCouiBackdrop()
             val detailLayerBackdrop = rememberLayerBackdrop()
             val pageBg = pageContainerColor()
-            val density = LocalDensity.current
             // 列表整块铺到最上面，滚动时正文从标签栏底下穿过去，由栏的毛玻璃盖住；
             // 静止时靠列表自己的顶部内边距让开这一条，第一行不会被栏压住。
             val contentTop = DETAIL_BAR_HEIGHT + 12.dp
-            // 栏的材质跟着当前这页列表滚了多远淡入：静止时完全透明，滚过 30dp 到满强度，
-            // 与顶栏的 AppBarBlurOverlay 同一套规则。
-            val barScrollFraction: () -> Float = {
-                val list = if (detailPager.currentPage == 0) infoListState else commentListState
-                val scrolled = if (list.firstVisibleItemIndex > 0) {
-                    Float.MAX_VALUE
-                } else {
-                    list.firstVisibleItemScrollOffset.toFloat()
-                }
-                AppBarBlurOverlayDefaults.scrollAlpha(scrolled, density)
-            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -547,34 +531,29 @@ fun VideoScreen(
                     }
                 }
 
-                CompositionLocalProvider(
-                    LocalBackdrop provides if (BlurEffectsEnabled) detailLayerBackdrop else null,
-                    LocalEdgeToEdge provides true,
+                DetailBarGlassSurface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(),
+                    containerColor = pageBg,
+                    backdrop = if (BlurEffectsEnabled) detailLayerBackdrop else null,
                 ) {
-                    AppBarBlurOverlay(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth(),
-                        containerColor = pageBg,
-                        scrollFraction = barScrollFraction,
-                    ) {
-                        VideoDetailBar(
-                            selected = tab,
-                            onSelect = { page -> scope.launch { detailPager.animateScrollToPage(page) } },
-                            commentCount = state.detail?.reply ?: 0L,
-                            danmakuEnabled = danmakuEnabled,
-                            onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                            composing = danmakuComposing,
-                            draft = danmakuDraft,
-                            onDraftChange = { danmakuDraft = it },
-                            onComposingChange = {
-                                danmakuComposing = it
-                                if (!it) danmakuDraft = ""
-                            },
-                            onSend = sendDanmaku,
-                            backdrop = detailBackdrop,
-                        )
-                    }
+                    VideoDetailBar(
+                        selected = tab,
+                        onSelect = { page -> scope.launch { detailPager.animateScrollToPage(page) } },
+                        commentCount = state.detail?.reply ?: 0L,
+                        danmakuEnabled = danmakuEnabled,
+                        onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                        composing = danmakuComposing,
+                        draft = danmakuDraft,
+                        onDraftChange = { danmakuDraft = it },
+                        onComposingChange = {
+                            danmakuComposing = it
+                            if (!it) danmakuDraft = ""
+                        },
+                        onSend = sendDanmaku,
+                        backdrop = detailBackdrop,
+                    )
                 }
             }
         },

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,15 +26,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -44,7 +50,9 @@ import com.itos.coui.chip.ChipTab
 import com.itos.coui.effect.CouiFloatingRenderer
 import com.itos.coui.shape.CouiCapsuleShape
 import erl.bilico.data.util.Formatters
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.DanmakuToggle
+import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.anim.folmeSpring
 import io.github.suqi8.coui.kmp.basic.ChipTabData
 import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
@@ -52,6 +60,10 @@ import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.SearchBar
 import io.github.suqi8.coui.kmp.basic.SearchBarDefaults
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.LayerBackdrop
+import io.github.suqi8.coui.kmp.blur.ProgressiveBlur
+import io.github.suqi8.coui.kmp.blur.isBlurEnabled
+import io.github.suqi8.coui.kmp.blur.progressiveTextureBlur
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
@@ -326,3 +338,108 @@ private const val DETAIL_RESIZE_MILLIS = 450
 
 /** COUI 的 `COUIMoveEaseInterpolator`：cubic-bezier(0.3, 0, 0.1, 1)。 */
 private val MoveEase = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)
+
+/**
+ * 专为播放页「简介 / 评论」标签栏打造的超平滑毛玻璃材质容器：
+ *
+ * 1. 顶部无痕衔接：
+ *    在距离顶栏（或折叠态播放栏）最近的顶部区间（0dp ~ 24dp），底色恒为 100% 纯实色（Alpha = 1.0f），
+ *    形成可靠的实色护航平台；向上滚动的任何内容在到达接缝前就已被实色完全平滑隐没，与上方顶栏同色浑然一体，
+ *    彻底消除顶部分界线。
+ *
+ * 2. 底部超宽平滑羽化：
+ *    向下延伸 extraHeight（32dp），从中间优雅的半透明磨砂质感（Alpha ≈ 0.65f）沿着平滑 S 形非线性曲线
+ *    （0.65 -> 0.38 -> 0.16 -> 0.03 -> 0.00）极其轻柔地消融于背景中，毛玻璃模糊也随梯度柔和淡出，
+ *    彻底消除原本在胶囊底边突兀断层的“模糊起始线”。
+ */
+@Composable
+internal fun DetailBarGlassSurface(
+    modifier: Modifier = Modifier,
+    containerColor: Color = pageContainerColor(),
+    backdrop: LayerBackdrop? = null,
+    extraHeight: Dp = 32.dp,
+    content: @Composable () -> Unit,
+) {
+    val isDark = containerColor.luminance() < 0.5f
+    val blurEnabled = BlurEffectsEnabled && isBlurEnabled() && backdrop != null
+    val extraHeightPx = with(LocalDensity.current) { extraHeight.roundToPx() }
+
+    val gradientBrush = remember(containerColor, isDark) {
+        if (isDark) {
+            Brush.verticalGradient(
+                0.00f to containerColor,
+                0.30f to containerColor,
+                0.45f to containerColor.copy(alpha = 0.88f),
+                0.60f to containerColor.copy(alpha = 0.58f),
+                0.72f to containerColor.copy(alpha = 0.32f),
+                0.84f to containerColor.copy(alpha = 0.12f),
+                0.94f to containerColor.copy(alpha = 0.02f),
+                1.00f to containerColor.copy(alpha = 0.00f),
+            )
+        } else {
+            Brush.verticalGradient(
+                0.00f to containerColor,
+                0.30f to containerColor,
+                0.45f to containerColor.copy(alpha = 0.92f),
+                0.60f to containerColor.copy(alpha = 0.65f),
+                0.72f to containerColor.copy(alpha = 0.38f),
+                0.84f to containerColor.copy(alpha = 0.16f),
+                0.94f to containerColor.copy(alpha = 0.03f),
+                1.00f to containerColor.copy(alpha = 0.00f),
+            )
+        }
+    }
+
+    val materialModifier = if (blurEnabled) {
+        Modifier
+            .layoutId("material")
+            .fillMaxSize()
+            .progressiveTextureBlur(
+                backdrop = backdrop!!,
+                shape = RectangleShape,
+                blurRadius = 26f,
+                gradient = ProgressiveBlur(
+                    angle = 90f,
+                    startFraction = 0.30f,
+                    endFraction = 1f,
+                    curve = 2.4f,
+                ),
+            )
+            .background(gradientBrush)
+    } else {
+        Modifier
+            .layoutId("material")
+            .fillMaxSize()
+            .background(gradientBrush)
+    }
+
+    Layout(
+        content = {
+            Box(modifier = materialModifier)
+            Box(
+                modifier = Modifier.layoutId("content"),
+            ) {
+                content()
+            }
+        },
+        modifier = modifier,
+    ) { measurables, constraints ->
+        val contentPlaceable = measurables
+            .first { it.layoutId == "content" }
+            .measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val width = maxOf(contentPlaceable.width, constraints.minWidth)
+        val height = maxOf(contentPlaceable.height, constraints.minHeight)
+        val materialPlaceable = measurables
+            .firstOrNull { it.layoutId == "material" }
+            ?.measure(
+                Constraints.fixed(
+                    width = width,
+                    height = height + extraHeightPx,
+                ),
+            )
+        layout(width, height) {
+            materialPlaceable?.placeRelative(0, 0)
+            contentPlaceable.placeRelative(0, 0)
+        }
+    }
+}
