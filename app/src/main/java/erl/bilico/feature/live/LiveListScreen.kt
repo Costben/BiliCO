@@ -71,11 +71,16 @@ fun LiveListScreen(
             .collect(report)
     }
 
-    // 双击顶栏：回到第一条并重新拉一遍。
+    // 双击顶栏：直接停在被下拉位置刷新，回顶对齐该位置，刷新完再回顶。
     LaunchedEffect(refreshTick) {
         if (refreshTick == 0 || !active) return@LaunchedEffect
-        gridState.scrollToItem(0)
-        viewModel.refresh()
+        pullState.snapToRefreshing { viewModel.refresh() }
+        if (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0) {
+            if (gridState.firstVisibleItemIndex > 6) {
+                gridState.scrollToItem(6)
+            }
+            gridState.animateScrollToItem(0)
+        }
     }
 
     LaunchedEffect(gridState) {

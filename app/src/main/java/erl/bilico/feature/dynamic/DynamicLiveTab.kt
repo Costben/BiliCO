@@ -89,16 +89,16 @@ internal fun DynamicLiveTab(
 
     val segmentTop = topInset + 8.dp
 
-    // 双击「直播」筛选或双击顶栏：回到顶部后再触发下拉刷新。
+    // 双击「直播」筛选或双击顶栏：直接停在被下拉位置刷新，回顶对齐该位置，刷新完再回顶。
     LaunchedEffect(refreshTick) {
         if (refreshTick == 0 || !active) return@LaunchedEffect
+        pullState.snapToRefreshing { viewModel.refresh() }
         if (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0) {
             if (gridState.firstVisibleItemIndex > 6) {
                 gridState.scrollToItem(6)
             }
             gridState.animateScrollToItem(0)
         }
-        viewModel.refresh()
     }
 
     FullPagePullToRefresh(

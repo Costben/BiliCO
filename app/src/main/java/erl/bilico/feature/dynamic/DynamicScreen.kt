@@ -246,16 +246,16 @@ private fun DynamicContent(
         listAlpha.animateTo(1f, tween(SwapFadeInMillis))
     }
 
-    // 双击底栏当前 Tab / 双击当前筛选 / 双击顶栏：回到顶部后再触发下拉刷新。
+    // 双击底栏当前 Tab / 双击当前筛选 / 双击顶栏：直接停在被下拉位置刷新，回顶对齐该位置，刷新完再回顶。
     LaunchedEffect(refreshTick) {
         if (refreshTick == 0 || !active) return@LaunchedEffect
+        pullState.snapToRefreshing { viewModel.refresh() }
         if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
             if (listState.firstVisibleItemIndex > 6) {
                 listState.scrollToItem(6)
             }
             listState.animateScrollToItem(0)
         }
-        viewModel.refresh()
     }
 
     Box(Modifier.fillMaxSize()) {
