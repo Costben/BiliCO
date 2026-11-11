@@ -194,6 +194,7 @@ fun DynamicDetailScreen(
                                     }
                                 },
                                 onWatchLater = onWatchLater,
+                                onOpenLive = { roomId -> nav.push(Route.LiveRoom(roomId)) },
                             )
                         }
 

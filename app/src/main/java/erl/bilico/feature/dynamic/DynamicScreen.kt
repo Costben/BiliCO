@@ -153,6 +153,7 @@ fun DynamicScreen(
                             }
                         },
                         onWatchLater = onWatchLater,
+                        onOpenLive = { roomId -> nav.push(Route.LiveRoom(roomId)) },
                     )
                 }
             }
@@ -195,6 +196,7 @@ private fun DynamicContent(
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
     onOpenDynamic: (DynamicItemUi) -> Unit,
     onWatchLater: (DynamicVideoCard) -> Unit,
+    onOpenLive: (Long) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -306,6 +308,7 @@ private fun DynamicContent(
                         onOpenImage = onOpenImage,
                         onOpenDynamic = onOpenDynamic,
                         onWatchLater = onWatchLater,
+                        onOpenLive = onOpenLive,
                     )
                 }
 

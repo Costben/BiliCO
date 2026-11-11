@@ -209,6 +209,44 @@ data class DynamicMajor(
     val article: ArticleMajor? = null,
     val draw: DrawMajor? = null,
     val opus: OpusMajor? = null,
+    val live: LiveMajor? = null,
+    /** 开播动态的直播间信息塞在 content 里，是一段 JSON 文本。 */
+    @SerialName("live_rcmd") val liveRcmd: LiveRcmdMajor? = null,
+)
+
+/** 开播动态：`live_rcmd.content` 解出来就是这一层。 */
+@Serializable
+data class LiveRcmdMajor(
+    val content: String = "",
+)
+
+@Serializable
+data class LiveRcmdContent(
+    @SerialName("live_play_info") val playInfo: LiveMajor? = null,
+)
+
+/** 直播间信息，`major.live` 与 `live_rcmd.content.live_play_info` 是同一套字段。 */
+@Serializable
+data class LiveMajor(
+    @SerialName("room_id")
+    @Serializable(with = FlexibleLongSerializer::class)
+    val roomId: Long = 0,
+    val title: String = "",
+    val cover: String = "",
+    @SerialName("area_name") val areaName: String = "",
+    @SerialName("parent_area_name") val parentAreaName: String = "",
+    @SerialName("live_status")
+    @Serializable(with = FlexibleIntSerializer::class)
+    val liveStatus: Int = 0,
+    @SerialName("watched_show") val watchedShow: LiveWatchedShow? = null,
+)
+
+@Serializable
+data class LiveWatchedShow(
+    @Serializable(with = FlexibleLongSerializer::class)
+    val num: Long = 0,
+    @SerialName("text_small") val textSmall: String = "",
+    @SerialName("text_large") val textLarge: String = "",
 )
 
 /** 专栏卡片。`id` 就是 cv 号，正文走 `x/article/view`。 */

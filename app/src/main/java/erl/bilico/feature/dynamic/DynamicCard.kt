@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,7 +22,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -30,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -38,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
+import erl.bilico.data.model.DynamicLiveCard
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.util.Formatters
 import erl.bilico.feature.comment.LikeOutlineIcon
@@ -65,14 +70,20 @@ internal fun DynamicCard(
     modifier: Modifier = Modifier,
     isDetail: Boolean = false,
     onWatchLater: ((DynamicVideoCard) -> Unit)? = null,
+    onOpenLive: (Long) -> Unit = {},
 ) {
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val linkBlue = if (isDark) Color(0xFF5CA8FF) else Color(0xFF1367B1)
     val video = item.video
+    val live = item.live
 
-    // 视频动态整张卡片都进播放页：只有头像、点赞这类显式控件才拦下点击。
+    // 视频动态整张卡片都进播放页，开播动态整张卡片都进直播间：只有头像、点赞这类显式控件才拦下点击。
     val onCardClick: () -> Unit = {
-        if (video != null) onOpenVideo(video.bvid) else onOpenDynamic(item)
+        when {
+            live != null -> onOpenLive(live.roomId)
+            video != null -> onOpenVideo(video.bvid)
+            else -> onOpenDynamic(item)
+        }
     }
 
     val cardCornerRadius = COUITheme.dimens.card.cornerRadius
@@ -134,6 +145,12 @@ internal fun DynamicCard(
 
         val forward = item.forward
         when {
+            live != null -> DynamicLiveCardView(
+                live = live,
+                onOpenLive = onOpenLive,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+
             video != null -> DynamicVideoCardView(
                 video = video,
                 onOpenVideo = onOpenVideo,
@@ -301,6 +318,133 @@ private fun DynamicVideoCardView(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * 开播动态：封面右上角是「N人看过」与「直播中」，左下角是分区名，封面下面是直播间标题。
+ * 整块点进直播间。
+ */
+@Composable
+private fun DynamicLiveCardView(
+    live: DynamicLiveCard,
+    onOpenLive: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val contentWidth = cardContentWidthDp()
+    val widthPx = remember(density, contentWidth) {
+        with(density) { contentWidth.roundToPx() }
+    }
+    val coverUrl = remember(live.cover, widthPx) {
+        Formatters.sizedImageUrl(live.cover, widthPx, widthPx * 9 / 16)
+    }
+    val onClick = remember(live.roomId, onOpenLive) { { onOpenLive(live.roomId) } }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(10.dp)),
+        ) {
+            LoadingImage(
+                url = coverUrl,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (live.watchedText.isNotBlank()) {
+                    Text(
+                        text = live.watchedText,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0x66000000))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White,
+                        maxLines = 1,
+                    )
+                }
+                if (live.living) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFFFB7299))
+                            .padding(start = 6.dp, end = 8.dp, top = 3.dp, bottom = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        LiveSignalBars()
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            text = "直播中",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            if (live.areaName.isNotBlank()) {
+                Text(
+                    text = live.areaName,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    style = TextStyle(
+                        shadow = Shadow(color = Color(0xCC000000), offset = Offset(0f, 1f), blurRadius = 4f),
+                    ),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (live.title.isNotBlank()) {
+            Text(
+                text = live.title,
+                modifier = Modifier.padding(top = 8.dp),
+                fontSize = 16.sp,
+                lineHeight = 23.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** 「直播中」角标左边那三根信号格：由矮到高，纯装饰。 */
+@Composable
+private fun LiveSignalBars() {
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+    ) {
+        listOf(4.dp, 7.dp, 10.dp).forEach { height ->
+            Box(
+                modifier = Modifier
+                    .width(2.dp)
+                    .height(height)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(Color.White),
+            )
+        }
     }
 }
 

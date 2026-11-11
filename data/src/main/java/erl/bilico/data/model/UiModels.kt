@@ -154,6 +154,7 @@ enum class DynamicKind {
     IMAGES,
     TEXT,
     FORWARD,
+    LIVE,
     UNSUPPORTED,
 }
 
@@ -169,6 +170,16 @@ data class DynamicVideoCard(
     val cover: String,
     val durationText: String,
     val aid: Long = 0L,
+)
+
+/** 开播动态的直播间预览：封面、看过人数与分区名都直接来自接口。 */
+data class DynamicLiveCard(
+    val roomId: Long,
+    val title: String,
+    val cover: String,
+    val areaName: String,
+    val watchedText: String,
+    val living: Boolean,
 )
 
 /** 动态卡片下方外露的精选/热评：整段文字已经拼好，表情单独给图。 */
@@ -203,11 +214,14 @@ data class DynamicItemUi(
     val hotReplies: List<DynamicHotReply> = emptyList(),
     val timeSec: Long,
     val pubTimeText: String,
+    /** 时间后面跟的动作（「直播了」「投稿了视频」），空串就不显示。 */
+    val pubAction: String = "",
     val title: String = "",
     val content: String,
     val emotes: Map<String, EmoteImage> = emptyMap(),
     val images: List<DynamicImage> = emptyList(),
     val video: DynamicVideoCard? = null,
+    val live: DynamicLiveCard? = null,
     /** 专栏或图文长文：点开进阅读页。 */
     val article: DynamicArticleCard? = null,
     val forward: DynamicItemUi? = null,

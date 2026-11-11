@@ -243,6 +243,7 @@ fun SpaceScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
+                        onOpenLive = { roomId -> nav.push(Route.LiveRoom(roomId)) },
                     )
                 }
 

@@ -87,7 +87,9 @@ internal fun DynamicHeader(
                     DynamicNameplate(item = item)
                 }
             }
-            val time = item.displayTime()
+            val time = listOf(item.displayTime(), item.pubAction)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
             val hasBadge = item.authorBadgeIcon.isNotBlank() || item.authorBadge.isNotBlank()
             if (time.isNotBlank() || hasBadge) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

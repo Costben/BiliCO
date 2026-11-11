@@ -10,17 +10,22 @@ import erl.bilico.data.model.DynamicImageData
 import erl.bilico.data.model.DynamicItem
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
+import erl.bilico.data.model.DynamicLiveCard
 import erl.bilico.data.model.DynamicLockedUi
+import erl.bilico.data.model.DynamicMajor
 import erl.bilico.data.model.DynamicModules
 import erl.bilico.data.model.DynamicRichTextNode
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.model.EmoteImage
+import erl.bilico.data.model.LiveMajor
+import erl.bilico.data.model.LiveRcmdContent
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -288,6 +293,7 @@ class DynamicRepository(
             .map { DynamicImage(Formatters.normalizeImageUrl(it.displayUrl), it.width, it.height) }
             .toList()
         val video = major?.archive?.toCard()
+        val live = major?.toLiveCard()
 
         val articleId = major?.article?.id ?: 0L
         val selfId = idStr.ifBlank { basic?.ridStr.orEmpty() }
@@ -303,6 +309,7 @@ class DynamicRepository(
 
         val kind = when {
             nested != null -> DynamicKind.FORWARD
+            live != null -> DynamicKind.LIVE
             video != null -> DynamicKind.VIDEO
             images.isNotEmpty() -> DynamicKind.IMAGES
             text.isNotEmpty() || resolvedTitle.isNotEmpty() || article != null -> DynamicKind.TEXT
@@ -350,11 +357,13 @@ class DynamicRepository(
             hotReplies = hotReplies,
             timeSec = author?.pubTs ?: 0L,
             pubTimeText = author?.pubTime.orEmpty(),
+            pubAction = author?.pubAction.orEmpty(),
             title = resolvedTitle,
             content = text,
             emotes = emotes,
             images = images,
             video = video,
+            live = live,
             article = article,
             forward = nested,
             forwardCount = stat?.forward?.count ?: 0,
@@ -369,6 +378,34 @@ class DynamicRepository(
             chargeLocked = basic?.isOnlyFans == true || modules?.blocked != null,
             locked = modules?.blocked?.toLockedUi(),
         )
+    }
+
+    /**
+     * 开播动态：`major.live` 和 `major.live_rcmd.content` 里是同一份直播间信息，
+     * 后者是 JSON 文本，要先解一层。
+     */
+    private fun DynamicMajor.toLiveCard(): DynamicLiveCard? {
+        val info = live ?: liveRcmd?.content
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw ->
+                runCatching { LIVE_CONTENT_JSON.decodeFromString<LiveRcmdContent>(raw).playInfo }.getOrNull()
+            }
+            ?: return null
+        if (info.roomId <= 0L) return null
+        return DynamicLiveCard(
+            roomId = info.roomId,
+            title = info.title,
+            cover = Formatters.normalizeImageUrl(info.cover),
+            areaName = info.areaName.ifBlank { info.parentAreaName },
+            watchedText = info.watchedText(),
+            living = info.liveStatus == 1,
+        )
+    }
+
+    private fun LiveMajor.watchedText(): String {
+        val show = watchedShow ?: return ""
+        return show.textLarge.ifBlank { show.textSmall }
+            .ifBlank { show.num.takeIf { it > 0L }?.let { "${Formatters.formatStat(it)}人看过" }.orEmpty() }
     }
 
     private fun firstNumericId(vararg candidates: String?): Long? {
@@ -545,6 +582,9 @@ class DynamicRepository(
 
     private companion object {
         const val MAJOR_TYPE_OPUS = "MAJOR_TYPE_OPUS"
+
+        /** `live_rcmd.content` 是一段 JSON 文本，单独解一次。 */
+        val LIVE_CONTENT_JSON = Json { ignoreUnknownKeys = true; isLenient = true }
 
         /** 长文型 opus 在 feed/详情正文里给图片占位用的写法。 */
         const val OPUS_IMAGE_PLACEHOLDER = "[图片]"
