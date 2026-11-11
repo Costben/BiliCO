@@ -44,16 +44,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.itos.coui.backdrop.CouiBackdrop
-import com.itos.coui.backdrop.rememberCouiBackdrop
-import com.itos.coui.chip.ChipTab
-import com.itos.coui.effect.CouiFloatingRenderer
-import com.itos.coui.shape.CouiCapsuleShape
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.components.COUISmoothCapsuleShape
 import erl.bilico.ui.components.DanmakuToggle
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.anim.folmeSpring
+import io.github.suqi8.coui.kmp.basic.ChipTab
 import io.github.suqi8.coui.kmp.basic.ChipTabData
 import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
 import io.github.suqi8.coui.kmp.basic.InputField
@@ -86,7 +83,6 @@ internal fun VideoDetailBar(
     onComposingChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
-    backdrop: CouiBackdrop? = null,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val scheme = COUITheme.colorScheme
@@ -101,9 +97,6 @@ internal fun VideoDetailBar(
             DETAIL_TABS
         }
     }
-    val fallbackBackdrop = rememberCouiBackdrop()
-    val activeBackdrop = backdrop ?: fallbackBackdrop
-    val detailRenderers = remember { List(2) { CouiFloatingRenderer.standalone() } }
     val density = LocalDensity.current
     val chipStyle = ChipTabDefaults.textStyle()
     val measurer = rememberTextMeasurer()
@@ -160,12 +153,9 @@ internal fun VideoDetailBar(
                 ) {
                     tabs.forEachIndexed { index, title ->
                         ChipTab(
+                            label = title,
                             selected = selected == index,
                             onClick = { onSelect(index) },
-                            label = title,
-                            backdrop = activeBackdrop,
-                            dark = isDark,
-                            renderer = detailRenderers[index],
                         )
                     }
                 }
@@ -235,7 +225,7 @@ private fun Modifier.detailCapsuleMaterial(isDark: Boolean): Modifier =
     this.border(
         width = 0.5.dp,
         color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.45f),
-        shape = CouiCapsuleShape,
+        shape = COUISmoothCapsuleShape,
     )
 
 /**
@@ -264,7 +254,7 @@ private fun Modifier.actionEndSlack(slack: Dp): Modifier =
 /**
  * 专为弹幕输入行定制的「发送」按钮：
  * 高度严格对齐发弹幕输入框（32dp），变得更加小巧紧凑；
- * 采用连续曲率胶囊形状 [CouiCapsuleShape] 与顶栏按键同款微光材质。
+ * 采用连续曲率胶囊形状 [COUISmoothCapsuleShape] 与顶栏按键同款微光材质。
  */
 @Composable
 private fun DetailSendButton(
@@ -297,7 +287,7 @@ private fun DetailSendButton(
                 scaleY = scale
             }
             .detailCapsuleMaterial(isDark = isDark)
-            .background(color = containerColor, shape = CouiCapsuleShape)
+            .background(color = containerColor, shape = COUISmoothCapsuleShape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -343,21 +333,20 @@ private val MoveEase = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)
  * 专为播放页「简介 / 评论」标签栏打造的超平滑毛玻璃材质容器：
  *
  * 1. 顶部无痕衔接：
- *    在距离顶栏（或折叠态播放栏）最近的顶部区间（0dp ~ 24dp），底色恒为 100% 纯实色（Alpha = 1.0f），
- *    形成可靠的实色护航平台；向上滚动的任何内容在到达接缝前就已被实色完全平滑隐没，与上方顶栏同色浑然一体，
+ *    在距离顶栏（或折叠态播放栏）最近的顶部区间，底色保持纯实色护航（Alpha ≈ 1.0f），
+ *    导数平滑为零切入顶栏，向上滚动的任何内容在到达接缝前已完全被实色平滑隐没，与上方顶栏浑然一体，
  *    彻底消除顶部分界线。
  *
- * 2. 底部超宽平滑羽化：
- *    向下延伸 extraHeight（32dp），从中间优雅的半透明磨砂质感（Alpha ≈ 0.65f）沿着平滑 S 形非线性曲线
- *    （0.65 -> 0.38 -> 0.16 -> 0.03 -> 0.00）极其轻柔地消融于背景中，毛玻璃模糊也随梯度柔和淡出，
- *    彻底消除原本在胶囊底边突兀断层的“模糊起始线”。
+ * 2. 底部超宽自然羽化：
+ *    消除任何人工折角与突变点，让渐进模糊（ProgressiveBlur）从顶部一路自然向下衰减消融，
+ *    并在底部额外延伸，底色与模糊同步柔和归零，彻底消除突兀的“模糊起始线”。
  */
 @Composable
 internal fun DetailBarGlassSurface(
     modifier: Modifier = Modifier,
     containerColor: Color = pageContainerColor(),
     backdrop: LayerBackdrop? = null,
-    extraHeight: Dp = 32.dp,
+    extraHeight: Dp = 36.dp,
     content: @Composable () -> Unit,
 ) {
     val isDark = containerColor.luminance() < 0.5f
@@ -368,23 +357,25 @@ internal fun DetailBarGlassSurface(
         if (isDark) {
             Brush.verticalGradient(
                 0.00f to containerColor,
-                0.30f to containerColor,
-                0.45f to containerColor.copy(alpha = 0.88f),
-                0.60f to containerColor.copy(alpha = 0.58f),
-                0.72f to containerColor.copy(alpha = 0.32f),
-                0.84f to containerColor.copy(alpha = 0.12f),
-                0.94f to containerColor.copy(alpha = 0.02f),
+                0.15f to containerColor.copy(alpha = 0.98f),
+                0.30f to containerColor.copy(alpha = 0.92f),
+                0.45f to containerColor.copy(alpha = 0.78f),
+                0.58f to containerColor.copy(alpha = 0.56f),
+                0.70f to containerColor.copy(alpha = 0.35f),
+                0.82f to containerColor.copy(alpha = 0.16f),
+                0.92f to containerColor.copy(alpha = 0.04f),
                 1.00f to containerColor.copy(alpha = 0.00f),
             )
         } else {
             Brush.verticalGradient(
                 0.00f to containerColor,
-                0.30f to containerColor,
-                0.45f to containerColor.copy(alpha = 0.92f),
-                0.60f to containerColor.copy(alpha = 0.65f),
-                0.72f to containerColor.copy(alpha = 0.38f),
-                0.84f to containerColor.copy(alpha = 0.16f),
-                0.94f to containerColor.copy(alpha = 0.03f),
+                0.15f to containerColor.copy(alpha = 0.99f),
+                0.30f to containerColor.copy(alpha = 0.94f),
+                0.45f to containerColor.copy(alpha = 0.82f),
+                0.58f to containerColor.copy(alpha = 0.62f),
+                0.70f to containerColor.copy(alpha = 0.40f),
+                0.82f to containerColor.copy(alpha = 0.20f),
+                0.92f to containerColor.copy(alpha = 0.05f),
                 1.00f to containerColor.copy(alpha = 0.00f),
             )
         }
@@ -400,9 +391,9 @@ internal fun DetailBarGlassSurface(
                 blurRadius = 26f,
                 gradient = ProgressiveBlur(
                     angle = 90f,
-                    startFraction = 0.30f,
-                    endFraction = 1f,
-                    curve = 2.4f,
+                    startFraction = 0.00f,
+                    endFraction = 1.00f,
+                    curve = 1.8f,
                 ),
             )
             .background(gradientBrush)

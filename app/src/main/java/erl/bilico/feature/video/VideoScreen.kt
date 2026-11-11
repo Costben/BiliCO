@@ -36,8 +36,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import com.itos.coui.backdrop.couiBackdrop
-import com.itos.coui.backdrop.rememberCouiBackdrop
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
@@ -421,7 +419,6 @@ fun VideoScreen(
         },
         detailContent = {
             val navBarBottom = rememberStableNavBarBottomDp()
-            val detailBackdrop = rememberCouiBackdrop()
             val detailLayerBackdrop = rememberLayerBackdrop()
             val pageBg = pageContainerColor()
             // 列表整块铺到最上面，滚动时正文从标签栏底下穿过去，由栏的毛玻璃盖住；
@@ -438,7 +435,6 @@ fun VideoScreen(
                         .fillMaxSize()
                         .padding(bottom = navBarBottom)
                         .layerBackdropIf(BlurEffectsEnabled, detailLayerBackdrop)
-                        .couiBackdrop(detailBackdrop)
                         .background(pageBg),
                     beyondViewportPageCount = 0,
                     key = { DETAIL_PAGES[it] },
@@ -552,7 +548,6 @@ fun VideoScreen(
                             if (!it) danmakuDraft = ""
                         },
                         onSend = sendDanmaku,
-                        backdrop = detailBackdrop,
                     )
                 }
             }

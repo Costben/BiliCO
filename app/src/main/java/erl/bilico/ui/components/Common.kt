@@ -305,9 +305,11 @@ fun SearchClearButton(
  * ColorOS 17 Continuous-Curvature Capsule (G2 Smooth Corner Squircle).
  * Based on ColorOS 17 cubic bezier easing formulation with zero curvature junction.
  */
-class COUISmoothCapsuleShape(
+open class COUISmoothCapsuleShape(
     private val cornerRadius: Dp? = null,
 ) : Shape {
+    companion object : COUISmoothCapsuleShape()
+
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
         val halfMin = size.minDimension / 2f
         val radius = cornerRadius?.let { with(density) { it.toPx() } } ?: halfMin
