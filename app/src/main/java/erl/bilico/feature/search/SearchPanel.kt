@@ -18,16 +18,23 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.Dp
@@ -35,14 +42,20 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.asRowScrollState
+import erl.bilico.ui.components.PageTabRow
 import erl.bilico.ui.components.navBottomPadding
+import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
+import erl.bilico.ui.reportTopBarBottom
 import io.github.suqi8.coui.kmp.basic.SearchBar
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 /**
  * 顶栏搜索面板：点放大镜就地展开，不另开一页。
@@ -74,10 +87,8 @@ fun SearchPanel(
 
     SearchListEffects(
         listState = listState,
-        viewModel = viewModel,
         submitted = state.submitted,
         suggesting = suggesting,
-        showingResults = showingResults,
     )
 
     val dismiss: () -> Unit = {
@@ -140,19 +151,24 @@ fun SearchPanel(
                 onCancel = dismiss,
             )
 
-            SearchLazyList(
-                state = state,
-                history = history,
-                suggesting = suggesting,
-                showingResults = showingResults,
-                listState = listState,
-                pageColor = pageColor,
-                topPadding = 8.dp,
-                viewModel = viewModel,
-                container = container,
-                nav = nav,
-                onPick = pickKeyword,
-            )
+            if (showingResults) {
+                SearchResultsPager(
+                    state = state,
+                    nav = nav,
+                    viewModel = viewModel,
+                    onRetry = viewModel::retry,
+                )
+            } else {
+                SearchLazyList(
+                    state = state,
+                    history = history,
+                    suggesting = suggesting,
+                    listState = listState,
+                    topPadding = 8.dp,
+                    container = container,
+                    onPick = pickKeyword,
+                )
+            }
         }
     }
 }
@@ -189,10 +205,8 @@ fun FeedSearchDropdown(
 
     SearchListEffects(
         listState = listState,
-        viewModel = viewModel,
         submitted = state.submitted,
         suggesting = suggesting,
-        showingResults = showingResults,
     )
 
     val dismiss: () -> Unit = {
@@ -248,19 +262,24 @@ fun FeedSearchDropdown(
                     .fillMaxWidth()
                     .padding(top = barBottom),
             ) {
-                SearchLazyList(
-                    state = state,
-                    history = history,
-                    suggesting = suggesting,
-                    showingResults = showingResults,
-                    listState = listState,
-                    pageColor = pageColor,
-                    topPadding = if (showingResults) 6.dp else 16.dp,
-                    viewModel = viewModel,
-                    container = container,
-                    nav = nav,
-                    onPick = pickKeyword,
-                )
+                if (showingResults) {
+                    SearchResultsPager(
+                        state = state,
+                        nav = nav,
+                        viewModel = viewModel,
+                        onRetry = viewModel::retry,
+                    )
+                } else {
+                    SearchLazyList(
+                        state = state,
+                        history = history,
+                        suggesting = suggesting,
+                        listState = listState,
+                        topPadding = 16.dp,
+                        container = container,
+                        onPick = pickKeyword,
+                    )
+                }
             }
         }
     }
@@ -269,30 +288,13 @@ fun FeedSearchDropdown(
 @Composable
 private fun SearchListEffects(
     listState: LazyListState,
-    viewModel: SearchViewModel,
     submitted: String,
     suggesting: Boolean,
-    showingResults: Boolean,
 ) {
+    // 换关键词或进出建议态时，搜索首页 / 建议列表回到顶部。
+    // 结果页的三份列表由各自的 pager 页管，不经过这里。
     LaunchedEffect(submitted, suggesting) {
         listState.scrollToItem(0)
-    }
-
-    LaunchedEffect(listState, showingResults) {
-        if (!showingResults) return@LaunchedEffect
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .distinctUntilChanged()
-            .collect { lastVisible ->
-                val current = viewModel.state.value
-                val size = when (current.tab) {
-                    0 -> current.videos.size
-                    1 -> current.users.size
-                    else -> current.articles.size
-                }
-                if (lastVisible != null && size > 0 && lastVisible >= size - 2) {
-                    viewModel.loadMore()
-                }
-            }
     }
 }
 
@@ -301,19 +303,13 @@ private fun SearchLazyList(
     state: SearchUiState,
     history: List<String>,
     suggesting: Boolean,
-    showingResults: Boolean,
     listState: LazyListState,
-    pageColor: Color,
     topPadding: Dp,
-    viewModel: SearchViewModel,
     container: AppContainer,
-    nav: NavState,
     onPick: (String) -> Unit,
 ) {
     val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val bottomPadding = maxOf(24.dp + navBottomPadding(), imeBottom + 16.dp)
-    val stickyBarBounds = remember { TopBarBounds() }
-    val rowScrollState = remember(listState) { listState.asRowScrollState() }
 
     LazyColumn(
         state = listState,
@@ -326,15 +322,15 @@ private fun SearchLazyList(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        when {
-            suggesting -> searchSuggestSection(
+        if (suggesting) {
+            searchSuggestSection(
                 query = state.query,
                 suggestions = state.suggestions,
                 suggestionsLoading = state.suggestionsLoading,
                 onPick = onPick,
             )
-
-            !showingResults -> searchHomeSection(
+        } else {
+            searchHomeSection(
                 hot = state.hot,
                 hotLoading = state.hotLoading,
                 history = history,
@@ -342,16 +338,133 @@ private fun SearchLazyList(
                 onDeleteHistory = { keyword -> container.settings.removeSearchHistory(keyword) },
                 onClearHistory = { container.settings.clearSearchHistory() },
             )
+        }
+    }
+}
 
-            else -> searchResultSection(
+/**
+ * 搜索结果：标签栏浮在列表上方，视频 / 用户 / 专栏各占一页，左右滑动换分类。
+ *
+ * 标签栏不铺底色，底下那页列表从它的胶囊空隙里透出来；切页只补当前这一类的数据。
+ */
+@Composable
+private fun SearchResultsPager(
+    state: SearchUiState,
+    nav: NavState,
+    viewModel: SearchViewModel,
+    onRetry: () -> Unit,
+) {
+    val tabs = remember { listOf("视频", "用户", "专栏") }
+    val pagerState = rememberPagerState(initialPage = state.tab, pageCount = { tabs.size })
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val barBounds = remember { TopBarBounds() }
+    // 标签栏盖在列表上，列表的第一条要从它下面起排。先给个估值，量到真实高度再修正。
+    var barHeight by remember { mutableStateOf(56.dp) }
+    // 列表这一层自己录一份，标签栏采样它才有东西可糊；采整页的 backdrop 会绕回栏自己。
+    val backdrop = rememberLayerBackdrop()
+
+    // 滑停一页就补这一类的数据；点标签走的是同一个入口。
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { viewModel.setTab(it) }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdropIf(BlurEffectsEnabled, backdrop),
+            beyondViewportPageCount = 1,
+        ) { page ->
+            SearchResultPage(
+                tab = page,
                 state = state,
-                pageColor = pageColor,
                 nav = nav,
-                rowScrollState = rowScrollState,
-                topBarBounds = stickyBarBounds,
-                onSelectTab = viewModel::setTab,
-                onRetry = viewModel::retry,
+                topBarBounds = barBounds,
+                contentTop = barHeight + 4.dp,
+                onRetry = onRetry,
+                viewModel = viewModel,
             )
         }
+
+        Box(
+            Modifier
+                .fillMaxWidth()
+                // 和列表内容同一档左右边距，底板不贴到屏幕边。
+                .padding(horizontal = 16.dp)
+                .reportTopBarBottom(barBounds)
+                .onSizeChanged { size ->
+                    with(density) { barHeight = size.height.toDp() }
+                }
+                .padding(top = 10.dp, bottom = 6.dp),
+        ) {
+            PageTabRow(
+                tabs = tabs,
+                selectedTabIndex = pagerState.currentPage,
+                onTabSelected = { index ->
+                    scope.launch { pagerState.animateScrollToPage(index) }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                backdrop = if (BlurEffectsEnabled) backdrop else null,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchResultPage(
+    tab: Int,
+    state: SearchUiState,
+    nav: NavState,
+    topBarBounds: TopBarBounds,
+    contentTop: Dp,
+    onRetry: () -> Unit,
+    viewModel: SearchViewModel,
+) {
+    val listState = rememberLazyListState()
+    val rowScrollState = remember(listState) { listState.asRowScrollState() }
+    val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val bottomPadding = maxOf(24.dp + navBottomPadding(), imeBottom + 16.dp)
+
+    // 只有停在当前这一页时才翻页加载，旁边的预览页不跟着请求。
+    LaunchedEffect(tab, state.tab, state.submitted) {
+        if (tab != state.tab) return@LaunchedEffect
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .distinctUntilChanged()
+            .collect { lastVisible ->
+                val current = viewModel.state.value
+                val size = when (tab) {
+                    0 -> current.videos.size
+                    1 -> current.users.size
+                    else -> current.articles.size
+                }
+                if (lastVisible != null && size > 0 && lastVisible >= size - 2) {
+                    viewModel.loadMore()
+                }
+            }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = contentTop,
+            end = 16.dp,
+            bottom = bottomPadding,
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        searchResultItems(
+            tab = tab,
+            state = state,
+            nav = nav,
+            rowScrollState = rowScrollState,
+            topBarBounds = topBarBounds,
+            onRetry = onRetry,
+        )
     }
 }

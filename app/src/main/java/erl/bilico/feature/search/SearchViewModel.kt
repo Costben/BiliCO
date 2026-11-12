@@ -28,7 +28,6 @@ data class SearchUiState(
     val articles: List<SearchArticle> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
-    val isEnd: Boolean = false,
     val error: String? = null,
 )
 
@@ -43,6 +42,9 @@ class SearchViewModel(
     private var userPage = 1
     private var articlePage = 1
     private var inFlight = false
+
+    /** 已经翻到底的分类。按分类记，滑到别的一类再滑回来不会重复请求空页。 */
+    private val endedTabs = mutableSetOf<Int>()
     private var suggestJob: Job? = null
     private var lastSuggestTerm: String = ""
 
@@ -118,6 +120,7 @@ class SearchViewModel(
         userPage = 1
         articlePage = 1
         inFlight = false
+        endedTabs.clear()
         _state.update {
             SearchUiState(hot = it.hot, hotLoading = it.hotLoading)
         }
@@ -125,14 +128,19 @@ class SearchViewModel(
 
     fun setTab(tab: Int) {
         if (_state.value.tab == tab) return
-        _state.update { it.copy(tab = tab) }
+        _state.update { it.copy(tab = tab, error = null) }
         if (_state.value.submitted.isNotBlank()) {
             val hasItems = when (tab) {
                 0 -> _state.value.videos.isNotEmpty()
                 1 -> _state.value.users.isNotEmpty()
                 else -> _state.value.articles.isNotEmpty()
             }
-            if (!hasItems) submit(_state.value.submitted)
+            if (!hasItems) {
+                // 只补这一类，不重跑整次搜索。pager 左右滑动会反复经过空分类，
+                // 走 submit 每次都会把另外两类已经拿到的结果清掉。
+                _state.update { it.copy(isLoading = true) }
+                load(firstPage = true)
+            }
         }
     }
 
@@ -145,6 +153,7 @@ class SearchViewModel(
         videoPage = 1
         userPage = 1
         articlePage = 1
+        endedTabs.clear()
         _state.update {
             it.copy(
                 query = trimmed,
@@ -155,7 +164,6 @@ class SearchViewModel(
                 users = emptyList(),
                 articles = emptyList(),
                 isLoading = true,
-                isEnd = false,
                 error = null,
             )
         }
@@ -164,7 +172,7 @@ class SearchViewModel(
 
     fun loadMore() {
         val current = _state.value
-        if (inFlight || current.isEnd || current.submitted.isBlank()) return
+        if (inFlight || current.tab in endedTabs || current.submitted.isBlank()) return
         if (current.query.trim() != current.submitted) return
         if (current.isLoading) return
         _state.update { it.copy(isLoadingMore = true) }
@@ -190,58 +198,62 @@ class SearchViewModel(
                 0 -> repository.searchVideos(keyword, page)
                     .onSuccess { list ->
                         videoPage = page + 1
+                        if (list.isEmpty()) endedTabs.add(tab) else endedTabs.remove(tab)
                         _state.update {
+                            val onTab = it.tab == tab
                             it.copy(
                                 videos = if (firstPage) list.distinctBy { v -> v.bvid } else (it.videos + list).distinctBy { v -> v.bvid },
-                                isLoading = false,
-                                isLoadingMore = false,
-                                isEnd = list.isEmpty(),
-                                error = null,
+                                isLoading = if (onTab) false else it.isLoading,
+                                isLoadingMore = if (onTab) false else it.isLoadingMore,
+                                error = if (onTab) null else it.error,
                             )
                         }
                     }
-                    .onFailure { error -> fail(firstPage, error) }
+                    .onFailure { error -> fail(tab, firstPage, error) }
 
                 1 -> repository.searchUsers(keyword, page)
                     .onSuccess { list ->
                         userPage = page + 1
+                        if (list.isEmpty()) endedTabs.add(tab) else endedTabs.remove(tab)
                         _state.update {
+                            val onTab = it.tab == tab
                             it.copy(
                                 users = if (firstPage) list.distinctBy { u -> u.mid } else (it.users + list).distinctBy { u -> u.mid },
-                                isLoading = false,
-                                isLoadingMore = false,
-                                isEnd = list.isEmpty(),
-                                error = null,
+                                isLoading = if (onTab) false else it.isLoading,
+                                isLoadingMore = if (onTab) false else it.isLoadingMore,
+                                error = if (onTab) null else it.error,
                             )
                         }
                     }
-                    .onFailure { error -> fail(firstPage, error) }
+                    .onFailure { error -> fail(tab, firstPage, error) }
 
                 else -> repository.searchArticles(keyword, page)
                     .onSuccess { list ->
                         articlePage = page + 1
+                        if (list.isEmpty()) endedTabs.add(tab) else endedTabs.remove(tab)
                         _state.update {
+                            val onTab = it.tab == tab
                             it.copy(
                                 articles = if (firstPage) list.distinctBy { a -> a.id } else (it.articles + list).distinctBy { a -> a.id },
-                                isLoading = false,
-                                isLoadingMore = false,
-                                isEnd = list.isEmpty(),
-                                error = null,
+                                isLoading = if (onTab) false else it.isLoading,
+                                isLoadingMore = if (onTab) false else it.isLoadingMore,
+                                error = if (onTab) null else it.error,
                             )
                         }
                     }
-                    .onFailure { error -> fail(firstPage, error) }
+                    .onFailure { error -> fail(tab, firstPage, error) }
             }
             inFlight = false
         }
     }
 
-    private fun fail(firstPage: Boolean, error: Throwable) {
+    private fun fail(tab: Int, firstPage: Boolean, error: Throwable) {
         _state.update {
+            val onTab = it.tab == tab
             it.copy(
-                isLoading = false,
-                isLoadingMore = false,
-                error = if (firstPage) error.message ?: "搜索失败" else it.error,
+                isLoading = if (onTab) false else it.isLoading,
+                isLoadingMore = if (onTab) false else it.isLoadingMore,
+                error = if (onTab && firstPage) error.message ?: "搜索失败" else it.error,
             )
         }
     }

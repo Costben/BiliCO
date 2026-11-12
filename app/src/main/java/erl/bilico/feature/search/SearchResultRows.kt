@@ -43,10 +43,8 @@ import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
-import erl.bilico.ui.components.PageTabRow
 import erl.bilico.ui.expandOrigin
 import erl.bilico.ui.rememberExpandOrigin
-import erl.bilico.ui.reportTopBarBottom
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -57,53 +55,42 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 private val SearchVideoCoverWidth = 144.dp
 private val SearchVideoCoverHeight = SearchVideoCoverWidth * 9f / 16f
 
-internal fun LazyListScope.searchResultSection(
+/**
+ * 一个分类的结果列表。三个分类各是一份独立的列表，由外层的 pager 按页承载，
+ * 所以这里只铺这一类自己的条目；标签栏在 pager 外面，不随列表滚动。
+ */
+internal fun LazyListScope.searchResultItems(
+    tab: Int,
     state: SearchUiState,
-    pageColor: Color,
     nav: NavState,
     rowScrollState: RowScrollState,
     topBarBounds: TopBarBounds,
-    onSelectTab: (Int) -> Unit,
     onRetry: () -> Unit,
 ) {
-    stickyHeader(key = "tabs") {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .background(pageColor)
-                .reportTopBarBottom(topBarBounds)
-                .padding(top = 10.dp, bottom = 6.dp),
-        ) {
-            PageTabRow(
-                tabs = listOf("视频", "用户", "专栏"),
-                selectedTabIndex = state.tab,
-                onTabSelected = onSelectTab,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
+    // 加载 / 失败 / 进度只画在当前可见的那一页，免得左右滑动时旁边的预览页也在闪加载态。
+    val current = tab == state.tab
 
     when {
-        state.isLoading -> item(key = "loading") { LoadingState() }
+        current && state.isLoading -> item(key = "loading") { LoadingState() }
 
-        state.error != null -> item(key = "error") {
+        current && state.error != null -> item(key = "error") {
             ErrorState(state.error.orEmpty(), onRetry = onRetry)
         }
 
-        state.tab == 0 && state.videos.isEmpty() -> item(key = "empty") {
+        tab == 0 && state.videos.isEmpty() -> item(key = "empty") {
             EmptyState("没有找到相关视频")
         }
 
-        state.tab == 1 && state.users.isEmpty() -> item(key = "empty") {
+        tab == 1 && state.users.isEmpty() -> item(key = "empty") {
             EmptyState("没有找到相关用户")
         }
 
-        state.tab == 2 && state.articles.isEmpty() -> item(key = "empty") {
+        tab == 2 && state.articles.isEmpty() -> item(key = "empty") {
             EmptyState("没有找到相关专栏")
         }
     }
 
-    when (state.tab) {
+    when (tab) {
         0 -> items(
             items = state.videos,
             key = { it.bvid },
@@ -143,7 +130,7 @@ internal fun LazyListScope.searchResultSection(
         }
     }
 
-    if (state.isLoadingMore) {
+    if (current && state.isLoadingMore) {
         item(key = "loading-more") { LoadingState() }
     }
 }
