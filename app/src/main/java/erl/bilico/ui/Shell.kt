@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -84,6 +85,12 @@ private const val MainTabFadeMillis = 220
 /** 顶栏标题行高度；列表滚动时标题就折这么高。 */
 internal val TitleRowHeight = 44.dp
 
+/**
+ * 搜索展开时标题行多让出来的高度。搜索框本身 40dp，挤在 44dp 的行里上下各只剩 2dp，
+ * 贴着状态栏和下面的标签栏都太紧；便签那种排法是上下各留一行约 17dp 的呼吸位。
+ */
+internal val SearchBarExtraHeight = 8.dp
+
 /** 底栏三格：推荐、动态、我的。直播收进推荐页顶部的分段胶囊里。 */
 private val tabTitles = listOf("推荐", "动态", "我的")
 
@@ -102,7 +109,6 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val searchBackdrop = rememberLayerBackdrop()
     // 底栏浮在所有页面之上，它停在哪条线以下由这里统一报出去。
     val topBarBounds = remember { TopBarBounds() }
-    val topBarHeight = pinnedHeight(TitleRowHeight)
     var feedCollapse by remember { mutableFloatStateOf(0f) }
     var dynamicCollapse by remember { mutableFloatStateOf(0f) }
     var dynamicFilterIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -127,6 +133,10 @@ fun MainShell(nav: NavState, container: AppContainer) {
             searchViewModel.reset()
         }
     }
+
+    // 搜索展开时标题行往下多让一行：搜索框上下都要留出和便签一样的呼吸位。
+    val searchBarExtra = if (searchExpanded && tab == 0) SearchBarExtraHeight else 0.dp
+    val topBarHeight = pinnedHeight(TitleRowHeight, searchBarExtra)
 
     val account by container.session.account.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableIntStateOf(0) }
@@ -281,6 +291,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     searchViewModel = searchViewModel,
                     container = container,
                     bounds = topBarBounds,
+                    barExtra = searchBarExtra,
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().zIndex(3f),
                 )
             }
@@ -332,10 +343,11 @@ private fun MainTopBar(
     searchViewModel: SearchViewModel,
     container: AppContainer,
     bounds: TopBarBounds,
+    barExtra: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val pageBarHeight = statusBarTop + TitleRowHeight
+    val pageBarHeight = statusBarTop + TitleRowHeight + barExtra
 
     Box(modifier) {
         AppBarSurface(
@@ -379,6 +391,7 @@ private fun MainTopBar(
                 searchState = searchState,
                 searchViewModel = searchViewModel,
                 container = container,
+                barExtra = barExtra,
             )
         }
     }
@@ -404,6 +417,7 @@ private fun BarContent(
     searchState: SearchUiState,
     searchViewModel: SearchViewModel,
     container: AppContainer,
+    barExtra: Dp,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
     Column(
@@ -416,7 +430,7 @@ private fun BarContent(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(TitleRowHeight)
+                    .height(TitleRowHeight + barExtra)
                     .graphicsLayer {
                         if (!searchExpanded) {
                             translationY = -collapsed() * titleHeightPx

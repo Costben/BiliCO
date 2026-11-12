@@ -461,7 +461,8 @@ private fun SearchResultsPager(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 6.dp, bottom = 6.dp),
+                            // 顶栏到标签栏之间按便签的间距留白：挤在 6dp 时标签栏像粘在搜索框上。
+                            .padding(top = 11.dp, bottom = 6.dp),
                     ) {
                         ChipTabGroup(
                             tabs = tabs,
