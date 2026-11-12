@@ -37,8 +37,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 val ExpandEasing = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)
-const val ExpandEnterMillis = 420
-const val ExpandExitMillis = 220
+const val ExpandEnterMillis = 350
+const val ExpandExitMillis = 240
 const val RouteSlideMillis = 320
 const val RouteParallaxDivisor = 4f
 const val FEED_TAB_INDEX = 0

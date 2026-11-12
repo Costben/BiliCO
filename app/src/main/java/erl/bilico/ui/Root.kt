@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.article.ArticleScreen
 import erl.bilico.feature.chat.ChatScreen
@@ -93,6 +95,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.pow
 
 /** 手势要拉过这里才算「已经落回卡片」，松手即走；再弹回来会像 bug。 */
 private const val LandedProgress = 0.2f
@@ -335,10 +338,20 @@ private fun RouteLayer(
         layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, 0) }
     }
 
+    // 非栈顶页仍留在组合树里，必须按 isTop 停用其返回分发器，避免后台搜索栏等抢走栈顶返回。
+    val routeDispatcherOwner = rememberNavigationEventDispatcherOwner(
+        enabled = isTop,
+        parent = LocalNavigationEventDispatcherOwner.current,
+    )
+    SideEffect {
+        routeDispatcherOwner.navigationEventDispatcher.isEnabled = isTop
+    }
+
     CompositionLocalProvider(
         LocalRouteTransition provides transition,
         LocalRouteIsTop provides isTop,
         LocalConfiguration provides layerConfiguration,
+        LocalNavigationEventDispatcherOwner provides routeDispatcherOwner,
     ) {
         Box(layer.then(freezeLayout)) {
             if (entry.expand) {
@@ -381,13 +394,13 @@ private fun ExpandLayer(
     // 退场时框在 LandedProgress 之前就落回卡片，手指停在末尾时看到的就是松手后的样子。
     fun frameProgress(p: Float): Float =
         if (exiting) ((p - LandedProgress) / (1f - LandedProgress)).coerceIn(0f, 1f) else p
+    fun enterContentAlpha(): Float = ((fade() - 0.02f) / 0.24f).coerceIn(0f, 1f)
 
     Box(
         Modifier
             .fillMaxSize()
             .drawBehind {
-                // 只有页面盖上来时才压暗下面那层；退场时下面正是用户要回去的页面。
-                if (!exiting) {
+                if (!exiting && progress() > 0.0005f) {
                     drawRect(Color.Black, alpha = 0.3f * progress())
                 }
             }
@@ -396,18 +409,20 @@ private fun ExpandLayer(
                 val left = lerp(bounds.left, 0f, p)
                 val top = lerp(bounds.top, 0f, p)
                 val width = lerp(bounds.width, size.width, p)
-                val height = lerp(bounds.height, size.height, p)
+                val cardH = if (bounds.width > 0f) bounds.height * (width / bounds.width) else lerp(bounds.height, size.height, p)
+                val height = if (exiting) {
+                    val t = ((p - 0.24f) / 0.76f).coerceIn(0f, 1f)
+                    lerp(cardH, size.height, t.pow(1.6f))
+                } else {
+                    lerp(bounds.height, size.height, p)
+                }
                 val scale = if (size.width > 0f && width > 0f) width / size.width else 1f
                 transformOrigin = TransformOrigin(0f, 0f)
                 translationX = left
                 translationY = top
                 scaleX = scale
                 scaleY = scale
-                val radius = lerp(
-                    origin.cornerRadius.toPx(),
-                    screenCorner.toPx(),
-                    p,
-                ) / scale
+                val radius = lerp(origin.cornerRadius.toPx(), screenCorner.toPx(), p) / scale
                 if (p < 1f) {
                     shape = ExpandShape(height / scale, radius)
                     clip = true
@@ -415,20 +430,14 @@ private fun ExpandLayer(
                     clip = false
                 }
             }
-            // 卡片画在框自己的图层里，跟着框走，也会被框裁住。
             .drawWithContent {
                 val p = frameProgress(progress())
-                // 退场时卡片在这两点之间淡回来，交叉淡入而不是留一段空白：
-                // 手势可以让框停在任何位置，留空就会一直露出底色。
-                val cardAlpha = if (exiting) {
-                    ((0.4f - p) / 0.32f).coerceIn(0f, 1f)
-                } else {
-                    1f - (fade() / 0.25f).coerceIn(0f, 1f)
-                }
+                if (!exiting && p <= 0.0005f) return@drawWithContent
                 drawContent()
+                if (!exiting) return@drawWithContent
+                val cardAlpha = ((0.24f - p) / 0.18f).coerceIn(0f, 1f)
                 val layerSize = origin.layer.size
                 if (cardAlpha > 0f && layerSize.width > 0 && layerSize.height > 0 && bounds.width > 0f) {
-                    // 只按宽度缩放、锚在左上角：卡片保持自己的比例，快照比卡片高就被框裁掉。
                     val k = size.width / bounds.width
                     withTransform({ scale(k, k, pivot = Offset.Zero) }) {
                         clipRect(0f, 0f, bounds.width, bounds.height) {
@@ -444,34 +453,44 @@ private fun ExpandLayer(
                         }
                     }
                 }
-            }
+            },
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(surface)
-                .graphicsLayer {
-                    // 让位给淡回来的卡片，两者总有一个盖住框，不露底色。
+                .drawBehind {
                     val p = frameProgress(progress())
-                    alpha = if (exiting) {
-                        1f - ((0.4f - p) / 0.32f).coerceIn(0f, 1f)
-                    } else {
-                        1f
+                    if (exiting) {
+                        if (p < 1f) drawRect(surface)
+                        return@drawBehind
                     }
-                }
+                    val ca = enterContentAlpha()
+                    if (p < 1f || ca < 0.999f) {
+                        drawRect(surface)
+                        if (ca < 0.999f) {
+                            val layerSize = origin.layer.size
+                            if (layerSize.width > 0 && layerSize.height > 0 && bounds.width > 0f) {
+                                val k = size.width / bounds.width
+                                withTransform({ scale(k, k, pivot = Offset.Zero) }) {
+                                    clipRect(0f, 0f, bounds.width, bounds.height) {
+                                        drawLayer(origin.layer)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val p = frameProgress(progress())
+                    alpha = if (exiting) 1f else enterContentAlpha()
+                    translationY = -statusBarTop * (1f - p)
+                },
         ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        val f = fade()
-                        val p = frameProgress(progress())
-                        alpha = if (exiting) 1f else ((f - 0.25f) / 0.3f).coerceIn(0f, 1f)
-                        translationY = -statusBarTop * (1f - p)
-                    }
-            ) {
-                content()
-            }
+            Box(Modifier.fillMaxSize().background(surface)) { content() }
         }
     }
 }
@@ -480,14 +499,7 @@ private fun ExpandLayer(
 private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
     when (route) {
         Route.Main -> MainShell(nav, container)
-        is Route.Video -> VideoScreen(
-            container = container,
-            nav = nav,
-            bvid = route.bvid,
-            startPositionMs = route.startSec * 1000,
-            initialCid = route.cid,
-        )
-
+        is Route.Video -> VideoScreen(container, nav, route.bvid, route.startSec * 1000, route.cid)
         is Route.LiveRoom -> LiveRoomScreen(container, nav, route.roomId)
         is Route.Space -> SpaceScreen(nav, container, route.mid)
         Route.History -> HistoryScreen(container, nav)
@@ -496,39 +508,15 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
         Route.WatchLater -> WatchLaterScreen(container, nav)
         Route.Following -> FollowingScreen(container, nav)
         Route.Settings -> SettingsScreen(container, nav)
-        is Route.Pgc -> PgcScreen(
-            container = container,
-            nav = nav,
-            seasonId = route.seasonId,
-            epId = route.epId,
-            startPositionMs = route.startSec * 1000,
-        )
-
+        is Route.Pgc -> PgcScreen(container, nav, route.seasonId, route.epId, route.startSec * 1000)
         Route.Messages -> MessageScreen(container, nav)
         Route.BangumiFollow -> BangumiFollowScreen(container, nav)
         Route.Login -> LoginScreen(container, nav)
         Route.WebLogin -> WebLoginScreen(container, nav)
         Route.Update -> UpdateScreen(container, nav)
-        is Route.Article -> ArticleScreen(
-            container = container,
-            nav = nav,
-            cvId = route.cvId,
-            initialTitle = route.title,
-        )
-
-        is Route.Opus -> DynamicDetailScreen(
-            container = container,
-            nav = nav,
-            dynamicId = route.dynamicId,
-        )
-
-        is Route.Chat -> ChatScreen(
-            container = container,
-            nav = nav,
-            talkerId = route.talkerId,
-            talkerName = route.talkerName,
-            talkerFace = route.talkerFace,
-        )
+        is Route.Article -> ArticleScreen(container, nav, route.cvId, route.title)
+        is Route.Opus -> DynamicDetailScreen(container, nav, route.dynamicId)
+        is Route.Chat -> ChatScreen(container, nav, route.talkerId, route.talkerName, route.talkerFace)
     }
 }
 
