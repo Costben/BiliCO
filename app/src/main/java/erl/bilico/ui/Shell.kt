@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -40,7 +39,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
@@ -60,22 +58,20 @@ import erl.bilico.feature.feed.FEED_SEGMENTS
 import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.search.FeedSearchDropdown
+import erl.bilico.feature.search.SearchResultChipRow
+import erl.bilico.feature.search.SearchResultTabs
+import erl.bilico.feature.search.SearchRow
 import erl.bilico.feature.search.SearchUiState
 import erl.bilico.feature.search.SearchViewModel
-import erl.bilico.ui.components.SearchClearButton
-import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformBottomBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
-import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
-import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
+import io.github.suqi8.coui.kmp.basic.TwoRowTopAppBar
+import io.github.suqi8.coui.kmp.basic.TwoRowTopAppBarDefaults
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Email
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.abs
 
@@ -137,12 +133,22 @@ fun MainShell(nav: NavState, container: AppContainer) {
     // 搜索展开时标题行往下多让一行：搜索框上下都要留出和便签一样的呼吸位。
     val searchBarExtra = if (searchExpanded && tab == 0) SearchBarExtraHeight else 0.dp
     val topBarHeight = pinnedHeight(TitleRowHeight, searchBarExtra)
+    // 结果态顶栏长成两行：搜索框一行、分类胶囊一行。材质一层盖到胶囊行底下，
+    // 换算成页面 dp 之后交给下拉列表，列表首项才让得出整条栏。
+    val resultsTopBarHeight = pinnedHeight(
+        TwoRowTopAppBarDefaults.barHeight(
+            firstRowHeight = TitleRowHeight + searchBarExtra,
+            secondRowHeight = TwoRowTopAppBarDefaults.SecondRowHeight,
+        ),
+    )
 
     val account by container.session.account.collectAsStateWithLifecycle()
     var segment by rememberSaveable { mutableIntStateOf(0) }
     // 翻页状态提到外壳：分段胶囊要跟着 pager 连续移动，不能等切完页再动。
     val feedPager = rememberPagerState(initialPage = segment, pageCount = { FEED_SEGMENTS.size })
     val dynamicPager = rememberPagerState(initialPage = dynamicFilterIndex, pageCount = { DynamicFilters.size })
+    // 搜索结果的翻页状态提到外壳：分类胶囊画在顶栏上，和列表分处两个 Composable 里。
+    val resultsPager = rememberPagerState(pageCount = { SearchResultTabs.size })
 
     // 标题行的折叠量只在这里算一次：顶栏和分段胶囊读同一个值，滚动时才不会各折各的。
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
@@ -235,7 +241,9 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 viewModel = searchViewModel,
                 container = container,
                 nav = nav,
-                barBottom = topBarHeight,
+                barBottom = if (searchShowingResults) resultsTopBarHeight else topBarHeight,
+                barBounds = topBarBounds,
+                pager = resultsPager,
                 backdrop = searchBackdrop,
                 onClose = {
                     searchExpanded = false
@@ -287,6 +295,8 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     },
                     searchExpanded = searchExpanded,
                     onSearchExpandedChange = { searchExpanded = it },
+                    searchShowingResults = searchShowingResults,
+                    resultsPager = resultsPager,
                     searchState = searchState,
                     searchViewModel = searchViewModel,
                     container = container,
@@ -339,6 +349,8 @@ private fun MainTopBar(
     onDoubleTap: () -> Unit,
     searchExpanded: Boolean,
     onSearchExpandedChange: (Boolean) -> Unit,
+    searchShowingResults: Boolean,
+    resultsPager: PagerState,
     searchState: SearchUiState,
     searchViewModel: SearchViewModel,
     container: AppContainer,
@@ -348,51 +360,87 @@ private fun MainTopBar(
 ) {
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val pageBarHeight = statusBarTop + TitleRowHeight + barExtra
+    // 搜索结果压在顶栏底下时，顶栏长成两行：搜索框一行，分类胶囊一行。
+    // 两行共用同一层材质，胶囊行自己不再带渐变带。
+    val chipRowShown = tab == 0 && searchShowingResults
+    val doubleTap = Modifier.pointerInput(onDoubleTap) {
+        detectTapGestures(onDoubleTap = { onDoubleTap() })
+    }
 
     Box(modifier) {
-        AppBarSurface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset { IntOffset(0, 0) }
-                .reportTopBarBottom(bounds),
-            containerColor = pageContainerColor(),
-            scrollFraction = { 1f },
-        ) {
-            Box(
-                Modifier
+        if (chipRowShown) {
+            TwoRowTopAppBar(
+                modifier = Modifier
                     .fillMaxWidth()
-                    .height(pageBarHeight)
-                    .pointerInput(onDoubleTap) {
-                        detectTapGestures(onDoubleTap = { onDoubleTap() })
-                    },
-            )
-        }
-        Crossfade(
-            targetState = tab,
-            animationSpec = tween(MainTabFadeMillis),
-            label = "mainBarContent",
-        ) { page ->
-            BarContent(
-                tab = page,
-                nav = nav,
-                collapsed = collapsed,
-                avatarUrl = avatarUrl,
-                onAvatarClick = onAvatarClick,
-                segment = segment,
-                onSegment = onSegment,
-                dynamicFilterIndex = dynamicFilterIndex,
-                onDynamicFilter = onDynamicFilter,
-                pager = pager,
-                dynamicPager = dynamicPager,
-                onFeedReselect = onFeedReselect,
-                onDynamicReselect = onDynamicReselect,
-                searchExpanded = searchExpanded,
-                onSearchExpandedChange = onSearchExpandedChange,
-                searchState = searchState,
-                searchViewModel = searchViewModel,
-                container = container,
-                barExtra = barExtra,
-            )
+                    .reportTopBarBottom(bounds)
+                    .then(doubleTap),
+                firstRowHeight = TitleRowHeight + barExtra,
+                containerColor = pageContainerColor(),
+                scrollFraction = { 1f },
+                secondRow = {
+                    SearchResultChipRow(
+                        state = searchState,
+                        viewModel = searchViewModel,
+                        pager = resultsPager,
+                    )
+                },
+            ) {
+                SearchRow(
+                    searchState = searchState,
+                    searchViewModel = searchViewModel,
+                    searchExpanded = searchExpanded,
+                    onSearchExpandedChange = onSearchExpandedChange,
+                    avatarUrl = avatarUrl,
+                    onAvatarClick = onAvatarClick,
+                    nav = nav,
+                    container = container,
+                    collapsed = collapsed,
+                    barExtra = barExtra,
+                )
+            }
+        } else {
+            AppBarSurface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(0, 0) }
+                    .reportTopBarBottom(bounds),
+                containerColor = pageContainerColor(),
+                scrollFraction = { 1f },
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(pageBarHeight)
+                        .then(doubleTap),
+                )
+            }
+            Crossfade(
+                targetState = tab,
+                animationSpec = tween(MainTabFadeMillis),
+                label = "mainBarContent",
+            ) { page ->
+                BarContent(
+                    tab = page,
+                    nav = nav,
+                    collapsed = collapsed,
+                    avatarUrl = avatarUrl,
+                    onAvatarClick = onAvatarClick,
+                    segment = segment,
+                    onSegment = onSegment,
+                    dynamicFilterIndex = dynamicFilterIndex,
+                    onDynamicFilter = onDynamicFilter,
+                    pager = pager,
+                    dynamicPager = dynamicPager,
+                    onFeedReselect = onFeedReselect,
+                    onDynamicReselect = onDynamicReselect,
+                    searchExpanded = searchExpanded,
+                    onSearchExpandedChange = onSearchExpandedChange,
+                    searchState = searchState,
+                    searchViewModel = searchViewModel,
+                    container = container,
+                    barExtra = barExtra,
+                )
+            }
         }
     }
 }
@@ -427,66 +475,18 @@ private fun BarContent(
     ) {
         if (tab == 0) {
             // 推荐页：使用前端库最新的按钮展开式搜索栏
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(TitleRowHeight + barExtra)
-                    .graphicsLayer {
-                        if (!searchExpanded) {
-                            translationY = -collapsed() * titleHeightPx
-                            alpha = 1f - collapsed()
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                TopAppBarSearchBar(
-                    query = searchState.query,
-                    onQueryChange = searchViewModel::onQueryChange,
-                    expanded = searchExpanded,
-                    onExpandedChange = { isExpanded ->
-                        onSearchExpandedChange(isExpanded)
-                        if (!isExpanded) searchViewModel.reset()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = "搜索视频 / 用户 / 专栏",
-                    cancelText = "取消",
-                    onSearch = { keyword ->
-                        container.settings.addSearchHistory(keyword)
-                        searchViewModel.submit(keyword)
-                    },
-                    onCancel = {
-                        onSearchExpandedChange(false)
-                        searchViewModel.reset()
-                    },
-                    gradientColor = Color.Transparent,
-                    titleContent = {
-                        FeedAvatar(
-                            url = avatarUrl,
-                            onClick = onAvatarClick,
-                        )
-                    },
-                    extraActions = {
-                        HighlightedIconButton(
-                            onClick = { nav.push(Route.Messages) },
-                            enabled = !searchExpanded,
-                            modifier = Modifier.couiTopAppBarActionItem(),
-                        ) {
-                            Icon(
-                                imageVector = COUIIcons.Email,
-                                contentDescription = "消息",
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
-                    },
-                    trailingIcon = {
-                        if (searchState.query.isNotEmpty()) {
-                            SearchClearButton(
-                                onClick = { searchViewModel.onQueryChange("") },
-                            )
-                        }
-                    },
-                )
-            }
+            SearchRow(
+                searchState = searchState,
+                searchViewModel = searchViewModel,
+                searchExpanded = searchExpanded,
+                onSearchExpandedChange = onSearchExpandedChange,
+                avatarUrl = avatarUrl,
+                onAvatarClick = onAvatarClick,
+                nav = nav,
+                container = container,
+                collapsed = collapsed,
+                barExtra = barExtra,
+            )
         } else {
             Box(Modifier.fillMaxWidth().height(TitleRowHeight)) {
                 Box(Modifier.fillMaxSize().clipToBounds()) {
