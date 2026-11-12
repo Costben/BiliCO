@@ -98,6 +98,8 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val tab = nav.mainTab
     val holder = rememberSaveableStateHolder()
     val backdrop = rememberLayerBackdrop()
+    // 搜索结果自己的录制层：下拉一展开，页顶栏就得改采它，不然顶栏糊的还是底下那一屏首页。
+    val searchBackdrop = rememberLayerBackdrop()
     // 底栏浮在所有页面之上，它停在哪条线以下由这里统一报出去。
     val topBarBounds = remember { TopBarBounds() }
     val topBarHeight = pinnedHeight(TitleRowHeight)
@@ -112,6 +114,12 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val searchState by searchViewModel.state.collectAsStateWithLifecycle()
     val searchHistory by container.settings.searchHistory.collectAsStateWithLifecycle()
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    // 下拉里正在显示结果列表（不是历史/热搜，也不是输入建议）：只有这时顶栏背后才有东西可糊。
+    val searchShowingResults = run {
+        val trimmed = searchState.query.trim()
+        val suggesting = trimmed.isNotEmpty() && trimmed != searchState.submitted
+        searchExpanded && !suggesting && searchState.submitted.isNotBlank()
+    }
 
     LaunchedEffect(tab) {
         if (tab != 0 && searchExpanded) {
@@ -218,6 +226,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 container = container,
                 nav = nav,
                 barBottom = topBarHeight,
+                backdrop = searchBackdrop,
                 onClose = {
                     searchExpanded = false
                     searchViewModel.reset()
@@ -237,7 +246,10 @@ fun MainShell(nav: NavState, container: AppContainer) {
         }
 
         CompositionLocalProvider(
-            LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
+            // 结果列表展开时顶栏改采搜索那份录制，滚动时才糊得到结果；其余时候仍是首页。
+            LocalBackdrop provides if (BlurEffectsEnabled) {
+                if (searchShowingResults) searchBackdrop else backdrop
+            } else null,
             // 内容铺到状态栏下面，顶栏玻璃才有东西可采样；否则 COUI 会把首行抹成平色横带。
             LocalEdgeToEdge provides true,
         ) {

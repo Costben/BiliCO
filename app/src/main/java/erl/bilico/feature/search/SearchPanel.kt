@@ -7,13 +7,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -21,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -42,17 +48,30 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
+import erl.bilico.ui.AppBarSurface
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.asRowScrollState
-import erl.bilico.ui.components.PageTabRow
+import erl.bilico.ui.components.CouiMenuItem
+import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.reportTopBarBottom
+import io.github.suqi8.coui.kmp.basic.ChipTabData
+import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
+import io.github.suqi8.coui.kmp.basic.ChipTabGroup
 import io.github.suqi8.coui.kmp.basic.SearchBar
+import io.github.suqi8.coui.kmp.blur.Backdrop
+import io.github.suqi8.coui.kmp.blur.LayerBackdrop
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Album
+import io.github.suqi8.coui.kmp.icon.extended.Contacts
+import io.github.suqi8.coui.kmp.icon.extended.Play
+import io.github.suqi8.coui.kmp.icon.extended.Sort
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -102,6 +121,22 @@ fun SearchPanel(
         container.settings.addSearchHistory(keyword)
         viewModel.submit(keyword)
     }
+    // 搜索框在两种布局里都要，一份定义两处用：普通态压在列表上方，结果态浮在整页列表上。
+    // 结果态那张列表已被录成 backdrop，搜索框采它做玻璃；上面没有列表可采时退回平涂。
+    val searchBar: @Composable (Modifier, Backdrop?) -> Unit = { mod, backdrop ->
+        SearchBar(
+            query = state.query,
+            onQueryChange = viewModel::onQueryChange,
+            onSearch = pickKeyword,
+            onExpandedChange = { if (!it) dismiss() },
+            modifier = mod,
+            expanded = true,
+            label = "搜索视频 / 用户 / 专栏",
+            cancelText = "取消",
+            onCancel = dismiss,
+            backdrop = backdrop,
+        )
+    }
 
     Box(modifier) {
         Box(
@@ -115,7 +150,7 @@ fun SearchPanel(
                 ),
         )
 
-        Column(
+        Box(
             Modifier
                 .fillMaxWidth()
                 .then(
@@ -139,35 +174,28 @@ fun SearchPanel(
                     onClick = {},
                 ),
         ) {
-            SearchBar(
-                query = state.query,
-                onQueryChange = viewModel::onQueryChange,
-                onSearch = pickKeyword,
-                onExpandedChange = { if (!it) dismiss() },
-                modifier = Modifier.statusBarsPadding(),
-                expanded = true,
-                label = "搜索视频 / 用户 / 专栏",
-                cancelText = "取消",
-                onCancel = dismiss,
-            )
-
             if (showingResults) {
                 SearchResultsPager(
                     state = state,
                     nav = nav,
                     viewModel = viewModel,
                     onRetry = viewModel::retry,
+                    header = { searchBar(Modifier.statusBarsPadding(), LocalBackdrop.current) },
+                    backdrop = rememberLayerBackdrop(),
                 )
             } else {
-                SearchLazyList(
-                    state = state,
-                    history = history,
-                    suggesting = suggesting,
-                    listState = listState,
-                    topPadding = 8.dp,
-                    container = container,
-                    onPick = pickKeyword,
-                )
+                Column(Modifier.fillMaxWidth()) {
+                    searchBar(Modifier.statusBarsPadding(), null)
+                    SearchLazyList(
+                        state = state,
+                        history = history,
+                        suggesting = suggesting,
+                        listState = listState,
+                        topPadding = 8.dp,
+                        container = container,
+                        onPick = pickKeyword,
+                    )
+                }
             }
         }
     }
@@ -190,6 +218,7 @@ fun FeedSearchDropdown(
     container: AppContainer,
     nav: NavState,
     barBottom: Dp,
+    backdrop: LayerBackdrop,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     dropdownModifier: Modifier = Modifier,
@@ -257,17 +286,19 @@ fun FeedSearchDropdown(
                     onClick = {},
                 ),
         ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = barBottom),
-            ) {
+            Box(Modifier.fillMaxWidth()) {
                 if (showingResults) {
                     SearchResultsPager(
                         state = state,
                         nav = nav,
                         viewModel = viewModel,
                         onRetry = viewModel::retry,
+                        // 这个下拉的搜索框在页顶栏上，标签栏自己就是整条顶栏。
+                        header = {},
+                        // 列表从屏幕顶开始铺，页顶栏那一行也算进首项留白：滚动时结果会钻到
+                        // 搜索框底下，顶栏的玻璃才有东西可糊。
+                        topInset = barBottom,
+                        backdrop = backdrop,
                     )
                 } else {
                     SearchLazyList(
@@ -275,7 +306,7 @@ fun FeedSearchDropdown(
                         history = history,
                         suggesting = suggesting,
                         listState = listState,
-                        topPadding = 16.dp,
+                        topPadding = barBottom + 16.dp,
                         container = container,
                         onPick = pickKeyword,
                     )
@@ -343,9 +374,18 @@ private fun SearchLazyList(
 }
 
 /**
- * 搜索结果：标签栏浮在列表上方，视频 / 用户 / 专栏各占一页，左右滑动换分类。
+ * 搜索结果：整页列表铺满，搜索框和胶囊标签浮在它上面。
  *
- * 标签栏不铺底色，底下那页列表从它的胶囊空隙里透出来；切页只补当前这一类的数据。
+ * 顶栏不再是一条实心色条，而是压在列表上的一层渐变玻璃：列表滚到它下面会被磨砂压暗、渐隐，
+ * 但内容仍然看得见。胶囊各自再采一次 backdrop，跟便签那排一样是磨砂玻璃。
+ *
+ * 左边那颗圆圈胶囊打开筛选菜单：排序方式，以及视频分区。
+ *
+ * @param backdrop 列表这一层的录制目标，由顶栏和胶囊采样。录的时候页面底色一起录进去：
+ *   模糊读到的是图层自己的 clear color，透明的底会把胶囊和顶栏洗成近白。调用方传同一份录制
+ *   进来，页顶栏才能跟着糊到这块列表。
+ * @param topInset 列表上方还压着几行别人的栏（下拉搜索时页顶栏挂在外壳上）。这段既算进首项
+ *   留白，也让标签栏整体下移，不然标签栏正好躲到页顶栏背后。
  */
 @Composable
 private fun SearchResultsPager(
@@ -353,16 +393,23 @@ private fun SearchResultsPager(
     nav: NavState,
     viewModel: SearchViewModel,
     onRetry: () -> Unit,
+    header: @Composable () -> Unit,
+    backdrop: LayerBackdrop,
+    topInset: Dp = 0.dp,
 ) {
-    val tabs = remember { listOf("视频", "用户", "专栏") }
+    val tabs = remember {
+        listOf(
+            ChipTabData(label = "视频", icon = COUIIcons.Play),
+            ChipTabData(label = "用户", icon = COUIIcons.Contacts),
+            ChipTabData(label = "专栏", icon = COUIIcons.Album),
+        )
+    }
     val pagerState = rememberPagerState(initialPage = state.tab, pageCount = { tabs.size })
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val barBounds = remember { TopBarBounds() }
-    // 标签栏盖在列表上，列表的第一条要从它下面起排。先给个估值，量到真实高度再修正。
-    var barHeight by remember { mutableStateOf(56.dp) }
-    // 列表这一层自己录一份，标签栏采样它才有东西可糊；采整页的 backdrop 会绕回栏自己。
-    val backdrop = rememberLayerBackdrop()
+    var headerHeight by remember { mutableStateOf(160.dp) }
+    var menuExpanded by remember { mutableStateOf(false) }
 
     // 滑停一页就补这一类的数据；点标签走的是同一个入口。
     LaunchedEffect(pagerState) {
@@ -376,7 +423,8 @@ private fun SearchResultsPager(
             state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdropIf(BlurEffectsEnabled, backdrop),
+                .layerBackdropIf(BlurEffectsEnabled, backdrop)
+                .background(pageContainerColor()),
             beyondViewportPageCount = 1,
         ) { page ->
             SearchResultPage(
@@ -384,34 +432,98 @@ private fun SearchResultsPager(
                 state = state,
                 nav = nav,
                 topBarBounds = barBounds,
-                contentTop = barHeight + 4.dp,
+                contentTop = topInset + headerHeight + 8.dp,
                 onRetry = onRetry,
                 viewModel = viewModel,
             )
         }
 
-        Box(
-            Modifier
-                .fillMaxWidth()
-                // 和列表内容同一档左右边距，底板不贴到屏幕边。
-                .padding(horizontal = 16.dp)
-                .reportTopBarBottom(barBounds)
-                .onSizeChanged { size ->
-                    with(density) { barHeight = size.height.toDp() }
-                }
-                .padding(top = 10.dp, bottom = 6.dp),
+        CompositionLocalProvider(
+            LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
         ) {
-            PageTabRow(
-                tabs = tabs,
-                selectedTabIndex = pagerState.currentPage,
-                onTabSelected = { index ->
-                    scope.launch { pagerState.animateScrollToPage(index) }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                backdrop = if (BlurEffectsEnabled) backdrop else null,
-            )
+            AppBarSurface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    // 结果列表从屏幕顶铺上去之后，标签栏得自己让出页顶栏那一行；
+                    // 不让的话它正好被页顶栏盖住，什么都看不到。
+                    .offset(y = topInset)
+                    .reportTopBarBottom(barBounds)
+                    .onSizeChanged { size ->
+                        with(density) { headerHeight = size.height.toDp() }
+                    },
+                scrollFraction = { 1f },
+                // 这一页自己录了列表的 backdrop，走 COUI 的引擎采样它；系统窗口材质会把自己的输出吃回去。
+                platformRenderer = false,
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    header()
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp, bottom = 6.dp),
+                    ) {
+                        ChipTabGroup(
+                            tabs = tabs,
+                            selectedIndex = pagerState.currentPage,
+                            onSelectedChange = { index ->
+                                scope.launch { pagerState.animateScrollToPage(index) }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingIcon = COUIIcons.Sort,
+                            onLeadingIconClick = { menuExpanded = true },
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            backdrop = LocalBackdrop.current,
+                        )
+                        // 菜单按这颗圆圈胶囊的位置展开：盒子正好盖在库画的那颗 Sort 上。
+                        Box(
+                            Modifier
+                                .padding(start = 16.dp)
+                                .size(ChipTabDefaults.Height),
+                        ) {
+                            CouiPopupMenu(
+                                show = menuExpanded,
+                                onDismiss = { menuExpanded = false },
+                                items = searchMenuItems(state, viewModel),
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
+}
+
+/** 圆圈胶囊里的筛选菜单：先是排序方式，视频那一页再跟一档分区。 */
+private fun searchMenuItems(
+    state: SearchUiState,
+    viewModel: SearchViewModel,
+): List<CouiMenuItem> {
+    val items = mutableListOf<CouiMenuItem>()
+    val orders = listOf(
+        "综合排序" to "totalrank",
+        "最新发布" to "pubdate",
+        "最多播放" to "click",
+        "最多弹幕" to "dm",
+        "最多收藏" to "stow",
+    )
+    orders.forEach { (label, value) ->
+        items += CouiMenuItem(label, { viewModel.setOrder(value) }, selected = state.order == value)
+    }
+    if (state.tab == 0) {
+        val tids = listOf(
+            "全部分区" to 0,
+            "动画" to 1,
+            "游戏" to 4,
+            "知识" to 36,
+            "科技" to 188,
+            "生活" to 160,
+        )
+        tids.forEach { (label, value) ->
+            items += CouiMenuItem(label, { viewModel.setTid(value) }, selected = state.tid == value)
+        }
+    }
+    return items
 }
 
 @Composable
@@ -441,7 +553,8 @@ private fun SearchResultPage(
                     1 -> current.users.size
                     else -> current.articles.size
                 }
-                if (lastVisible != null && size > 0 && lastVisible >= size - 2) {
+                // 列表首项是顶栏留白，索引比数据多一项。
+                if (lastVisible != null && size > 0 && lastVisible >= size - 1) {
                     viewModel.loadMore()
                 }
             }
@@ -452,12 +565,14 @@ private fun SearchResultPage(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 16.dp,
-            top = contentTop,
             end = 16.dp,
             bottom = bottomPadding,
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // 顶栏留白做成首项而不是 contentPadding：带 padding 的 LazyColumn 会把它上面裁掉，
+        // 列表永远钻不到浮层底下，磨砂顶栏就没有背后内容可糊。
+        item(key = "top-inset") { Spacer(Modifier.height(contentTop)) }
         searchResultItems(
             tab = tab,
             state = state,

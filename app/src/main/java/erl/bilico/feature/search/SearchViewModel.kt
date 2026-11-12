@@ -19,6 +19,10 @@ data class SearchUiState(
     val query: String = "",
     val submitted: String = "",
     val tab: Int = 0,
+    /** B 站 `order` 参数：totalrank / pubdate / click / dm / stow。 */
+    val order: String = "totalrank",
+    /** 视频分区 id，0 表示不限。只对视频结果有效。 */
+    val tid: Int = 0,
     val hot: List<String> = emptyList(),
     val hotLoading: Boolean = false,
     val suggestions: List<SearchSuggestion> = emptyList(),
@@ -184,10 +188,41 @@ class SearchViewModel(
         submit(_state.value.submitted)
     }
 
+    /** 换排序方式：三类结果都作废，按新顺序从第一页重来。 */
+    fun setOrder(order: String) {
+        if (_state.value.order == order) return
+        reload(_state.value.copy(order = order))
+    }
+
+    /** 换视频分区，只影响视频这一类；目录里的另外两类不受牵连。 */
+    fun setTid(tid: Int) {
+        if (_state.value.tid == tid) return
+        reload(_state.value.copy(tid = tid))
+    }
+
+    private fun reload(next: SearchUiState) {
+        videoPage = 1
+        userPage = 1
+        articlePage = 1
+        endedTabs.clear()
+        _state.update {
+            next.copy(
+                videos = emptyList(),
+                users = emptyList(),
+                articles = emptyList(),
+                isLoading = true,
+                error = null,
+            )
+        }
+        if (next.submitted.isNotBlank()) load(firstPage = true)
+    }
+
     private fun load(firstPage: Boolean) {
         inFlight = true
         val keyword = _state.value.submitted
         val tab = _state.value.tab
+        val order = _state.value.order
+        val tid = _state.value.tid
         val page = when (tab) {
             0 -> videoPage
             1 -> userPage
@@ -195,7 +230,7 @@ class SearchViewModel(
         }
         viewModelScope.launch {
             when (tab) {
-                0 -> repository.searchVideos(keyword, page)
+                0 -> repository.searchVideos(keyword, page, order, tid)
                     .onSuccess { list ->
                         videoPage = page + 1
                         if (list.isEmpty()) endedTabs.add(tab) else endedTabs.remove(tab)
@@ -227,7 +262,7 @@ class SearchViewModel(
                     }
                     .onFailure { error -> fail(tab, firstPage, error) }
 
-                else -> repository.searchArticles(keyword, page)
+                else -> repository.searchArticles(keyword, page, order)
                     .onSuccess { list ->
                         articlePage = page + 1
                         if (list.isEmpty()) endedTabs.add(tab) else endedTabs.remove(tab)

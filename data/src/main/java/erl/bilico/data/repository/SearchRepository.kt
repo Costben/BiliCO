@@ -69,7 +69,12 @@ class SearchRepository(
         }
     }
 
-    suspend fun searchVideos(keyword: String, page: Int): Result<List<SearchVideo>> =
+    suspend fun searchVideos(
+        keyword: String,
+        page: Int,
+        order: String,
+        tid: Int,
+    ): Result<List<SearchVideo>> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val response = api.searchType(
@@ -77,7 +82,13 @@ class SearchRepository(
                         keyword = keyword,
                         searchType = "video",
                         page = page,
-                    ) + mapOf("order" to "totalrank", "platform" to "pc", "web_location" to "1430654"),
+                    ) + buildMap {
+                        put("order", order)
+                        put("platform", "pc")
+                        put("web_location", "1430654")
+                        // tids 是分区 id，0 表示不限分区，不带这个参数。
+                        if (tid > 0) put("tids", tid.toString())
+                    },
                 )
                 if (response.code != 0) error(response.message.ifBlank { "搜索失败(${response.code})" })
                 response.data?.result.orEmpty().mapNotNull { it.toVideo() }
@@ -102,7 +113,11 @@ class SearchRepository(
         }
 
     /** 专栏搜索：`search_type=article`，结果是 cv 号，点开走阅读页。 */
-    suspend fun searchArticles(keyword: String, page: Int): Result<List<SearchArticle>> =
+    suspend fun searchArticles(
+        keyword: String,
+        page: Int,
+        order: String,
+    ): Result<List<SearchArticle>> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val response = api.searchType(
@@ -110,7 +125,7 @@ class SearchRepository(
                         keyword = keyword,
                         searchType = "article",
                         page = page,
-                    ) + mapOf("order" to "totalrank", "web_location" to "1430654"),
+                    ) + mapOf("order" to order, "web_location" to "1430654"),
                 )
                 if (response.code != 0) error(response.message.ifBlank { "搜索失败(${response.code})" })
                 response.data?.result.orEmpty()
