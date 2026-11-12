@@ -39,6 +39,7 @@ import erl.bilico.data.model.RelationStatResponse
 import erl.bilico.data.model.RecommendResponse
 import erl.bilico.data.model.ReplyResponse
 import erl.bilico.data.model.SearchSquareResponse
+import erl.bilico.data.model.SearchSuggestResponse
 import erl.bilico.data.model.SearchTypeResponse
 import erl.bilico.data.model.SpaceInfoResponse
 import erl.bilico.data.model.SpaceVideoResponse
@@ -172,6 +173,9 @@ interface BiliApi {
 
     @GET("x/web-interface/search/square")
     suspend fun searchSquareLegacy(@Query("limit") limit: Int = 10): SearchSquareResponse
+
+    @GET("x/web-interface/suggest")
+    suspend fun searchSuggest(@Query("term") term: String): SearchSuggestResponse
 
     @Headers(
         "Origin: https://search.bilibili.com",

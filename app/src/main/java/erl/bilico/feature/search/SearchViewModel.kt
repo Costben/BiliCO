@@ -3,9 +3,12 @@ package erl.bilico.feature.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.SearchArticle
+import erl.bilico.data.model.SearchSuggestion
 import erl.bilico.data.model.SearchUser
 import erl.bilico.data.model.SearchVideo
 import erl.bilico.data.repository.SearchRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +21,8 @@ data class SearchUiState(
     val tab: Int = 0,
     val hot: List<String> = emptyList(),
     val hotLoading: Boolean = false,
+    val suggestions: List<SearchSuggestion> = emptyList(),
+    val suggestionsLoading: Boolean = false,
     val videos: List<SearchVideo> = emptyList(),
     val users: List<SearchUser> = emptyList(),
     val articles: List<SearchArticle> = emptyList(),
@@ -38,6 +43,8 @@ class SearchViewModel(
     private var userPage = 1
     private var articlePage = 1
     private var inFlight = false
+    private var suggestJob: Job? = null
+    private var lastSuggestTerm: String = ""
 
     init {
         loadHot()
@@ -54,10 +61,59 @@ class SearchViewModel(
 
     fun onQueryChange(query: String) {
         _state.update { it.copy(query = query) }
+        val trimmed = query.trim()
+
+        if (trimmed.isEmpty()) {
+            suggestJob?.cancel()
+            suggestJob = null
+            lastSuggestTerm = ""
+            _state.update {
+                it.copy(
+                    suggestions = emptyList(),
+                    suggestionsLoading = false,
+                    submitted = "",
+                )
+            }
+            return
+        }
+
+        // 如果与当前已提交的关键词完全一致，说明用户正处于该关键词的结果页，不弹建议
+        if (trimmed == _state.value.submitted) {
+            suggestJob?.cancel()
+            suggestJob = null
+            lastSuggestTerm = ""
+            _state.update { it.copy(suggestions = emptyList(), suggestionsLoading = false) }
+            return
+        }
+
+        if (trimmed == lastSuggestTerm && (_state.value.suggestions.isNotEmpty() || suggestJob?.isActive == true)) {
+            return
+        }
+
+        // 正在输入且未提交：防抖 160ms 请求 B 站搜索建议，保留已有建议防止列表闪烁
+        lastSuggestTerm = trimmed
+        suggestJob?.cancel()
+        _state.update { it.copy(suggestionsLoading = true) }
+        suggestJob = viewModelScope.launch {
+            delay(160)
+            val list = repository.suggest(trimmed).getOrDefault(emptyList())
+            val current = _state.value
+            if (current.query.trim() == trimmed && current.submitted != trimmed) {
+                _state.update {
+                    it.copy(
+                        suggestions = list,
+                        suggestionsLoading = false,
+                    )
+                }
+            }
+        }
     }
 
     /** 重新打开面板时回到搜索首页，不带着上次的结果；热搜缓存留着。 */
     fun reset() {
+        suggestJob?.cancel()
+        suggestJob = null
+        lastSuggestTerm = ""
         videoPage = 1
         userPage = 1
         articlePage = 1
@@ -83,6 +139,9 @@ class SearchViewModel(
     fun submit(keyword: String) {
         val trimmed = keyword.trim()
         if (trimmed.isEmpty()) return
+        suggestJob?.cancel()
+        suggestJob = null
+        lastSuggestTerm = ""
         videoPage = 1
         userPage = 1
         articlePage = 1
@@ -90,6 +149,8 @@ class SearchViewModel(
             it.copy(
                 query = trimmed,
                 submitted = trimmed,
+                suggestions = emptyList(),
+                suggestionsLoading = false,
                 videos = emptyList(),
                 users = emptyList(),
                 articles = emptyList(),
@@ -104,6 +165,7 @@ class SearchViewModel(
     fun loadMore() {
         val current = _state.value
         if (inFlight || current.isEnd || current.submitted.isBlank()) return
+        if (current.query.trim() != current.submitted) return
         if (current.isLoading) return
         _state.update { it.copy(isLoadingMore = true) }
         load(firstPage = false)
@@ -130,7 +192,7 @@ class SearchViewModel(
                         videoPage = page + 1
                         _state.update {
                             it.copy(
-                                videos = if (firstPage) list else it.videos + list,
+                                videos = if (firstPage) list.distinctBy { v -> v.bvid } else (it.videos + list).distinctBy { v -> v.bvid },
                                 isLoading = false,
                                 isLoadingMore = false,
                                 isEnd = list.isEmpty(),
@@ -145,7 +207,7 @@ class SearchViewModel(
                         userPage = page + 1
                         _state.update {
                             it.copy(
-                                users = if (firstPage) list else it.users + list,
+                                users = if (firstPage) list.distinctBy { u -> u.mid } else (it.users + list).distinctBy { u -> u.mid },
                                 isLoading = false,
                                 isLoadingMore = false,
                                 isEnd = list.isEmpty(),
@@ -160,7 +222,7 @@ class SearchViewModel(
                         articlePage = page + 1
                         _state.update {
                             it.copy(
-                                articles = if (firstPage) list else it.articles + list,
+                                articles = if (firstPage) list.distinctBy { a -> a.id } else (it.articles + list).distinctBy { a -> a.id },
                                 isLoading = false,
                                 isLoadingMore = false,
                                 isEnd = list.isEmpty(),

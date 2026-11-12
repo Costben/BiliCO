@@ -2,6 +2,7 @@ package erl.bilico.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class SearchTypeResponse(
@@ -81,3 +82,34 @@ data class SearchTrendingItem(
     val keyword: String = "",
     @SerialName("show_name") val showName: String = "",
 )
+
+@Serializable
+data class SearchSuggestResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: SearchSuggestData? = null,
+)
+
+@Serializable
+data class SearchSuggestData(
+    val code: Int = 0,
+    val result: JsonElement? = null,
+)
+
+@Serializable
+data class SearchSuggestResult(
+    val tag: List<SearchSuggestTag> = emptyList(),
+)
+
+@Serializable
+data class SearchSuggestTag(
+    val value: String = "",
+    val term: String = "",
+    val name: String = "",
+)
+
+data class SearchSuggestion(
+    val text: String,
+    val rawHtml: String = "",
+)
+

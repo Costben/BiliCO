@@ -2,15 +2,20 @@ package erl.bilico.data.repository
 
 import erl.bilico.data.model.SearchArticle
 import erl.bilico.data.model.SearchItem
+import erl.bilico.data.model.SearchSuggestResult
+import erl.bilico.data.model.SearchSuggestion
 import erl.bilico.data.model.SearchUser
 import erl.bilico.data.model.SearchVideo
 import erl.bilico.data.network.BiliApi
+import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.network.WbiKeyManager
 import erl.bilico.data.network.WbiUtils
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 
 class SearchRepository(
     private val api: BiliApi,
@@ -40,6 +45,27 @@ class SearchRepository(
                 ?.map { it.showName.ifBlank { it.keyword } }
                 ?.filter { it.isNotBlank() }
                 .orEmpty()
+        }
+    }
+
+    /** 根据当前输入词获取搜索建议词列表。 */
+    suspend fun suggest(term: String): Result<List<SearchSuggestion>> = withContext(Dispatchers.IO) {
+        val trimmed = term.trim()
+        if (trimmed.isEmpty()) return@withContext Result.success(emptyList())
+        runCatching {
+            val response = api.searchSuggest(trimmed)
+            if (response.code != 0) return@runCatching emptyList()
+            val resultElement = response.data?.result as? JsonObject ?: return@runCatching emptyList()
+            val parsed = BiliClient.json.decodeFromJsonElement<SearchSuggestResult>(resultElement)
+            parsed.tag.mapNotNull { tag ->
+                val rawKeyword = tag.value.ifBlank { tag.term }
+                val keyword = Formatters.decodeHtmlEntities(rawKeyword).trim()
+                if (keyword.isNotEmpty()) {
+                    SearchSuggestion(text = keyword, rawHtml = tag.name)
+                } else {
+                    null
+                }
+            }.distinctBy { it.text }
         }
     }
 
@@ -122,7 +148,7 @@ class SearchRepository(
             author = author,
             upMid = mid,
             playText = Formatters.formatStat(play.toLong()),
-            durationText = Formatters.formatDuration(seconds.toLong()),
+            durationText = if (seconds > 0) Formatters.formatDuration(seconds.toLong()) else "",
             pubdateText = Formatters.formatTimeAgo(pubdate),
         )
     }

@@ -247,7 +247,7 @@ fun navBottomPadding(): Dp =
 
 /**
  * 搜索输入框内的清空按钮：
- * 纯平中灰实心圆盘（18dp）+ 纯白小叉（8dp），32dp 触摸响应区，无高光无阴影。
+ * 纯平中灰实心圆盘（18dp）+ 纯白小叉（8dp），36dp 触摸响应区，左右各留 4dp 内距以对齐 COUI 原生搜索栏。
  */
 @Composable
 fun SearchClearButton(
@@ -261,7 +261,9 @@ fun SearchClearButton(
 
     Box(
         modifier = modifier
-            .size(32.dp)
+            .padding(start = 4.dp, end = 4.dp)
+            .size(36.dp)
+            .clip(CircleShape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
