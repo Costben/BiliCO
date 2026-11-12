@@ -192,6 +192,9 @@ fun MessageScreen(
                                 leadingIcon = COUIIcons.GridView,
                                 onLeadingIconClick = { menuExpanded = true },
                                 contentPadding = PaddingValues(horizontal = 16.dp),
+                                // 页面 backdrop：胶囊里是背景的模糊副本，跟便签那排一样是磨砂玻璃。
+                                // 模糊关闭时 LocalBackdrop 为 null，组件自动退回平涂。
+                                backdrop = LocalBackdrop.current,
                             )
                             // 菜单按这个盒子的位置定位：盒子正好盖在库画的那颗网格胶囊上。
                             Box(
