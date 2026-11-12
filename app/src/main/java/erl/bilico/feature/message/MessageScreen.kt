@@ -65,9 +65,9 @@ import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.GlassChipButton
-import io.github.suqi8.coui.kmp.basic.GlassChipItem
-import io.github.suqi8.coui.kmp.basic.GlassChipRow
+import io.github.suqi8.coui.kmp.basic.ChipTabData
+import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
+import io.github.suqi8.coui.kmp.basic.ChipTabGroup
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
@@ -101,7 +101,7 @@ fun MessageScreen(
     var menuExpanded by remember { mutableStateOf(false) }
 
     val chipTabItems = remember(MESSAGE_TABS) {
-        MESSAGE_TABS.map { tab -> GlassChipItem(label = tab.label, icon = tab.iconVector) }
+        MESSAGE_TABS.map { tab -> ChipTabData(label = tab.label, icon = tab.iconVector) }
     }
 
     // 滑停一页就补拉这一类；点标签走的是同一个入口。
@@ -177,48 +177,53 @@ fun MessageScreen(
                     gradientGlassExtraHeight = 16.dp,
                     navigationIcon = { BackIconButton(onClick = nav::pop) },
                     bottomContent = {
-                        GlassChipRow(
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(bottom = 6.dp),
-                            items = chipTabItems,
-                            selectedIndex = pagerState.currentPage,
-                            onSelected = { index ->
-                                scope.launch { pagerState.animateScrollToPage(index) }
-                            },
-                            leading = {
-                                Box {
-                                    GlassChipButton(
-                                        icon = COUIIcons.GridView,
-                                        contentDescription = "全部分类",
-                                        onClick = { menuExpanded = true },
-                                    )
-                                    CouiPopupMenu(
-                                        show = menuExpanded,
-                                        onDismiss = { menuExpanded = false },
-                                        items = MESSAGE_TABS.mapIndexed { index, tab ->
-                                            CouiMenuItem(
-                                                label = tab.label,
-                                                selected = pagerState.currentPage == index,
-                                                icon = tab.iconVector?.let { vector ->
-                                                    { modifier ->
-                                                        Icon(
-                                                            imageVector = vector,
-                                                            contentDescription = null,
-                                                            modifier = modifier,
-                                                        )
-                                                    }
-                                                },
-                                                onClick = {
-                                                    menuExpanded = false
-                                                    scope.launch { pagerState.animateScrollToPage(index) }
-                                                },
-                                            )
-                                        },
-                                    )
-                                }
-                            },
-                        )
+                        ) {
+                            ChipTabGroup(
+                                tabs = chipTabItems,
+                                selectedIndex = pagerState.currentPage,
+                                onSelectedChange = { index ->
+                                    scope.launch { pagerState.animateScrollToPage(index) }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                leadingIcon = COUIIcons.GridView,
+                                onLeadingIconClick = { menuExpanded = true },
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                            )
+                            // 菜单按这个盒子的位置定位：盒子正好盖在库画的那颗网格胶囊上。
+                            Box(
+                                Modifier
+                                    .padding(start = 16.dp)
+                                    .size(ChipTabDefaults.Height),
+                            ) {
+                                CouiPopupMenu(
+                                    show = menuExpanded,
+                                    onDismiss = { menuExpanded = false },
+                                    items = MESSAGE_TABS.mapIndexed { index, tab ->
+                                        CouiMenuItem(
+                                            label = tab.label,
+                                            selected = pagerState.currentPage == index,
+                                            icon = tab.iconVector?.let { vector ->
+                                                { modifier ->
+                                                    Icon(
+                                                        imageVector = vector,
+                                                        contentDescription = null,
+                                                        modifier = modifier,
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                menuExpanded = false
+                                                scope.launch { pagerState.animateScrollToPage(index) }
+                                            },
+                                        )
+                                    },
+                                )
+                            }
+                        }
                     },
                 )
             }
