@@ -31,8 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.itos.coui.backdrop.rememberCouiBackdrop
-import com.itos.coui.chip.ChipTab
 import erl.bilico.data.model.SpaceProfile
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
@@ -50,6 +48,8 @@ import erl.bilico.ui.components.SearchClearButton
 import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.GlassChipItem
+import io.github.suqi8.coui.kmp.basic.GlassChipRow
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
@@ -170,23 +170,20 @@ fun SpaceScreen(
         }
 
         item(key = "space-tabs") {
-            val backdrop = rememberCouiBackdrop()
-            Row(
+            val tabs = remember { SpaceTab.entries.map { GlassChipItem(it.title) } }
+            GlassChipRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SpaceTab.entries.forEach { tab ->
-                    ChipTab(
-                        selected = state.selectedTab == tab,
-                        onClick = { viewModel.selectTab(tab) },
-                        label = tab.title,
-                        backdrop = backdrop,
-                    )
-                }
-            }
+                items = tabs,
+                selectedIndex = SpaceTab.entries.indexOf(state.selectedTab),
+                onSelected = { viewModel.selectTab(SpaceTab.entries[it]) },
+                contentPadding = PaddingValues(horizontal = 0.dp),
+                // 这排胶囊在列表里，而列表本身就是本页 backdrop 录制的范围：让胶囊采样这层
+                // backdrop 等于让图层画它自己，HWUI 会在 prepareTreeImpl 里递归到栈溢出。
+                // 胶囊背后永远只是 pageContainerColor，不采样与采样在视觉上没有区别。
+                backdrop = null,
+            )
         }
 
         when (state.selectedTab) {
