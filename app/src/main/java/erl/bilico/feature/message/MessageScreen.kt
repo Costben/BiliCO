@@ -309,7 +309,24 @@ private fun MessageRow(entry: MessageEntry) {
         insideMargin = PaddingValues(12.dp),
     ) {
         Row {
-            Avatar(url = avatarUrl, size = 40.dp)
+            if (avatarUrl.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(COUITheme.colorScheme.surfaceContainerHigh),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = BellOutlineIcon,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = COUITheme.colorScheme.onSurfaceSecondary,
+                    )
+                }
+            } else {
+                Avatar(url = avatarUrl, size = 40.dp)
+            }
             Column(Modifier.weight(1f).padding(start = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
