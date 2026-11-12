@@ -23,7 +23,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -45,6 +44,7 @@ import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LibraryVideoRow
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.PageTabRow
 import erl.bilico.ui.components.SearchClearButton
 import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.pageContainerColor
@@ -54,8 +54,6 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.SearchBar
-import io.github.suqi8.coui.kmp.basic.TabRowDefaults
-import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
 import io.github.suqi8.coui.kmp.icon.COUIIcons
@@ -172,19 +170,10 @@ fun SpaceScreen(
 
         item(key = "space-tabs") {
             val labels = remember { SpaceTab.entries.map { it.title } }
-            // 这排标签栏在列表里，而列表本身就是本页 backdrop 录制的范围：让它采样这层
-            // backdrop 等于让图层画它自己，HWUI 会在 prepareTreeImpl 里递归到栈溢出。
-            // 所以这里不采样，改用手上这套颜色和描边，把结果补成和带模糊那两页同一档灰度。
-            val dark = COUITheme.colorScheme.background.luminance() < 0.5f
-            TabRowWithContour(
+            PageTabRow(
                 tabs = labels,
                 selectedTabIndex = SpaceTab.entries.indexOf(state.selectedTab),
                 onTabSelected = { viewModel.selectTab(SpaceTab.entries[it]) },
-                colors = TabRowDefaults.tabRowColors(
-                    backgroundColor = if (dark) Color(0x1F000000) else Color(0x33FFFFFF),
-                ),
-                containerMaterial = TabRowDefaults.containerStroke(dark),
-                indicatorMaterial = TabRowDefaults.indicatorStroke(dark),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp),

@@ -43,12 +43,12 @@ import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.PageTabRow
 import erl.bilico.ui.expandOrigin
 import erl.bilico.ui.rememberExpandOrigin
 import erl.bilico.ui.reportTopBarBottom
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Play
@@ -74,7 +74,7 @@ internal fun LazyListScope.searchResultSection(
                 .reportTopBarBottom(topBarBounds)
                 .padding(top = 10.dp, bottom = 6.dp),
         ) {
-            TabRowWithContour(
+            PageTabRow(
                 tabs = listOf("视频", "用户", "专栏"),
                 selectedTabIndex = state.tab,
                 onTabSelected = onSelectTab,
