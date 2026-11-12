@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,8 +46,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -65,24 +68,26 @@ import erl.bilico.feature.search.FeedSearchDropdown
 import erl.bilico.feature.search.SearchPanel
 import erl.bilico.feature.search.SearchUiState
 import erl.bilico.feature.search.SearchViewModel
+import erl.bilico.ui.components.CouiSegmentCapsuleShape
 import erl.bilico.ui.components.NavDynamicFilledIcon
 import erl.bilico.ui.components.NavDynamicOutlineIcon
 import erl.bilico.ui.components.NavHomeFilledIcon
 import erl.bilico.ui.components.NavHomeOutlineIcon
 import erl.bilico.ui.components.NavMeFilledIcon
 import erl.bilico.ui.components.NavMeOutlineIcon
+import erl.bilico.ui.components.SegmentCapsule
 import erl.bilico.ui.components.SearchClearButton
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBar
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarItem
-import io.github.suqi8.coui.kmp.basic.GlassChipItem
-import io.github.suqi8.coui.kmp.basic.GlassChipRow
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformBottomBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.SpotLightDefaults
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
+import io.github.suqi8.coui.kmp.basic.couiTouchMotion
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
@@ -106,6 +111,18 @@ private val BottomBarWidth = 190.dp
 
 /** 底栏三格：推荐、动态、我的。直播收进推荐页顶部的分段胶囊里。 */
 private val tabTitles = listOf("推荐", "动态", "我的")
+
+/** 分段胶囊每段的默认宽度，和 Cobo 的分段一致。 */
+private val DefaultSegmentWidth = 84.dp
+
+/**
+ * 分段胶囊轨道左右各留的边距，和下面卡片列表的 12dp 缩进对齐。
+ * 列表跟着系统密度走，顶栏钉在 360dp 密度上，所以这是「页面 dp」，用的时候要换算。
+ */
+private val CapsuleSideMargin = 12.dp
+
+/** SegmentCapsule 轨道自带的左右内边距（各 4dp），算每段宽度时要扣掉。 */
+private val CapsuleTrackPadding = 8.dp
 
 @Composable
 fun MainShell(nav: NavState, container: AppContainer) {
@@ -523,26 +540,46 @@ private fun BarContent(
                 enter = fadeIn(animationSpec = tween(200)),
                 exit = fadeOut(animationSpec = tween(150)),
             ) {
-                val chipItems = remember(capsuleLabels) { capsuleLabels.map { GlassChipItem(it) } }
-                Box(
+                val dark = COUITheme.colorScheme.background.luminance() < 0.5f
+                BoxWithConstraints(
                     Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                         .graphicsLayer { translationY = -collapsed() * titleHeightPx },
                     contentAlignment = Alignment.TopCenter,
                 ) {
-                    GlassChipRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        items = chipItems,
-                        // 点击立刻高亮；滑动翻页由列表停稳后回写，和以前的胶囊一致。
+                    val barDensity = LocalDensity.current.density
+                    val pageDensity = LocalContext.current.resources.displayMetrics.density
+                    val sideMargin = CapsuleSideMargin * (pageDensity / barDensity)
+                    val capsuleWidth = minOf(
+                        DefaultSegmentWidth,
+                        ((maxWidth - sideMargin * 2 - CapsuleTrackPadding) / capsuleLabels.size)
+                            .coerceAtLeast(1.dp),
+                    )
+                    SegmentCapsule(
+                        labels = capsuleLabels,
                         selectedIndex = if (tab == 0) segment else dynamicFilterIndex,
-                        onSelected = if (tab == 0) onSegment else onDynamicFilter,
-                        centered = true,
+                        onSelect = if (tab == 0) onSegment else onDynamicFilter,
+                        pager = if (tab == 0) pager else dynamicPager,
+                        segmentWidth = capsuleWidth,
                         onReselect = when (tab) {
                             0 -> onFeedReselect
                             1 -> onDynamicReselect
                             else -> null
                         },
+                        // 底槽与高光块都采样本页 backdrop：一条半透明模糊的槽，
+                        // 里面一颗会滑动的亮块。
+                        glass = true,
+                        backdrop = LocalBackdrop.current,
+                        modifier = Modifier.couiTouchMotion(
+                            enabled = true,
+                            shape = CouiSegmentCapsuleShape,
+                            lightParams = SpotLightDefaults.capsuleParams2(dark),
+                            surface = Modifier,
+                            pressScaleEnabled = true,
+                            consumeDrag = false,
+                            lightEnabled = true,
+                        ),
                     )
                 }
             }

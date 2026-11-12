@@ -33,6 +33,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -52,7 +53,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.suqi8.coui.kmp.basic.GlassChipDefaults
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.Backdrop
+import io.github.suqi8.coui.kmp.blur.textureBlur
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.PI
 import kotlin.math.abs
@@ -409,6 +413,8 @@ fun SegmentCapsule(
     trackColor: Color = Color.Unspecified,
     highlightColor: Color = Color.Unspecified,
     highlightElevation: Dp = 0.dp,
+    glass: Boolean = false,
+    backdrop: Backdrop? = null,
 ) {
     if (labels.isEmpty()) return
     val scheme = COUITheme.colorScheme
@@ -444,6 +450,14 @@ fun SegmentCapsule(
     fun centerFor(index: Int): Float = padPx + offsetsPx[index] + widthsPx[index] / 2f
     val firstCenter = centerFor(0)
     val lastCenter = centerFor(labels.lastIndex)
+
+    // 玻璃底槽：模糊半径与叠色跟便签的分类胶囊同一套；没有 backdrop（例如这一排
+    // 本身就在页面 backdrop 的录制范围里）时退回平涂，观感差别只在有内容从底下经过时。
+    val glassBlurRadius: Dp = remember(density) {
+        with(density) { GlassChipDefaults.BlurRadiusPx.toDp() }
+    }
+    val trackGlass = remember(dark) { GlassChipDefaults.blurColors(dark, 0f) }
+    val pillGlass = remember(dark) { GlassChipDefaults.blurColors(dark, 1f) }
 
     val initial = selectedIndex.coerceIn(0, labels.lastIndex)
     val motion = remember {
@@ -528,13 +542,29 @@ fun SegmentCapsule(
             // 有底槽时把高亮块裁回胶囊内；没有底槽（透明）就别裁，否则高亮块的阴影
             // 只剩内缘一圈，和右边那个同样带投影的输入框对不上。
             .then(
-                if (containerColor != Color.Transparent) {
-                    Modifier.clip(CouiSegmentCapsuleShape)
-                } else {
-                    Modifier
+                when {
+                    glass && backdrop != null -> Modifier.textureBlur(
+                        backdrop = backdrop,
+                        shape = CouiSegmentCapsuleShape,
+                        blurRadius = glassBlurRadius.value,
+                        colors = trackGlass,
+                    )
+
+                    glass -> Modifier
+                        .clip(CouiSegmentCapsuleShape)
+                        .background(GlassChipDefaults.flatFill(dark, 0f))
+
+                    containerColor != Color.Transparent -> Modifier
+                        .clip(CouiSegmentCapsuleShape)
+                        .background(containerColor)
+
+                    else -> Modifier
                 },
             )
-            .background(containerColor),
+            .drawWithContent {
+                drawContent()
+                if (glass) drawSegmentTrackGlass(dark)
+            },
     ) {
         val drawW = with(density) { (motion.width * indicatorScale).toDp() }
         val drawH = with(density) { (motion.height * indicatorScale).toDp() }
@@ -545,18 +575,38 @@ fun SegmentCapsule(
                 .offset(x = drawCenterX - drawW / 2f, y = (height + 8.dp - drawH) / 2f)
                 .size(width = drawW, height = drawH)
                 .then(
-                    if (highlightElevation > 0.dp) {
-                        Modifier.shadow(
+                    when {
+                        highlightElevation > 0.dp -> Modifier.shadow(
                             elevation = highlightElevation,
                             shape = CouiSegmentCapsuleShape,
                             clip = false,
                         )
-                    } else {
-                        Modifier
+
+                        else -> Modifier
                     },
                 )
-                .clip(CouiSegmentCapsuleShape)
-                .background(indicatorColor),
+                .then(
+                    if (glass) {
+                        if (backdrop != null) {
+                            Modifier.textureBlur(
+                                backdrop = backdrop,
+                                shape = CouiSegmentCapsuleShape,
+                                blurRadius = glassBlurRadius.value,
+                                colors = pillGlass,
+                            )
+                        } else {
+                            Modifier
+                                .clip(CouiSegmentCapsuleShape)
+                                .background(GlassChipDefaults.flatFill(dark, 1f))
+                        }
+                    } else {
+                        Modifier.clip(CouiSegmentCapsuleShape).background(indicatorColor)
+                    },
+                )
+                .drawWithContent {
+                    drawContent()
+                    if (glass) drawSegmentPillGlass(dark, washed = backdrop != null)
+                },
         )
         Row(
             modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),

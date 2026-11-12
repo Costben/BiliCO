@@ -45,11 +45,10 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LibraryVideoRow
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.SearchClearButton
+import erl.bilico.ui.components.SegmentCapsule
 import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.GlassChipItem
-import io.github.suqi8.coui.kmp.basic.GlassChipRow
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
@@ -170,19 +169,16 @@ fun SpaceScreen(
         }
 
         item(key = "space-tabs") {
-            val tabs = remember { SpaceTab.entries.map { GlassChipItem(it.title) } }
-            GlassChipRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                items = tabs,
+            val labels = remember { SpaceTab.entries.map { it.title } }
+            SegmentCapsule(
+                modifier = Modifier.padding(vertical = 4.dp),
+                labels = labels,
                 selectedIndex = SpaceTab.entries.indexOf(state.selectedTab),
-                onSelected = { viewModel.selectTab(SpaceTab.entries[it]) },
-                contentPadding = PaddingValues(horizontal = 0.dp),
-                // 这排胶囊在列表里，而列表本身就是本页 backdrop 录制的范围：让胶囊采样这层
+                onSelect = { viewModel.selectTab(SpaceTab.entries[it]) },
+                // 这排标签栏在列表里，而列表本身就是本页 backdrop 录制的范围：让它采样这层
                 // backdrop 等于让图层画它自己，HWUI 会在 prepareTreeImpl 里递归到栈溢出。
-                // 胶囊背后永远只是 pageContainerColor，不采样与采样在视觉上没有区别。
-                backdrop = null,
+                // 标签栏背后永远只是 pageContainerColor，走平涂与采样在视觉上没有区别。
+                glass = true,
             )
         }
 
