@@ -33,9 +33,6 @@ import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Email
 import io.github.suqi8.coui.kmp.icon.extended.Sort
 
-/** 便签实测顶栏渐隐带高度：模糊区域止于栏可见底边之下 16dp。 */
-internal val NotesBarExtraHeight = 16.dp
-
 /**
  * 便签两行顶栏中搜索框行与胶囊行之间的间距：便签第一行 52dp 里 40dp 搜索框下方留 6dp，
  * 再加 SecondRowGap(11dp) 共 17dp 间隙；此处第一行 44dp 里搜索框下方留 2dp，因此第二行
@@ -46,11 +43,9 @@ internal val SearchChipRowGap = 15.dp
 /**
  * 推荐页顶栏：搜索框一行，搜索结果态下再挂一行分类胶囊，两行共用一块玻璃。
  *
- * 材质、两行布局与胶囊采样的顺序由 coui 的 [SearchFilterTopAppBar] 统一处理——材质先录进
- * 私有 backdrop，两行画在录制之外，胶囊采的是「模糊提白之后」的画面。这里只负责搜索框本身：
- * 它还要服务常态标题栏，展开/收起、焦点与返回键的行为留在原位。
- *
- * 没有结果时不传 [SearchFilterTopAppBar] 的筛选行，栏高随之回到一行。
+ * 材质、两行布局与胶囊采样由 coui 的 [SearchFilterTopAppBar] 统一处理：两行结果态默认
+ * 使用 `TwoRowTopAppBarDefaults.ExtraHeight`（6dp）与双行渐隐曲线，在第一张结果卡顶边之上
+ * 归零；没有结果时不传筛选行，栏高与渐隐带回到单行默认值。这里只负责搜索框本身。
  */
 @Composable
 internal fun FeedTitleRow(
@@ -82,7 +77,6 @@ internal fun FeedTitleRow(
         onLeadingIconClick = onSortMenuOpen,
         containerColor = pageContainerColor(),
         backdrop = LocalBackdrop.current,
-        extraHeight = NotesBarExtraHeight,
         scrollFraction = panelAlpha,
     ) {
         // 整行高 + 顶部对齐：折叠时只平移内容，搜索框在行内的落点与迁移前一致。
