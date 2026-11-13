@@ -22,8 +22,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -61,8 +61,10 @@ import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.search.FeedTitleRow
 import erl.bilico.feature.search.HomeSearchOverlay
+import erl.bilico.feature.search.SearchSortMenuHost
 import erl.bilico.feature.search.SearchUiState
 import erl.bilico.feature.search.SearchViewModel
+import erl.bilico.feature.search.showingResults
 import io.github.suqi8.coui.kmp.anim.COUIInEase
 import io.github.suqi8.coui.kmp.anim.COUIOutEase
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
@@ -99,7 +101,6 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val holder = rememberSaveableStateHolder()
     val backdrop = rememberLayerBackdrop()
     val searchBackdrop = rememberLayerBackdrop()
-    val pageSurface = pageContainerColor()
     val topBarBounds = remember { TopBarBounds() }
     var feedCollapse by remember { mutableFloatStateOf(0f) }
     var dynamicCollapse by remember { mutableFloatStateOf(0f) }
@@ -111,14 +112,10 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val searchState by searchViewModel.state.collectAsStateWithLifecycle()
     val searchHistory by container.settings.searchHistory.collectAsStateWithLifecycle()
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
     val panelProgress = remember { Animatable(0f) }
     val panelAlpha = remember { Animatable(0f) }
-    val searchHeaderBackdrop = rememberLayerBackdrop(upstream = searchBackdrop) {
-        if (panelAlpha.value < 0.999f) {
-            drawRect(pageSurface)
-        }
-        drawContent()
-    }
+    val showingResults = searchState.showingResults()
     val panelMounted by remember {
         derivedStateOf {
             searchExpanded || panelProgress.value > 0.001f || panelAlpha.value > 0.001f
@@ -175,6 +172,11 @@ fun MainShell(nav: NavState, container: AppContainer) {
             panelAlpha.snapTo(0f)
             searchViewModel.reset()
         }
+    }
+
+    // 排序菜单只属于结果态：退回发现/建议页或清空提交词时收起，避免漂浮在没有锚点的位置。
+    LaunchedEffect(showingResults) {
+        if (!showingResults) sortMenuExpanded = false
     }
 
     val topBarHeight = pinnedHeight(TitleRowHeight)
@@ -319,7 +321,6 @@ fun MainShell(nav: NavState, container: AppContainer) {
             HomeSearchOverlay(
                 topBarHeight = topBarHeight,
                 searchBackdrop = searchBackdrop,
-                searchHeaderBackdrop = searchHeaderBackdrop,
                 searchExpanded = searchExpanded,
                 panelProgress = { panelProgress.value },
                 panelAlpha = { panelAlpha.value },
@@ -337,7 +338,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
         // Layer 5: 标题行与展开后的 TopAppBarSearchBar（在最顶层，确保搜索胶囊和“取消”按钮不被面板遮挡）
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) {
-                if (feedPanelCovering) searchHeaderBackdrop else backdrop
+                if (feedPanelCovering) searchBackdrop else backdrop
             } else {
                 null
             },
@@ -356,8 +357,25 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     onSearchOpen = openFeedSearch,
                     onSearchCancel = cancelFeedSearch,
                     onSearchSubmit = submitHomeSearch,
-                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                    showingResults = showingResults,
+                    onTabChange = searchViewModel::setTab,
+                    onSortMenuOpen = { sortMenuExpanded = true },
+                    panelAlpha = { panelAlpha.value },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .then(if (feedPanelCovering) Modifier.reportTopBarBottom(topBarBounds) else Modifier),
                 )
+                // 排序圆钮的菜单宿主：圆钮画在 FeedTitleRow 的胶囊行里，这里只把锚点落到它身上。
+                if (feedPanelCovering && showingResults) {
+                    SearchSortMenuHost(
+                        expanded = sortMenuExpanded,
+                        onExpandedChange = { sortMenuExpanded = it },
+                        state = searchState,
+                        viewModel = searchViewModel,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
+                }
             }
         }
     }
@@ -473,6 +491,10 @@ private fun MainTitleRow(
     onSearchOpen: () -> Unit,
     onSearchCancel: () -> Unit,
     onSearchSubmit: (String) -> Unit,
+    showingResults: Boolean,
+    onTabChange: (Int) -> Unit,
+    onSortMenuOpen: () -> Unit,
+    panelAlpha: () -> Float,
     modifier: Modifier = Modifier,
 ) {
     Crossfade(
@@ -493,6 +515,11 @@ private fun MainTitleRow(
                 onAvatarClick = onAvatarClick,
                 nav = nav,
                 collapsed = collapsed,
+                showingResults = showingResults,
+                onTabChange = onTabChange,
+                onSortMenuOpen = onSortMenuOpen,
+                panelAlpha = panelAlpha,
+                modifier = Modifier.fillMaxWidth(),
             )
         } else {
             PageTitleBar(

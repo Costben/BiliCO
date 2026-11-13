@@ -1,14 +1,9 @@
 package erl.bilico.feature.search
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,18 +22,35 @@ import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.components.SearchClearButton
+import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.SearchFilterTopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Email
+import io.github.suqi8.coui.kmp.icon.extended.Sort
+
+/** 便签实测顶栏渐隐带高度：模糊区域止于栏可见底边之下 16dp。 */
+internal val NotesBarExtraHeight = 16.dp
 
 /**
- * 推荐页顶栏标题行：1:1 对齐 Cobo COUI 的 `FeedTitleRow` 结构。
+ * 便签两行顶栏中搜索框行与胶囊行之间的间距：便签第一行 52dp 里 40dp 搜索框下方留 6dp，
+ * 再加 SecondRowGap(11dp) 共 17dp 间隙；此处第一行 44dp 里搜索框下方留 2dp，因此第二行
+ * 从第一行底再往下空 15dp，使搜索框与胶囊之间的视觉距离同样保持 17dp。
+ */
+internal val SearchChipRowGap = 15.dp
+
+/**
+ * 推荐页顶栏：搜索框一行，搜索结果态下再挂一行分类胶囊，两行共用一块玻璃。
  *
- * 挂在最顶层（Layer 5），常态使用首页 `backdrop`，搜索面板挂载期间切换为搜索面板的 `searchBackdrop`；
- * 高度固定为 [TitleRowHeight]（44dp），滚动折叠时只折掉头像，搜索展开期间锁定不折叠。
+ * 材质、两行布局与胶囊采样的顺序由 coui 的 [SearchFilterTopAppBar] 统一处理——材质先录进
+ * 私有 backdrop，两行画在录制之外，胶囊采的是「模糊提白之后」的画面。这里只负责搜索框本身：
+ * 它还要服务常态标题栏，展开/收起、焦点与返回键的行为留在原位。
+ *
+ * 没有结果时不传 [SearchFilterTopAppBar] 的筛选行，栏高随之回到一行。
  */
 @Composable
 internal fun FeedTitleRow(
@@ -52,18 +64,29 @@ internal fun FeedTitleRow(
     onAvatarClick: () -> Unit,
     nav: NavState,
     collapsed: () -> Float,
+    showingResults: Boolean,
+    onTabChange: (Int) -> Unit,
+    onSortMenuOpen: () -> Unit,
+    panelAlpha: () -> Float,
+    modifier: Modifier = Modifier,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
+    SearchFilterTopAppBar(
+        filters = if (showingResults) SearchResultTabs else null,
+        selectedFilter = searchState.tab,
+        onFilterSelected = onTabChange,
+        modifier = modifier,
+        firstRowHeight = TitleRowHeight,
+        rowGap = SearchChipRowGap,
+        leadingIcon = COUIIcons.Sort,
+        onLeadingIconClick = onSortMenuOpen,
+        containerColor = pageContainerColor(),
+        backdrop = LocalBackdrop.current,
+        extraHeight = NotesBarExtraHeight,
+        scrollFraction = panelAlpha,
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(TitleRowHeight),
-        ) {
+        // 整行高 + 顶部对齐：折叠时只平移内容，搜索框在行内的落点与迁移前一致。
+        Box(Modifier.fillMaxWidth().height(TitleRowHeight)) {
             Box(
                 Modifier
                     .fillMaxWidth()
