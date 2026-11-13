@@ -56,82 +56,98 @@ private val SearchVideoCoverWidth = 144.dp
 private val SearchVideoCoverHeight = SearchVideoCoverWidth * 9f / 16f
 
 /**
- * 一个分类的结果列表。三个分类各是一份独立的列表，由外层的 pager 按页承载，
- * 所以这里只铺这一类自己的条目；标签栏在 pager 外面，不随列表滚动。
+ * 搜索结果与顶部分类胶囊绑在同一份 LazyColumn 里：
+ * 首项放 [SearchHeaderRow]，随正文结果一起上下滑动，滑上去后藏入单行玻璃顶栏之下。
  */
 internal fun LazyListScope.searchResultItems(
-    tab: Int,
     state: SearchUiState,
     nav: NavState,
+    viewModel: SearchViewModel,
     rowScrollState: RowScrollState,
     topBarBounds: TopBarBounds,
     onRetry: () -> Unit,
 ) {
-    // 加载 / 失败 / 进度只画在当前可见的那一页，免得左右滑动时旁边的预览页也在闪加载态。
-    val current = tab == state.tab
+    item(key = "search_results_header") {
+        SearchHeaderRow(
+            state = state,
+            viewModel = viewModel,
+        )
+    }
 
     when {
-        current && state.isLoading -> item(key = "loading") { LoadingState() }
-
-        current && state.error != null -> item(key = "error") {
-            ErrorState(state.error.orEmpty(), onRetry = onRetry)
+        state.isLoading -> item(key = "loading") {
+            Box(Modifier.padding(horizontal = 16.dp)) { LoadingState() }
         }
 
-        tab == 0 && state.videos.isEmpty() -> item(key = "empty") {
-            EmptyState("没有找到相关视频")
+        state.error != null -> item(key = "error") {
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                ErrorState(state.error.orEmpty(), onRetry = onRetry)
+            }
         }
 
-        tab == 1 && state.users.isEmpty() -> item(key = "empty") {
-            EmptyState("没有找到相关用户")
+        state.tab == 0 && state.videos.isEmpty() -> item(key = "empty") {
+            Box(Modifier.padding(horizontal = 16.dp)) { EmptyState("没有找到相关视频") }
         }
 
-        tab == 2 && state.articles.isEmpty() -> item(key = "empty") {
-            EmptyState("没有找到相关专栏")
+        state.tab == 1 && state.users.isEmpty() -> item(key = "empty") {
+            Box(Modifier.padding(horizontal = 16.dp)) { EmptyState("没有找到相关用户") }
+        }
+
+        state.tab == 2 && state.articles.isEmpty() -> item(key = "empty") {
+            Box(Modifier.padding(horizontal = 16.dp)) { EmptyState("没有找到相关专栏") }
         }
     }
 
-    when (tab) {
+    when (state.tab) {
         0 -> items(
             items = state.videos,
-            key = { it.bvid },
+            key = { "video_${it.bvid}" },
             contentType = { "search-video" },
         ) { video ->
             val origin = rememberExpandOrigin()
             SideEffect {
-                origin.attachToRow(rowScrollState, video.bvid, topBarBounds)
+                origin.attachToRow(rowScrollState, "video_${video.bvid}", topBarBounds)
             }
-            SearchVideoRow(
-                video = video,
-                modifier = Modifier.expandOrigin(origin),
-                onClick = { nav.push(Route.Video(video.bvid), origin) },
-            )
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                SearchVideoRow(
+                    video = video,
+                    modifier = Modifier.expandOrigin(origin),
+                    onClick = { nav.push(Route.Video(video.bvid), origin) },
+                )
+            }
         }
 
         1 -> items(
             items = state.users,
-            key = { it.mid },
+            key = { "user_${it.mid}" },
             contentType = { "search-user" },
         ) { user ->
-            SearchUserRow(
-                user = user,
-                onClick = { nav.push(Route.Space(user.mid)) },
-            )
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                SearchUserRow(
+                    user = user,
+                    onClick = { nav.push(Route.Space(user.mid)) },
+                )
+            }
         }
 
         else -> items(
             items = state.articles,
-            key = { "article-${it.id}" },
+            key = { "article_${it.id}" },
             contentType = { "search-article" },
         ) { article ->
-            SearchArticleRow(
-                article = article,
-                onClick = { nav.push(Route.Article(article.id, article.title)) },
-            )
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                SearchArticleRow(
+                    article = article,
+                    onClick = { nav.push(Route.Article(article.id, article.title)) },
+                )
+            }
         }
     }
 
-    if (current && state.isLoadingMore) {
-        item(key = "loading-more") { LoadingState() }
+    if (state.isLoadingMore) {
+        item(key = "loading-more") {
+            Box(Modifier.padding(horizontal = 16.dp)) { LoadingState() }
+        }
     }
 }
 

@@ -84,7 +84,7 @@ internal fun LazyListScope.searchSuggestSection(
     if (suggestions.isNotEmpty()) {
         item(key = "suggest-card") {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 cornerRadius = CardDefaults.GroupCornerRadius,
                 insideMargin = PaddingValues(0.dp),
                 weight = CardDefaults.GroupWeight,
@@ -107,7 +107,7 @@ internal fun LazyListScope.searchSuggestSection(
     } else {
         item(key = "suggest-direct") {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 cornerRadius = CardDefaults.GroupCornerRadius,
                 insideMargin = PaddingValues(0.dp),
                 weight = CardDefaults.GroupWeight,
@@ -285,7 +285,10 @@ internal fun LazyListScope.searchHomeSection(
 ) {
     if (history.isNotEmpty()) {
         item(key = "history-title") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 SectionTitle("搜索历史", Modifier.weight(1f), horizontalPadding = 6.dp)
                 Text(
                     text = "清空",
@@ -299,24 +302,30 @@ internal fun LazyListScope.searchHomeSection(
             }
         }
         item(key = "history") {
-            KeywordChips(
-                keywords = history,
-                onPick = onPick,
-                onDelete = onDeleteHistory,
-            )
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                KeywordChips(
+                    keywords = history,
+                    onPick = onPick,
+                    onDelete = onDeleteHistory,
+                )
+            }
         }
     }
 
-    item(key = "hot-title") { SectionTitle("热搜", horizontalPadding = 6.dp) }
+    item(key = "hot-title") {
+        SectionTitle("热搜", Modifier.padding(horizontal = 16.dp), horizontalPadding = 6.dp)
+    }
 
     if (hotLoading && hot.isEmpty()) {
-        item(key = "hot-loading") { LoadingState() }
+        item(key = "hot-loading") { Box(Modifier.padding(horizontal = 16.dp)) { LoadingState() } }
     } else {
         item(key = "hot") {
-            if (hot.isEmpty()) {
-                EmptyState("暂时没有热搜")
-            } else {
-                HotKeywordChips(keywords = hot, onPick = onPick)
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                if (hot.isEmpty()) {
+                    EmptyState("暂时没有热搜")
+                } else {
+                    HotKeywordChips(keywords = hot, onPick = onPick)
+                }
             }
         }
     }
