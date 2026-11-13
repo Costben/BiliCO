@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
@@ -44,7 +45,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import erl.bilico.di.AppContainer
-import erl.bilico.ui.AppBarSurface
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
@@ -55,7 +55,9 @@ import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
+import erl.bilico.ui.pinnedHeight
 import erl.bilico.ui.reportTopBarBottom
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlay
 import io.github.suqi8.coui.kmp.basic.ChipTabData
 import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
 import io.github.suqi8.coui.kmp.basic.ChipTabGroup
@@ -64,6 +66,8 @@ import io.github.suqi8.coui.kmp.basic.DropdownItem
 import io.github.suqi8.coui.kmp.basic.ListPopupDefaults
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.PopupPositionProvider
+import io.github.suqi8.coui.kmp.basic.TwoRowTopAppBarDefaults
+import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
@@ -80,6 +84,16 @@ internal val SearchResultTabs = listOf(
     ChipTabData(label = "用户", icon = COUIIcons.Contacts),
     ChipTabData(label = "专栏", icon = COUIIcons.Album),
 )
+
+/**
+ * 便签两行顶栏中搜索框行与胶囊行之间的间距：便签第一行 52dp 里 40dp 搜索框下方留 6dp，
+ * 再加 SecondRowGap(11dp) 共 17dp 间隙；此处第一行 44dp 里搜索框下方留 2dp，因此第二行
+ * 从第一行底再往下空 15dp，使搜索框与胶囊之间的视觉距离同样保持 17dp。
+ */
+private val SearchChipRowGap = 15.dp
+
+/** 便签实测顶栏渐隐带高度：模糊区域止于栏可见底边之下 16dp。 */
+private val NotesBarExtraHeight = 16.dp
 
 private val SearchOrders = listOf(
     "综合排序" to "totalrank",
@@ -119,16 +133,18 @@ private class SearchPanelClipShape(
 }
 
 /**
- * 1:1 复刻 Cobo COUI 的首页搜索整屏面板（Layer 4）：
- * - 从屏幕顶 0 铺满到屏幕底部，位于常态顶栏/底栏之上、搜索胶囊之下；
- * - 搜索发现、搜索建议、搜索结果共用同一个 [LazyColumn]；
- * - 分类胶囊 [SearchHeaderRow] 作为结果列表首项绑定在正文中，随列表一起上下滑走；
- * - 面板自身在顶部覆盖单行高度的 [AppBarSurface] 玻璃材质。
+ * 首页搜索整屏面板（Layer 4）：
+ * - 从屏幕顶 0 铺满到屏幕底部，位于常态顶栏/底栏之上、搜索胶囊（Layer 5）之下；
+ * - 搜索发现、搜索建议、搜索结果共用底层同一份 [LazyColumn]（录进 [searchBackdrop]）；
+ * - 顶部玻璃材质覆盖搜索栏与结果态下的第二行分类胶囊，按便签（Notes）的两行结构布局：
+ *   材质单独录进 [searchHeaderBackdrop] 后同时交给搜索胶囊（Layer 5）和 [SearchHeaderRow] 采样，
+ *   两者与底部边缘高光都只读取已模糊提白的顶栏材质，不跳过顶栏直接采原始列表。
  */
 @Composable
 internal fun HomeSearchOverlay(
     topBarHeight: Dp,
     searchBackdrop: LayerBackdrop,
+    searchHeaderBackdrop: LayerBackdrop,
     searchExpanded: Boolean,
     panelProgress: () -> Float,
     panelAlpha: () -> Float,
@@ -146,13 +162,20 @@ internal fun HomeSearchOverlay(
     val rowScrollState = remember(listState) { listState.asRowScrollState() }
     val density = LocalDensity.current
     val topBarHeightPx = with(density) { topBarHeight.toPx() }
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
 
     val trimmedQuery = state.query.trim()
     val suggesting = trimmedQuery.isNotEmpty() && trimmedQuery != state.submitted
     val showingResults = state.submitted.isNotBlank() && !suggesting && trimmedQuery.isNotEmpty()
+
+    val secondRowTotalHeight = SearchChipRowGap + TwoRowTopAppBarDefaults.SecondRowHeight + TwoRowTopAppBarDefaults.SecondRowBottom
+    val resultsBarHeight = pinnedHeight(TitleRowHeight, secondRowTotalHeight)
+    val contentTop = if (showingResults) {
+        resultsBarHeight + 6.dp
+    } else {
+        glassBarContentTop(topBarHeight, 8.dp)
+    }
 
     LaunchedEffect(showingResults) {
         if (showingResults) {
@@ -210,7 +233,7 @@ internal fun HomeSearchOverlay(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         start = 0.dp,
-                        top = glassBarContentTop(topBarHeight, 8.dp),
+                        top = contentTop,
                         end = 0.dp,
                         bottom = bottomPadding,
                     ),
@@ -238,7 +261,6 @@ internal fun HomeSearchOverlay(
                         searchResultItems(
                             state = state,
                             nav = nav,
-                            viewModel = viewModel,
                             rowScrollState = rowScrollState,
                             topBarBounds = barBounds,
                             onRetry = viewModel::retry,
@@ -248,22 +270,63 @@ internal fun HomeSearchOverlay(
             }
         }
 
-        // 搜索面板自己的单行顶栏渐变模糊材质（固定单行高度，避免尺寸变化引起平台材质黑条）。
-        CompositionLocalProvider(
-            LocalBackdrop provides if (BlurEffectsEnabled) searchBackdrop else null,
-            LocalEdgeToEdge provides true,
-        ) {
-            PinnedBarDensity {
-                val barHeight = statusBarTop + TitleRowHeight
-                AppBarSurface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .reportTopBarBottom(barBounds),
-                    containerColor = surfaceColor,
-                    scrollFraction = panelAlpha,
+        // 按便签布局：整块顶栏从状态栏一直覆到胶囊行底边之下 16dp 渐隐带，胶囊悬在材质之上（兄弟节点，不进入材质录制）。
+        PinnedBarDensity {
+            val barStatusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val barHeight = barStatusTop + TitleRowHeight + if (showingResults) secondRowTotalHeight else 0.dp
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth(),
+            ) {
+                CompositionLocalProvider(
+                    LocalBackdrop provides if (BlurEffectsEnabled) searchBackdrop else null,
+                    LocalEdgeToEdge provides true,
                 ) {
-                    Box(Modifier.fillMaxWidth().height(barHeight))
+                    if (BlurEffectsEnabled) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(barHeight + NotesBarExtraHeight)
+                                .layerBackdropIf(true, searchHeaderBackdrop),
+                        ) {
+                            AppBarBlurOverlay(
+                                scrollFraction = panelAlpha,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(Alignment.TopCenter)
+                                    .reportTopBarBottom(barBounds),
+                                containerColor = surfaceColor,
+                                extraHeight = NotesBarExtraHeight,
+                                platformRenderer = false,
+                            ) {
+                                Box(Modifier.fillMaxWidth().height(barHeight))
+                            }
+                        }
+                    } else {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(barHeight)
+                                .reportTopBarBottom(barBounds)
+                                .drawBehind {
+                                    val alpha = panelAlpha().coerceIn(0f, 1f)
+                                    if (alpha > 0f) drawRect(surfaceColor, alpha = alpha)
+                                },
+                        )
+                    }
+                }
+
+                if (showingResults) {
+                    SearchHeaderRow(
+                        state = state,
+                        viewModel = viewModel,
+                        backdrop = if (BlurEffectsEnabled) searchHeaderBackdrop else null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = barStatusTop + TitleRowHeight + SearchChipRowGap)
+                            .graphicsLayer { alpha = panelAlpha().coerceIn(0f, 1f) },
+                    )
                 }
             }
         }
@@ -271,13 +334,14 @@ internal fun HomeSearchOverlay(
 }
 
 /**
- * 搜索结果头部控制栏：作为结果列表首项随正文一起上下滚动。
- * 位于 `searchBackdrop` 录制容器内部，胶囊不传 backdrop（走平涂样式）以免自采样。
+ * 悬在顶栏搜索框下方的分类胶囊行（便签第二行样式）：
+ * 坐在已模糊提白的顶栏材质之上，采样 [backdrop] 做胶囊玻璃高光。
  */
 @Composable
 internal fun SearchHeaderRow(
     state: SearchUiState,
     viewModel: SearchViewModel,
+    backdrop: Backdrop?,
     modifier: Modifier = Modifier,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -342,11 +406,11 @@ internal fun SearchHeaderRow(
             onSelectedChange = viewModel::setTab,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp)
                 .testTag("search_tabs"),
             leadingIcon = COUIIcons.Sort,
             onLeadingIconClick = { menuExpanded = true },
             contentPadding = PaddingValues(horizontal = horizontalPadding),
+            backdrop = backdrop,
         )
 
         Box(

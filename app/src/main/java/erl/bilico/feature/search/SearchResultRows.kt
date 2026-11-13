@@ -56,24 +56,16 @@ private val SearchVideoCoverWidth = 144.dp
 private val SearchVideoCoverHeight = SearchVideoCoverWidth * 9f / 16f
 
 /**
- * 搜索结果与顶部分类胶囊绑在同一份 LazyColumn 里：
- * 首项放 [SearchHeaderRow]，随正文结果一起上下滑动，滑上去后藏入单行玻璃顶栏之下。
+ * 搜索结果列表项：分类标签栏已固定在顶栏第二行（随顶栏玻璃材质悬在列表上方），
+ * 这里只负责铺三类结果的卡片与加载状态。
  */
 internal fun LazyListScope.searchResultItems(
     state: SearchUiState,
     nav: NavState,
-    viewModel: SearchViewModel,
     rowScrollState: RowScrollState,
     topBarBounds: TopBarBounds,
     onRetry: () -> Unit,
 ) {
-    item(key = "search_results_header") {
-        SearchHeaderRow(
-            state = state,
-            viewModel = viewModel,
-        )
-    }
-
     when {
         state.isLoading -> item(key = "loading") {
             Box(Modifier.padding(horizontal = 16.dp)) { LoadingState() }

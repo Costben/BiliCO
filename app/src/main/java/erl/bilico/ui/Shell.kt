@@ -99,6 +99,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val holder = rememberSaveableStateHolder()
     val backdrop = rememberLayerBackdrop()
     val searchBackdrop = rememberLayerBackdrop()
+    val pageSurface = pageContainerColor()
     val topBarBounds = remember { TopBarBounds() }
     var feedCollapse by remember { mutableFloatStateOf(0f) }
     var dynamicCollapse by remember { mutableFloatStateOf(0f) }
@@ -112,6 +113,12 @@ fun MainShell(nav: NavState, container: AppContainer) {
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     val panelProgress = remember { Animatable(0f) }
     val panelAlpha = remember { Animatable(0f) }
+    val searchHeaderBackdrop = rememberLayerBackdrop(upstream = searchBackdrop) {
+        if (panelAlpha.value < 0.999f) {
+            drawRect(pageSurface)
+        }
+        drawContent()
+    }
     val panelMounted by remember {
         derivedStateOf {
             searchExpanded || panelProgress.value > 0.001f || panelAlpha.value > 0.001f
@@ -312,6 +319,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
             HomeSearchOverlay(
                 topBarHeight = topBarHeight,
                 searchBackdrop = searchBackdrop,
+                searchHeaderBackdrop = searchHeaderBackdrop,
                 searchExpanded = searchExpanded,
                 panelProgress = { panelProgress.value },
                 panelAlpha = { panelAlpha.value },
@@ -329,7 +337,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
         // Layer 5: 标题行与展开后的 TopAppBarSearchBar（在最顶层，确保搜索胶囊和“取消”按钮不被面板遮挡）
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) {
-                if (feedPanelCovering) searchBackdrop else backdrop
+                if (feedPanelCovering) searchHeaderBackdrop else backdrop
             } else {
                 null
             },
