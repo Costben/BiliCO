@@ -377,6 +377,9 @@ private fun MainTopBar(
                 firstRowHeight = TitleRowHeight + barExtra,
                 containerColor = pageContainerColor(),
                 scrollFraction = { 1f },
+                // 这一页自己录了列表的 backdrop，走 COUI 的引擎采样它；系统窗口材质会把自己的
+                // 输出吃回去，栏就只剩一层淡色，模糊没了。
+                platformRenderer = false,
                 secondRow = {
                     SearchResultChipRow(
                         state = searchState,
