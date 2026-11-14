@@ -71,9 +71,13 @@ import io.github.suqi8.coui.kmp.basic.ChipTabGroup
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
+import io.github.suqi8.coui.kmp.basic.SearchResultContainer
+import io.github.suqi8.coui.kmp.basic.SearchResultContainerDefaults
+import io.github.suqi8.coui.kmp.basic.SearchResultsRiseTrigger
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
+import io.github.suqi8.coui.kmp.basic.rememberSearchResultsTransitionState
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
@@ -248,6 +252,15 @@ private fun MessageList(
 ) {
     val listState = rememberLazyListState()
     val itemCount by rememberUpdatedState(state.items.size)
+    val transitionSpec = SearchResultContainerDefaults.transitionSpec(
+        riseTrigger = SearchResultsRiseTrigger.OnlyAfterLoading,
+    )
+    val transitionState = rememberSearchResultsTransitionState(
+        showingResults = true,
+        loading = loggedIn && state.isLoading,
+        queryKey = state.loaded,
+        spec = transitionSpec,
+    )
 
     LaunchedEffect(kind, listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
@@ -259,47 +272,55 @@ private fun MessageList(
             }
     }
 
-    LazyColumn(
-        state = listState,
+    SearchResultContainer(
+        state = transitionState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = 12.dp,
-            top = contentTop,
-            end = 12.dp,
-            bottom = 24.dp + navBottomPadding(),
-        ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        loadingTopPadding = contentTop,
+        loadingContent = { LoadingState() },
     ) {
-        if (!loggedIn) {
-            item(key = "login") {
-                EmptyState(
-                    text = "登录后查看",
-                    action = { TextButton(text = "去登录", onClick = nav::popToMe) },
-                )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                top = contentTop,
+                end = 12.dp,
+                bottom = 24.dp + navBottomPadding(),
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (!loggedIn) {
+                item(key = "login") {
+                    EmptyState(
+                        text = "登录后查看",
+                        action = { TextButton(text = "去登录", onClick = nav::popToMe) },
+                    )
+                }
+                return@LazyColumn
             }
-            return@LazyColumn
-        }
 
-        when {
-            state.isLoading -> item(key = "state") { LoadingState() }
-            state.error != null -> item(key = "state") {
-                ErrorState(state.error.orEmpty(), onRetry = { viewModel.reload(kind) })
+            if (!resultsVisible) return@LazyColumn
+
+            when {
+                state.error != null -> item(key = "state") {
+                    ErrorState(state.error.orEmpty(), onRetry = { viewModel.reload(kind) })
+                }
+                state.loaded && state.items.isEmpty() -> item(key = "state") {
+                    EmptyState("暂时没有新消息")
+                }
             }
-            state.loaded && state.items.isEmpty() -> item(key = "state") {
-                EmptyState("暂时没有新消息")
+
+            items(
+                count = state.items.size,
+                key = { state.items[it].key },
+                contentType = { "message" },
+            ) { index ->
+                MessageRow(entry = state.items[index])
             }
-        }
 
-        items(
-            count = state.items.size,
-            key = { state.items[it].key },
-            contentType = { "message" },
-        ) { index ->
-            MessageRow(entry = state.items[index])
-        }
-
-        if (state.isLoadingMore) {
-            item(key = "loading-more") { LoadingState() }
+            if (state.isLoadingMore) {
+                item(key = "loading-more") { LoadingState() }
+            }
         }
     }
 }
@@ -390,6 +411,15 @@ private fun SessionList(
 ) {
     val listState = rememberLazyListState()
     val itemCount by rememberUpdatedState(state.sessions.size)
+    val transitionSpec = SearchResultContainerDefaults.transitionSpec(
+        riseTrigger = SearchResultsRiseTrigger.OnlyAfterLoading,
+    )
+    val transitionState = rememberSearchResultsTransitionState(
+        showingResults = true,
+        loading = loggedIn && state.isSessionsLoading,
+        queryKey = state.sessionsLoaded,
+        spec = transitionSpec,
+    )
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
@@ -401,53 +431,61 @@ private fun SessionList(
             }
     }
 
-    LazyColumn(
-        state = listState,
+    SearchResultContainer(
+        state = transitionState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = 12.dp,
-            top = contentTop,
-            end = 12.dp,
-            bottom = 24.dp + navBottomPadding(),
-        ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        loadingTopPadding = contentTop,
+        loadingContent = { LoadingState() },
     ) {
-        if (!loggedIn) {
-            item(key = "login") {
-                EmptyState(
-                    text = "登录后查看",
-                    action = { TextButton(text = "去登录", onClick = nav::popToMe) },
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                top = contentTop,
+                end = 12.dp,
+                bottom = 24.dp + navBottomPadding(),
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (!loggedIn) {
+                item(key = "login") {
+                    EmptyState(
+                        text = "登录后查看",
+                        action = { TextButton(text = "去登录", onClick = nav::popToMe) },
+                    )
+                }
+                return@LazyColumn
+            }
+
+            if (!resultsVisible) return@LazyColumn
+
+            when {
+                state.sessionsError != null -> item(key = "state") {
+                    ErrorState(state.sessionsError.orEmpty(), onRetry = { viewModel.reload(MessageKind.SESSION) })
+                }
+                state.sessionsLoaded && state.sessions.isEmpty() -> item(key = "state") {
+                    EmptyState("暂无私信消息")
+                }
+            }
+
+            items(
+                count = state.sessions.size,
+                key = { state.sessions[it].talkerId },
+                contentType = { "session" },
+            ) { index ->
+                val session = state.sessions[index]
+                SessionRow(
+                    session = session,
+                    onClick = {
+                        nav.push(Route.Chat(session.talkerId, session.name, session.face))
+                    },
                 )
             }
-            return@LazyColumn
-        }
 
-        when {
-            state.isSessionsLoading -> item(key = "state") { LoadingState() }
-            state.sessionsError != null -> item(key = "state") {
-                ErrorState(state.sessionsError.orEmpty(), onRetry = { viewModel.reload(MessageKind.SESSION) })
+            if (state.isSessionsLoadingMore) {
+                item(key = "loading-more") { LoadingState() }
             }
-            state.sessionsLoaded && state.sessions.isEmpty() -> item(key = "state") {
-                EmptyState("暂无私信消息")
-            }
-        }
-
-        items(
-            count = state.sessions.size,
-            key = { state.sessions[it].talkerId },
-            contentType = { "session" },
-        ) { index ->
-            val session = state.sessions[index]
-            SessionRow(
-                session = session,
-                onClick = {
-                    nav.push(Route.Chat(session.talkerId, session.name, session.face))
-                },
-            )
-        }
-
-        if (state.isSessionsLoadingMore) {
-            item(key = "loading-more") { LoadingState() }
         }
     }
 }
