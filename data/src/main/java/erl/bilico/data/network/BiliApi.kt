@@ -283,6 +283,10 @@ interface BiliApi {
     suspend fun favoriteResource(@FieldMap fields: Map<String, String>): BaseResponse
 
     @FormUrlEncoded
+    @POST("x/v3/fav/resource/batch-del")
+    suspend fun batchDelFavorite(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
     @POST("x/v2/history/toview/add")
     suspend fun addWatchLater(@FieldMap fields: Map<String, String>): BaseResponse
 

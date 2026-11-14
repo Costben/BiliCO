@@ -4,6 +4,7 @@ import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.data.model.LibraryVideo
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BuvidManager
+import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -11,6 +12,7 @@ import kotlinx.coroutines.withContext
 class FavoriteRepository(
     private val api: BiliApi,
     private val buvid: BuvidManager,
+    private val session: SessionRepository,
 ) {
     suspend fun folders(mid: Long): Result<List<FavoriteFolder>> = withContext(Dispatchers.IO) {
         runCatching {
@@ -70,9 +72,38 @@ class FavoriteRepository(
                         playText = Formatters.formatStat(media.cntInfo?.play ?: 0L),
                         durationText = Formatters.formatDuration(media.duration.toLong()),
                         durationSec = media.duration,
+                        aid = media.id,
+                        favType = media.type.takeIf { it > 0 } ?: 2,
                     )
                 }
                 list to (response.data?.has_more == true)
+            }
+        }
+
+    /** 从指定收藏夹移除一条或多条资源；走 B 站批量移除接口。 */
+    suspend fun removeVideos(mediaId: Long, videos: List<LibraryVideo>): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(mediaId > 0L) { "无效的收藏夹" }
+                val valid = videos.filter { it.aid > 0L }
+                require(valid.isNotEmpty()) { "缺少可删除的视频标识" }
+                buvid.ensure()
+                val csrf = session.csrf()
+                check(csrf.isNotBlank()) { "登录后可用" }
+                for (chunk in valid.chunked(PAGE_SIZE)) {
+                    val resources = chunk.joinToString(",") { "${it.aid}:${it.favType}" }
+                    val response = api.batchDelFavorite(
+                        mapOf(
+                            "media_id" to mediaId.toString(),
+                            "resources" to resources,
+                            "platform" to "web",
+                            "csrf" to csrf,
+                        )
+                    )
+                    if (response.code != 0) {
+                        error(response.message.ifBlank { "删除收藏失败(${response.code})" })
+                    }
+                }
             }
         }
 

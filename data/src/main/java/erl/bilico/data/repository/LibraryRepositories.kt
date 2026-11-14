@@ -8,6 +8,11 @@ import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /** 稍后再看。接口一次给全量分页，没有游标。 */
@@ -73,6 +78,7 @@ class WatchLaterRepository(
 class RelationRepository(
     private val api: BiliApi,
     private val buvid: BuvidManager,
+    private val session: SessionRepository,
 ) {
     suspend fun followings(mid: Long, page: Int): Result<Pair<List<FollowingUser>, Boolean>> =
         withContext(Dispatchers.IO) {
@@ -104,6 +110,65 @@ class RelationRepository(
                 items to (pn * PAGE_SIZE < (data?.total ?: 0))
             }
         }
+
+    suspend fun unfollow(mid: Long): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(mid > 0L) { "无效的用户" }
+            buvid.ensure()
+            val csrf = session.csrf()
+            check(csrf.isNotBlank()) { "登录后可用" }
+            val response = api.modifyRelation(
+                mapOf(
+                    "fid" to mid.toString(),
+                    "act" to "2",
+                    "csrf" to csrf,
+                    "re_src" to "11",
+                )
+            )
+            if (response.code != 0) {
+                error(response.message.ifBlank { "取消关注失败(${response.code})" })
+            }
+        }
+    }
+
+    /** B 站批量关系接口不支持取消关注，这里限并发逐条取消，返回成功取关的 mid 集合。 */
+    suspend fun unfollowBatch(mids: List<Long>): Result<Set<Long>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val targets = mids.filter { it > 0L }.distinct()
+            require(targets.isNotEmpty()) { "未选择关注对象" }
+            buvid.ensure()
+            val csrf = session.csrf()
+            check(csrf.isNotBlank()) { "登录后可用" }
+            val gate = Semaphore(3)
+            var firstError: Throwable? = null
+            val succeeded = coroutineScope {
+                targets.map { mid ->
+                    async {
+                        gate.withPermit {
+                            runCatching {
+                                val response = api.modifyRelation(
+                                    mapOf(
+                                        "fid" to mid.toString(),
+                                        "act" to "2",
+                                        "csrf" to csrf,
+                                        "re_src" to "11",
+                                    )
+                                )
+                                if (response.code != 0) {
+                                    error(response.message.ifBlank { "取消关注失败(${response.code})" })
+                                }
+                                mid
+                            }.onFailure { if (firstError == null) firstError = it }.getOrNull()
+                        }
+                    }
+                }.awaitAll().filterNotNull().toSet()
+            }
+            if (succeeded.isEmpty()) {
+                throw firstError ?: IllegalStateException("取消关注失败")
+            }
+            succeeded
+        }
+    }
 
     private companion object {
         const val PAGE_SIZE = 20

@@ -53,6 +53,80 @@ class FollowingViewModel(
         load(firstPage = false)
     }
 
+    /** 左滑取消关注：先乐观移除，失败回滚到原位。 */
+    fun unfollow(user: FollowingUser, onFailure: (String) -> Unit = {}) {
+        if (user.mid <= 0L) return
+        val before = _state.value.items
+        val index = before.indexOfFirst { it.mid == user.mid }
+        if (index < 0) return
+        _state.update { state ->
+            state.copy(items = state.items.filterNot { it.mid == user.mid })
+        }
+        viewModelScope.launch {
+            repository.unfollow(user.mid)
+                .onSuccess {
+                    if (_state.value.items.size < 10 && !_state.value.isEnd) loadMore()
+                }
+                .onFailure { error ->
+                    _state.update { state ->
+                        if (state.items.any { it.mid == user.mid }) {
+                            state
+                        } else {
+                            val restored = state.items.toMutableList().apply {
+                                add(index.coerceAtMost(size), user)
+                            }
+                            state.copy(items = restored)
+                        }
+                    }
+                    onFailure(error.message ?: "取消关注失败")
+                }
+        }
+    }
+
+    /** 多选批量取消关注：先乐观移除，对未成功取消的条目回滚。 */
+    fun unfollowBatch(
+        mids: Set<Long>,
+        onFailure: (String) -> Unit = {},
+    ) {
+        if (mids.isEmpty()) return
+        val snapshot = _state.value.items
+        val targets = snapshot.filter { it.mid in mids && it.mid > 0L }.map { it.mid }
+        if (targets.isEmpty()) return
+        val targetSet = targets.toSet()
+        _state.update { state ->
+            state.copy(items = state.items.filterNot { it.mid in targetSet })
+        }
+        viewModelScope.launch {
+            repository.unfollowBatch(targets)
+                .onSuccess { succeeded ->
+                    val failedSet = targetSet - succeeded
+                    if (failedSet.isNotEmpty()) {
+                        val snapshotMap = snapshot.associateBy { it.mid }
+                        _state.update { state ->
+                            val currentIds = state.items.map { it.mid }.toSet()
+                            val keepIds = currentIds + failedSet
+                            val restored = snapshot.filter { it.mid in keepIds }
+                            val extras = state.items.filter { it.mid !in snapshotMap }
+                            state.copy(items = restored + extras)
+                        }
+                        onFailure("部分取消关注失败（${failedSet.size} 位未取消）")
+                    } else if (_state.value.items.size < 10 && !_state.value.isEnd) {
+                        loadMore()
+                    }
+                }
+                .onFailure { error ->
+                    val snapshotMap = snapshot.associateBy { it.mid }
+                    _state.update { state ->
+                        val currentIds = state.items.map { it.mid }.toSet()
+                        val restored = snapshot.filter { it.mid in targetSet || it.mid in currentIds }
+                        val extras = state.items.filter { it.mid !in snapshotMap }
+                        state.copy(items = restored + extras)
+                    }
+                    onFailure(error.message ?: "取消关注失败")
+                }
+        }
+    }
+
     private fun load(firstPage: Boolean) {
         val mid = session.account.value?.mid ?: return
         inFlight = true

@@ -114,6 +114,66 @@ class FavoriteFolderContentViewModel(
         load(firstPage = false)
     }
 
+    /** 左滑删除单条收藏：先乐观移除，失败回滚到原位。 */
+    fun remove(video: LibraryVideo, onFailure: (String) -> Unit = {}) {
+        if (video.aid <= 0L) return
+        val before = _state.value.items
+        val index = before.indexOfFirst { it.bvid == video.bvid }
+        if (index < 0) return
+        _state.update { state ->
+            state.copy(items = state.items.filterNot { it.bvid == video.bvid })
+        }
+        viewModelScope.launch {
+            repository.removeVideos(mediaId, listOf(video))
+                .onSuccess {
+                    if (_state.value.items.size < 10 && !_state.value.isEnd) loadMore()
+                }
+                .onFailure { error ->
+                    _state.update { state ->
+                        if (state.items.any { it.bvid == video.bvid }) {
+                            state
+                        } else {
+                            val restored = state.items.toMutableList().apply {
+                                add(index.coerceAtMost(size), video)
+                            }
+                            state.copy(items = restored)
+                        }
+                    }
+                    onFailure(error.message ?: "删除失败")
+                }
+        }
+    }
+
+    /** 多选批量删除收藏的视频：先乐观移除，失败则整体回滚。 */
+    fun removeBatch(
+        bvids: Set<String>,
+        onFailure: (String) -> Unit = {},
+    ) {
+        if (bvids.isEmpty()) return
+        val snapshot = _state.value.items
+        val targets = snapshot.filter { it.bvid in bvids && it.aid > 0L }
+        if (targets.isEmpty()) return
+        val targetSet = targets.map { it.bvid }.toSet()
+        _state.update { state ->
+            state.copy(items = state.items.filterNot { it.bvid in targetSet })
+        }
+        viewModelScope.launch {
+            repository.removeVideos(mediaId, targets)
+                .onSuccess {
+                    if (_state.value.items.size < 10 && !_state.value.isEnd) loadMore()
+                }
+                .onFailure { error ->
+                    _state.update { state ->
+                        val currentIds = state.items.map { it.bvid }.toSet()
+                        val merged = snapshot.filter { it.bvid in targetSet || it.bvid in currentIds }
+                        val extras = state.items.filter { it.bvid !in snapshot.mapTo(HashSet()) { s -> s.bvid } }
+                        state.copy(items = merged + extras)
+                    }
+                    onFailure(error.message ?: "删除失败")
+                }
+        }
+    }
+
     private fun load(firstPage: Boolean) {
         inFlight = true
         val page = if (firstPage) 1 else nextPage

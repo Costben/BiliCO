@@ -75,11 +75,11 @@ class AppContainer(context: Context) {
 
     val space = SpaceRepository(client.api, client.wbi, client.buvid)
 
-    val favorites = FavoriteRepository(client.api, client.buvid)
+    val favorites = FavoriteRepository(client.api, client.buvid, session)
 
     val watchLater = WatchLaterRepository(client.api, client.buvid, session)
 
-    val relations = RelationRepository(client.api, client.buvid)
+    val relations = RelationRepository(client.api, client.buvid, session)
 
     val danmaku = DanmakuRepository(client.api, client.buvid, session)
 

@@ -366,6 +366,7 @@ data class LibraryVideo(
     val durationSec: Int = 0,
     val progressSec: Int = 0,
     val aid: Long = 0,
+    val favType: Int = 2,
 )
 
 data class FavoriteFolder(
