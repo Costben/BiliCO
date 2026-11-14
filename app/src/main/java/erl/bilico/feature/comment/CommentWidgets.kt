@@ -69,10 +69,13 @@ internal fun BiliCommentItem(
     onOpenUser: (Long) -> Unit = {},
     onOpenImage: (List<DynamicImage>, Int) -> Unit = { _, _ -> },
     isSubReply: Boolean = false,
+    expandable: Boolean = true,
 ) {
     var expanded by remember(comment.id) { mutableStateOf(false) }
     // 正文真的被截断了才给「展开」；短评论不占这一行。
     var folded by remember(comment.id) { mutableStateOf(false) }
+    // 不可折叠时整段正文始终铺满，点击正文也不再翻转展开态。
+    val unfolded = !expandable || expanded
     val density = LocalDensity.current
     val avatarDp = if (isSubReply) 32.dp else 38.dp
     val avatarPx = with(density) { avatarDp.roundToPx() }
@@ -147,7 +150,7 @@ internal fun BiliCommentItem(
                     content = comment.content,
                     emotes = comment.emotes,
                     badgeLabel = if (!isSubReply && comment.isTop) "TOP" else null,
-                    modifier = Modifier.clickable { expanded = !expanded },
+                    modifier = Modifier.then(if (expandable) Modifier.clickable { expanded = !expanded } else Modifier),
                     style = COUITheme.textStyles.body1.copy(
                         fontSize = 15.sp,
                         lineHeight = 22.sp,
@@ -155,15 +158,15 @@ internal fun BiliCommentItem(
                     ),
                     color = COUITheme.colorScheme.onSurface,
                     prefixColor = linkBlue,
-                    maxLines = if (expanded) Int.MAX_VALUE else FOLDED_COMMENT_LINES,
+                    maxLines = if (unfolded) Int.MAX_VALUE else FOLDED_COMMENT_LINES,
                     onTextLayout = { result ->
                         // 展开态下 maxLines 不再截断，别把标记清掉，否则「收起」会跟着消失。
-                        if (!expanded && result.hasVisualOverflow != folded) {
+                        if (expandable && !expanded && result.hasVisualOverflow != folded) {
                             folded = result.hasVisualOverflow
                         }
                     },
                 )
-                if (folded) {
+                if (expandable && folded) {
                     Text(
                         text = if (expanded) "收起" else "展开",
                         modifier = Modifier

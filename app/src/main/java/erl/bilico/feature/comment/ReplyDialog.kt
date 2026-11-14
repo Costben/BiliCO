@@ -2,6 +2,7 @@ package erl.bilico.feature.comment
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -33,6 +34,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -41,8 +44,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,18 +55,13 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
-import io.github.suqi8.coui.kmp.basic.Button
-import io.github.suqi8.coui.kmp.basic.ButtonSize
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.basic.TextField
-import io.github.suqi8.coui.kmp.basic.TextFieldMode
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.basic.Close
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import io.github.suqi8.coui.kmp.squircle.squircleSurface
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -130,8 +128,41 @@ internal fun ReplyDialog(
     var toast by remember(comment.id) { mutableStateOf<String?>(null) }
     var imageViewer by remember(comment.id) { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+    val keyboard = LocalSoftwareKeyboardController.current
+    val composerFocus = remember { FocusRequester() }
+    // 点评论即回复：先聚焦输入框拉起键盘，再等面板高度重新分配完，把这一条滚到面板顶部。
+    var focusTick by remember(comment.id) { mutableIntStateOf(0) }
+    var alignRequest by remember(comment.id) { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(comment.id) { show = true }
+
+    LaunchedEffect(focusTick) {
+        if (focusTick == 0) return@LaunchedEffect
+        composerFocus.requestFocus()
+        keyboard?.show()
+    }
+
+    LaunchedEffect(alignRequest) {
+        val index = alignRequest ?: return@LaunchedEffect
+        // 键盘弹出会压缩面板并挤动列表，等 IME 高度连续几帧不动再对齐。
+        var ime = imeInsets.getBottom(density)
+        var stableFrames = 0
+        while (stableFrames < 3) {
+            delay(32)
+            val now = imeInsets.getBottom(density)
+            if (now == ime) stableFrames++ else { ime = now; stableFrames = 0 }
+        }
+        listState.animateScrollToItem(index)
+        alignRequest = null
+    }
+
+    fun startReply(target: Comment, itemIndex: Int) {
+        replyTarget = target
+        focusTick += 1
+        alignRequest = itemIndex
+    }
 
     fun showToast(message: String) {
         toast = message
@@ -300,7 +331,6 @@ internal fun ReplyDialog(
             }
     }
 
-    val density = LocalDensity.current
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val sheetMaxHeight = (screenHeight * 0.74f).coerceAtLeast(500.dp)
     val imeBottom = with(density) { WindowInsets.ime.getBottom(density).toDp() }
@@ -339,6 +369,9 @@ internal fun ReplyDialog(
         showDragHandle = false,
         insideMargin = DpSize(16.dp, bottomGap),
         panelPaddingBottom = 0.dp,
+        // 评论详情是接近满屏的高面板，按原有比例要拖走几乎整块才关得上；这里改成拖走 1/3 就收，
+        // 配合向下轻甩随时可关。
+        dismissOffsetFraction = 1f / 3f,
         onDismissRequest = { show = false },
         onDismissFinished = onDismiss,
     ) {
@@ -346,7 +379,9 @@ internal fun ReplyDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 280.dp, max = sheetMaxHeight),
+                    // 键盘弹出后可用高度会被压缩，列表必须让出空间，否则底部输入行会被挤出面板外。
+                    .weight(1f, fill = false)
+                    .heightIn(max = sheetMaxHeight),
             ) {
                 LazyColumn(
                     state = listState,
@@ -358,17 +393,19 @@ internal fun ReplyDialog(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 2.dp),
+                                .padding(horizontal = 2.dp)
+                                .tapToReply { startReply(rootComment, 0) },
                         ) {
                             BiliCommentItem(
                                 comment = rootComment,
                                 onLike = { toggleRootLike() },
                                 onDislike = { toggleRootDislike() },
-                                onReply = { replyTarget = null },
+                                onReply = { startReply(rootComment, 0) },
                                 onOpenReplies = null,
                                 onOpenUser = onOpenUser,
                                 onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
                                 isSubReply = false,
+                                expandable = false,
                             )
                         }
                     }
@@ -458,20 +495,23 @@ internal fun ReplyDialog(
                             }
                         }
                         else -> {
-                            items(items, key = { it.id }) { reply ->
+                            itemsIndexed(items, key = { _, reply -> reply.id }) { index, reply ->
+                                val itemIndex = SUB_REPLY_ITEM_OFFSET + index
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 2.dp, vertical = 6.dp),
+                                        .padding(horizontal = 2.dp, vertical = 6.dp)
+                                        .tapToReply { startReply(reply, itemIndex) },
                                 ) {
                                     BiliCommentItem(
                                         comment = reply,
                                         onLike = { toggleLike(reply) },
                                         onDislike = { toggleDislike(reply) },
-                                        onReply = { replyTarget = reply },
+                                        onReply = { startReply(reply, itemIndex) },
                                         onOpenUser = onOpenUser,
                                         onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
                                         isSubReply = true,
+                                        expandable = false,
                                     )
                                 }
                             }
@@ -506,67 +546,16 @@ internal fun ReplyDialog(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            replyTarget?.let { target ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 2.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "正在回复 @${target.userName}",
-                        style = COUITheme.textStyles.footnote2,
-                        color = COUITheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "取消",
-                        style = COUITheme.textStyles.footnote2,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                        modifier = Modifier
-                            .clickable { replyTarget = null }
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .squircleSurface(
-                            color = COUITheme.colorScheme.surfaceContainer,
-                            cornerRadius = 20.dp,
-                        ),
-                ) {
-                    TextField(
-                        value = draft,
-                        onValueChange = { draft = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = if (replyTarget != null) "回复 @${replyTarget?.userName} :" else "发一条友善的评论",
-                        backgroundMode = TextFieldMode.None,
-                        insideMargin = DpSize(12.dp, 10.dp),
-                        maxLines = 3,
-                        minLines = 1,
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = { sendReply() },
-                    enabled = draft.isNotBlank() && !isSending,
-                    size = ButtonSize.Small,
-                ) {
-                    Text(
-                        text = if (isSending) "发送中" else "发送",
-                        modifier = Modifier.padding(end = 2.dp),
-                    )
-                }
-            }
+            ReplyComposer(
+                draft = draft,
+                onDraftChange = { draft = it },
+                replyTarget = replyTarget,
+                onClearReplyTarget = { replyTarget = null },
+                isSending = isSending,
+                isDark = isDark,
+                focusRequester = composerFocus,
+                onSend = { sendReply() },
+            )
         }
     }
 
@@ -577,4 +566,17 @@ internal fun ReplyDialog(
             onDismiss = { imageViewer = null },
         )
     }
+}
+
+/** 列表最前面固定三项：根评论、分割槽、相关回复标题，子回复从下标 3 开始。 */
+private const val SUB_REPLY_ITEM_OFFSET = 3
+
+/**
+ * 点评论空白处即进入回复。评论里自己的头像、用户名、图片、回复按钮都带各自的点击，
+ * 先把事件吃掉，所以这里只管其余区域；不加波纹，聚焦回复框与滚动到位本身就是反馈。
+ */
+@Composable
+private fun Modifier.tapToReply(onClick: () -> Unit): Modifier {
+    val interactionSource = remember { MutableInteractionSource() }
+    return clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
 }

@@ -5,13 +5,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -36,27 +30,23 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
-import erl.bilico.ui.components.COUISmoothCapsuleShape
+import erl.bilico.ui.components.CompactSendButton
 import erl.bilico.ui.components.DanmakuToggle
+import erl.bilico.ui.components.capsuleMaterial
 import erl.bilico.ui.pageContainerColor
-import io.github.suqi8.coui.kmp.anim.folmeSpring
 import io.github.suqi8.coui.kmp.basic.ChipTab
 import io.github.suqi8.coui.kmp.basic.ChipTabData
 import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.SearchBar
 import io.github.suqi8.coui.kmp.basic.SearchBarDefaults
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.ProgressiveBlur
 import io.github.suqi8.coui.kmp.blur.isBlurEnabled
@@ -187,7 +177,7 @@ internal fun VideoDetailBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(DETAIL_CAPSULE_HEIGHT)
-                        .detailCapsuleMaterial(isDark = isDark),
+                        .capsuleMaterial(isDark = isDark),
                 )
             },
             onExpandedChange = onComposingChange,
@@ -200,13 +190,14 @@ internal fun VideoDetailBar(
             insideMargin = DpSize(0.dp, 2.dp),
             expanded = composing,
             outsideEndAction = {
-                DetailSendButton(
+                CompactSendButton(
                     text = "发送",
                     onClick = {
                         keyboard?.hide()
                         onSend()
                     },
                     enabled = draft.isNotBlank(),
+                    height = DETAIL_CAPSULE_HEIGHT,
                     containerColor = scheme.surfaceContainer,
                     isDark = isDark,
                 )
@@ -216,17 +207,6 @@ internal fun VideoDetailBar(
 }
 
 private val DETAIL_TABS = listOf("简介", "评论")
-
-/**
- * 与顶栏返回/主页/更多按键材质一致的轻量胶囊外观：
- * 采用极淡温润高光轮廓，去除原本厚重过深的 Elevation 阴影。
- */
-private fun Modifier.detailCapsuleMaterial(isDark: Boolean): Modifier =
-    this.border(
-        width = 0.5.dp,
-        color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.45f),
-        shape = COUISmoothCapsuleShape,
-    )
 
 /**
  * 按 [slack] 多量出右侧宽度，但仍按原本的宽度上报。
@@ -251,63 +231,7 @@ private fun Modifier.actionEndSlack(slack: Dp): Modifier =
         layout(constraints.maxWidth, placeable.height) { placeable.place(0, 0) }
     }
 
-/**
- * 专为弹幕输入行定制的「发送」按钮：
- * 高度严格对齐发弹幕输入框（32dp），变得更加小巧紧凑；
- * 采用连续曲率胶囊形状 [COUISmoothCapsuleShape] 与顶栏按键同款微光材质。
- */
-@Composable
-private fun DetailSendButton(
-    text: String,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    containerColor: Color,
-    isDark: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val pressProgress by animateFloatAsState(
-        targetValue = if (enabled && isPressed) 1f else 0f,
-        animationSpec = remember { folmeSpring(damping = 1f, response = 0.3f, visibilityThreshold = 0.001f) },
-        label = "detailSendButtonPress",
-    )
-    val scale = 1f - 0.11f * pressProgress
-    val contentColor = if (enabled) {
-        COUITheme.colorScheme.onSurface
-    } else {
-        COUITheme.colorScheme.onSurface.copy(alpha = 0.38f)
-    }
 
-    Box(
-        modifier = modifier
-            .height(DETAIL_CAPSULE_HEIGHT)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .detailCapsuleMaterial(isDark = isDark)
-            .background(color = containerColor, shape = COUISmoothCapsuleShape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            fontSize = 13.5.sp,
-            fontWeight = FontWeight.Medium,
-            color = contentColor,
-            maxLines = 1,
-            softWrap = false,
-        )
-    }
-}
 
 /** 弹幕输入框与发送按钮共用的紧凑高度；与 COUI-Kit ChipTab 32dp 一致 */
 private val DETAIL_CAPSULE_HEIGHT = 32.dp
