@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicLiveCard
+import erl.bilico.ui.imageOrigin
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.LoadingImage
 import io.github.suqi8.coui.kmp.basic.Text
@@ -227,10 +228,17 @@ internal fun DynamicImageGrid(
         val url = remember(image.url, singleWidthPx) {
             Formatters.widthImageUrl(image.url, singleWidthPx)
         }
+        val keyUrl = remember(image.url) { Formatters.normalizeImageUrl(image.url) }
+        val trueAspect = if (image.width > 0 && image.height > 0) {
+            image.width.toFloat() / image.height.toFloat()
+        } else {
+            null
+        }
         Box(
             modifier = modifier
                 .width(singleWidthDp)
                 .aspectRatio(ratio)
+                .imageOrigin(url = keyUrl, cornerRadius = 8.dp, aspect = trueAspect, model = url)
                 .clip(RoundedCornerShape(8.dp))
                 .clickable { onOpenImage(images, 0) },
         ) {
@@ -256,6 +264,12 @@ internal fun DynamicImageGrid(
                     val url = remember(image.url, cellPx) {
                         Formatters.sizedImageUrl(image.url, cellPx, cellPx)
                     }
+                    val keyUrl = remember(image.url) { Formatters.normalizeImageUrl(image.url) }
+                    val trueAspect = if (image.width > 0 && image.height > 0) {
+                        image.width.toFloat() / image.height.toFloat()
+                    } else {
+                        null
+                    }
                     val onClick = remember(images, index, onOpenImage) {
                         { onOpenImage(images, index) }
                     }
@@ -263,6 +277,7 @@ internal fun DynamicImageGrid(
                         modifier = Modifier
                             .weight(1f)
                             .aspectRatio(1f)
+                            .imageOrigin(url = keyUrl, cornerRadius = 6.dp, aspect = trueAspect, model = url)
                             .clip(RoundedCornerShape(6.dp))
                             .clickable(onClick = onClick),
                     ) {

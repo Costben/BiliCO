@@ -33,6 +33,7 @@ import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
 import io.github.suqi8.coui.kmp.preference.SliderPreference
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import java.util.Locale
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlin.math.roundToInt
 
 /**
@@ -65,7 +66,9 @@ internal fun DanmakuSettingsSheet(
         onDismissFinished = onDismiss,
     ) {
         LazyColumn(
-            modifier = Modifier.testTag("danmaku_settings_sheet"),
+            modifier = Modifier
+                .scrollEndHaptic()
+                .testTag("danmaku_settings_sheet"),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "display-title") { SectionTitle("显示", topPadding = 4.dp) }

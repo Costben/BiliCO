@@ -85,6 +85,7 @@ import io.github.suqi8.coui.kmp.icon.extended.GridView
 import io.github.suqi8.coui.kmp.icon.extended.Reply
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 @Composable
@@ -280,7 +281,7 @@ private fun MessageList(
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().scrollEndHaptic(),
             contentPadding = PaddingValues(
                 start = 12.dp,
                 top = contentTop,
@@ -439,7 +440,7 @@ private fun SessionList(
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().scrollEndHaptic(),
             contentPadding = PaddingValues(
                 start = 12.dp,
                 top = contentTop,

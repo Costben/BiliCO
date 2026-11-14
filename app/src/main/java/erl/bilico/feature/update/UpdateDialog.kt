@@ -55,6 +55,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import java.util.Locale
 
 /**
@@ -304,6 +305,7 @@ fun UpdateDialog(
                                         )
                                     }
                                 }
+                                .scrollEndHaptic()
                                 .verticalScroll(scrollState)
                                 .padding(horizontal = textMargin),
                         )

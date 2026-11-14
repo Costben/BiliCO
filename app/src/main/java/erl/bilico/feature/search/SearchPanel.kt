@@ -55,6 +55,7 @@ import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Album
 import io.github.suqi8.coui.kmp.icon.extended.Contacts
 import io.github.suqi8.coui.kmp.icon.extended.Play
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** 搜索结果的三个分类。 */
@@ -200,7 +201,7 @@ internal fun HomeSearchOverlay(
                 ) {
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().scrollEndHaptic(),
                         contentPadding = PaddingValues(
                             start = 0.dp,
                             top = contentTop,

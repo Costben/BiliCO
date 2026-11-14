@@ -60,6 +60,7 @@ import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.rememberFullPagePullToRefreshState
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 /** 排行榜分段：分区 chips + 整榜列表，接口一次返回全部。 */
@@ -130,7 +131,7 @@ fun RankingSection(
         LazyVerticalGrid(
             state = listState,
             columns = GridCells.Fixed(FeedColumns),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().scrollEndHaptic(),
             contentPadding = PaddingValues(
                 start = 12.dp,
                 top = topInset + FeedSegmentRowHeight,

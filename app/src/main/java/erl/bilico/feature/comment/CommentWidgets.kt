@@ -43,6 +43,7 @@ import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.LoadingImage
+import erl.bilico.ui.imageOrigin
 import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -150,7 +151,8 @@ internal fun BiliCommentItem(
                     content = comment.content,
                     emotes = comment.emotes,
                     badgeLabel = if (!isSubReply && comment.isTop) "TOP" else null,
-                    modifier = Modifier.then(if (expandable) Modifier.clickable { expanded = !expanded } else Modifier),
+                    selectable = true,
+                    modifier = Modifier.then(if (expandable && folded && !expanded) Modifier.clickable { expanded = !expanded } else Modifier),
                     style = COUITheme.textStyles.body1.copy(
                         fontSize = 15.sp,
                         lineHeight = 22.sp,
@@ -277,10 +279,13 @@ private fun CommentPicturesGrid(
         val thumbW = if (isSubReply) 136.dp else 164.dp
         val thumbPx = remember(density, thumbW) { with(density) { (thumbW * 1.5f).roundToPx() } }
         val url = remember(pic.url, thumbPx) { Formatters.widthImageUrl(pic.url, thumbPx) }
+        val keyUrl = remember(pic.url) { Formatters.normalizeImageUrl(pic.url) }
+        val trueAspect = if (pic.width > 0 && pic.height > 0) pic.width.toFloat() / pic.height.toFloat() else null
         Box(
             modifier = Modifier
                 .width(thumbW)
                 .aspectRatio(ratio)
+                .imageOrigin(url = keyUrl, cornerRadius = 8.dp, aspect = trueAspect, model = url)
                 .clip(RoundedCornerShape(8.dp))
                 .clickable { onOpenImage(pictures, 0) },
         ) {
@@ -308,9 +313,16 @@ private fun CommentPicturesGrid(
                     val url = remember(pic.url, cellPx) {
                         Formatters.sizedImageUrl(pic.url, cellPx, cellPx)
                     }
+                    val keyUrl = remember(pic.url) { Formatters.normalizeImageUrl(pic.url) }
+                    val trueAspect = if (pic.width > 0 && pic.height > 0) {
+                        pic.width.toFloat() / pic.height.toFloat()
+                    } else {
+                        null
+                    }
                     Box(
                         modifier = Modifier
                             .size(cellDp)
+                            .imageOrigin(url = keyUrl, cornerRadius = 6.dp, aspect = trueAspect, model = url)
                             .clip(RoundedCornerShape(6.dp))
                             .clickable { onOpenImage(pictures, index) },
                     ) {

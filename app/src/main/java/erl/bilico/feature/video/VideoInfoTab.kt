@@ -82,6 +82,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Share
 import io.github.suqi8.coui.kmp.icon.extended.Stopwatch
 import io.github.suqi8.coui.kmp.icon.extended.Store
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
 @Composable
 internal fun VideoInfoTab(
@@ -194,7 +195,7 @@ private fun InfoContent(
 
     LazyColumn(
         state = listState,
-        modifier = modifier,
+        modifier = modifier.scrollEndHaptic(),
         contentPadding = PaddingValues(
             start = 16.dp,
             top = 12.dp + topInset,

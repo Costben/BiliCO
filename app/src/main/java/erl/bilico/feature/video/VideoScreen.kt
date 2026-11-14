@@ -3,59 +3,34 @@ package erl.bilico.feature.video
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.di.AppContainer
-import erl.bilico.feature.comment.CommentTab
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
-import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
-import erl.bilico.ui.layerBackdropIf
-import io.github.suqi8.coui.kmp.basic.FloatingActionButton
-import erl.bilico.ui.pageContainerColor
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Playlist
-import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @Composable
@@ -419,139 +394,62 @@ fun VideoScreen(
             }
         },
         detailContent = {
-            val navBarBottom = rememberStableNavBarBottomDp()
-            val detailLayerBackdrop = rememberLayerBackdrop()
-            val pageBg = pageContainerColor()
-            // 列表整块铺到最上面，滚动时正文从标签栏底下穿过去，由栏的毛玻璃盖住；
-            // 静止时靠列表自己的顶部内边距让开这一条，第一行不会被栏压住。
-            val contentTop = DETAIL_BAR_HEIGHT + 12.dp
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(pageBg),
-            ) {
-                HorizontalPager(
-                    state = detailPager,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = navBarBottom)
-                        .layerBackdropIf(BlurEffectsEnabled, detailLayerBackdrop)
-                        .background(pageBg),
-                    beyondViewportPageCount = 0,
-                    key = { DETAIL_PAGES[it] },
-                ) { page ->
-                    when (page) {
-                        0 -> Box(Modifier.fillMaxSize()) {
-                            VideoInfoTab(
-                                detail = state.detail,
-                                isLoading = state.isLoading,
-                                error = state.error,
-                                selectedCid = state.selectedCid,
-                                onRetry = viewModel::load,
-                                onSelectPart = { index ->
-                                    viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-                                    viewModel.selectPart(index, player.currentPosition)
-                                },
-                                onSelectEpisode = { episode ->
-                                    val partIndex = state.detail?.pages?.indexOfFirst { it.cid == episode.cid } ?: -1
-                                    if (episode.bvid == bvid && partIndex >= 0) {
-                                        viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-                                        viewModel.selectPart(partIndex, player.currentPosition)
-                                    } else {
-                                        nav.push(Route.Video(episode.bvid, 0L, episode.cid))
-                                    }
-                                },
-                                onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
-                                onOpenVideo = { next -> nav.push(Route.Video(next)) },
-                                related = state.related,
-                                container = container,
-                                liked = state.liked,
-                                disliked = state.disliked,
-                                coined = state.coined,
-                                favorited = state.favorited,
-                                following = state.following,
-                                upFollowers = state.upFollowers,
-                                onLike = viewModel::toggleLike,
-                                onDislike = viewModel::toggleDislike,
-                                onCoin = { coinDialogVisible = true },
-                                onFavorite = {
-                                    if (!container.session.isLoggedIn()) {
-                                        viewModel.showLoginHint()
-                                    } else {
-                                        scope.launch {
-                                            container.favorites.folders(container.session.mid())
-                                                .onSuccess { favoriteFolders = it }
-                                                .onFailure { viewModel.showMessage(it.message ?: "收藏夹加载失败") }
-                                        }
-                                    }
-                                },
-                                onWatchLater = viewModel::addToWatchLater,
-                                onFollow = viewModel::toggleFollow,
-                                onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
-                                listState = infoListState,
-                                topInset = contentTop,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                            if (nav.playQueue.items.isNotEmpty()) {
-                                FloatingActionButton(
-                                    onClick = { queueSheetVisible = true },
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(16.dp)
-                                        .semantics { contentDescription = "播放队列" },
-                                ) {
-                                    Icon(
-                                        imageVector = COUIIcons.Playlist,
-                                        contentDescription = "播放队列",
-                                        modifier = Modifier.size(24.dp),
-                                        tint = COUITheme.colorScheme.onPrimary,
-                                    )
-                                }
-                            }
-                        }
-
-                        else -> {
-                            val aid = state.detail?.aid ?: 0L
-                            if (aid > 0L) {
-                                CommentTab(
-                                    container = container,
-                                    oid = aid,
-                                    onOpenUser = { mid ->
-                                        if (mid > 0L) nav.push(Route.Space(mid))
-                                    },
-                                    listState = commentListState,
-                                    topInset = contentTop,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
+            VideoDetailSection(
+                container = container,
+                nav = nav,
+                state = state,
+                detailPager = detailPager,
+                infoListState = infoListState,
+                commentListState = commentListState,
+                danmakuEnabled = danmakuEnabled,
+                danmakuComposing = danmakuComposing,
+                danmakuDraft = danmakuDraft,
+                onDanmakuDraftChange = { danmakuDraft = it },
+                onDanmakuComposingChange = {
+                    danmakuComposing = it
+                    if (!it) danmakuDraft = ""
+                },
+                onSendDanmaku = sendDanmaku,
+                onSelectPage = { page -> scope.launch { detailPager.animateScrollToPage(page) } },
+                onRetry = viewModel::load,
+                onSelectPart = { index ->
+                    viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                    viewModel.selectPart(index, player.currentPosition)
+                },
+                onSelectEpisode = { episode ->
+                    val partIndex = state.detail?.pages?.indexOfFirst { it.cid == episode.cid } ?: -1
+                    if (episode.bvid == bvid && partIndex >= 0) {
+                        viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                        viewModel.selectPart(partIndex, player.currentPosition)
+                    } else {
+                        nav.push(Route.Video(episode.bvid, 0L, episode.cid))
+                    }
+                },
+                onOpenQueue = { queueSheetVisible = true },
+                onOpenCoin = { coinDialogVisible = true },
+                onOpenFavorite = {
+                    if (!container.session.isLoggedIn()) {
+                        viewModel.showLoginHint()
+                    } else {
+                        scope.launch {
+                            container.favorites.folders(container.session.mid())
+                                .onSuccess { favoriteFolders = it }
+                                .onFailure { viewModel.showMessage(it.message ?: "收藏夹加载失败") }
                         }
                     }
-                }
-
-                DetailBarGlassSurface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth(),
-                    containerColor = pageBg,
-                    backdrop = if (BlurEffectsEnabled) detailLayerBackdrop else null,
-                ) {
-                    VideoDetailBar(
-                        selected = detailPager.currentPage,
-                        onSelect = { page -> scope.launch { detailPager.animateScrollToPage(page) } },
-                        commentCount = state.detail?.reply ?: 0L,
-                        danmakuEnabled = danmakuEnabled,
-                        onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                        composing = danmakuComposing,
-                        draft = danmakuDraft,
-                        onDraftChange = { danmakuDraft = it },
-                        onComposingChange = {
-                            danmakuComposing = it
-                            if (!it) danmakuDraft = ""
-                        },
-                        onSend = sendDanmaku,
-                    )
-                }
-            }
+                },
+                onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
+                onSeekCommentMs = { ms ->
+                    player.seekTo(ms)
+                    if (!player.isPlaying) player.play()
+                },
+                onLike = viewModel::toggleLike,
+                onDislike = viewModel::toggleDislike,
+                onWatchLater = viewModel::addToWatchLater,
+                onFollow = viewModel::toggleFollow,
+                onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                onOpenVideo = { next -> nav.push(Route.Video(next)) },
+            )
         },
         portraitOverlay = {
             VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = false)

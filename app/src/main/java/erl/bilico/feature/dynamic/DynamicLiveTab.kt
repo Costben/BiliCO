@@ -39,6 +39,7 @@ import io.github.suqi8.coui.kmp.basic.FullPagePullToRefresh
 import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.rememberFullPagePullToRefreshState
 import kotlinx.coroutines.flow.distinctUntilChanged
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 /**
@@ -120,7 +121,7 @@ internal fun DynamicLiveTab(
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().scrollEndHaptic(),
             contentPadding = PaddingValues(
                 start = 12.dp,
                 top = segmentTop + FeedSegmentRowHeight,

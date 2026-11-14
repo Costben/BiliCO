@@ -63,6 +63,7 @@ import erl.bilico.feature.article.ArticleScreen
 import erl.bilico.feature.chat.ChatScreen
 import erl.bilico.feature.dynamic.DynamicDetailScreen
 import erl.bilico.feature.dynamic.DynamicScreen
+import erl.bilico.feature.dynamic.ImageViewerOverlay
 import erl.bilico.feature.favorite.FavoriteFolderScreen
 import erl.bilico.feature.favorite.FavoriteFoldersScreen
 import erl.bilico.feature.following.FollowingScreen
@@ -83,6 +84,7 @@ import erl.bilico.feature.update.UpdateDialog
 import erl.bilico.feature.update.UpdateScreen
 import erl.bilico.feature.video.VideoScreen
 import erl.bilico.feature.watchlater.WatchLaterScreen
+import erl.bilico.ui.components.LocalOpenBvid
 import erl.bilico.update.AppUpdater
 import erl.bilico.update.UpdateCheckInterval
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -104,8 +106,13 @@ private const val LandedProgress = 0.2f
 @Composable
 fun BiliCoRoot(container: AppContainer) {
     val nav = remember { NavState() }
+    val origins = remember { ImageOrigins() }
+    val viewerHost = remember { ImageViewerHost() }
     val scope = rememberCoroutineScope()
-    SideEffect { nav.attach(scope) }
+    SideEffect {
+        nav.attach(scope)
+        viewerHost.attach(scope)
+    }
 
     // 启动时静默查一次更新：等本地配置读完，开关打开且距上次检查超过 12 小时才发请求。
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -120,12 +127,17 @@ fun BiliCoRoot(container: AppContainer) {
     val focusManager = LocalFocusManager.current
     androidx.compose.runtime.LaunchedEffect(nav.stack.size) { focusManager.clearFocus(force = true) }
 
-    BiliCoPredictiveBackHandler(nav)
+    BiliCoPredictiveBackHandler(nav, enabled = viewerHost.active == null)
 
     // 弹窗宿主采这块 backdrop：没有它，COUI 的玻璃面板会退回不透明底色。
     val rootBackdrop = rememberLayerBackdrop()
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    CompositionLocalProvider(
+        LocalImageOrigins provides origins,
+        LocalImageViewerHost provides viewerHost,
+        LocalOpenBvid provides { bvid -> nav.push(Route.Video(bvid)) },
+    ) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
         val widthPx = constraints.maxWidth.toFloat()
         val screenCorner = rememberScreenCornerRadius()
         val cornerShape = remember(screenCorner) { SquircleShape(screenCorner) }
@@ -178,8 +190,16 @@ fun BiliCoRoot(container: AppContainer) {
             }
         }
 
+        // 看图浮层挂在最上层且共享同一个根窗口，才能从任意页面或回复弹窗的缩略图原地生长和缩回。
+        viewerHost.active?.let { session ->
+            Box(Modifier.fillMaxSize().zIndex(6f)) {
+                ImageViewerOverlay(host = viewerHost, session = session)
+            }
+        }
+
         // 更新提示挂在根节点：自动检查、设置页手动检查以及更新日志页预览均统一由此弹出。
         UpdatePrompt(container)
+        }
     }
 }
 
@@ -205,8 +225,8 @@ private fun UpdatePrompt(container: AppContainer) {
 
 /** 页面跟着手指往回收的返回动画；根页面不注册，交给系统播退回桌面的动画。 */
 @Composable
-fun BiliCoPredictiveBackHandler(nav: NavState) {
-    PredictiveBackHandler(enabled = nav.stack.size > 1) { events ->
+fun BiliCoPredictiveBackHandler(nav: NavState, enabled: Boolean = true) {
+    PredictiveBackHandler(enabled = enabled && nav.stack.size > 1) { events ->
         val entry = nav.stack.lastOrNull()
         if (entry == null || nav.stack.size <= 1) {
             events.collect { }

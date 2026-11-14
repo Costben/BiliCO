@@ -23,6 +23,7 @@ import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.data.model.QualityOption
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
 /** 投币数量：1 或 2。 */
 @Composable
@@ -102,6 +103,7 @@ internal fun FavoriteFolderDialog(
             Column(
                 modifier = Modifier
                     .heightIn(max = 320.dp)
+                    .scrollEndHaptic()
                     .verticalScroll(rememberScrollState()),
             ) {
                 folders.forEach { folder ->
@@ -161,6 +163,7 @@ internal fun QualityDialog(
             Column(
                 modifier = Modifier
                     .heightIn(max = 280.dp)
+                    .scrollEndHaptic()
                     .verticalScroll(rememberScrollState()),
             ) {
                 options.forEach { option ->
@@ -232,6 +235,7 @@ internal fun SpeedDialog(
             Column(
                 modifier = Modifier
                     .heightIn(max = 280.dp)
+                    .scrollEndHaptic()
                     .verticalScroll(rememberScrollState()),
             ) {
                 PLAYBACK_SPEEDS.forEach { option ->

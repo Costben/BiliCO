@@ -36,6 +36,7 @@ import erl.bilico.ui.components.LoadingState
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
 @Composable
 internal fun PgcInfoTab(
@@ -84,7 +85,7 @@ private fun PgcInfoContent(
     var descExpanded by rememberSaveable(detail.seasonId) { mutableStateOf(false) }
 
     LazyColumn(
-        modifier = modifier,
+        modifier = modifier.scrollEndHaptic(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {

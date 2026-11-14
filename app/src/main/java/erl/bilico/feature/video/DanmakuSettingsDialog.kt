@@ -42,6 +42,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Refresh
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import java.util.Locale
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlin.math.roundToInt
 
 /**
@@ -105,6 +106,7 @@ internal fun DanmakuSettingsDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = if (inlineInStage) 280.dp else 440.dp)
+                    .scrollEndHaptic()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),

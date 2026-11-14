@@ -87,6 +87,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.withContext
 
 private enum class ComposerPanel { None, Emote, At }
@@ -529,7 +530,7 @@ private fun EmoteGrid(
         when {
             showGrid -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(44.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().scrollEndHaptic(),
                 contentPadding = PaddingValues(vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -588,7 +589,7 @@ private fun AtList(
     ) {
         when {
             showList -> LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().scrollEndHaptic(),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
                 items(users.size) { index ->

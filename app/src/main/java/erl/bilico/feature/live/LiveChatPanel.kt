@@ -26,6 +26,7 @@ import erl.bilico.data.model.LiveDanmakuMessage
 import erl.bilico.ui.components.DanmakuToggle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
 /** 直播间弹幕面板：新消息追加在底部，列表跟着滚到最后一条。 */
 @Composable
@@ -86,7 +87,7 @@ internal fun LiveDanmakuPanel(
         } else {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().scrollEndHaptic(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {

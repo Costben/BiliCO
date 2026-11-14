@@ -32,6 +32,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 @Stable
@@ -213,6 +214,7 @@ internal fun SubtitleDialog(
             Column(
                 modifier = Modifier
                     .heightIn(max = 320.dp)
+                    .scrollEndHaptic()
                     .verticalScroll(rememberScrollState()),
             ) {
                 SubtitleOptionRow(

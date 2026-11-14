@@ -171,6 +171,8 @@ internal fun DynamicCard(
                 video = video,
                 onOpenVideo = onOpenVideo,
                 modifier = Modifier.padding(top = 8.dp),
+                showTitle = !isDuplicateVideoTitle(item.title, video.title) &&
+                    !isDuplicateVideoTitle(content, video.title),
                 externalOrigin = cardOrigin,
                 rowScrollState = rowScrollState,
                 rowKey = rowKey,
@@ -290,6 +292,7 @@ private fun DynamicVideoCardView(
     video: DynamicVideoCard,
     onOpenVideo: (String, ExpandOrigin?) -> Unit,
     modifier: Modifier = Modifier,
+    showTitle: Boolean = true,
     externalOrigin: ExpandOrigin? = null,
     rowScrollState: RowScrollState? = null,
     rowKey: Any? = null,
@@ -357,15 +360,17 @@ private fun DynamicVideoCardView(
                 )
             }
         }
-        Text(
-            text = video.title,
-            modifier = Modifier.padding(top = 8.dp),
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (showTitle && video.title.isNotBlank()) {
+            Text(
+                text = video.title,
+                modifier = Modifier.padding(top = 8.dp),
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -464,6 +469,8 @@ private fun ForwardBox(
                 video = video,
                 onOpenVideo = onOpenVideo,
                 modifier = Modifier.padding(top = 8.dp),
+                showTitle = !isDuplicateVideoTitle(item.title, video.title) &&
+                    !isDuplicateVideoTitle(item.content, video.title),
                 rowScrollState = rowScrollState,
                 rowKey = rowKey,
                 containerBackground = bgColor.compositeOver(cardColor),
@@ -476,6 +483,27 @@ private fun ForwardBox(
             )
         }
     }
+}
+
+/** 转发或正文已写出完整标题（常见「原标题 | 作者名」仅尾部多了作者后缀）时，不再在封面下方重复打印视频标题。 */
+private fun isDuplicateVideoTitle(text: String, videoTitle: String): Boolean {
+    val a = text.trim()
+    val b = videoTitle.trim()
+    if (a.isEmpty() || b.isEmpty()) return false
+    if (a.equals(b, ignoreCase = true)) return true
+    if (a.length >= 6 && b.startsWith(a, ignoreCase = true)) return true
+    if (b.length >= 6 && a.startsWith(b, ignoreCase = true)) return true
+    val baseTitle = b.substringBeforeLast('|').trim()
+    if (baseTitle != b && baseTitle.length >= 6) {
+        if (a.equals(baseTitle, ignoreCase = true) ||
+            baseTitle.startsWith(a, ignoreCase = true) ||
+            a.startsWith(baseTitle, ignoreCase = true)
+        ) {
+            return true
+        }
+    }
+    return (a.length >= 8 && b.contains(a, ignoreCase = true)) ||
+        (b.length >= 8 && a.contains(b, ignoreCase = true))
 }
 
 internal fun DynamicItemUi.displayTime(): String {

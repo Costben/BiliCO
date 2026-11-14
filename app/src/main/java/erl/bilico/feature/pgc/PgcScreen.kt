@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,6 +68,7 @@ import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import erl.bilico.ui.components.LocalCommentSeek
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
@@ -429,14 +431,16 @@ fun PgcScreen(
                         else -> {
                             val aid = episode?.aid ?: 0L
                             if (aid > 0L) {
-                                CommentTab(
-                                    container = container,
-                                    oid = aid,
-                                    onOpenUser = { mid ->
-                                        if (mid > 0L) nav.push(Route.Space(mid))
-                                    },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
+                                CompositionLocalProvider(
+                                    LocalCommentSeek provides { ms -> player.seekTo(ms); if (!player.isPlaying) player.play() },
+                                ) {
+                                    CommentTab(
+                                        container = container,
+                                        oid = aid,
+                                        onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
                             }
                         }
                     }

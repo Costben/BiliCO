@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -55,6 +56,8 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.components.LocalCommentSeek
+import erl.bilico.ui.components.LocalOpenBvid
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -65,6 +68,7 @@ import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 private val SortTimeIcon: ImageVector by lazy {
@@ -337,6 +341,8 @@ internal fun ReplyDialog(
     val keyboardGapProgress = (imeBottom / 80.dp).coerceIn(0f, 1f)
     val bottomGap = 24.dp + (6.dp - 24.dp) * keyboardGapProgress
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
+    val parentOpenBvid = LocalOpenBvid.current
+    val parentSeek = LocalCommentSeek.current
 
     OverlayBottomSheet(
         show = show,
@@ -375,7 +381,11 @@ internal fun ReplyDialog(
         onDismissRequest = { show = false },
         onDismissFinished = onDismiss,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        CompositionLocalProvider(
+            LocalOpenBvid provides parentOpenBvid?.let { open -> { bvid -> show = false; open(bvid) } },
+            LocalCommentSeek provides parentSeek?.let { seek -> { ms -> show = false; seek(ms) } },
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -385,7 +395,7 @@ internal fun ReplyDialog(
             ) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().scrollEndHaptic(),
                     contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
                 ) {
                     // 1. 根评论卡片（补全主评论）
@@ -556,6 +566,7 @@ internal fun ReplyDialog(
                 focusRequester = composerFocus,
                 onSend = { sendReply() },
             )
+            }
         }
     }
 

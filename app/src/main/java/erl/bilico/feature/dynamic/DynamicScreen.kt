@@ -60,6 +60,7 @@ import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.rememberFullPagePullToRefreshState
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 @Composable
@@ -279,6 +280,7 @@ private fun DynamicContent(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
+                    .scrollEndHaptic()
                     .graphicsLayer { alpha = listAlpha.value },
                 contentPadding = PaddingValues(
                     start = 12.dp,

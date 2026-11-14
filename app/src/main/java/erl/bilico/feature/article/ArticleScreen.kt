@@ -17,10 +17,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,10 +52,12 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
 import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.NavState
+import erl.bilico.ui.imageOrigin
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.LocalOpenBvid
 import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -205,11 +206,14 @@ private fun BannerImage(
     val widthPx = remember(density, screenWidthDp) {
         with(density) { screenWidthDp.dp.roundToPx() }
     }
+    val model = Formatters.widthImageUrl(url, widthPx)
+    val keyUrl = Formatters.normalizeImageUrl(url)
     AsyncImage(
-        model = Formatters.widthImageUrl(url, widthPx),
+        model = model,
         contentDescription = title,
         modifier = Modifier
             .fillMaxWidth()
+            .imageOrigin(url = keyUrl, cornerRadius = 12.dp, model = model)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
         contentScale = ContentScale.FillWidth,
@@ -411,7 +415,9 @@ private fun ArticleImageBlock(
         with(density) { (screenWidthDp.dp - 24.dp).roundToPx() }
     }
     val url = remember(block.url, widthPx) { Formatters.widthImageUrl(block.url, widthPx) }
+    val keyUrl = remember(block.url) { Formatters.normalizeImageUrl(block.url) }
     val ratio = articleImageAspectRatio(block.width, block.height)
+    val trueAspect = if (block.width > 0 && block.height > 0) block.width.toFloat() / block.height.toFloat() else null
     // 组内图片索引按图块出现顺序算，点开时能落到正确的那一张。
     val group = remember(article.blocks) {
         article.blocks.filterIsInstance<ArticleBlock.Image>()
@@ -422,6 +428,7 @@ private fun ArticleImageBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .imageOrigin(url = keyUrl, cornerRadius = 10.dp, aspect = trueAspect, model = url)
             .clip(RoundedCornerShape(10.dp))
             .clickable { onOpenImage(group, index.coerceAtLeast(0)) },
     ) {
@@ -538,58 +545,32 @@ private fun ArticleCommentSheet(
     commentCount: Long,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .background(pageContainerColor()),
-        ) {
+    val parentOpenBvid = LocalOpenBvid.current
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Column(Modifier.fillMaxSize().background(pageContainerColor())) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BackIconButton(onClick = onDismiss)
                 Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                    Text(
-                        text = "评论",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = COUITheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = title,
-                        fontSize = 11.sp,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Text("评论", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = COUITheme.colorScheme.onSurface)
+                    Text(title, fontSize = 11.sp, color = COUITheme.colorScheme.onSurfaceSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (commentCount > 0L) {
-                    Text(
-                        text = Formatters.formatStat(commentCount),
-                        fontSize = 12.sp,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                        modifier = Modifier.padding(end = 12.dp),
-                    )
+                    Text(Formatters.formatStat(commentCount), fontSize = 12.sp, color = COUITheme.colorScheme.onSurfaceSecondary, modifier = Modifier.padding(end = 12.dp))
                 }
             }
             HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
-            CommentTab(
-                container = container,
-                oid = oid,
-                type = type,
-                onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .navigationBarsPadding(),
-            )
+            CompositionLocalProvider(LocalOpenBvid provides { bvid -> onDismiss(); parentOpenBvid?.invoke(bvid) }) {
+                CommentTab(
+                    container = container,
+                    oid = oid,
+                    type = type,
+                    onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
+                    modifier = Modifier.weight(1f).fillMaxWidth().navigationBarsPadding(),
+                )
+            }
         }
     }
 }
