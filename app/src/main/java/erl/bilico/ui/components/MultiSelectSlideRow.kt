@@ -1,6 +1,5 @@
 package erl.bilico.ui.components
 
-import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -8,9 +7,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -18,16 +15,11 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.layer.CompositingStrategy
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -42,7 +34,7 @@ import kotlin.math.roundToInt
  * 多选行的整行平移容器：
  * - [body] 始终按完整行宽测量与排版，不会因左侧复选框出现而触发文字换行重排或逐字缩短；
  * - 进入多选时，复选框从左侧滑入，[body] 整体向右平移 [checkboxSlotWidth]；
- * - 右侧超出的部分在末端通过「渐变高斯模糊 + 透明度淡出」柔化隐去，避免硬裁切。
+ * - 右侧末端通过紧凑的横向透明度渐变（[BlendMode.DstOut]）柔化淡出，避免硬裁切。
  */
 @Composable
 fun MultiSelectSlideRow(
@@ -52,7 +44,7 @@ fun MultiSelectSlideRow(
     checkboxTag: String,
     modifier: Modifier = Modifier,
     checkboxSlotWidth: Dp = 36.dp,
-    edgeFadeWidth: Dp = 44.dp,
+    edgeFadeWidth: Dp = 20.dp,
     body: @Composable () -> Unit,
 ) {
     val progressState = animateFloatAsState(
@@ -66,17 +58,6 @@ fun MultiSelectSlideRow(
     val density = LocalDensity.current
     val slotWidthPx = with(density) { checkboxSlotWidth.toPx() }
     val maxFadeWidthPx = with(density) { edgeFadeWidth.toPx() }
-    val maxBlurPx = with(density) { 5.dp.toPx() }
-
-    val contentLayer = rememberGraphicsLayer()
-    val sharpLayer = rememberGraphicsLayer().apply {
-        compositingStrategy = CompositingStrategy.Offscreen
-    }
-    val blurLayer = rememberGraphicsLayer()
-    val blurMaskedLayer = rememberGraphicsLayer().apply {
-        compositingStrategy = CompositingStrategy.Offscreen
-    }
-    var lastBlurRadius by remember { mutableFloatStateOf(-1f) }
 
     Layout(
         modifier = modifier,
@@ -105,75 +86,32 @@ fun MultiSelectSlideRow(
             Box(
                 modifier = Modifier
                     .clipToBounds()
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
                     .drawWithContent {
                         val p = progressState.value.coerceIn(0f, 1f)
-                        if (p <= 0.001f) {
+                        val shiftPx = slotWidthPx * p
+                        if (shiftPx <= 0.5f) {
                             drawContent()
                             return@drawWithContent
                         }
-                        val w = size.width
-                        val h = size.height
-                        if (w <= 0f || h <= 0f) return@drawWithContent
-
-                        val shiftPx = slotWidthPx * p
-                        contentLayer.record {
-                            translate(left = shiftPx) {
-                                this@drawWithContent.drawContent()
-                            }
+                        translate(left = shiftPx) {
+                            this@drawWithContent.drawContent()
                         }
-
-                        val fadeW = maxFadeWidthPx.coerceAtMost(w * 0.45f) * p
-                        if (fadeW <= 1f) {
-                            drawLayer(contentLayer)
-                            return@drawWithContent
-                        }
-                        val fadeStart = (w - fadeW).coerceAtLeast(0f)
-                        val sharpFadeEnd = (fadeStart + fadeW * 0.7f).coerceAtMost(w)
-
-                        sharpLayer.record {
-                            drawLayer(contentLayer)
+                        val fadeW = maxFadeWidthPx.coerceAtMost(size.width * 0.25f) * p
+                        if (fadeW > 1f) {
+                            val fadeStart = (size.width - fadeW).coerceAtLeast(0f)
                             drawRect(
                                 brush = Brush.horizontalGradient(
                                     colors = listOf(Color.Transparent, Color.White),
                                     startX = fadeStart,
-                                    endX = sharpFadeEnd.coerceAtLeast(fadeStart + 1f),
+                                    endX = size.width,
                                 ),
                                 topLeft = Offset(fadeStart, 0f),
-                                size = Size(w - fadeStart, h),
+                                size = Size(fadeW, size.height),
                                 blendMode = BlendMode.DstOut,
                             )
-                        }
-                        drawLayer(sharpLayer)
-
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            val blurRadius = (maxBlurPx * p).coerceAtLeast(0.5f)
-                            if (blurRadius != lastBlurRadius) {
-                                blurLayer.renderEffect = BlurEffect(blurRadius, blurRadius, TileMode.Clamp)
-                                lastBlurRadius = blurRadius
-                            }
-                            blurLayer.record {
-                                drawLayer(contentLayer)
-                            }
-                            blurMaskedLayer.record {
-                                clipRect(left = fadeStart, top = 0f, right = w, bottom = h) {
-                                    drawLayer(blurLayer)
-                                    drawRect(
-                                        brush = Brush.horizontalGradient(
-                                            colorStops = arrayOf(
-                                                0f to Color.Transparent,
-                                                0.45f to Color.White.copy(alpha = 0.9f * p),
-                                                1f to Color.Transparent,
-                                            ),
-                                            startX = fadeStart,
-                                            endX = w,
-                                        ),
-                                        topLeft = Offset(fadeStart, 0f),
-                                        size = Size(w - fadeStart, h),
-                                        blendMode = BlendMode.DstIn,
-                                    )
-                                }
-                            }
-                            drawLayer(blurMaskedLayer)
                         }
                     },
             ) {
