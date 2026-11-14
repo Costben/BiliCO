@@ -56,6 +56,10 @@ class SettingsRepository(
     private val _backgroundPlay = MutableStateFlow(true)
     val backgroundPlay: StateFlow<Boolean> = _backgroundPlay.asStateFlow()
 
+    /** 一个视频播完是否自动接着播下一个（下一 P 或播放队列里的下一条）。 */
+    private val _autoPlayNext = MutableStateFlow(true)
+    val autoPlayNext: StateFlow<Boolean> = _autoPlayNext.asStateFlow()
+
     private val _autoPip = MutableStateFlow(true)
     val autoPip: StateFlow<Boolean> = _autoPip.asStateFlow()
 
@@ -120,6 +124,7 @@ class SettingsRepository(
             )
             syncDanmakuState(dm)
             _backgroundPlay.value = prefs[KEY_BACKGROUND_PLAY] ?: true
+            _autoPlayNext.value = prefs[KEY_AUTO_PLAY_NEXT] ?: true
             _autoPip.value = prefs[KEY_AUTO_PIP] ?: true
             _gestureHaptic.value = prefs[KEY_GESTURE_HAPTIC] ?: true
             _longPressSpeed.value = (prefs[KEY_LONG_PRESS_SPEED] ?: DEFAULT_LONG_PRESS_SPEED)
@@ -172,6 +177,11 @@ class SettingsRepository(
     fun setBackgroundPlay(enabled: Boolean) {
         _backgroundPlay.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_BACKGROUND_PLAY] = enabled } }
+    }
+
+    fun setAutoPlayNext(enabled: Boolean) {
+        _autoPlayNext.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_AUTO_PLAY_NEXT] = enabled } }
     }
 
     fun setAutoPip(enabled: Boolean) {
@@ -371,6 +381,7 @@ class SettingsRepository(
         val KEY_DM_LINE_HEIGHT = intPreferencesKey("danmaku_line_height")
         val KEY_BACKGROUND_PLAY = booleanPreferencesKey("background_play")
         val KEY_AUTO_PIP = booleanPreferencesKey("auto_pip")
+        val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
         val KEY_GESTURE_HAPTIC = booleanPreferencesKey("gesture_haptic")
         val KEY_AUTO_ROTATE_MODE = intPreferencesKey("auto_rotate_mode")
         val KEY_LONG_PRESS_SPEED = intPreferencesKey("long_press_speed")

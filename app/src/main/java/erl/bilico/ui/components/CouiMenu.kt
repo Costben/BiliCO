@@ -35,12 +35,18 @@ import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import kotlinx.coroutines.launch
 
-/** 菜单里的一行：文案加要做的事；[selected] 为 true 时带选中标记；[icon] 可选左侧图标。 */
+/**
+ * 菜单里的一行：文案加要做的事；[selected] 为 true 时带选中标记；[icon] 可选左侧图标。
+ * [hint] 是标题右侧的附加内容（开关这类要一直看得见状态的东西）；
+ * [keepOpen] 为 true 时点完不收起菜单，方便连续拨动同一个开关。
+ */
 internal class CouiMenuItem(
     val label: String,
     val onClick: () -> Unit,
     val selected: Boolean = false,
     val icon: (@Composable (Modifier) -> Unit)? = null,
+    val hint: (@Composable () -> Unit)? = null,
+    val keepOpen: Boolean = false,
 )
 
 /**
@@ -69,6 +75,7 @@ internal fun CouiPopupMenu(
                     item = DropdownItem(
                         text = item.label,
                         icon = item.icon,
+                        hint = item.hint,
                     ),
                     optionSize = items.size,
                     isSelected = item.selected,
@@ -77,7 +84,7 @@ internal fun CouiPopupMenu(
                     role = Role.Button,
                     onSelectedIndexChange = {
                         item.onClick()
-                        dismiss?.invoke()
+                        if (!item.keepOpen) dismiss?.invoke()
                     },
                 )
             }
@@ -181,15 +188,15 @@ internal fun CouiStagePopupMenu(
                             ListPopupColumn {
                                 items.forEachIndexed { index, item ->
                                     DropdownImpl(
-                                        item = DropdownItem(text = item.label),
+                                        item = DropdownItem(text = item.label, hint = item.hint),
                                         optionSize = items.size,
                                         isSelected = false,
                                         index = index,
                                         groupKey = "stage_menu",
                                         role = Role.Button,
                                         onSelectedIndexChange = {
-                                            onDismiss()
                                             item.onClick()
+                                            if (!item.keepOpen) onDismiss()
                                         },
                                     )
                                 }

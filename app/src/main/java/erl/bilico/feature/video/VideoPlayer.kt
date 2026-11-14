@@ -111,6 +111,8 @@ internal fun VideoPlayer(
     onHome: (() -> Unit)? = null,
     onWatchLater: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    autoPlayNext: Boolean = true,
+    onToggleAutoPlayNext: (() -> Unit)? = null,
     longPressSpeedActive: Boolean = false,
     longPressSpeedValue: Float = 2f,
     onLongPressSpeedChange: (Boolean) -> Unit = {},
@@ -154,13 +156,8 @@ internal fun VideoPlayer(
     }
 
     // 黑底由全屏舞台决定：横屏转场靠它撑住整窗，竖屏全屏则让画面浮在页面上。
-    // 详情页里横屏视频收窄时改成「填满再裁」：宽度保持屏幕宽，只把下面裁掉。
-    val cropVideoWidth = LocalCropVideoWidth.current
-    val resizeMode = if (cropVideoWidth) {
-        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-    } else {
-        AspectRatioFrameLayout.RESIZE_MODE_FIT
-    }
+    // 画面一律按原始比例 FIT：槽位多高画面就多高，宽度跟着缩，整幅画面始终完整可见。
+    val resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
     Box(if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier) {
         AndroidView(
             factory = { context ->
@@ -263,6 +260,8 @@ internal fun VideoPlayer(
                             onDanmakuSettings = onDanmakuSettingsClick,
                             onWatchLater = onWatchLater,
                             onShare = onShare,
+                            autoPlayNext = autoPlayNext,
+                            onToggleAutoPlayNext = onToggleAutoPlayNext,
                         )
                     }
                 }
@@ -438,6 +437,7 @@ internal fun VideoPlayer(
                             ),
                         )
                     }
+                    onToggleAutoPlayNext?.let { add(autoPlayNextMenuItem(autoPlayNext, it)) }
                     onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
                     onShare?.let { add(CouiMenuItem("分享", it)) }
                 },

@@ -80,6 +80,22 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
         color = STROKE_COLOR
     }
 
+    // 合并数量那截「(N)」用的小一号字号，样式跟着正文走。
+    private val countFillPaint = Paint(
+        Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG,
+    ).apply {
+        style = Paint.Style.FILL
+    }
+
+    private val countStrokePaint = Paint(
+        Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG,
+    ).apply {
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
+        color = STROKE_COLOR
+    }
+
     private val bitmapPaint = Paint(
         Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.FILTER_BITMAP_FLAG,
     )
@@ -89,6 +105,8 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
     }
 
     private val widthCache = HashMap<String, Float>(2048)
+    // 合并数量的「(N)」按小一号字号量，和正文宽度不能共用一张表。
+    private val countWidthCache = HashMap<String, Float>(64)
     private var cachedFontPx: Float = -1f
     private var cachedWeight: Int = -1
     private var cachedSpriteFontPx: Float = -1f
@@ -279,14 +297,22 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
         if (abs(cachedFontPx - fontPx) > 0.05f || cachedWeight != settings.fontWeight) {
             widthCache.clear()
+            countWidthCache.clear()
             cachedFontPx = fontPx
             cachedWeight = settings.fontWeight
         }
 
         placed = layoutDanmaku(
             items = filteredItems,
-            measure = { text ->
-                widthCache.getOrPut(text) { fillPaint.measureText(text) }
+            measure = { text, scale ->
+                if (scale == 1f) {
+                    widthCache.getOrPut(text) { fillPaint.measureText(text) }
+                } else {
+                    countWidthCache.getOrPut(text) {
+                        countFillPaint.textSize = fillPaint.textSize * scale
+                        countFillPaint.measureText(text)
+                    }
+                }
             },
             widthPx = width.toFloat(),
             heightPx = height.toFloat(),
@@ -352,7 +378,13 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             if (x + entry.width < 0f || x > screenWidth) continue
 
             val alphaInt = (fade * baseOpacity * 255f).toInt().coerceIn(0, 255)
-            val sprite = obtainSprite(entry.displayText, entry.width, entry.item.color and 0xFFFFFF, strokePx)
+            val sprite = obtainSprite(
+                text = entry.displayText,
+                count = entry.count,
+                measuredWidth = entry.width,
+                rgb = entry.item.color and 0xFFFFFF,
+                strokePx = strokePx,
+            )
             bitmapPaint.alpha = alphaInt
             canvas.drawBitmap(sprite.bitmap, x - sprite.pad, entry.y - sprite.pad, bitmapPaint)
         }
@@ -364,16 +396,23 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
     private fun obtainSprite(
         text: String,
+        count: Int,
         measuredWidth: Float,
         rgb: Int,
         strokePx: Float,
     ): DanmakuSprite {
-        val key = SpriteKey(text, rgb)
+        val key = SpriteKey(text, count, rgb)
         spriteCache.get(key)?.let { return it }
 
         val pad = ceil(strokePx + 2f)
         val ascent = -fillPaint.ascent()
         val descent = fillPaint.descent()
+        val countText = if (count > 1) countLabel(count) else null
+        countFillPaint.textSize = fillPaint.textSize * COUNT_FONT_SCALE
+        countFillPaint.typeface = fillPaint.typeface
+        countStrokePaint.textSize = countFillPaint.textSize
+        countStrokePaint.typeface = fillPaint.typeface
+        val countWidth = if (countText != null) countFillPaint.measureText(countText) else 0f
         val bmpW = ceil(measuredWidth + pad * 2f).toInt().coerceIn(1, 4096)
         val bmpH = ceil(ascent + descent + pad * 2f).toInt().coerceIn(1, 512)
         val bmp = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888)
@@ -382,10 +421,19 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
         if (strokePx > 0.05f) {
             strokePaint.strokeWidth = strokePx
             strokePaint.alpha = 224
-            bmpCanvas.drawText(text, pad, baseline, strokePaint)
+            if (countText != null) {
+                countStrokePaint.strokeWidth = strokePx
+                countStrokePaint.alpha = 224
+                bmpCanvas.drawText(countText, pad, baseline, countStrokePaint)
+            }
+            bmpCanvas.drawText(text, pad + countWidth, baseline, strokePaint)
         }
         fillPaint.color = rgb or (0xFF shl 24)
-        bmpCanvas.drawText(text, pad, baseline, fillPaint)
+        if (countText != null) {
+            countFillPaint.color = rgb or (0xFF shl 24)
+            bmpCanvas.drawText(countText, pad, baseline, countFillPaint)
+        }
+        bmpCanvas.drawText(text, pad + countWidth, baseline, fillPaint)
 
         return DanmakuSprite(bmp, pad).also { spriteCache.put(key, it) }
     }
@@ -400,6 +448,7 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
     private data class SpriteKey(
         val text: String,
+        val count: Int,
         val rgb: Int,
     )
 
@@ -440,149 +489,6 @@ internal class DanmakuTimeline {
     var nowMs: Long = 0L
 }
 
-internal data class FilteredDanmaku(
-    val item: DanmakuItem,
-    val displayText: String,
-)
-
-internal data class PlacedDanmaku(
-    val item: DanmakuItem,
-    val displayText: String,
-    val type: DanmakuType,
-    val y: Float,
-    val width: Float,
-    val lane: Int,
-)
-
-internal fun filterAndMergeDanmaku(
-    items: List<DanmakuItem>,
-    settings: DanmakuSettings,
-): List<FilteredDanmaku> {
-    if (items.isEmpty()) return emptyList()
-    val filtered = ArrayList<DanmakuItem>(items.size)
-    for (item in items) {
-        when (item.type) {
-            DanmakuType.SCROLL -> if (!settings.allowScroll) continue
-            DanmakuType.TOP -> if (!settings.allowTop) continue
-            DanmakuType.BOTTOM -> if (!settings.allowBottom) continue
-        }
-        val rgb = item.color and 0xFFFFFF
-        if (!settings.allowColorful && rgb != 0xFFFFFF) continue
-        filtered.add(item)
-    }
-    if (!settings.mergeDuplicates || filtered.isEmpty()) {
-        return filtered.map { FilteredDanmaku(it, it.content) }
-    }
-    val result = ArrayList<FilteredDanmaku>(filtered.size)
-    val recentIdxByText = HashMap<String, Int>(256)
-    val counts = IntArray(filtered.size) { 1 }
-    for (item in filtered) {
-        val key = item.content.trim()
-        val prevResultIdx = recentIdxByText[key]
-        if (prevResultIdx != null) {
-            val prevItem = result[prevResultIdx].item
-            if (item.timeMs - prevItem.timeMs <= MERGE_WINDOW_MS) {
-                counts[prevResultIdx]++
-                continue
-            }
-        }
-        val newIdx = result.size
-        recentIdxByText[key] = newIdx
-        result.add(FilteredDanmaku(item, item.content))
-    }
-    for (i in result.indices) {
-        val c = counts[i]
-        if (c > 1) {
-            val orig = result[i]
-            result[i] = FilteredDanmaku(orig.item, "${orig.item.content} ×$c")
-        }
-    }
-    return result
-}
-
-internal fun layoutDanmaku(
-    items: List<FilteredDanmaku>,
-    measure: (String) -> Float,
-    widthPx: Float,
-    heightPx: Float,
-    fontPx: Float,
-    areaFraction: Float,
-    lineHeightRatio: Float = LINE_HEIGHT_RATIO,
-    scrollDurationMs: Long = SCROLL_DURATION_MS,
-    massiveMode: Boolean = false,
-    bottomInsetPx: Float,
-): List<PlacedDanmaku> {
-    if (items.isEmpty() || widthPx <= 0f || heightPx <= 0f || fontPx <= 0f) return emptyList()
-    val lineHeight = fontPx * lineHeightRatio
-    val effectiveArea = if (massiveMode) max(areaFraction, 0.75f) else areaFraction
-    val areaHeight = (heightPx * effectiveArea).coerceIn(lineHeight, heightPx)
-    val scrollLanes = max(1, ((areaHeight - fontPx) / lineHeight).toInt() + 1)
-    val topLanes = max(1, scrollLanes / 3)
-    val bottomLanes = max(1, scrollLanes / 3)
-    val scrollFree = LongArray(scrollLanes) { Long.MIN_VALUE }
-    val topFree = LongArray(topLanes) { Long.MIN_VALUE }
-    val bottomFree = LongArray(bottomLanes) { Long.MIN_VALUE }
-    val bottomBase = (heightPx - bottomInsetPx).coerceAtLeast(lineHeight)
-
-    val result = ArrayList<PlacedDanmaku>(items.size)
-    for (entry in items) {
-        val item = entry.item
-        val width = measure(entry.displayText)
-        when (item.type) {
-            DanmakuType.SCROLL -> {
-                var lane = -1
-                var earliestLane = 0
-                var earliestTime = Long.MAX_VALUE
-                for (index in scrollFree.indices) {
-                    val freeAt = scrollFree[index]
-                    if (freeAt <= item.timeMs) {
-                        lane = index
-                        break
-                    }
-                    if (freeAt < earliestTime) {
-                        earliestTime = freeAt
-                        earliestLane = index
-                    }
-                }
-                if (lane < 0) {
-                    if (massiveMode) lane = earliestLane else continue
-                }
-                val occupancy = scrollDurationMs * (width + fontPx) / (widthPx + width)
-                scrollFree[lane] = item.timeMs + occupancy.toLong()
-                result += PlacedDanmaku(item, entry.displayText, item.type, lane * lineHeight, width, lane)
-            }
-
-            DanmakuType.TOP -> {
-                var lane = -1
-                for (index in topFree.indices) {
-                    if (topFree[index] <= item.timeMs) {
-                        lane = index
-                        break
-                    }
-                }
-                if (lane < 0) continue
-                topFree[lane] = item.timeMs + FIXED_DURATION_MS
-                result += PlacedDanmaku(item, entry.displayText, item.type, lane * lineHeight, width, lane)
-            }
-
-            DanmakuType.BOTTOM -> {
-                var lane = -1
-                for (index in bottomFree.indices) {
-                    if (bottomFree[index] <= item.timeMs) {
-                        lane = index
-                        break
-                    }
-                }
-                if (lane < 0) continue
-                bottomFree[lane] = item.timeMs + FIXED_DURATION_MS
-                val y = bottomBase - (lane + 1) * lineHeight
-                result += PlacedDanmaku(item, entry.displayText, item.type, y, width, lane)
-            }
-        }
-    }
-    return result
-}
-
 private fun firstAfter(layout: List<PlacedDanmaku>, time: Long): Int {
     var low = 0
     var high = layout.size
@@ -599,11 +505,3 @@ private fun fadeAlpha(elapsed: Double, duration: Double): Float {
     if (remain < FADE_MS) return (remain / FADE_MS).toFloat()
     return 1f
 }
-
-internal const val LINE_HEIGHT_RATIO = 1.35f
-internal const val BASE_FONT_DP = 15f
-private const val SCROLL_DURATION_MS = 8_000L
-private const val FIXED_DURATION_MS = 4_000L
-private const val FADE_MS = 240.0
-private const val MERGE_WINDOW_MS = 5_000
-private const val BOTTOM_INSET_DP = 52f

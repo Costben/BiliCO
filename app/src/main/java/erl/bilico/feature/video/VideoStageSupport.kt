@@ -62,12 +62,6 @@ internal fun BoxScope.CollapsedBarSlot(
 }
 
 /**
- * 播放器要不要把画面拉成满宽再裁掉下面。
- * 详情页里的横屏视频收窄时开着：槽位变矮只裁画面，宽度始终等于屏幕宽。
- */
-internal val LocalCropVideoWidth = staticCompositionLocalOf { false }
-
-/**
  * 抵消舞台转场缩放：转屏途中跟着视频一起转，但大小始终等于竖屏视频页上的大小，
  * 收尾那一帧不会从缩小状态突然弹回原尺寸。必须挂在和播放器一样大的容器上。
  */

@@ -249,10 +249,10 @@ internal fun VideoFullscreenStage(
             // 和 ColorOS 白名单转屏一样：开转前先收起状态栏和导航条，旋转途中画面上只剩视频。
             // 舞台用的是固定的系统栏高度，收起系统栏不会让播放器和详情页重排。
             controller?.hide(WindowInsetsCompat.Type.systemBars())
-            // 全屏那一帧的画面就是整屏，从收窄的槽位起跳会先甩一下，先把槽位放回完整高度。
-            if (portraitResizable) slotHeight.floatValue = 0f
+            // 起跳点就是当前槽位高度（用户拖到哪就从哪长起来），这里不改高度：
+            // 改回去会让竖屏视频先跳一下再放大。转场本身按 slotMetrics[1] 换算缩放。
             if (portraitStage) {
-                // 竖屏视频：不转窗口，播放器从 16:9 槽位等比放大到整屏。
+                // 竖屏视频：不转窗口，播放器从当前槽位等比放大到整屏。
                 angle.snapTo(0f)
                 if (currentWindowLandscape) {
                     // 上一个视频还是横屏全屏时切到竖屏视频：先转回竖屏，直接落位。
@@ -415,7 +415,10 @@ internal fun VideoFullscreenStage(
                 else -> {
                     val portW = size.height
                     val portH = size.width
-                    val videoH = min(portW * 9f / 16f, portH * 0.7f)
+                    // 起点就是当前槽位高度：4:3 这类非 16:9 视频拉满宽度时槽位更高，
+                    // 按 16:9 算会让退出全屏的动画收回到一个比原位更小的尺寸。
+                    val videoH = slotMetrics[1].takeIf { it > 0f }
+                        ?: min(portW * 9f / 16f, portH * 0.7f)
                     lerp(videoH / portW.coerceAtLeast(1f), 1f, progress.value).coerceAtLeast(0.01f)
                 }
             }
@@ -478,7 +481,8 @@ internal fun VideoFullscreenStage(
                     } else {
                         val portW = size.height
                         val portH = size.width
-                        val videoH = min(portW * 9f / 16f, portH * 0.7f)
+                        val videoH = slotMetrics[1].takeIf { it > 0f }
+                            ?: min(portW * 9f / 16f, portH * 0.7f)
                         val p = progress.value
                         transformOrigin = TransformOrigin.Center
                         translationX = portW * 0.5f - portH * 0.5f
@@ -494,8 +498,6 @@ internal fun VideoFullscreenStage(
                         LocalStageScale provides stageScale,
                         // 竖屏全屏是等比放大，黑底会跟着缩放露在画面外；横屏旋转仍需要它撑满窗口。
                         LocalStageOpaquePlayer provides !portraitStage,
-                        // 横屏视频收窄时保持画面满宽，只把下面裁掉，不跟着槽位一起缩。
-                        LocalCropVideoWidth provides (portraitResizable && !portraitStage && !inStage),
                     ) { playerContent() }
                 },
             )
@@ -549,16 +551,18 @@ internal fun VideoFullscreenStage(
         // 横屏视频同样能收，但播放中至少留一屏的 30%，暂停了才推得干净。
         val videoH = if (portraitResizable) {
             val full = min(portW / aspect, portH * 0.7f)
+            // 进详情页统一落在 16:9 高度：竖屏视频不再一进来就顶到最高。
+            val initial = min(portW * 9f / 16f, full)
             slotMetrics[0] = full
             val floor = if (playing) {
-                maxOf(minSlotPx, min(full, portH * 0.3f))
+                maxOf(minSlotPx, min(initial, portH * 0.3f))
             } else {
                 minSlotPx
             }.coerceAtMost(full)
             slotFloor[0] = floor
             // slotHeight 为 0 表示还没量过。下限变了（开始/暂停播放）只夹紧当前高度，
             // 不会按比例换算成别的高度，画面就不会在暂停那一刻跳一下。
-            val wanted = slotHeight.floatValue.takeIf { it > 0f } ?: full
+            val wanted = slotHeight.floatValue.takeIf { it > 0f } ?: initial
             val clamped = wanted.coerceIn(floor, full)
             if (clamped != slotHeight.floatValue) slotHeight.floatValue = clamped
             clamped.also { slotMetrics[1] = it }

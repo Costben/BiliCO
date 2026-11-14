@@ -49,6 +49,8 @@ internal fun CollapsedVideoBar(
     onDanmakuSettings: (() -> Unit)? = null,
     onWatchLater: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    autoPlayNext: Boolean = true,
+    onToggleAutoPlayNext: (() -> Unit)? = null,
 ) {
     val statusBar = with(LocalDensity.current) {
         rememberStableStatusBarHeightPx().toDp()
@@ -119,6 +121,7 @@ internal fun CollapsedVideoBar(
                     onDismiss = { moreOpen = false },
                     items = buildList {
                         onDanmakuSettings?.let { add(CouiMenuItem("弹幕设置", it)) }
+                        onToggleAutoPlayNext?.let { add(autoPlayNextMenuItem(autoPlayNext, it)) }
                         onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
                         onShare?.let { add(CouiMenuItem("分享", it)) }
                     },

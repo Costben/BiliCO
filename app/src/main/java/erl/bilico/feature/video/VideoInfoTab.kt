@@ -61,7 +61,6 @@ import erl.bilico.feature.comment.DislikeOutlineIcon
 import erl.bilico.feature.comment.LikeFilledIcon
 import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.feature.feed.MoreMenu
-import erl.bilico.feature.feed.StatLabel
 import erl.bilico.feature.feed.rememberWatchLaterAction
 import erl.bilico.feature.feed.shareVideo
 import erl.bilico.ui.components.CoverImage
@@ -69,6 +68,7 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.ExpandableSectionHeader
 import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.StatLabel
 import io.github.suqi8.coui.kmp.basic.ExpandableList
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -518,7 +518,7 @@ private fun collapsedDescText(
     return withSuffix(end)
 }
 
-/** 简介下面那一栏：左边缩略图，右边标题、播放弹幕数与 UP 行（含三点菜单）。 */
+/** 简介下面那一栏：左边缩略图，右边标题、UP 行与播放弹幕数（三点菜单在右下角）。 */
 @Composable
 private fun RelatedVideoRow(
     video: FeedVideo,
@@ -577,14 +577,6 @@ private fun RelatedVideoRow(
             )
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatLabel(COUIIcons.Play, video.playCountText)
-                    if (video.danmakuText.isNotBlank()) {
-                        Spacer(Modifier.width(10.dp))
-                        StatLabel(COUIIcons.Messages, video.danmakuText)
-                    }
-                }
-                Spacer(Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = video.upName.ifBlank { "未知 UP" },
                         modifier = Modifier.weight(1f),
@@ -593,6 +585,15 @@ private fun RelatedVideoRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+                Spacer(Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatLabel(COUIIcons.Play, video.playCountText)
+                    if (video.danmakuText.isNotBlank()) {
+                        Spacer(Modifier.width(10.dp))
+                        StatLabel(COUIIcons.Messages, video.danmakuText)
+                    }
+                    Spacer(Modifier.weight(1f))
                     MoreMenu(
                         onWatchLater = onWatchLater,
                         onShare = { shareVideo(context, video) },

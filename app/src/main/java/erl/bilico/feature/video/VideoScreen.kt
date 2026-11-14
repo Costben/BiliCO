@@ -84,6 +84,7 @@ fun VideoScreen(
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
+    val autoPlayNext by container.settings.autoPlayNext.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
@@ -190,10 +191,14 @@ fun VideoScreen(
         },
         onVideoAspectChanged = { videoAspect = it },
         onPlaybackEnded = {
-            // 先看当前视频还有没有下一 P；没有就顺着「播放全部」的队列往下走。
+            // 下一 P 和「播放全部」的队列优先；都没有时，开着自动连播就接着播「其他推荐视频」的第一条。
             if (!viewModel.playNextPart()) {
-                nav.playQueue.next()?.let { next ->
-                    nav.replaceTop(Route.Video(next.video.bvid, next.startSec))
+                val queued = nav.playQueue.next()
+                when {
+                    queued != null -> nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
+                    autoPlayNext -> state.related.firstOrNull()?.let { next ->
+                        nav.replaceTop(Route.Video(next.bvid, 0L))
+                    }
                 }
             }
         },
@@ -347,6 +352,8 @@ fun VideoScreen(
                 },
                 onHome = { nav.popToMain() },
                 onWatchLater = viewModel::addToWatchLater,
+                autoPlayNext = autoPlayNext,
+                onToggleAutoPlayNext = { container.settings.setAutoPlayNext(!autoPlayNext) },
                 onShare = {
                     shareVideo(
                         context = context,
@@ -559,6 +566,8 @@ fun VideoScreen(
                 onExpand = { slotHeight.floatValue = 0f },
                 onDanmakuSettings = { danmakuSettingsDialogVisible = true },
                 onWatchLater = viewModel::addToWatchLater,
+                autoPlayNext = autoPlayNext,
+                onToggleAutoPlayNext = { container.settings.setAutoPlayNext(!autoPlayNext) },
                 onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
             )
         },
