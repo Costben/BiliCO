@@ -40,9 +40,11 @@ import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.feed.FeedSegmentRowHeight
+import erl.bilico.ui.ExpandOrigin
 import erl.bilico.ui.NavState
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.Route
+import erl.bilico.ui.asRowScrollState
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.FullPageRefreshHoldMillis
@@ -139,17 +141,17 @@ fun DynamicScreen(
                         onCollapse = onCollapse,
                         refreshTick = refreshTick,
                         onOpenUser = { nav.push(Route.Space(it)) },
-                        onOpenVideo = { nav.push(Route.Video(it)) },
+                        onOpenVideo = { bvid, origin -> nav.push(Route.Video(bvid), origin) },
                         onOpenImage = { images, index -> viewer = images to index },
-                        onOpenDynamic = { item ->
+                        onOpenDynamic = { item, origin ->
                             val articleId = item.article?.articleId ?: 0L
                             val dynId = item.dynamicId.ifBlank { item.article?.dynamicId.orEmpty() }
                             val headerTitle = item.title.ifBlank { item.authorName }
                             val video = item.video
                             when {
                                 articleId > 0L -> nav.push(Route.Article(articleId, headerTitle))
-                                dynId.isNotBlank() -> nav.push(Route.Opus(dynId, headerTitle))
-                                video != null -> nav.push(Route.Video(video.bvid))
+                                dynId.isNotBlank() -> nav.push(Route.Opus(dynId, headerTitle), origin)
+                                video != null -> nav.push(Route.Video(video.bvid), origin)
                             }
                         },
                         onWatchLater = onWatchLater,
@@ -192,9 +194,9 @@ private fun DynamicContent(
     onCollapse: (Float) -> Unit,
     refreshTick: Int,
     onOpenUser: (Long) -> Unit,
-    onOpenVideo: (String) -> Unit,
+    onOpenVideo: (String, ExpandOrigin?) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
-    onOpenDynamic: (DynamicItemUi) -> Unit,
+    onOpenDynamic: (DynamicItemUi, ExpandOrigin?) -> Unit,
     onWatchLater: (DynamicVideoCard) -> Unit,
     onOpenLive: (Long) -> Unit,
 ) {
@@ -260,6 +262,7 @@ private fun DynamicContent(
         }
     }
 
+    val rowScrollState = remember(listState) { listState.asRowScrollState() }
     Box(Modifier.fillMaxSize()) {
         FullPagePullToRefresh(
             isRefreshing = state.isRefreshing,
@@ -309,6 +312,8 @@ private fun DynamicContent(
                         onOpenDynamic = onOpenDynamic,
                         onWatchLater = onWatchLater,
                         onOpenLive = onOpenLive,
+                        rowScrollState = rowScrollState,
+                        rowKey = item.id,
                     )
                 }
 

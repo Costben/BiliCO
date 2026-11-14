@@ -18,36 +18,38 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
-import erl.bilico.data.model.DynamicLiveCard
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.util.Formatters
 import erl.bilico.feature.comment.LikeOutlineIcon
+import erl.bilico.ui.ExpandOrigin
+import erl.bilico.ui.LocalTopBarBounds
+import erl.bilico.ui.RowScrollState
+import erl.bilico.ui.attachToRow
 import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.RichCommentText
+import erl.bilico.ui.expandOrigin
+import erl.bilico.ui.rememberExpandOrigin
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -56,40 +58,54 @@ import io.github.suqi8.coui.kmp.icon.extended.Community
 import io.github.suqi8.coui.kmp.icon.extended.Share
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 卡片内可用宽度：屏宽减去列表留白（24dp）与卡片内边距（28dp）。 */
-@Composable
-private fun cardContentWidthDp(): Dp = LocalConfiguration.current.screenWidthDp.dp - 52.dp
-
 @Composable
 internal fun DynamicCard(
     item: DynamicItemUi,
     onOpenUser: (Long) -> Unit,
-    onOpenVideo: (String) -> Unit,
+    onOpenVideo: (String, ExpandOrigin?) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
-    onOpenDynamic: (DynamicItemUi) -> Unit,
+    onOpenDynamic: (DynamicItemUi, ExpandOrigin?) -> Unit,
     modifier: Modifier = Modifier,
     isDetail: Boolean = false,
     onWatchLater: ((DynamicVideoCard) -> Unit)? = null,
     onOpenLive: (Long) -> Unit = {},
+    rowScrollState: RowScrollState? = null,
+    rowKey: Any? = null,
 ) {
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val linkBlue = if (isDark) Color(0xFF5CA8FF) else Color(0xFF1367B1)
     val video = item.video
     val live = item.live
+    val cardCornerRadius = COUITheme.dimens.card.cornerRadius
+    val cardColor = COUITheme.colorScheme.surfaceContainer
+    val topBar = LocalTopBarBounds.current
+    val canExpandCard = !isDetail && live == null && (
+        video != null || ((item.article?.articleId ?: 0L) <= 0L && item.dynamicId.isNotBlank())
+    )
+
+    val cardOrigin = if (canExpandCard) {
+        rememberExpandOrigin(cornerRadius = cardCornerRadius).also { origin ->
+            SideEffect {
+                origin.attachToRow(rowScrollState, rowKey, topBar)
+            }
+        }
+    } else {
+        null
+    }
 
     // 视频动态整张卡片都进播放页，开播动态整张卡片都进直播间：只有头像、点赞这类显式控件才拦下点击。
     val onCardClick: () -> Unit = {
         when {
             live != null -> onOpenLive(live.roomId)
-            video != null -> onOpenVideo(video.bvid)
-            else -> onOpenDynamic(item)
+            video != null -> onOpenVideo(video.bvid, cardOrigin)
+            else -> onOpenDynamic(item, cardOrigin)
         }
     }
 
-    val cardCornerRadius = COUITheme.dimens.card.cornerRadius
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (cardOrigin != null) Modifier.expandOrigin(cardOrigin) else Modifier)
             .clip(RoundedCornerShape(cardCornerRadius)),
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
         onClick = if (!isDetail) onCardClick else null,
@@ -155,6 +171,10 @@ internal fun DynamicCard(
                 video = video,
                 onOpenVideo = onOpenVideo,
                 modifier = Modifier.padding(top = 8.dp),
+                externalOrigin = cardOrigin,
+                rowScrollState = rowScrollState,
+                rowKey = rowKey,
+                containerBackground = cardColor,
             )
 
             forward != null -> ForwardBox(
@@ -162,10 +182,13 @@ internal fun DynamicCard(
                 isDark = isDark,
                 linkBlue = linkBlue,
                 isDetail = isDetail,
+                cardColor = cardColor,
                 onOpenUser = onOpenUser,
                 onOpenVideo = onOpenVideo,
                 onOpenImage = onOpenImage,
                 onOpenDynamic = onOpenDynamic,
+                rowScrollState = rowScrollState,
+                rowKey = rowKey,
                 modifier = Modifier.padding(top = 8.dp),
             )
 
@@ -213,7 +236,7 @@ internal fun DynamicCard(
                     icon = COUIIcons.Community,
                     label = "评论",
                     count = item.commentCount,
-                    onClick = { onOpenDynamic(item) },
+                    onClick = { onOpenDynamic(item, cardOrigin) },
                 )
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
@@ -221,7 +244,7 @@ internal fun DynamicCard(
                     icon = LikeOutlineIcon,
                     label = "赞",
                     count = item.likeCount,
-                    onClick = { onOpenDynamic(item) },
+                    onClick = { onOpenDynamic(item, cardOrigin) },
                 )
             }
         }
@@ -265,8 +288,12 @@ private fun DynamicStatAction(
 @Composable
 private fun DynamicVideoCardView(
     video: DynamicVideoCard,
-    onOpenVideo: (String) -> Unit,
+    onOpenVideo: (String, ExpandOrigin?) -> Unit,
     modifier: Modifier = Modifier,
+    externalOrigin: ExpandOrigin? = null,
+    rowScrollState: RowScrollState? = null,
+    rowKey: Any? = null,
+    containerBackground: Color? = null,
 ) {
     val density = LocalDensity.current
     val contentWidth = cardContentWidthDp()
@@ -276,12 +303,33 @@ private fun DynamicVideoCardView(
     val coverUrl = remember(video.cover, widthPx) {
         Formatters.sizedImageUrl(video.cover, widthPx, widthPx * 9 / 16)
     }
-    val onClick = remember(video.bvid, onOpenVideo) { { onOpenVideo(video.bvid) } }
+    val topBar = LocalTopBarBounds.current
+    val ownOrigin = if (externalOrigin == null) {
+        rememberExpandOrigin(cornerRadius = 10.dp).also { origin ->
+            SideEffect {
+                origin.attachToRow(rowScrollState, rowKey, topBar)
+            }
+        }
+    } else {
+        null
+    }
+    val activeOrigin = externalOrigin ?: ownOrigin
+    val onClick = remember(video.bvid, activeOrigin, onOpenVideo) {
+        { onOpenVideo(video.bvid, activeOrigin) }
+    }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (ownOrigin != null) Modifier.expandOrigin(ownOrigin) else Modifier)
             .clip(RoundedCornerShape(10.dp))
+            .then(
+                if (ownOrigin != null && containerBackground != null) {
+                    Modifier.background(containerBackground)
+                } else {
+                    Modifier
+                },
+            )
             .clickable(onClick = onClick),
     ) {
         Box(
@@ -321,156 +369,44 @@ private fun DynamicVideoCardView(
     }
 }
 
-/**
- * 开播动态：封面右上角是「N人看过」与「直播中」，左下角是分区名，封面下面是直播间标题。
- * 整块点进直播间。
- */
-@Composable
-private fun DynamicLiveCardView(
-    live: DynamicLiveCard,
-    onOpenLive: (Long) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val density = LocalDensity.current
-    val contentWidth = cardContentWidthDp()
-    val widthPx = remember(density, contentWidth) {
-        with(density) { contentWidth.roundToPx() }
-    }
-    val coverUrl = remember(live.cover, widthPx) {
-        Formatters.sizedImageUrl(live.cover, widthPx, widthPx * 9 / 16)
-    }
-    val onClick = remember(live.roomId, onOpenLive) { { onOpenLive(live.roomId) } }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(10.dp)),
-        ) {
-            LoadingImage(
-                url = coverUrl,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (live.watchedText.isNotBlank()) {
-                    Text(
-                        text = live.watchedText,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0x66000000))
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White,
-                        maxLines = 1,
-                    )
-                }
-                if (live.living) {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFFFB7299))
-                            .padding(start = 6.dp, end = 8.dp, top = 3.dp, bottom = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        LiveSignalBars()
-                        Spacer(Modifier.width(3.dp))
-                        Text(
-                            text = "直播中",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.White,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-            if (live.areaName.isNotBlank()) {
-                Text(
-                    text = live.areaName,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    style = TextStyle(
-                        shadow = Shadow(color = Color(0xCC000000), offset = Offset(0f, 1f), blurRadius = 4f),
-                    ),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        if (live.title.isNotBlank()) {
-            Text(
-                text = live.title,
-                modifier = Modifier.padding(top = 8.dp),
-                fontSize = 16.sp,
-                lineHeight = 23.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-/** 「直播中」角标左边那三根信号格：由矮到高，纯装饰。 */
-@Composable
-private fun LiveSignalBars() {
-    Row(
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(1.5.dp),
-    ) {
-        listOf(4.dp, 7.dp, 10.dp).forEach { height ->
-            Box(
-                modifier = Modifier
-                    .width(2.dp)
-                    .height(height)
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(Color.White),
-            )
-        }
-    }
-}
-
 @Composable
 private fun ForwardBox(
     item: DynamicItemUi,
     isDark: Boolean,
     linkBlue: Color,
     isDetail: Boolean,
+    cardColor: Color,
     onOpenUser: (Long) -> Unit,
-    onOpenVideo: (String) -> Unit,
+    onOpenVideo: (String, ExpandOrigin?) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
-    onOpenDynamic: (DynamicItemUi) -> Unit,
+    onOpenDynamic: (DynamicItemUi, ExpandOrigin?) -> Unit,
+    rowScrollState: RowScrollState? = null,
+    rowKey: Any? = null,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(10.dp)
-    val bgColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF2F3F5)
+    val bgColor = (if (isDark) Color(0x22FFFFFF) else Color(0xFFF2F3F5)).compositeOver(cardColor)
     val borderColor = if (isDark) Color(0x1FFFFFFF) else Color(0x14000000)
+    val topBar = LocalTopBarBounds.current
+    val canExpandForward = item.video != null || ((item.article?.articleId ?: 0L) <= 0L && item.dynamicId.isNotBlank())
+    val forwardOrigin = if (canExpandForward) {
+        rememberExpandOrigin(cornerRadius = 10.dp).also { origin ->
+            SideEffect {
+                origin.attachToRow(rowScrollState, rowKey, topBar)
+            }
+        }
+    } else {
+        null
+    }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (forwardOrigin != null) Modifier.expandOrigin(forwardOrigin) else Modifier)
             .clip(shape)
             .background(bgColor)
             .border(width = 0.5.dp, color = borderColor, shape = shape)
-            .clickable { onOpenDynamic(item) }
+            .clickable { onOpenDynamic(item, forwardOrigin) }
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         if (item.authorName.isNotBlank()) {
@@ -481,7 +417,7 @@ private fun ForwardBox(
                     fontWeight = FontWeight.Medium,
                     color = linkBlue,
                     modifier = Modifier.clickable {
-                        if (item.authorMid > 0L) onOpenUser(item.authorMid) else onOpenDynamic(item)
+                        if (item.authorMid > 0L) onOpenUser(item.authorMid) else onOpenDynamic(item, forwardOrigin)
                     },
                 )
                 val time = item.displayTime()
@@ -528,6 +464,9 @@ private fun ForwardBox(
                 video = video,
                 onOpenVideo = onOpenVideo,
                 modifier = Modifier.padding(top = 8.dp),
+                rowScrollState = rowScrollState,
+                rowKey = rowKey,
+                containerBackground = bgColor.compositeOver(cardColor),
             )
 
             item.images.isNotEmpty() -> DynamicImageGrid(
@@ -535,118 +474,6 @@ private fun ForwardBox(
                 onOpenImage = onOpenImage,
                 modifier = Modifier.padding(top = 8.dp),
             )
-        }
-    }
-}
-
-/**
- * 长文型动态的正文图还在取时占位：形状和后面的真实九宫格一致（三列方格），
- * 取到图直接换成同一块，卡片不会先闪一串「[图片]」再重排。
- */
-@Composable
-private fun OpusImagePlaceholder(modifier: Modifier = Modifier) {
-    val cell = COUITheme.colorScheme.surfaceContainer
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        repeat(3) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                repeat(3) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(cell),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** feed 里长文图片的占位写法。 */
-private const val IMAGE_PLACEHOLDER = "[图片]"
-
-/** 去掉占位标记，顺便把因此空出来的行收掉。 */
-private fun String.withoutImagePlaceholders(): String =
-    replace(IMAGE_PLACEHOLDER, "")
-        .lines()
-        .map { it.trimEnd() }
-        .filter { it.isNotBlank() }
-        .joinToString("\n")
-
-@Composable
-private fun DynamicImageGrid(
-    images: List<DynamicImage>,
-    onOpenImage: (List<DynamicImage>, Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val density = LocalDensity.current
-    val contentWidth = cardContentWidthDp()
-
-    if (images.size == 1) {
-        val image = images.first()
-        val ratio = if (image.width > 0 && image.height > 0) {
-            (image.width.toFloat() / image.height.toFloat()).coerceIn(0.65f, 1.85f)
-        } else {
-            4f / 3f
-        }
-        val singleWidthDp = (contentWidth * 0.68f).coerceAtLeast(160.dp)
-        val singleWidthPx = remember(density, singleWidthDp) {
-            with(density) { singleWidthDp.roundToPx() }
-        }
-        val url = remember(image.url, singleWidthPx) {
-            Formatters.widthImageUrl(image.url, singleWidthPx)
-        }
-        Box(
-            modifier = modifier
-                .width(singleWidthDp)
-                .aspectRatio(ratio)
-                .clip(RoundedCornerShape(8.dp))
-                .clickable { onOpenImage(images, 0) },
-        ) {
-            LoadingImage(
-                url = url,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        }
-        return
-    }
-
-    val columns = if (images.size == 2 || images.size == 4) 2 else 3
-    val cellPx = remember(density, columns, contentWidth) {
-        with(density) { ((contentWidth - 8.dp) / columns).roundToPx() }
-    }
-
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        images.chunked(columns).forEachIndexed { rowIndex, rowItems ->
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                rowItems.forEachIndexed { columnIndex, image ->
-                    val index = rowIndex * columns + columnIndex
-                    val url = remember(image.url, cellPx) {
-                        Formatters.sizedImageUrl(image.url, cellPx, cellPx)
-                    }
-                    val onClick = remember(images, index, onOpenImage) {
-                        { onOpenImage(images, index) }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(onClick = onClick),
-                    ) {
-                        LoadingImage(
-                            url = url,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                    }
-                }
-                repeat(columns - rowItems.size) {
-                    Spacer(Modifier.weight(1f))
-                }
-            }
         }
     }
 }

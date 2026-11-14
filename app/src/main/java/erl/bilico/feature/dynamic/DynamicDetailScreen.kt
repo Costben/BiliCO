@@ -46,9 +46,12 @@ import erl.bilico.feature.comment.CommentComposerSheet
 import erl.bilico.feature.comment.CommentViewModel
 import erl.bilico.feature.comment.ReplyDialog
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.Route
+import erl.bilico.ui.TopBarBounds
+import erl.bilico.ui.asRowScrollState
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
@@ -58,6 +61,7 @@ import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
+import erl.bilico.ui.reportTopBarBottom
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
@@ -142,14 +146,17 @@ fun DynamicDetailScreen(
     val pageColor = pageContainerColor()
     val backdrop = rememberLayerBackdrop()
     val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
+    val topBarBounds = remember { TopBarBounds() }
+    val rowScrollState = remember(listState) { listState.asRowScrollState() }
 
     Box(Modifier.fillMaxSize().background(pageColor)) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .layerBackdropIf(BlurEffectsEnabled, backdrop)
-                .background(pageColor),
-        ) {
+        CompositionLocalProvider(LocalTopBarBounds provides topBarBounds) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .layerBackdropIf(BlurEffectsEnabled, backdrop)
+                    .background(pageColor),
+            ) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -180,21 +187,23 @@ fun DynamicDetailScreen(
                                 item = currentItem,
                                 isDetail = true,
                                 onOpenUser = { mid -> nav.push(Route.Space(mid)) },
-                                onOpenVideo = { bvid -> nav.push(Route.Video(bvid)) },
+                                onOpenVideo = { bvid, origin -> nav.push(Route.Video(bvid), origin) },
                                 onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
-                                onOpenDynamic = { target ->
+                                onOpenDynamic = { target, origin ->
                                     val artId = target.article?.articleId ?: 0L
                                     val targetDynId = target.dynamicId.ifBlank { target.article?.dynamicId.orEmpty() }
                                     val video = target.video
                                     when {
                                         artId > 0L -> nav.push(Route.Article(artId, target.title.ifBlank { target.authorName }))
                                         targetDynId.isNotBlank() && targetDynId != cleanId ->
-                                            nav.push(Route.Opus(targetDynId, target.title.ifBlank { target.authorName }))
-                                        video != null -> nav.push(Route.Video(video.bvid))
+                                            nav.push(Route.Opus(targetDynId, target.title.ifBlank { target.authorName }), origin)
+                                        video != null -> nav.push(Route.Video(video.bvid), origin)
                                     }
                                 },
                                 onWatchLater = onWatchLater,
                                 onOpenLive = { roomId -> nav.push(Route.LiveRoom(roomId)) },
+                                rowScrollState = rowScrollState,
+                                rowKey = "dynamic-card",
                             )
                         }
 
@@ -293,6 +302,7 @@ fun DynamicDetailScreen(
                 }
             }
         }
+        }
 
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
@@ -301,7 +311,9 @@ fun DynamicDetailScreen(
             PinnedBarDensity {
                 SmallTopAppBar(
                     title = "动态详情",
-                    modifier = Modifier.align(Alignment.TopCenter),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .reportTopBarBottom(topBarBounds),
                     color = pageColor,
                     showDivider = false,
                     gradientGlass = BlurEffectsEnabled,

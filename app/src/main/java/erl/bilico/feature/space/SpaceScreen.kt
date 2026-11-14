@@ -38,6 +38,7 @@ import erl.bilico.feature.dynamic.DynamicCard
 import erl.bilico.ui.AppBarSurface
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import erl.bilico.ui.asRowScrollState
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.EmptyState
@@ -73,6 +74,7 @@ fun SpaceScreen(
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val rowScrollState = remember(listState) { listState.asRowScrollState() }
 
     LaunchedEffect(listState, state.selectedTab) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -221,20 +223,22 @@ fun SpaceScreen(
                     DynamicCard(
                         item = dyn,
                         onOpenUser = { userMid -> if (userMid != mid) nav.push(Route.Space(userMid)) },
-                        onOpenVideo = { bvid -> nav.push(Route.Video(bvid)) },
+                        onOpenVideo = { bvid, origin -> nav.push(Route.Video(bvid), origin) },
                         onOpenImage = { _, _ -> },
-                        onOpenDynamic = { target ->
+                        onOpenDynamic = { target, origin ->
                             val articleId = target.article?.articleId ?: 0L
                             val dynId = target.dynamicId.ifBlank { target.article?.dynamicId.orEmpty() }
                             val headerTitle = target.title.ifBlank { target.authorName }
                             if (articleId > 0L) {
                                 nav.push(Route.Article(articleId, headerTitle))
                             } else if (dynId.isNotBlank()) {
-                                nav.push(Route.Opus(dynId, headerTitle))
+                                nav.push(Route.Opus(dynId, headerTitle), origin)
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         onOpenLive = { roomId -> nav.push(Route.LiveRoom(roomId)) },
+                        rowScrollState = rowScrollState,
+                        rowKey = "d-${dyn.dynamicId}",
                     )
                 }
 

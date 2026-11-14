@@ -164,8 +164,8 @@ class NavEntry(
     /** 返回手势把它拉出去的过程中为 true，还没真的出栈。 */
     var previewing by mutableStateOf(false)
 
-    /** 视频页从卡片长大；列表页和其余二级页由宿主整页滑入。 */
-    val expand: Boolean get() = route is Route.Video && origin?.bounds != null
+    /** 视频页与动态详情页从卡片长大；列表页和其余二级页由宿主整页滑入。 */
+    val expand: Boolean get() = (route is Route.Video || route is Route.Opus) && origin?.bounds != null
 
     private companion object {
         var nextId = 0
