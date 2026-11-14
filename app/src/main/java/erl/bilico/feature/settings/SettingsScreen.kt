@@ -1,9 +1,16 @@
 package erl.bilico.feature.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.DpSize
@@ -20,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.SingletonImageLoader
 import erl.bilico.BuildConfig
+import erl.bilico.data.model.SponsorCategory
 import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.settings.DefaultQuality
 import erl.bilico.di.AppContainer
@@ -43,6 +53,7 @@ import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
 import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 @Composable
@@ -64,6 +75,9 @@ fun SettingsScreen(
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
+    val sponsorBlockEnabled by container.settings.sponsorBlockEnabled.collectAsStateWithLifecycle()
+    val sponsorSkipMode by container.settings.sponsorSkipMode.collectAsStateWithLifecycle()
+    val sponsorCategories by container.settings.sponsorCategories.collectAsStateWithLifecycle()
     val autoCheckUpdate by container.settings.autoCheckUpdate.collectAsStateWithLifecycle()
     val acceptPrerelease by container.settings.acceptPrerelease.collectAsStateWithLifecycle()
     val inAppUpdate by container.settings.inAppUpdate.collectAsStateWithLifecycle()
@@ -71,6 +85,7 @@ fun SettingsScreen(
 
     var pickCdn by remember { mutableStateOf(false) }
     var showDanmakuSettings by remember { mutableStateOf(false) }
+    var showSponsorCategories by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var cacheCleared by remember { mutableIntStateOf(0) }
 
@@ -158,6 +173,43 @@ fun SettingsScreen(
                     title = "手势震动",
                     modifier = Modifier.testTag("settings_gesture_haptic"),
                     cardListPosition = CardListPosition.Tail,
+                )
+            }
+        }
+
+        item(key = "sponsor-title") { SectionTitle("空降助手") }
+
+        item(key = "sponsor") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
+                insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
+            ) {
+                SwitchPreference(
+                    checked = sponsorBlockEnabled,
+                    onCheckedChange = container.settings::setSponsorBlockEnabled,
+                    title = "空降助手",
+                    summary = "跳过或标记视频内的赞助广告、三连与片头片尾",
+                    modifier = Modifier.testTag("settings_sponsor_block"),
+                    cardListPosition = CardListPosition.Head,
+                )
+                OverlayDropdownPreference(
+                    items = SPONSOR_SKIP_MODES,
+                    selectedIndex = sponsorSkipMode.coerceIn(0, SPONSOR_SKIP_MODES.lastIndex),
+                    title = "空降方式",
+                    enabled = sponsorBlockEnabled,
+                    modifier = Modifier.testTag("settings_sponsor_mode"),
+                    cardListPosition = CardListPosition.Middle,
+                    onSelectedIndexChange = container.settings::setSponsorSkipMode,
+                )
+                ArrowPreference(
+                    title = "跳过片段类型",
+                    summary = "已启用 ${sponsorCategories.size} 类",
+                    enabled = sponsorBlockEnabled,
+                    modifier = Modifier.testTag("settings_sponsor_categories"),
+                    cardListPosition = CardListPosition.Tail,
+                    onClick = { showSponsorCategories = true },
                 )
             }
         }
@@ -332,6 +384,14 @@ fun SettingsScreen(
         )
     }
 
+    if (showSponsorCategories) {
+        SponsorCategoriesDialog(
+            enabledIds = sponsorCategories,
+            onToggle = container.settings::setSponsorCategoryEnabled,
+            onDismiss = { showSponsorCategories = false },
+        )
+    }
+
     if (confirmLogout) {
         ConfirmDialog(
             title = "退出登录",
@@ -404,3 +464,65 @@ private val QUALITY_LABELS = DefaultQuality.entries.map { it.label }
 private val AUTO_ROTATE_OPTIONS = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
 private val LONG_PRESS_SPEED_OPTIONS = listOf(150, 200, 250, 300, 400)
 private val LONG_PRESS_SPEED_LABELS = LONG_PRESS_SPEED_OPTIONS.map { speedLabel(it / 100f) }
+private val SPONSOR_SKIP_MODES = listOf("自动跳过", "手动提示", "仅标记片段")
+
+@Composable
+private fun SponsorCategoriesDialog(
+    enabledIds: Set<String>,
+    onToggle: (String, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var show by remember { mutableStateOf(false) }
+    var dismissed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { show = true }
+
+    OverlayDialog(
+        show = show,
+        title = "跳过片段类型",
+        outsideMargin = DpSize(16.dp, 8.dp),
+        onDismissRequest = { show = false },
+        onDismissFinished = {
+            if (!dismissed) {
+                dismissed = true
+                onDismiss()
+            }
+        },
+    ) {
+        Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+                    .scrollEndHaptic(),
+            ) {
+                SponsorCategory.entries.forEachIndexed { index, category ->
+                    val pos = when (index) {
+                        0 -> CardListPosition.Head
+                        SponsorCategory.entries.lastIndex -> CardListPosition.Tail
+                        else -> CardListPosition.Middle
+                    }
+                    SwitchPreference(
+                        checked = category.id in enabledIds,
+                        onCheckedChange = { checked -> onToggle(category.id, checked) },
+                        title = category.label,
+                        startAction = {
+                            Box(
+                                modifier = Modifier
+                                    .padding(end = 10.dp)
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(category.colorArgb)),
+                            )
+                        },
+                        cardListPosition = pos,
+                    )
+                }
+            }
+            DialogButtonBar(
+                negative = null,
+                positive = DialogButtonBarAction(text = "完成", onClick = { show = false }),
+            )
+        }
+    }
+}

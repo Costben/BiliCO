@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import erl.bilico.data.biliDataStore
+import erl.bilico.data.model.SponsorCategory
 import erl.bilico.data.repository.CdnOption
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,6 +80,16 @@ class SettingsRepository(
     private val _fullscreenGestureHint = MutableStateFlow(true)
     val fullscreenGestureHint: StateFlow<Boolean> = _fullscreenGestureHint.asStateFlow()
 
+    /** 空降助手（SponsorBlock）总开关与跳过模式：0 自动跳过，1 手动跳过，2 仅进度条标记。 */
+    private val _sponsorBlockEnabled = MutableStateFlow(true)
+    val sponsorBlockEnabled: StateFlow<Boolean> = _sponsorBlockEnabled.asStateFlow()
+
+    private val _sponsorSkipMode = MutableStateFlow(0)
+    val sponsorSkipMode: StateFlow<Int> = _sponsorSkipMode.asStateFlow()
+
+    private val _sponsorCategories = MutableStateFlow(SponsorCategory.DEFAULT_IDS)
+    val sponsorCategories: StateFlow<Set<String>> = _sponsorCategories.asStateFlow()
+
     private val _autoCheckUpdate = MutableStateFlow(true)
     val autoCheckUpdate: StateFlow<Boolean> = _autoCheckUpdate.asStateFlow()
 
@@ -132,6 +143,13 @@ class SettingsRepository(
             _autoRotateMode.value = prefs[KEY_AUTO_ROTATE_MODE] ?: 1
             _gestureVolumeBrightness.value = prefs[KEY_GESTURE_VOL_BRIGHT] ?: true
             _fullscreenGestureHint.value = prefs[KEY_FS_GESTURE_HINT] ?: true
+            _sponsorBlockEnabled.value = prefs[KEY_SPONSOR_BLOCK_ENABLED] ?: true
+            _sponsorSkipMode.value = (prefs[KEY_SPONSOR_SKIP_MODE] ?: 0).coerceIn(0, 2)
+            _sponsorCategories.value = prefs[KEY_SPONSOR_CATEGORIES]
+                ?.split(',')
+                ?.filter { SponsorCategory.fromId(it) != null }
+                ?.toSet()
+                ?: SponsorCategory.DEFAULT_IDS
             _autoCheckUpdate.value = prefs[KEY_AUTO_CHECK_UPDATE] ?: true
             _acceptPrerelease.value = prefs[KEY_ACCEPT_PRERELEASE] ?: true
             _inAppUpdate.value = prefs[KEY_IN_APP_UPDATE] ?: true
@@ -162,6 +180,24 @@ class SettingsRepository(
     fun setFullscreenGestureHint(enabled: Boolean) {
         _fullscreenGestureHint.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_FS_GESTURE_HINT] = enabled } }
+    }
+
+    fun setSponsorBlockEnabled(enabled: Boolean) {
+        _sponsorBlockEnabled.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_SPONSOR_BLOCK_ENABLED] = enabled } }
+    }
+
+    fun setSponsorSkipMode(mode: Int) {
+        _sponsorSkipMode.value = mode.coerceIn(0, 2)
+        scope.launch { context.biliDataStore.edit { it[KEY_SPONSOR_SKIP_MODE] = _sponsorSkipMode.value } }
+    }
+
+    fun setSponsorCategoryEnabled(id: String, enabled: Boolean) {
+        if (SponsorCategory.fromId(id) == null) return
+        val next = if (enabled) _sponsorCategories.value + id else _sponsorCategories.value - id
+        _sponsorCategories.value = next
+        val encoded = next.sorted().joinToString(",")
+        scope.launch { context.biliDataStore.edit { it[KEY_SPONSOR_CATEGORIES] = encoded } }
     }
 
     fun setLongPressSpeed(percent: Int) {
@@ -388,6 +424,9 @@ class SettingsRepository(
         const val DEFAULT_LONG_PRESS_SPEED = 200
         val KEY_GESTURE_VOL_BRIGHT = booleanPreferencesKey("gesture_vol_bright")
         val KEY_FS_GESTURE_HINT = booleanPreferencesKey("fullscreen_gesture_hint")
+        val KEY_SPONSOR_BLOCK_ENABLED = booleanPreferencesKey("sponsor_block_enabled")
+        val KEY_SPONSOR_SKIP_MODE = intPreferencesKey("sponsor_skip_mode")
+        val KEY_SPONSOR_CATEGORIES = stringPreferencesKey("sponsor_categories")
         val KEY_AUTO_CHECK_UPDATE = booleanPreferencesKey("auto_check_update")
         val KEY_ACCEPT_PRERELEASE = booleanPreferencesKey("accept_prerelease")
         val KEY_IN_APP_UPDATE = booleanPreferencesKey("in_app_update")

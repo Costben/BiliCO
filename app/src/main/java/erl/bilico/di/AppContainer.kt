@@ -20,6 +20,7 @@ import erl.bilico.data.repository.RankingRepository
 import erl.bilico.data.repository.RelationRepository
 import erl.bilico.data.repository.SearchRepository
 import erl.bilico.data.repository.SpaceRepository
+import erl.bilico.data.repository.SponsorBlockRepository
 import erl.bilico.data.repository.SubtitleRepository
 import erl.bilico.data.repository.VideoRepository
 import erl.bilico.data.repository.WatchLaterRepository
@@ -94,4 +95,6 @@ class AppContainer(context: Context) {
     val im = ImRepository(client.api, space, session)
 
     val subtitles = SubtitleRepository(client.api, client.wbi, client.buvid, client.okHttp)
+
+    val sponsorBlock = SponsorBlockRepository(client.okHttp)
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -66,11 +67,15 @@ fun VideoScreen(
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
+    val sponsorBlockEnabled by container.settings.sponsorBlockEnabled.collectAsStateWithLifecycle()
+    val sponsorSkipMode by container.settings.sponsorSkipMode.collectAsStateWithLifecycle()
+    val sponsorCategories by container.settings.sponsorCategories.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
     val danmakuController = remember { DanmakuController(container.danmaku, scope) }
     val subtitleController = remember { SubtitleController(container.subtitles, scope) }
+    val sponsorController = remember { SponsorBlockController(container.sponsorBlock, scope) }
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
@@ -181,6 +186,14 @@ fun VideoScreen(
 
     LaunchedEffect(bvid) { nav.playQueue.sync(bvid) }
 
+    LaunchedEffect(bvid, state.selectedCid, sponsorBlockEnabled) {
+        sponsorController.attach(bvid, state.selectedCid, sponsorBlockEnabled, player)
+    }
+
+    DisposableEffect(player) {
+        onDispose { sponsorController.restoreMuteIfNeeded(player) }
+    }
+
     LaunchedEffect(state.selectedCid, state.detail?.aid) {
         val cid = state.selectedCid
         if (cid > 0L) {
@@ -222,6 +235,13 @@ fun VideoScreen(
             durationMs = player.duration.coerceAtLeast(0L)
             viewModel.reportHeartbeat(positionMs / 1000, player.isPlaying)
             danmakuController.onPosition(positionMs)
+            sponsorController.onPosition(
+                positionMs = positionMs,
+                player = player,
+                enabled = container.settings.sponsorBlockEnabled.value,
+                skipMode = container.settings.sponsorSkipMode.value,
+                enabledCategories = container.settings.sponsorCategories.value,
+            )
             delay(500)
         }
     }
@@ -339,6 +359,27 @@ fun VideoScreen(
                 longPressSpeedActive = longPressSpeed,
                 longPressSpeedValue = boostSpeed,
                 onLongPressSpeedChange = { longPressSpeed = it },
+                sponsorSegments = if (sponsorBlockEnabled) {
+                    sponsorController.segments.filter { it.category.id in sponsorCategories }
+                } else {
+                    emptyList()
+                },
+                sponsorOverlay = { bottomPad, startPad ->
+                    if (sponsorBlockEnabled && sponsorSkipMode >= 0) {
+                        SponsorBlockPromptOverlay(
+                            undoNotice = sponsorController.undoNotice,
+                            promptSegment = sponsorController.promptSegment,
+                            poiSegment = sponsorController.poiSegment,
+                            bottomPad = bottomPad,
+                            startPad = startPad,
+                            onUndoSkip = { sponsorController.undoSkip(player) },
+                            onSkipPrompt = { sponsorController.skipPromptSegment(player) },
+                            onDismissPrompt = { sponsorController.dismissPromptSegment() },
+                            onJumpPoi = { sponsorController.jumpToPoi(player) },
+                            onDismissPoi = { sponsorController.dismissPoi() },
+                        )
+                    }
+                },
                 subtitleOverlay = { chromeVisible ->
                     SubtitleOverlay(
                         cues = subtitleController.cues,

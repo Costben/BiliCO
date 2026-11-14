@@ -4,10 +4,9 @@ import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,21 +14,17 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,11 +33,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -51,6 +45,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import erl.bilico.R
 import erl.bilico.data.model.QualityOption
+import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiStagePopupMenu
@@ -118,6 +113,8 @@ internal fun VideoPlayer(
     onLongPressSpeedChange: (Boolean) -> Unit = {},
     liveMode: Boolean = false,
     statusText: String? = null,
+    sponsorSegments: List<SponsorSegment> = emptyList(),
+    sponsorOverlay: @Composable BoxScope.(bottomPad: Dp, startPad: Dp) -> Unit = { _, _ -> },
     subtitleOverlay: @Composable (controlsVisible: Boolean) -> Unit = {},
     overlay: @Composable () -> Unit = {},
 ) {
@@ -350,6 +347,10 @@ internal fun VideoPlayer(
             )
         }
 
+        if (!inPipMode && !liveMode) {
+            sponsorOverlay(if (showChrome) 76.dp else 16.dp, horizontalBarPad)
+        }
+
         if (showChrome) {
             Column(
                 modifier = Modifier
@@ -364,6 +365,7 @@ internal fun VideoPlayer(
                     PlayerProgress(
                         positionMs = positionMs,
                         durationMs = durationMs,
+                        sponsorSegments = sponsorSegments,
                         onSeek = onSeek,
                     )
                 }
@@ -441,85 +443,6 @@ internal fun VideoPlayer(
                     onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
                     onShare?.let { add(CouiMenuItem("分享", it)) }
                 },
-            )
-        }
-    }
-}
-
-/**
- * 进度条照 PiliPlus：一条 3dp 的细线，走过的部分实白、剩下的半透明白，
- * 播放头只是一颗小圆点，拖动时才略微放大。
- */
-@Composable
-private fun PlayerProgress(
-    positionMs: Long,
-    durationMs: Long,
-    onSeek: (Long) -> Unit,
-) {
-    var dragging by remember { mutableStateOf(false) }
-    var dragValue by remember { mutableFloatStateOf(0f) }
-    var widthPx by remember { mutableIntStateOf(1) }
-    val max = durationMs.coerceAtLeast(1L).toFloat()
-    val value = (if (dragging) dragValue else positionMs.toFloat()).coerceIn(0f, max)
-    val fraction = if (durationMs > 0L) (value / max).coerceIn(0f, 1f) else 0f
-    val enabled = durationMs > 0L
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(22.dp)
-            .onSizeChanged { widthPx = it.width }
-            .pointerInput(enabled, max) {
-                if (!enabled) return@pointerInput
-                detectTapGestures { offset ->
-                    onSeek(((offset.x / widthPx.coerceAtLeast(1)) * max).toLong())
-                }
-            }
-            .pointerInput(enabled, max) {
-                if (!enabled) return@pointerInput
-                fun fractionAt(x: Float) = (x / widthPx.coerceAtLeast(1)).coerceIn(0f, 1f)
-                detectHorizontalDragGestures(
-                    onDragStart = { offset ->
-                        dragging = true
-                        dragValue = fractionAt(offset.x) * max
-                    },
-                    onHorizontalDrag = { change, _ ->
-                        dragValue = fractionAt(change.position.x) * max
-                    },
-                    onDragEnd = {
-                        dragging = false
-                        onSeek(dragValue.toLong())
-                    },
-                    onDragCancel = { dragging = false },
-                )
-            },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clip(RoundedCornerShape(1.5.dp))
-                .background(Color.White.copy(alpha = 0.24f)),
-        )
-        Box(
-            Modifier
-                .fillMaxWidth(fraction)
-                .height(3.dp)
-                .clip(RoundedCornerShape(1.5.dp))
-                .background(Color.White),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(fraction)
-                .height(3.dp),
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            Box(
-                Modifier
-                    .size(if (dragging) 11.dp else 9.dp)
-                    .clip(CircleShape)
-                    .background(Color.White),
             )
         }
     }
