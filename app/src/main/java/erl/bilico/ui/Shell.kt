@@ -72,6 +72,7 @@ import io.github.suqi8.coui.kmp.basic.LocalPlatformBottomBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.basic.rememberSearchResultsTransitionState
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -178,6 +179,12 @@ fun MainShell(nav: NavState, container: AppContainer) {
     LaunchedEffect(showingResults) {
         if (!showingResults) sortMenuExpanded = false
     }
+
+    val searchTransition = rememberSearchResultsTransitionState(
+        showingResults = showingResults,
+        loading = searchState.isLoading,
+        queryKey = searchState.submitted,
+    )
 
     val topBarHeight = pinnedHeight(TitleRowHeight)
     val account by container.session.account.collectAsStateWithLifecycle()
@@ -325,6 +332,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 panelProgress = { panelProgress.value },
                 panelAlpha = { panelAlpha.value },
                 state = searchState,
+                transitionState = searchTransition,
                 history = searchHistory,
                 viewModel = searchViewModel,
                 container = container,
@@ -357,7 +365,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     onSearchOpen = openFeedSearch,
                     onSearchCancel = cancelFeedSearch,
                     onSearchSubmit = submitHomeSearch,
-                    showingResults = showingResults,
+                    showingResults = searchTransition.filtersVisible,
                     onTabChange = searchViewModel::setTab,
                     onSortMenuOpen = { sortMenuExpanded = true },
                     panelAlpha = { panelAlpha.value },

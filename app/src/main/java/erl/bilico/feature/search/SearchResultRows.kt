@@ -66,11 +66,9 @@ internal fun LazyListScope.searchResultItems(
     topBarBounds: TopBarBounds,
     onRetry: () -> Unit,
 ) {
-    when {
-        state.isLoading -> item(key = "loading") {
-            Box(Modifier.padding(horizontal = 16.dp)) { LoadingState() }
-        }
+    if (state.isLoading) return
 
+    when {
         state.error != null -> item(key = "error") {
             Box(Modifier.padding(horizontal = 16.dp)) {
                 ErrorState(state.error.orEmpty(), onRetry = onRetry)

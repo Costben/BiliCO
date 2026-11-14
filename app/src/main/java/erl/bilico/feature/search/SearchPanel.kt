@@ -9,9 +9,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -40,12 +39,15 @@ import erl.bilico.ui.NavState
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.asRowScrollState
+import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
 import io.github.suqi8.coui.kmp.basic.ChipTabData
+import io.github.suqi8.coui.kmp.basic.SearchResultContainer
+import io.github.suqi8.coui.kmp.basic.SearchResultsTransitionState
 import io.github.suqi8.coui.kmp.basic.TwoRowTopAppBarDefaults
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -93,7 +95,8 @@ private class SearchPanelClipShape(
 /**
  * 首页搜索整屏面板（Layer 4）：
  * - 从屏幕顶 0 铺满到屏幕底部，位于常态顶栏/底栏之上、搜索胶囊（Layer 5）之下；
- * - 搜索发现、搜索建议、搜索结果共用底层同一份 [LazyColumn]（录进 [searchBackdrop]）；
+ * - 搜索发现、搜索建议、搜索结果共用底层同一份 [LazyColumn]（录进 [searchBackdrop]），
+ *   加载球与结果上浮/淡入淡出过渡统一交由 coui 的 [SearchResultContainer] 编排；
  * - 顶栏（搜索行 + 结果态的分类胶囊）不在这一层绘制，由 [FeedTitleRow] 走 coui 的
  *   `SearchFilterTopAppBar`，材质、两行布局与胶囊采样都在那里统一处理。
  */
@@ -105,6 +108,7 @@ internal fun HomeSearchOverlay(
     panelProgress: () -> Float,
     panelAlpha: () -> Float,
     state: SearchUiState,
+    transitionState: SearchResultsTransitionState,
     history: List<String>,
     viewModel: SearchViewModel,
     container: AppContainer,
@@ -127,7 +131,7 @@ internal fun HomeSearchOverlay(
 
     val secondRowTotalHeight = SearchChipRowGap + TwoRowTopAppBarDefaults.SecondRowHeight + TwoRowTopAppBarDefaults.SecondRowBottom
     val resultsBarHeight = pinnedHeight(TitleRowHeight, secondRowTotalHeight)
-    val contentTop = if (showingResults) {
+    val contentTop = if (transitionState.shownResults) {
         resultsBarHeight + 6.dp
     } else {
         glassBarContentTop(topBarHeight, 8.dp)
@@ -140,7 +144,9 @@ internal fun HomeSearchOverlay(
         }
     }
 
-    LaunchedEffect(showingResults, state.submitted, suggesting, state.tab) {
+    LaunchedEffect(transitionState.shownResults, state.submitted, suggesting, state.tab) {
+        // 淡出过程中旧内容还在画，先把滚动位置钉住；换完内容再回到顶部。
+        if (transitionState.shownResults != showingResults) return@LaunchedEffect
         listState.scrollToItem(0)
     }
 
@@ -184,43 +190,52 @@ internal fun HomeSearchOverlay(
             CompositionLocalProvider(LocalBackdrop provides if (BlurEffectsEnabled) searchBackdrop else null) {
                 val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
                 val bottomPadding = maxOf(16.dp + navBottomPadding(), imeBottom + 16.dp)
-                LazyColumn(
-                    state = listState,
+                SearchResultContainer(
+                    state = transitionState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 0.dp,
-                        top = contentTop,
-                        end = 0.dp,
-                        bottom = bottomPadding,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    loadingTopPadding = resultsBarHeight + 6.dp,
+                    loadingContent = {
+                        Box(Modifier.padding(horizontal = 16.dp)) { LoadingState() }
+                    },
                 ) {
-                    if (!showingResults) {
-                        if (suggesting) {
-                            searchSuggestSection(
-                                query = state.query,
-                                suggestions = state.suggestions,
-                                suggestionsLoading = state.suggestionsLoading,
-                                onPick = activeSelectKeyword,
-                            )
-                        } else {
-                            searchHomeSection(
-                                hot = state.hot,
-                                hotLoading = state.hotLoading,
-                                history = history,
-                                onPick = activeSelectKeyword,
-                                onDeleteHistory = { container.settings.removeSearchHistory(it) },
-                                onClearHistory = { container.settings.clearSearchHistory() },
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = 0.dp,
+                            top = contentTop,
+                            end = 0.dp,
+                            bottom = bottomPadding,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (!shownResults) {
+                            if (suggesting) {
+                                searchSuggestSection(
+                                    query = state.query,
+                                    suggestions = state.suggestions,
+                                    suggestionsLoading = state.suggestionsLoading,
+                                    onPick = activeSelectKeyword,
+                                )
+                            } else {
+                                searchHomeSection(
+                                    hot = state.hot,
+                                    hotLoading = state.hotLoading,
+                                    history = history,
+                                    onPick = activeSelectKeyword,
+                                    onDeleteHistory = { container.settings.removeSearchHistory(it) },
+                                    onClearHistory = { container.settings.clearSearchHistory() },
+                                )
+                            }
+                        } else if (resultsVisible) {
+                            searchResultItems(
+                                state = state,
+                                nav = nav,
+                                rowScrollState = rowScrollState,
+                                topBarBounds = barBounds,
+                                onRetry = viewModel::retry,
                             )
                         }
-                    } else {
-                        searchResultItems(
-                            state = state,
-                            nav = nav,
-                            rowScrollState = rowScrollState,
-                            topBarBounds = barBounds,
-                            onRetry = viewModel::retry,
-                        )
                     }
                 }
             }
