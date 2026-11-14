@@ -1,9 +1,14 @@
 package erl.bilico.feature.favorite
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -94,10 +100,9 @@ fun FavoriteFoldersScreen(
 
 @Composable
 private fun FolderRow(folder: FavoriteFolder, onClick: () -> Unit) {
-    val density = LocalDensity.current
-    val coverPx = remember(density) { with(density) { 56.dp.roundToPx() } }
-    val coverUrl = remember(folder.cover, coverPx) {
-        Formatters.sizedImageUrl(folder.cover, coverPx, coverPx)
+    // 收藏夹自己的封面常常是空的，优先用夹子里前几个视频的封面拼出来。
+    val covers = remember(folder.coverUrls, folder.cover) {
+        folder.coverUrls.ifEmpty { listOf(folder.cover) }
     }
 
     Card(
@@ -106,10 +111,7 @@ private fun FolderRow(folder: FavoriteFolder, onClick: () -> Unit) {
         onClick = onClick,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            CoverImage(
-                url = coverUrl,
-                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
-            )
+            FolderCover(urls = covers, size = 56.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -135,6 +137,52 @@ private fun FolderRow(folder: FavoriteFolder, onClick: () -> Unit) {
             )
         }
     }
+}
+
+/**
+ * 收藏夹封面：只有一个视频就直接铺满，2~4 个拼成四宫格、能填几格填几格。
+ * 每一格都是中心裁出来的正方形（ContentScale.Crop），不留黑边。
+ */
+@Composable
+private fun FolderCover(urls: List<String>, size: Dp) {
+    val density = LocalDensity.current
+    val sizePx = remember(density, size) { with(density) { size.roundToPx() } }
+    val cellPx = sizePx / 2
+    val covers = remember(urls) { urls.filter { it.isNotBlank() }.take(4) }
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(8.dp)),
+    ) {
+        when (covers.size) {
+            0 -> CoverImage(url = null, modifier = Modifier.fillMaxSize())
+            1 -> CoverImage(
+                url = Formatters.sizedImageUrl(covers[0], sizePx, sizePx),
+                modifier = Modifier.fillMaxSize(),
+            )
+            else -> Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+            ) {
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                    CoverCell(covers.getOrNull(0), cellPx)
+                    CoverCell(covers.getOrNull(1), cellPx)
+                }
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                    CoverCell(covers.getOrNull(2), cellPx)
+                    CoverCell(covers.getOrNull(3), cellPx)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.CoverCell(url: String?, cellPx: Int) {
+    CoverImage(
+        url = url?.let { Formatters.sizedImageUrl(it, cellPx, cellPx) },
+        modifier = Modifier.weight(1f).fillMaxHeight(),
+    )
 }
 
 @Composable

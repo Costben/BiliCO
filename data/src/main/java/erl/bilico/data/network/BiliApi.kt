@@ -1,6 +1,7 @@
 package erl.bilico.data.network
 
 import erl.bilico.data.model.AddReplyResponse
+import erl.bilico.data.model.ArchiveStatResponse
 import erl.bilico.data.model.ArticleViewResponse
 import erl.bilico.data.model.BangumiFollowResponse
 import erl.bilico.data.model.BaseResponse
@@ -150,6 +151,9 @@ interface BiliApi {
     @GET("x/web-interface/history/cursor")
     suspend fun history(@QueryMap params: Map<String, String>): HistoryResponse
 
+    @GET("x/web-interface/archive/stat")
+    suspend fun archiveStat(@Query("bvid") bvid: String): ArchiveStatResponse
+
     @GET("https://api.live.bilibili.com/room/v3/area/getRoomList")
     suspend fun liveRooms(@QueryMap params: Map<String, String>): LiveListResponse
 
@@ -281,6 +285,10 @@ interface BiliApi {
     @FormUrlEncoded
     @POST("x/v2/history/toview/add")
     suspend fun addWatchLater(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
+    @POST("x/v2/history/toview/del")
+    suspend fun delWatchLater(@FieldMap fields: Map<String, String>): BaseResponse
 
     @FormUrlEncoded
     @POST("x/relation/modify")

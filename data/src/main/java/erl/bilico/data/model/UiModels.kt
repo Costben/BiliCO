@@ -264,6 +264,12 @@ data class HistoryItem(
     val durationSec: Int,
 )
 
+/** 历史记录条目按需补的播放量 / 弹幕数（接口列表本身不带）。 */
+data class HistoryStat(
+    val view: Long,
+    val danmaku: Long,
+)
+
 data class LiveRoomItem(
     val roomId: Long,
     val title: String,
@@ -355,15 +361,19 @@ data class LibraryVideo(
     val cover: String,
     val upName: String,
     val playText: String = "",
+    val danmakuText: String = "",
     val durationText: String = "",
     val durationSec: Int = 0,
     val progressSec: Int = 0,
+    val aid: Long = 0,
 )
 
 data class FavoriteFolder(
     val mediaId: Long,
     val title: String,
     val cover: String,
+    /** 收藏夹里前几个视频的封面，用来拼列表左边那块四宫格。 */
+    val coverUrls: List<String> = emptyList(),
     val countText: String,
 )
 

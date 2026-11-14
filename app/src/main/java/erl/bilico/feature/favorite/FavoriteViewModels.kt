@@ -6,11 +6,15 @@ import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.data.model.LibraryVideo
 import erl.bilico.data.repository.FavoriteRepository
 import erl.bilico.data.session.SessionRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class FavoriteFoldersUiState(
     val items: List<FavoriteFolder> = emptyList(),
@@ -25,6 +29,8 @@ class FavoriteFoldersViewModel(
 
     private val _state = MutableStateFlow(FavoriteFoldersUiState())
     val state: StateFlow<FavoriteFoldersUiState> = _state.asStateFlow()
+
+    private var coverJob: Job? = null
 
     init {
         refresh()
@@ -41,12 +47,37 @@ class FavoriteFoldersViewModel(
             repository.folders(mid)
                 .onSuccess { list ->
                     _state.value = FavoriteFoldersUiState(items = list, isLoading = false)
+                    coverJob?.cancel()
+                    coverJob = launch { fillCovers(list) }
                 }
                 .onFailure { error ->
                     _state.update {
                         it.copy(isLoading = false, error = error.message ?: "收藏夹加载失败")
                     }
                 }
+        }
+    }
+
+    /** 列表接口只给收藏夹自己的封面，这里按夹子逐个补前四个视频的封面，拼成四宫格。 */
+    private suspend fun fillCovers(folders: List<FavoriteFolder>) {
+        val gate = Semaphore(4)
+        coroutineScope {
+            folders.forEach { folder ->
+                launch {
+                    gate.withPermit {
+                        repository.covers(folder.mediaId).onSuccess { urls ->
+                            if (urls.isEmpty()) return@withPermit
+                            _state.update { state ->
+                                state.copy(
+                                    items = state.items.map {
+                                        if (it.mediaId == folder.mediaId) it.copy(coverUrls = urls) else it
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

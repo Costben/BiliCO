@@ -77,7 +77,7 @@ class AppContainer(context: Context) {
 
     val favorites = FavoriteRepository(client.api, client.buvid)
 
-    val watchLater = WatchLaterRepository(client.api, client.buvid)
+    val watchLater = WatchLaterRepository(client.api, client.buvid, session)
 
     val relations = RelationRepository(client.api, client.buvid)
 

@@ -31,6 +31,19 @@ class FavoriteRepository(
     }
 
     suspend fun videos(mediaId: Long, page: Int): Result<Pair<List<LibraryVideo>, Boolean>> =
+        fetch(mediaId, page, PAGE_SIZE)
+
+    /** 收藏夹列表左边的四宫格：只取前几个视频的封面。 */
+    suspend fun covers(mediaId: Long, limit: Int = COVER_LIMIT): Result<List<String>> =
+        fetch(mediaId, 1, limit).map { (list, _) ->
+            list.mapNotNull { it.cover.takeIf(String::isNotBlank) }.take(limit)
+        }
+
+    private suspend fun fetch(
+        mediaId: Long,
+        page: Int,
+        pageSize: Int,
+    ): Result<Pair<List<LibraryVideo>, Boolean>> =
         withContext(Dispatchers.IO) {
             runCatching {
                 buvid.ensure()
@@ -38,7 +51,7 @@ class FavoriteRepository(
                     mapOf(
                         "media_id" to mediaId.toString(),
                         "pn" to page.coerceAtLeast(1).toString(),
-                        "ps" to PAGE_SIZE.toString(),
+                        "ps" to pageSize.toString(),
                         "order" to "mtime",
                         "type" to "0",
                         "tid" to "0",
@@ -65,5 +78,6 @@ class FavoriteRepository(
 
     private companion object {
         const val PAGE_SIZE = 20
+        const val COVER_LIMIT = 4
     }
 }

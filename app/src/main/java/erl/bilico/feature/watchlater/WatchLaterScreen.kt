@@ -1,6 +1,11 @@
+@file:OptIn(io.github.suqi8.coui.kmp.core.ExperimentalCOUIApi::class)
+
 package erl.bilico.feature.watchlater
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -28,14 +33,18 @@ import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
-import erl.bilico.ui.components.LibraryVideoRow
+import erl.bilico.ui.components.LibraryVideoBody
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.SecondaryPage
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.NotificationSwipeBox
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
+import io.github.suqi8.coui.kmp.basic.rememberNotificationSwipeState
 import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Pin
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.icon.extended.Sort
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,6 +101,32 @@ class WatchLaterViewModel(
         if (value == sort) return
         sort = value
         _state.update { it.copy(sort = value, items = raw.orderedBy(value)) }
+    }
+
+    /**
+     * 置顶只在本地生效：B 站没有改收藏顺序的接口，重进页面后会回到接口给的顺序。
+     * 当前是别的排序时顺手切回默认顺序，否则置顶了也看不出来。
+     */
+    fun pinToTop(video: LibraryVideo) {
+        raw = listOf(video) + raw.filterNot { it.bvid == video.bvid }
+        sort = WatchLaterSort.DEFAULT
+        _state.update { it.copy(items = raw.orderedBy(sort), sort = sort) }
+    }
+
+    /** 先按下去再调接口，失败就放回原位。 */
+    fun remove(video: LibraryVideo) {
+        if (video.aid <= 0L) return
+        val index = raw.indexOfFirst { it.bvid == video.bvid }
+        if (index < 0) return
+        val removed = raw[index]
+        raw = raw.filterIndexed { i, _ -> i != index }
+        _state.update { it.copy(items = raw.orderedBy(sort)) }
+        viewModelScope.launch {
+            repository.remove(video.aid).onFailure {
+                raw = raw.toMutableList().apply { add(index.coerceAtMost(size), removed) }
+                _state.update { state -> state.copy(items = raw.orderedBy(sort)) }
+            }
+        }
     }
 
     fun loadMore() {
@@ -174,6 +209,8 @@ fun WatchLaterScreen(
     val scope = rememberCoroutineScope()
     var sortMenuVisible by remember { mutableStateOf(false) }
     var playAllBusy by remember { mutableStateOf(false) }
+    // 同一时间只留一行露出菜单，滑开新的就把上一行收回去。
+    var openKey by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -264,12 +301,43 @@ fun WatchLaterScreen(
             contentType = { "watch-later" },
         ) { index ->
             val video = state.items[index]
-            LibraryVideoRow(
-                video = video,
-                onClick = {
-                    nav.push(Route.Video(video.bvid, video.progressSec.toLong()))
+            val swipe = rememberNotificationSwipeState()
+            LaunchedEffect(swipe.isRevealed) {
+                if (swipe.isRevealed) openKey = video.bvid
+            }
+            LaunchedEffect(openKey) {
+                if (openKey != video.bvid && swipe.isRevealed) swipe.close()
+            }
+            NotificationSwipeBox(
+                onSettings = {
+                    viewModel.pinToTop(video)
+                    scope.launch { swipe.close() }
                 },
-            )
+                settingsIcon = COUIIcons.Pin,
+                onDismiss = { viewModel.remove(video) },
+                dismissIcon = null,
+                state = swipe,
+                minHeight = 0.dp,
+                containerColor = CardDefaults.defaultColors().color,
+                dismissOnFullSwipe = true,
+                settingsDescription = "置顶",
+                dismissDescription = "删除",
+                modifier = Modifier.animateItem(),
+            ) {
+                LibraryVideoBody(
+                    video = video,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (swipe.isRevealed) {
+                                scope.launch { swipe.close() }
+                            } else {
+                                nav.push(Route.Video(video.bvid, video.progressSec.toLong()))
+                            }
+                        }
+                        .padding(8.dp),
+                )
+            }
         }
         if (state.isLoadingMore) {
             item(key = "loading-more") { LoadingState() }

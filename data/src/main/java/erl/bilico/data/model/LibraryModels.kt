@@ -96,6 +96,7 @@ data class WatchLaterItem(
     @Serializable(with = FlexibleIntSerializer::class)
     val progress: Int = 0,
     val owner: LibraryUpper? = null,
+    val stat: VideoStat? = null,
 )
 
 // ---------- 关注列表 ----------

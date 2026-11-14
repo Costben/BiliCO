@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +29,9 @@ import erl.bilico.data.model.LibraryVideo
 import erl.bilico.data.util.Formatters
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Messages
+import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 private val RowCoverWidth = 132.dp
@@ -37,6 +41,25 @@ private val RowCoverWidth = 132.dp
 fun LibraryVideoRow(
     video: LibraryVideo,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        insideMargin = PaddingValues(8.dp),
+        onClick = onClick,
+    ) {
+        LibraryVideoBody(video = video, trailing = trailing)
+    }
+}
+
+/**
+ * 卡片里的内容本身，不带 Card 和点击：稍后再看要在外面套 COUI 的通知滑动盒，
+ * 卡片的材质与内边距由外面那层负责。
+ */
+@Composable
+fun LibraryVideoBody(
+    video: LibraryVideo,
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -53,81 +76,88 @@ fun LibraryVideoRow(
             0f
         }
     }
+    // 有弹幕数的条目（稍后再看）把播放量与弹幕数单独放一行；其余页面保持「UP · xx播放」。
+    val hasStatRow = video.danmakuText.isNotBlank()
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(8.dp),
-        onClick = onClick,
-    ) {
-        Row {
-            Box(
-                modifier = Modifier
-                    .width(RowCoverWidth)
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(8.dp)),
-            ) {
-                CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
-                if (video.durationText.isNotBlank()) {
-                    Text(
-                        text = video.durationText,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(4.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xB3000000))
-                            .padding(horizontal = 4.dp, vertical = 1.dp),
-                        fontSize = 10.sp,
-                        color = Color.White,
-                    )
-                }
-                if (progressFraction > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth(progressFraction)
-                            .height(3.dp)
-                            .background(COUITheme.colorScheme.primary),
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier.weight(1f).padding(start = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
+    Row(modifier) {
+        Box(
+            modifier = Modifier
+                .width(RowCoverWidth)
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(8.dp)),
+        ) {
+            CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
+            if (video.durationText.isNotBlank()) {
                 Text(
-                    text = video.title,
-                    fontSize = 14.sp,
-                    lineHeight = 19.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = COUITheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    text = video.durationText,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xB3000000))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    fontSize = 10.sp,
+                    color = Color.White,
                 )
-                val subtitle = buildString {
-                    if (video.upName.isNotBlank()) append(video.upName)
-                    if (video.playText.isNotBlank()) {
-                        if (isNotEmpty()) append(" · ")
-                        append(video.playText).append("播放")
-                    }
-                }
-                if (subtitle.isNotBlank()) {
-                    Text(
-                        text = subtitle,
-                        fontSize = 11.sp,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
-            if (trailing != null) {
+            if (progressFraction > 0f) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.Bottom)
-                        .padding(start = 6.dp, bottom = 2.dp),
-                ) {
-                    trailing()
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth(progressFraction)
+                        .height(3.dp)
+                        .background(COUITheme.colorScheme.primary),
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f).padding(start = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(
+                text = video.title,
+                fontSize = 14.sp,
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.Medium,
+                color = COUITheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val subtitle = buildString {
+                if (video.upName.isNotBlank()) append(video.upName)
+                if (!hasStatRow && video.playText.isNotBlank()) {
+                    if (isNotEmpty()) append(" · ")
+                    append(video.playText).append("播放")
                 }
+            }
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    fontSize = 11.sp,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (hasStatRow) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (video.playText.isNotBlank()) {
+                        StatLabel(COUIIcons.Play, video.playText)
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    StatLabel(COUIIcons.Messages, video.danmakuText)
+                }
+            }
+        }
+
+        if (trailing != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Bottom)
+                    .padding(start = 6.dp, bottom = 2.dp),
+            ) {
+                trailing()
             }
         }
     }

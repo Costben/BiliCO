@@ -1,6 +1,7 @@
 package erl.bilico.data.repository
 
 import erl.bilico.data.model.HistoryItem
+import erl.bilico.data.model.HistoryStat
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.util.Formatters
@@ -72,5 +73,27 @@ class HistoryRepository(
                 hasMore = cursor != null && cursor.max > 0L && items.isNotEmpty(),
             )
         }
+    }
+
+    /**
+     * 单个条目的播放量 / 弹幕数。历史列表接口不带统计，只能按条补；
+     * 番剧没有 bvid，改从番剧季信息里取，翻页拿不到就返回 null。
+     */
+    suspend fun stat(item: HistoryItem): HistoryStat? = withContext(Dispatchers.IO) {
+        runCatching {
+            if (item.isPgc) {
+                if (item.seasonId <= 0L) return@runCatching null
+                val response = api.pgcSeason(mapOf("season_id" to item.seasonId.toString()))
+                if (response.code != 0) return@runCatching null
+                val stat = (response.result ?: response.data)?.stat ?: return@runCatching null
+                HistoryStat(view = stat.views, danmaku = stat.danmakus)
+            } else {
+                if (item.bvid.isBlank()) return@runCatching null
+                val response = api.archiveStat(item.bvid)
+                if (response.code != 0) return@runCatching null
+                val stat = response.data ?: return@runCatching null
+                HistoryStat(view = stat.view, danmaku = stat.danmaku)
+            }
+        }.getOrNull()
     }
 }

@@ -1,11 +1,11 @@
 package erl.bilico.feature.history
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.data.model.HistoryItem
+import erl.bilico.data.model.HistoryStat
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.ui.NavState
@@ -39,9 +40,13 @@ import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.SecondaryPage
+import erl.bilico.ui.components.StatLabel
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Messages
+import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -63,6 +68,15 @@ fun HistoryScreen(
                 if (lastVisible != null && size > 0 && lastVisible >= size - 3) {
                     viewModel.loadMore()
                 }
+            }
+    }
+
+    // 列表接口不带播放量 / 弹幕数，滚到哪就给哪几行补统计。
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.index } }
+            .distinctUntilChanged()
+            .collect { indices ->
+                if (viewModel.state.value.items.isNotEmpty()) viewModel.requestStats(indices)
             }
     }
 
@@ -99,6 +113,7 @@ fun HistoryScreen(
             val item = state.items[index]
             HistoryRow(
                 item = item,
+                stat = state.stats[item.key],
                 onClick = {
                     if (item.isPgc) {
                         nav.push(
@@ -127,7 +142,7 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun HistoryRow(item: HistoryItem, onClick: () -> Unit) {
+private fun HistoryRow(item: HistoryItem, stat: HistoryStat?, onClick: () -> Unit) {
     val density = LocalDensity.current
     val coverWidthPx = remember(density) { with(density) { 132.dp.roundToPx() } }
     val coverHeightPx = remember(coverWidthPx) { coverWidthPx * 9 / 16 }
@@ -171,7 +186,6 @@ private fun HistoryRow(item: HistoryItem, onClick: () -> Unit) {
                     .weight(1f)
                     .padding(start = 10.dp)
                     .height(132.dp * 9 / 16),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
                     text = item.title,
@@ -182,6 +196,7 @@ private fun HistoryRow(item: HistoryItem, onClick: () -> Unit) {
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = buildString {
                         append(item.upName.ifBlank { "未知 UP" })
@@ -189,10 +204,22 @@ private fun HistoryRow(item: HistoryItem, onClick: () -> Unit) {
                         if (time.isNotBlank()) append(" · ").append(time)
                     },
                     fontSize = 11.sp,
+                    lineHeight = 14.sp,
                     color = COUITheme.colorScheme.onSurfaceSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.height(3.dp))
+                // 统计是滚到这一行之后才补的，没到之前这里留空，上面几行不会跟着跳。
+                if (stat != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatLabel(COUIIcons.Play, Formatters.formatStat(stat.view))
+                        if (stat.danmaku > 0L) {
+                            Spacer(Modifier.width(10.dp))
+                            StatLabel(COUIIcons.Messages, Formatters.formatStat(stat.danmaku))
+                        }
+                    }
+                }
             }
         }
     }

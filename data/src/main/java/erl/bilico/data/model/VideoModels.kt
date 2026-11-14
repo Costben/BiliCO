@@ -10,6 +10,14 @@ data class VideoInfoResponse(
     val data: ViewInfo? = null,
 )
 
+/** 单条视频的统计数据，比 `x/web-interface/view` 轻得多，列表逐条补数据时用它。 */
+@Serializable
+data class ArchiveStatResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: VideoStat? = null,
+)
+
 @Serializable
 data class ViewInfo(
     val bvid: String = "",
