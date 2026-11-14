@@ -76,6 +76,7 @@ import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.message.MessageScreen
 import erl.bilico.feature.pgc.BangumiFollowScreen
 import erl.bilico.feature.pgc.PgcScreen
+import erl.bilico.feature.settings.AboutScreen
 import erl.bilico.feature.settings.SettingsScreen
 import erl.bilico.feature.space.SpaceScreen
 import erl.bilico.feature.update.UpdateDialog
@@ -508,6 +509,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
         Route.WatchLater -> WatchLaterScreen(container, nav)
         Route.Following -> FollowingScreen(container, nav)
         Route.Settings -> SettingsScreen(container, nav)
+        Route.About -> AboutScreen(container, nav)
         is Route.Pgc -> PgcScreen(container, nav, route.seasonId, route.epId, route.startSec * 1000)
         Route.Messages -> MessageScreen(container, nav)
         Route.BangumiFollow -> BangumiFollowScreen(container, nav)

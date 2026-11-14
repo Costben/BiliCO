@@ -1,5 +1,6 @@
 package erl.bilico.feature.video
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -63,8 +64,11 @@ internal fun DanmakuSettingsSheet(
         onDismissRequest = { show = false },
         onDismissFinished = onDismiss,
     ) {
-        LazyColumn(Modifier.testTag("danmaku_settings_sheet")) {
-            item(key = "display-title") { SectionTitle("显示") }
+        LazyColumn(
+            modifier = Modifier.testTag("danmaku_settings_sheet"),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item(key = "display-title") { SectionTitle("显示", topPadding = 4.dp) }
             item(key = "display") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -207,7 +211,7 @@ internal fun DanmakuSettingsSheet(
                 }
             }
 
-            item(key = "bottom-space") { Spacer(Modifier.height(24.dp)) }
+            item(key = "bottom-space") { Spacer(Modifier.height(16.dp)) }
         }
     }
 

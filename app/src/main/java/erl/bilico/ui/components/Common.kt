@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -53,8 +54,12 @@ import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.FullPagePullToRefreshTexts
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
+import io.github.suqi8.coui.kmp.basic.HighlightedIconButtonDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.SearchBarActionButton
+import io.github.suqi8.coui.kmp.basic.SearchBarActionButtonDefaults
+import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.icon.COUIIcons
@@ -157,18 +162,28 @@ fun ErrorState(
     }
 }
 
+/**
+ * 分组小标题（对齐 ColorOS 17 规范，复用 COUI [SmallTitle]）：
+ * 在带 8dp 项间距的列表中默认上留白 16dp、下留白 0dp，使视觉距离保持约 24dp:8dp，
+ * 紧贴下方所属卡片组；页面最顶部第一个分组传 `topPadding = 4.dp`。
+ */
 @Composable
 fun SectionTitle(
     text: String,
     modifier: Modifier = Modifier,
     horizontalPadding: Dp = 16.dp,
+    topPadding: Dp = 16.dp,
+    bottomPadding: Dp = 0.dp,
 ) {
-    Text(
+    SmallTitle(
         text = text,
-        modifier = modifier.padding(horizontal = horizontalPadding, vertical = 10.dp),
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
-        color = COUITheme.colorScheme.onSurfaceSecondary,
+        modifier = modifier,
+        insideMargin = PaddingValues(
+            start = horizontalPadding,
+            top = topPadding,
+            end = horizontalPadding,
+            bottom = bottomPadding,
+        ),
     )
 }
 
@@ -200,6 +215,28 @@ fun BackIconButton(onClick: () -> Unit) {
     HighlightedIconButton(onClick = onClick) {
         Icon(COUIIcons.Back, "返回", Modifier.size(24.dp))
     }
+}
+
+/** 顶栏胶囊文字按钮：高度与 [BackIconButton] 同为 40dp，材质深度一致。 */
+@Composable
+fun TopBarTextButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentColor: Color = SearchBarActionButtonDefaults.contentColor(),
+) {
+    val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
+    val containerColor = HighlightedIconButtonDefaults.fillCenter(isDark)
+        .copy(alpha = HighlightedIconButtonDefaults.FillAlpha)
+    SearchBarActionButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        containerColor = containerColor,
+        contentColor = contentColor,
+    )
 }
 
 /** 设置卡片里分隔两行的细线：从行标题左缘开始，右侧留同样的内缩。 */

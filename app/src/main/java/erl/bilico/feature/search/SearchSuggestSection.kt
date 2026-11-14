@@ -289,7 +289,13 @@ internal fun LazyListScope.searchHomeSection(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SectionTitle("搜索历史", Modifier.weight(1f), horizontalPadding = 6.dp)
+                SectionTitle(
+                    text = "搜索历史",
+                    modifier = Modifier.weight(1f),
+                    horizontalPadding = 6.dp,
+                    topPadding = 4.dp,
+                    bottomPadding = 4.dp,
+                )
                 Text(
                     text = "清空",
                     modifier = Modifier
@@ -313,7 +319,12 @@ internal fun LazyListScope.searchHomeSection(
     }
 
     item(key = "hot-title") {
-        SectionTitle("热搜", Modifier.padding(horizontal = 16.dp), horizontalPadding = 6.dp)
+        SectionTitle(
+            text = "热搜",
+            modifier = Modifier.padding(horizontal = 16.dp),
+            horizontalPadding = 6.dp,
+            topPadding = if (history.isEmpty()) 4.dp else 16.dp,
+        )
     }
 
     if (hotLoading && hot.isEmpty()) {

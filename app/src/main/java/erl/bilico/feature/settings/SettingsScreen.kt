@@ -71,12 +71,11 @@ fun SettingsScreen(
 
     var pickCdn by remember { mutableStateOf(false) }
     var showDanmakuSettings by remember { mutableStateOf(false) }
-    var showAbout by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var cacheCleared by remember { mutableIntStateOf(0) }
 
     SecondaryPage(title = "设置", onBack = nav::pop) {
-        item(key = "display-title") { SectionTitle("显示与播放") }
+        item(key = "display-title") { SectionTitle("显示与播放", topPadding = 4.dp) }
 
         item(key = "display") {
             Card(
@@ -284,7 +283,7 @@ fun SettingsScreen(
                     modifier = Modifier.testTag("settings_about"),
                     summary = "v${BuildConfig.VERSION_NAME}",
                     cardListPosition = CardListPosition.None,
-                    onClick = { showAbout = true },
+                    onClick = { nav.push(Route.About) },
                 )
             }
         }
@@ -330,16 +329,6 @@ fun SettingsScreen(
             settings = danmakuSettings,
             repository = container.settings,
             onDismiss = { showDanmakuSettings = false },
-        )
-    }
-
-    if (showAbout) {
-        ConfirmDialog(
-            title = "关于 BiliCO",
-            message = "BiliCO v${BuildConfig.VERSION_NAME}\n\n第三方哔哩哔哩客户端，仅用于个人学习与研究。",
-            confirmText = "知道了",
-            onDismiss = { showAbout = false },
-            onConfirm = { showAbout = false },
         )
     }
 
