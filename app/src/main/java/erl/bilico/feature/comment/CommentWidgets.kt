@@ -48,6 +48,9 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
+/** 评论正文默认折叠到这个行数，超出才给一行「展开」。 */
+private const val FOLDED_COMMENT_LINES = 8
+
 /**
  * 标准评论卡片：严格参照目标样式还原——
  * - 左栏圆形头像，右栏顶部左侧为「完整不截断用户名 + 实心几何 LV 徽章」与第二行「日期 · IP属地」；
@@ -68,6 +71,8 @@ internal fun BiliCommentItem(
     isSubReply: Boolean = false,
 ) {
     var expanded by remember(comment.id) { mutableStateOf(false) }
+    // 正文真的被截断了才给「展开」；短评论不占这一行。
+    var folded by remember(comment.id) { mutableStateOf(false) }
     val density = LocalDensity.current
     val avatarDp = if (isSubReply) 32.dp else 38.dp
     val avatarPx = with(density) { avatarDp.roundToPx() }
@@ -150,8 +155,26 @@ internal fun BiliCommentItem(
                     ),
                     color = COUITheme.colorScheme.onSurface,
                     prefixColor = linkBlue,
-                    maxLines = if (expanded) Int.MAX_VALUE else 8,
+                    maxLines = if (expanded) Int.MAX_VALUE else FOLDED_COMMENT_LINES,
+                    onTextLayout = { result ->
+                        // 展开态下 maxLines 不再截断，别把标记清掉，否则「收起」会跟着消失。
+                        if (!expanded && result.hasVisualOverflow != folded) {
+                            folded = result.hasVisualOverflow
+                        }
+                    },
                 )
+                if (folded) {
+                    Text(
+                        text = if (expanded) "收起" else "展开",
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { expanded = !expanded }
+                            .padding(horizontal = 2.dp, vertical = 2.dp),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = COUITheme.colorScheme.primary,
+                    )
+                }
             }
 
             if (comment.pictures.isNotEmpty()) {

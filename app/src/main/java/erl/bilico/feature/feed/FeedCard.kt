@@ -28,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -43,6 +42,7 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
+import erl.bilico.ui.components.StatLabel
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -126,16 +126,6 @@ internal fun FeedCard(
             Spacer(Modifier.height(6.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StatLabel(COUIIcons.Play, video.playCountText)
-                if (video.danmakuText.isNotBlank()) {
-                    Spacer(Modifier.width(10.dp))
-                    StatLabel(COUIIcons.Messages, video.danmakuText)
-                }
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
                 Avatar(video.upFace, 18.dp)
                 Spacer(Modifier.width(6.dp))
                 Text(
@@ -146,6 +136,18 @@ internal fun FeedCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            // 三点菜单落在右下角、和播放量同一行，跟左侧头像差不多高。
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatLabel(COUIIcons.Play, video.playCountText)
+                if (video.danmakuText.isNotBlank()) {
+                    Spacer(Modifier.width(10.dp))
+                    StatLabel(COUIIcons.Messages, video.danmakuText)
+                }
+                Spacer(Modifier.weight(1f))
                 MoreMenu(
                     onWatchLater = onWatchLater,
                     onShare = { shareVideo(context, video) },
@@ -166,18 +168,7 @@ internal fun FeedCard(
     }
 }
 
-/** 播放量、弹幕数这类小字：图标加数字，颜色统一压到次要色。 */
-@Composable
-internal fun StatLabel(icon: ImageVector, text: String) {
-    val color = COUITheme.colorScheme.onSurfaceSecondary
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(12.dp), tint = color)
-        Spacer(Modifier.width(3.dp))
-        Text(text = text, fontSize = 11.sp, color = color, maxLines = 1)
-    }
-}
-
-/** UP 主行右侧的三个点：COUI 的玻璃弹层菜单，稍后再看与分享。 */
+/** 卡片右下角的三个点：COUI 的玻璃弹层菜单，稍后再看与分享。与 UP 主头像同高。 */
 @Composable
 internal fun MoreMenu(
     onWatchLater: () -> Unit,
@@ -189,7 +180,7 @@ internal fun MoreMenu(
     Box {
         Box(
             modifier = Modifier
-                .size(24.dp)
+                .size(20.dp)
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -202,7 +193,7 @@ internal fun MoreMenu(
             Icon(
                 imageVector = COUIIcons.More,
                 contentDescription = null,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
                 tint = scheme.onSurfaceSecondary,
             )
         }

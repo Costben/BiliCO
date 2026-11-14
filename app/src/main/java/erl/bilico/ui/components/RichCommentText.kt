@@ -18,6 +18,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,6 +52,7 @@ fun RichCommentText(
     color: Color = COUITheme.colorScheme.onSurface,
     prefixColor: Color = COUITheme.colorScheme.primary,
     maxLines: Int = Int.MAX_VALUE,
+    onTextLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val smallPx = with(density) { 22.dp.roundToPx() }
@@ -172,6 +174,7 @@ fun RichCommentText(
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
         inlineContent = inlineMap,
+        onTextLayout = { if (onTextLayout != null) onTextLayout(it) },
     )
 }
 

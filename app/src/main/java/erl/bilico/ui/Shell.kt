@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -279,9 +280,9 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 MainBarUnderlay(
                     tab = tab,
                     collapsed = collapsed,
-                    segment = segment,
+                    feedPager = feedPager,
                     onSegment = { segment = it },
-                    dynamicFilterIndex = dynamicFilterIndex,
+                    dynamicPager = dynamicPager,
                     onDynamicFilter = { dynamicFilterIndex = it },
                     onFeedReselect = { feedRefreshTick++ },
                     onDynamicReselect = { dynamicRefreshTick++ },
@@ -401,9 +402,9 @@ fun MainShell(nav: NavState, container: AppContainer) {
 private fun MainBarUnderlay(
     tab: Int,
     collapsed: () -> Float,
-    segment: Int,
+    feedPager: PagerState,
     onSegment: (Int) -> Unit,
-    dynamicFilterIndex: Int,
+    dynamicPager: PagerState,
     onDynamicFilter: (Int) -> Unit,
     onFeedReselect: () -> Unit,
     onDynamicReselect: () -> Unit,
@@ -464,9 +465,12 @@ private fun MainBarUnderlay(
                     ) {
                         val barDensity = LocalDensity.current.density
                         val pageDensity = LocalContext.current.resources.displayMetrics.density
+                        // 高光块跟着翻页的落点走：拖动越过翻页阈值、或者松手后的惯性还没停，
+                        // 它就开始滑，不等停稳后回写选中态。点标签时 pager 的动画目标也会立刻更新。
+                        val selectedTabIndex = if (tab == 0) feedPager.targetPage else dynamicPager.targetPage
                         TabRowWithContour(
                             tabs = capsuleLabels,
-                            selectedTabIndex = if (tab == 0) segment else dynamicFilterIndex,
+                            selectedTabIndex = selectedTabIndex.coerceIn(0, capsuleLabels.lastIndex),
                             onTabSelected = if (tab == 0) onSegment else onDynamicFilter,
                             onTabReselected = when (tab) {
                                 0 -> { _: Int -> onFeedReselect() }
