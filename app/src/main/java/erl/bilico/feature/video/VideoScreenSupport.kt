@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -184,7 +186,8 @@ internal fun rememberPlayerFullscreenController(
     inPipMode: Boolean,
 ): PlayerFullscreenController {
     var fullscreen by rememberSaveable { mutableStateOf(false) }
-    val portraitStage = videoAspect <= 0f || videoAspect < 1f
+    val windowLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val portraitStage = isPortraitVideoStage(videoAspect, fullscreen && windowLandscape)
     val allowAutoLandscape = videoAspect >= 1f
     val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
     // 用户主动退出全屏、而手机还横着时，先锁竖屏，等手机真的竖过来再交还给传感器。
@@ -472,6 +475,7 @@ internal fun BindPlayerEvents(
     val currentOnError by rememberUpdatedState(onError)
     val currentOnAspect by rememberUpdatedState(onVideoAspectChanged)
     val currentOnEnded by rememberUpdatedState(onPlaybackEnded)
+    val currentViewModel by rememberUpdatedState(viewModel)
 
     DisposableEffect(player) {
         val initialSize = player.videoSize
@@ -496,11 +500,11 @@ internal fun BindPlayerEvents(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 currentOnBuffering(playbackState == Player.STATE_BUFFERING)
                 if (playbackState == Player.STATE_READY) {
-                    viewModel.markPlaybackStarted()
+                    currentViewModel.markPlaybackStarted()
                 } else if (playbackState == Player.STATE_ENDED) {
-                    viewModel.flushHeartbeat(player.duration.coerceAtLeast(0L) / 1000, container.scope)
+                    currentViewModel.flushHeartbeat(player.duration.coerceAtLeast(0L) / 1000, container.scope)
                     val ended = currentOnEnded
-                    if (ended != null) ended() else viewModel.playNextPart()
+                    if (ended != null) ended() else currentViewModel.playNextPart()
                 }
             }
 
@@ -510,7 +514,7 @@ internal fun BindPlayerEvents(
         }
         player.addListener(listener)
         onDispose {
-            viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+            currentViewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
             player.removeListener(listener)
             player.release()
         }

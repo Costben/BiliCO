@@ -85,8 +85,8 @@ fun VideoScreen(
     val activity = remember(context) { context.findActivity() }
     val player = remember { buildConfiguredExoPlayer(context) }
 
-    // 播放器解码上报的首帧宽高比（分 P 切换时同步重置），再回退到接口预设的 dimension / dash 尺寸；0 表示仍未知。
-    var playerVideoAspect by remember(state.selectedCid) { mutableFloatStateOf(0f) }
+    // 播放器解码上报的首帧宽高比（换视频或切分 P 时重置），再回退到接口预设的 dimension / dash 尺寸；0 表示仍未知。
+    var playerVideoAspect by remember(bvid, state.selectedCid) { mutableFloatStateOf(0f) }
     val effectiveVideoAspect = playerVideoAspect.takeIf { it > 0f }
         ?: state.detail?.aspectFor(state.selectedCid)?.takeIf { it > 0f }
         ?: state.source?.aspect?.takeIf { it > 0f }
@@ -187,7 +187,40 @@ fun VideoScreen(
         },
     )
 
-    LaunchedEffect(bvid) { nav.playQueue.sync(bvid) }
+    var routeInitialized by remember { mutableStateOf(false) }
+    LaunchedEffect(bvid, startPositionMs, initialCid) {
+        nav.playQueue.sync(bvid)
+        if (!routeInitialized) {
+            routeInitialized = true
+            return@LaunchedEffect
+        }
+        // 原地连播切到下一条时清掉上一条的播控与列表态，仅保留当前舞台与全屏朝向。
+        player.stop()
+        player.clearMediaItems()
+        positionMs = 0L
+        durationMs = 0L
+        isPlaying = false
+        isBuffering = false
+        playerError = null
+        longPressSpeed = false
+        speed = 1f
+        danmakuComposing = false
+        danmakuDraft = ""
+        qualityDialogVisible = false
+        speedDialogVisible = false
+        subtitleDialogVisible = false
+        chapterDialogVisible = false
+        danmakuSettingsDialogVisible = false
+        coinDialogVisible = false
+        favoriteFolders = null
+        queueSheetVisible = false
+        danmakuController.attach(0L)
+        subtitleController.clear()
+        sponsorController.clear(player)
+        detailPager.scrollToPage(0)
+        infoListState.scrollToItem(0)
+        commentListState.scrollToItem(0)
+    }
 
     LaunchedEffect(bvid, state.selectedCid, sponsorBlockEnabled) {
         sponsorController.attach(bvid, state.selectedCid, sponsorBlockEnabled, player)
@@ -217,7 +250,7 @@ fun VideoScreen(
         }
     }
 
-    LaunchedEffect(state.source) {
+    LaunchedEffect(bvid, state.source) {
         val source = state.source ?: return@LaunchedEffect
         playerError = null
         if (state.resumePositionMs <= 0L && source.lastPlayTimeMs >= 3_000L) {
@@ -547,6 +580,7 @@ fun VideoScreen(
         onPlay = { queued ->
             queueSheetVisible = false
             if (queued.video.bvid != nav.playQueue.playingBvid) {
+                viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
                 nav.playQueue.jumpTo(nav.playQueue.items.indexOf(queued))
                 nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
             }

@@ -58,21 +58,30 @@ internal class SubtitleController(
     private val cueCache = mutableMapOf<String, List<SubtitleCue>>()
     private var attachedKey = ""
 
-    fun attach(
-        bvid: String = "",
-        aid: Long = 0L,
-        cid: Long,
-        onAuxiliaryLoaded: ((PlayerAuxiliaryInfo) -> Unit)? = null,
-    ) {
-        val key = "$bvid|$aid|$cid"
-        if (cid <= 0L || key == attachedKey) return
-        attachedKey = key
+    fun clear() {
+        attachedKey = ""
         attachJob?.cancel()
         cueJob?.cancel()
         tracks = emptyList()
         selectedTrackKey = null
         cues = emptyList()
         chapters = emptyList()
+    }
+
+    fun attach(
+        bvid: String = "",
+        aid: Long = 0L,
+        cid: Long,
+        onAuxiliaryLoaded: ((PlayerAuxiliaryInfo) -> Unit)? = null,
+    ) {
+        if (cid <= 0L) {
+            clear()
+            return
+        }
+        val key = "$bvid|$aid|$cid"
+        if (key == attachedKey) return
+        clear()
+        attachedKey = key
 
         attachJob = scope.launch {
             repository.fetchPlayerInfo(bvid = bvid, aid = aid, cid = cid)

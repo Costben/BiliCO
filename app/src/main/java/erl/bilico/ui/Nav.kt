@@ -151,12 +151,14 @@ sealed interface Route {
 }
 
 class NavEntry(
-    val route: Route,
+    route: Route,
     val origin: ExpandOrigin? = null,
     initialProgress: Float = 1f,
     initialFade: Float = 1f,
 ) {
     val id = nextId++
+    var route by mutableStateOf(route)
+    var replaced by mutableStateOf(false)
     val progress = Animatable(initialProgress)
     val fade = Animatable(initialFade)
     var exiting by mutableStateOf(false)
@@ -164,8 +166,11 @@ class NavEntry(
     /** 返回手势把它拉出去的过程中为 true，还没真的出栈。 */
     var previewing by mutableStateOf(false)
 
-    /** 视频页与动态详情页从卡片长大；列表页和其余二级页由宿主整页滑入。 */
-    val expand: Boolean get() = (route is Route.Video || route is Route.Opus) && origin?.bounds != null
+    /** 是否最初挂载在展开容器中；切集后保持槽位不变以免重建播放器舞台。 */
+    val hasExpandOrigin: Boolean get() = (route is Route.Video || route is Route.Opus) && origin?.bounds != null
+
+    /** 视频页与动态详情页从卡片长大；原地连播切到下一条后退场改为整页右滑。 */
+    val expand: Boolean get() = !replaced && hasExpandOrigin
 
     private companion object {
         var nextId = 0
@@ -309,9 +314,15 @@ class NavState {
         }
     }
 
-    /** 连续播放换下一条：原地替换栈顶，不播入场动画。 */
+    /** 连续播放换下一条：同为视频页时原地更新路由，保留全屏舞台与横竖屏朝向。 */
     fun replaceTop(route: Route) {
         if (stack.isEmpty()) return
+        val top = stack.last()
+        if (top.route is Route.Video && route is Route.Video) {
+            top.route = route
+            top.replaced = true
+            return
+        }
         stack[stack.lastIndex] = NavEntry(route)
     }
 
@@ -320,14 +331,14 @@ class NavState {
         val entry = stack.last()
         if (entry.exiting) return
         entry.exiting = true
-        entry.origin?.let { it.refreshKey++ }
+        if (entry.expand) entry.origin?.let { it.refreshKey++ }
         val scope = host
         if (scope == null) {
             stack.remove(entry)
             return
         }
         scope.launch {
-            alignCardBelowBar(entry.origin)
+            if (entry.expand) alignCardBelowBar(entry.origin)
             val expand = entry.expand
             val baseMillis = if (expand) ExpandExitMillis else RouteSlideMillis
             val remaining = entry.progress.value.coerceIn(0f, 1f)

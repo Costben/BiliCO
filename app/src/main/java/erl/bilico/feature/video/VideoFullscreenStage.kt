@@ -70,6 +70,14 @@ private const val SYSTEM_BARS_REVEAL_PROGRESS = 0.5f
 
 
 /**
+ * 判定全屏舞台是否走竖屏模式：
+ * 已确认是竖屏比例（0 < aspect < 1）时走竖屏；比例尚未解析（<= 0）时，
+ * 仅在当前还未处于横屏全屏时走竖屏——若已在横屏全屏里切到下一条视频，先保持横屏直到新比例确认。
+ */
+internal fun isPortraitVideoStage(videoAspect: Float, inLandscapeFullscreen: Boolean): Boolean =
+    (videoAspect > 0f && videoAspect < 1f) || (videoAspect <= 0f && !inLandscapeFullscreen)
+
+/**
  * 播放页的横竖屏舞台：系统真横屏 + 自绘视频旋转动画。
  *
  * ColorOS 只对白名单里的应用（B 站、腾讯视频等，见 `sys_video_rotate_white_list.xml`）
@@ -112,9 +120,9 @@ internal fun VideoFullscreenStage(
     val windowLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val currentWindowLandscape by rememberUpdatedState(windowLandscape)
 
-    // 视频宽高比未知（<= 0f）或小于 1（竖屏）时，窗口一律保持竖屏，不转成横屏。
+    // 视频宽高比小于 1 时窗口保持竖屏；未知比例（<= 0）若已在横屏全屏切下一条则先沿用横屏。
     val aspect = if (videoAspect > 0f) videoAspect else DEFAULT_VIDEO_ASPECT
-    val portraitStage = videoAspect <= 0f || videoAspect < 1f
+    val portraitStage = isPortraitVideoStage(videoAspect, fullscreen && windowLandscape)
     val currentPortraitStage by rememberUpdatedState(portraitStage)
     val currentAspect by rememberUpdatedState(aspect)
 

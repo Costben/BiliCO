@@ -1,7 +1,5 @@
 package erl.bilico.ui
 
-import android.os.Build
-import android.view.RoundedCorner
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -35,7 +33,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -50,9 +47,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
@@ -90,7 +85,6 @@ import erl.bilico.update.UpdateCheckInterval
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import io.github.suqi8.coui.kmp.squircle.addSquircleRect
 import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.COUIPopupHost
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -375,7 +369,7 @@ private fun RouteLayer(
         LocalNavigationEventDispatcherOwner provides routeDispatcherOwner,
     ) {
         Box(layer.then(freezeLayout)) {
-            if (entry.expand) {
+            if (entry.hasExpandOrigin) {
                 ExpandLayer(entry, screenCorner, progress, { entry.fade.value }) {
                     RouteContent(entry.route, nav, container)
                 }
@@ -421,11 +415,19 @@ private fun ExpandLayer(
         Modifier
             .fillMaxSize()
             .drawBehind {
-                if (!exiting && progress() > 0.0005f) {
+                if (entry.expand && !exiting && progress() > 0.0005f) {
                     drawRect(Color.Black, alpha = 0.3f * progress())
                 }
             }
             .graphicsLayer {
+                if (!entry.expand) {
+                    translationX = 0f
+                    translationY = 0f
+                    scaleX = 1f
+                    scaleY = 1f
+                    clip = false
+                    return@graphicsLayer
+                }
                 val p = frameProgress(progress())
                 val left = lerp(bounds.left, 0f, p)
                 val top = lerp(bounds.top, 0f, p)
@@ -452,6 +454,10 @@ private fun ExpandLayer(
                 }
             }
             .drawWithContent {
+                if (!entry.expand) {
+                    drawContent()
+                    return@drawWithContent
+                }
                 val p = frameProgress(progress())
                 if (!exiting && p <= 0.0005f) return@drawWithContent
                 drawContent()
@@ -480,6 +486,7 @@ private fun ExpandLayer(
             Modifier
                 .fillMaxSize()
                 .drawBehind {
+                    if (!entry.expand) return@drawBehind
                     val p = frameProgress(progress())
                     if (exiting) {
                         if (p < 1f) drawRect(surface)
@@ -506,6 +513,11 @@ private fun ExpandLayer(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    if (!entry.expand) {
+                        alpha = 1f
+                        translationY = 0f
+                        return@graphicsLayer
+                    }
                     val p = frameProgress(progress())
                     alpha = if (exiting) 1f else enterContentAlpha()
                     translationY = -statusBarTop * (1f - p)
@@ -539,61 +551,5 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
         is Route.Article -> ArticleScreen(container, nav, route.cvId, route.title)
         is Route.Opus -> DynamicDetailScreen(container, nav, route.dynamicId)
         is Route.Chat -> ChatScreen(container, nav, route.talkerId, route.talkerName, route.talkerFace)
-    }
-}
-
-private class ExpandShape(
-    private val heightPx: Float,
-    private val radiusPx: Float,
-) : Shape {
-    override fun createOutline(
-        size: Size,
-        layoutDirection: LayoutDirection,
-        density: Density,
-    ): Outline {
-        val height = heightPx.coerceIn(0f, size.height)
-        // 和静止时的框同一个超级椭圆，最后一段才不会从屏幕圆角上脱开。
-        val path = Path()
-        path.addSquircleRect(
-            width = size.width,
-            height = height,
-            cornerRadius = radiusPx,
-        )
-        return Outline.Generic(path)
-    }
-}
-
-@Composable
-private fun rememberScreenCornerRadius(): Dp {
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    return remember(context, density) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            runCatching {
-                val radius = context.display
-                    ?.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)
-                    ?.radius ?: 0
-                with(density) { radius.toDp() }
-            }.getOrDefault(0.dp)
-        } else {
-            0.dp
-        }
-    }
-}
-
-/** 最近一次竖屏时的配置与窗口尺寸，横屏期间给被盖住的页面用。只在组合里读写，不需要快照状态。 */
-private class FrozenPortrait {
-    var configuration: Configuration? = null
-        private set
-    var width = 0
-        private set
-    var height = 0
-        private set
-    val ready: Boolean get() = configuration != null && width > 0 && height > 0
-
-    fun capture(configuration: Configuration, width: Int, height: Int) {
-        this.configuration = configuration
-        this.width = width
-        this.height = height
     }
 }
