@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,24 +56,28 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.feature.video.DanmakuTimeline
-import erl.bilico.feature.video.MANUAL_FULLSCREEN_COOLDOWN_MS
+import erl.bilico.feature.video.FIXED_DURATION_MS
 import erl.bilico.feature.video.QualityDialog
 import erl.bilico.feature.video.SpeedDialog
 import erl.bilico.feature.video.VideoFullscreenStage
 import erl.bilico.feature.video.VideoPlayer
 import erl.bilico.feature.video.describePlaybackError
 import erl.bilico.feature.video.findActivity
-import erl.bilico.feature.video.rememberDeviceOrientationSide
+import erl.bilico.feature.video.rememberPlayerFullscreenController
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 @Composable
@@ -102,27 +107,16 @@ fun LiveRoomScreen(
     val activity = remember(context) { context.findActivity() }
     val player = remember { buildConfiguredExoPlayer(context) }
 
-    var fullscreen by rememberSaveable { mutableStateOf(false) }
     // 视频本身的宽高比（宽 / 高），来自解码器上报的首帧尺寸；0 表示还没拿到。
-    var videoAspect by remember { mutableFloatStateOf(0f) }
-    // 竖屏视频的全屏方向跟着视频走：窗口不转，画面在竖屏里放到最大。
-    val portraitVideo = videoAspect > 0f && videoAspect < 1f
-    val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
-    var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
-    var lastManualActionTime by remember { mutableLongStateOf(0L) }
-    var manualEnterAwaitingLandscape by remember { mutableStateOf(false) }
-    val applyFullscreen: (Boolean) -> Unit = { value ->
-        lastManualActionTime = SystemClock.uptimeMillis()
-        if (value) {
-            manualFullscreenExit = false
-            manualEnterAwaitingLandscape = !portraitVideo && deviceSide == 0
-            fullscreen = true
-        } else {
-            manualFullscreenExit = true
-            manualEnterAwaitingLandscape = false
-            fullscreen = false
-        }
-    }
+    var videoAspect by remember(roomId) { mutableFloatStateOf(0f) }
+    val fsController = rememberPlayerFullscreenController(
+        videoAspect = videoAspect,
+        autoRotateMode = autoRotateMode,
+        inPipMode = inPipMode,
+    )
+    val fullscreen = fsController.fullscreen
+    val deviceSide = fsController.deviceSide
+    val applyFullscreen = fsController.applyFullscreen
 
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
@@ -291,32 +285,13 @@ fun LiveRoomScreen(
                 fontSize = 25,
             )
         }
+        val retainWindowMs = danmakuSettings.scrollDurationMs.coerceAtLeast(FIXED_DURATION_MS) + 2_000L
+        val pruneBeforeMs = (nowMs.toLong() - retainWindowMs).coerceAtLeast(0L)
+        while (overlayItems.isNotEmpty() && overlayItems.first().timeMs < pruneBeforeMs) {
+            overlayItems.removeAt(0)
+        }
         while (overlayItems.size > MAX_OVERLAY_DANMAKU) overlayItems.removeAt(0)
         consumedDanmakuSeq = state.danmakuSeq
-    }
-
-    // 竖屏视频不受手机朝向影响：全屏方向由视频决定，转手机不进也不退。
-    var wasLandscape by remember { mutableStateOf(deviceSide != 0) }
-    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape, portraitVideo) {
-        if (inPipMode) return@LaunchedEffect
-        if (portraitVideo) {
-            manualEnterAwaitingLandscape = false
-            wasLandscape = deviceSide != 0
-            return@LaunchedEffect
-        }
-        val now = SystemClock.uptimeMillis()
-        val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
-        if (deviceSide != 0) {
-            if (manualEnterAwaitingLandscape) manualEnterAwaitingLandscape = false
-            if (manualFullscreenExit && !inCooldown) manualFullscreenExit = false
-            if (!manualFullscreenExit && !inCooldown && !fullscreen) fullscreen = true
-        } else {
-            if (manualFullscreenExit) manualFullscreenExit = false
-            if (wasLandscape && !inCooldown && !manualEnterAwaitingLandscape && fullscreen) {
-                fullscreen = false
-            }
-        }
-        wasLandscape = deviceSide != 0
     }
 
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
@@ -365,6 +340,10 @@ fun LiveRoomScreen(
         darkMode = darkMode,
         videoAspect = videoAspect,
         playerContent = {
+            val stageBackdrop = rememberLayerBackdrop()
+            val anyStageDialogOpen = fullscreen && (
+                speedDialogVisible || qualityDialogVisible || danmakuSettingsDialogVisible
+                )
             VideoPlayer(
                 player = player,
                 title = state.detail?.title.orEmpty(),
@@ -376,7 +355,7 @@ fun LiveRoomScreen(
                 qualityLabel = state.qualityLabel(),
                 speed = speed,
                 fullscreen = fullscreen,
-                portraitFullscreen = fullscreen && portraitVideo,
+                portraitFullscreen = fullscreen && fsController.portraitStage,
                 onPlayPause = {
                     if (player.isPlaying) player.pause() else player.play()
                 },
@@ -392,7 +371,9 @@ fun LiveRoomScreen(
                     if (fullscreen) applyFullscreen(false) else nav.pop()
                 },
                 onRetry = viewModel::retryPlayback,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .layerBackdropIf(BlurEffectsEnabled && anyStageDialogOpen, stageBackdrop),
                 inPipMode = inPipMode,
                 liveMode = true,
                 statusText = state.statusText(),
@@ -421,7 +402,11 @@ fun LiveRoomScreen(
                 },
             )
             if (fullscreen) {
-                RenderLiveDialogs(inlineInStage = true)
+                CompositionLocalProvider(
+                    LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
+                ) {
+                    RenderLiveDialogs(inlineInStage = true)
+                }
             }
         },
         detailContent = {
@@ -561,4 +546,4 @@ private fun httpStatus(error: PlaybackException): Int? {
     return null
 }
 
-private const val MAX_OVERLAY_DANMAKU = 120
+private const val MAX_OVERLAY_DANMAKU = 600

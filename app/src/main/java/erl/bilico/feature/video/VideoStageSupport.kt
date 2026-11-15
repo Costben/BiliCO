@@ -10,23 +10,45 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import erl.bilico.ui.BiliCoTheme
+import erl.bilico.ui.BlurEffectsEnabled
+import io.github.suqi8.coui.kmp.basic.GradientStrokeStyle
+import io.github.suqi8.coui.kmp.basic.InnerShadowStyle
+import io.github.suqi8.coui.kmp.basic.couiGlassSurface
+import io.github.suqi8.coui.kmp.basic.materialShadowEdge
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
+import io.github.suqi8.coui.kmp.layout.DialogDefaults
+import io.github.suqi8.coui.kmp.overlay.OverlayDialog
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import io.github.suqi8.coui.kmp.squircle.squircleSurface
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.min
 
 /**
@@ -104,6 +126,43 @@ internal fun displayRotationDegrees(activity: Activity?): Float? {
 }
 
 /**
+ * 读取忽略显隐状态的固定状态栏像素高度，避免全屏切换隐藏/显示系统栏时触发整页逐帧重排。
+ */
+@Composable
+internal fun rememberStableStatusBarHeightPx(): Float {
+    val view = LocalView.current
+    val density = LocalDensity.current
+    return remember(view, density) {
+        val fromInsets = ViewCompat.getRootWindowInsets(view)
+            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars())
+            ?.top
+            ?: 0
+        if (fromInsets > 0) {
+            fromInsets.toFloat()
+        } else {
+            val resId = view.resources.getIdentifier("status_bar_height", "dimen", "android")
+            if (resId > 0) view.resources.getDimensionPixelSize(resId).toFloat() else with(density) { 28.dp.toPx() }
+        }
+    }
+}
+
+/**
+ * 读取忽略显隐状态的固定导航栏底部内边距，防止进出全屏时因系统栏动画引发详情列表逐帧重测。
+ */
+@Composable
+internal fun rememberStableNavBarBottomDp(): Dp {
+    val view = LocalView.current
+    val density = LocalDensity.current
+    return remember(view, density) {
+        val bottomPx = ViewCompat.getRootWindowInsets(view)
+            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars())
+            ?.bottom
+            ?: 0
+        with(density) { bottomPx.toDp() }
+    }
+}
+
+/**
  * 播放器弹层宿主：竖屏时走标准 Dialog；全屏时直接嵌在横屏舞台里居中展示，
  * 避免 Dialog 自己再开一个窗口跟宿主抢方向。
  */
@@ -111,30 +170,68 @@ internal fun displayRotationDegrees(activity: Activity?): Float? {
 internal fun PlayerModalHost(
     inlineInStage: Boolean,
     onDismiss: () -> Unit,
+    horizontalPadding: Dp = 24.dp,
+    cornerRadius: Dp = 28.dp,
     content: @Composable () -> Unit,
 ) {
     if (!inlineInStage) {
-        Dialog(
+        val colors = COUITheme.colorScheme
+        val textStyles = COUITheme.textStyles
+        val dimens = COUITheme.dimens
+        var show by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { show = true }
+        OverlayDialog(
+            show = show,
+            outsideMargin = DpSize(16.dp, 8.dp),
+            cornerRadius = cornerRadius,
             onDismissRequest = onDismiss,
-            properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            content()
+            COUITheme(colors = colors, textStyles = textStyles, dimens = dimens) {
+                content()
+            }
         }
     } else {
         BackHandler(onBack = onDismiss)
         BiliCoTheme(darkMode = 2) {
+            val scheme = COUITheme.colorScheme
+            val dialogShape = SquircleShape(
+                cornerRadius = cornerRadius,
+                weight = DialogDefaults.CornerWeight,
+            )
+            val panelBg = DialogDefaults.backgroundColor()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x73000000))
+                    .background(scheme.windowDimming)
                     .pointerInput(onDismiss) { detectTapGestures { onDismiss() } }
-                    .padding(vertical = 16.dp),
+                    .padding(horizontal = horizontalPadding, vertical = 16.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
                     modifier = Modifier
                         .widthIn(max = 420.dp)
-                        .pointerInput(Unit) { detectTapGestures { } },
+                        .fillMaxWidth()
+                        .pointerInput(Unit) { detectTapGestures { } }
+                        .couiGlassSurface(
+                            backdrop = if (BlurEffectsEnabled) LocalBackdrop.current else null,
+                            shape = dialogShape,
+                            containerColor = panelBg,
+                            fallback = Modifier.squircleSurface(
+                                color = panelBg,
+                                cornerRadius = cornerRadius,
+                                weight = DialogDefaults.CornerWeight,
+                            ),
+                            blurRadius = DialogDefaults.blurRadius(),
+                            blendColors = DialogDefaults.blurColors(),
+                        )
+                        .materialShadowEdge(
+                            stroke = DialogDefaults.stroke(),
+                            cornerWeight = DialogDefaults.CornerWeight,
+                            cornerRadius = cornerRadius,
+                            edgeStyle = GradientStrokeStyle.EDGE_STYLE_2,
+                            shadowStyle = InnerShadowStyle.SHADOW_STYLE_0,
+                        )
+                        .clip(dialogShape),
                 ) {
                     content()
                 }

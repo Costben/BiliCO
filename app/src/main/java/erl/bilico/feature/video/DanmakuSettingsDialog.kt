@@ -26,7 +26,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,7 +38,6 @@ import io.github.suqi8.coui.kmp.basic.Slider
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Refresh
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import java.util.Locale
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
@@ -70,14 +68,13 @@ internal fun DanmakuSettingsDialog(
     PlayerModalHost(
         inlineInStage = inlineInStage,
         onDismiss = onDismiss,
+        horizontalPadding = if (inlineInStage) 12.dp else 24.dp,
+        cornerRadius = 24.dp,
     ) {
         val scheme = COUITheme.colorScheme
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = if (inlineInStage) 12.dp else 24.dp)
-                .clip(SquircleShape(24.dp))
-                .background(if (inlineInStage) Color(0xF51F1F22) else scheme.surfaceContainer)
                 .padding(vertical = 12.dp)
                 .testTag("danmaku_settings_dialog"),
         ) {

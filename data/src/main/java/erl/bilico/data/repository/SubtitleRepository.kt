@@ -4,6 +4,8 @@ import erl.bilico.data.model.PlayerAuxiliaryInfo
 import erl.bilico.data.model.SubtitleCue
 import erl.bilico.data.model.SubtitleRawItem
 import erl.bilico.data.model.SubtitleTrack
+import erl.bilico.data.model.VideoChapter
+import erl.bilico.data.model.ViewPointRawItem
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.BuvidManager
@@ -61,10 +63,15 @@ class SubtitleRepository(
                     compareBy<SubtitleTrack> { it.isAi }
                         .thenByDescending { it.lan.removePrefix("ai-").startsWith("zh", ignoreCase = true) },
                 )
+            val chapters = data.viewPoints
+                .mapNotNull(::toVideoChapter)
+                .sortedBy { it.fromMs }
+                .distinctBy { "${it.fromMs}|${it.title}" }
             PlayerAuxiliaryInfo(
                 lastPlayTimeMs = data.lastPlayTime.coerceAtLeast(0L),
                 lastPlayCid = data.lastPlayCid.coerceAtLeast(0L),
                 subtitles = tracks,
+                chapters = chapters,
             )
         }
     }
@@ -108,6 +115,22 @@ class SubtitleRepository(
             label = label,
             url = url,
             isAi = isAi,
+        )
+    }
+
+    private fun toVideoChapter(item: ViewPointRawItem): VideoChapter? {
+        if (item.type != 2) return null
+        val title = item.content.trim()
+        if (title.isBlank() || !item.from.isFinite() || !item.to.isFinite() || item.to <= item.from) {
+            return null
+        }
+        val fromMs = (item.from * 1000.0).toLong().coerceAtLeast(0L)
+        val toMs = (item.to * 1000.0).toLong().coerceAtLeast(fromMs)
+        return VideoChapter(
+            title = title,
+            fromMs = fromMs,
+            toMs = toMs,
+            imgUrl = normalizeSubtitleUrl(item.imgUrl),
         )
     }
 

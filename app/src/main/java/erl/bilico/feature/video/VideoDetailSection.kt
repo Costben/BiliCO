@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.model.VideoEpisode
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
@@ -63,6 +64,10 @@ internal fun VideoDetailSection(
     onFollow: () -> Unit,
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
+    chapters: List<VideoChapter> = emptyList(),
+    positionMs: Long = 0L,
+    onSelectChapter: (VideoChapter) -> Unit = {},
+    onOpenChapters: () -> Unit = {},
 ) {
     val navBarBottom = rememberStableNavBarBottomDp()
     val detailLayerBackdrop = rememberLayerBackdrop()
@@ -114,6 +119,10 @@ internal fun VideoDetailSection(
                         onShare = onShare,
                         listState = infoListState,
                         topInset = contentTop,
+                        chapters = chapters,
+                        positionMs = positionMs,
+                        onSelectChapter = onSelectChapter,
+                        onOpenChapters = onOpenChapters,
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (nav.playQueue.items.isNotEmpty()) {

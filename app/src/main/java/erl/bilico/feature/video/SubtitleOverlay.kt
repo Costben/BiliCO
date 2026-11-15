@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.PlayerAuxiliaryInfo
 import erl.bilico.data.model.SubtitleCue
 import erl.bilico.data.model.SubtitleTrack
+import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.repository.SubtitleRepository
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -49,6 +50,9 @@ internal class SubtitleController(
     var cues by mutableStateOf<List<SubtitleCue>>(emptyList())
         private set
 
+    var chapters by mutableStateOf<List<VideoChapter>>(emptyList())
+        private set
+
     private var attachJob: Job? = null
     private var cueJob: Job? = null
     private val cueCache = mutableMapOf<String, List<SubtitleCue>>()
@@ -68,11 +72,13 @@ internal class SubtitleController(
         tracks = emptyList()
         selectedTrackKey = null
         cues = emptyList()
+        chapters = emptyList()
 
         attachJob = scope.launch {
             repository.fetchPlayerInfo(bvid = bvid, aid = aid, cid = cid)
                 .onSuccess { info ->
                     tracks = info.subtitles
+                    chapters = info.chapters
                     // 若存在非 AI 的官方字幕，默认自动开启第一条；仅 AI 字幕时保留手动开启，避免干扰。
                     val autoTrack = info.subtitles.firstOrNull { !it.isAi }
                     if (autoTrack != null) {
@@ -200,9 +206,6 @@ internal fun SubtitleDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(COUITheme.colorScheme.surfaceContainer)
                 .padding(vertical = 10.dp),
         ) {
             Text(

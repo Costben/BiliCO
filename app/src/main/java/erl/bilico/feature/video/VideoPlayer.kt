@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +47,9 @@ import androidx.media3.ui.PlayerView
 import erl.bilico.R
 import erl.bilico.data.model.QualityOption
 import erl.bilico.data.model.SponsorSegment
+import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.util.Formatters
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiStagePopupMenu
 import erl.bilico.ui.components.FullscreenExitIcon
@@ -54,8 +57,11 @@ import erl.bilico.ui.components.FullscreenIcon
 import erl.bilico.ui.components.PiliGlyph
 import erl.bilico.ui.components.PipIcon
 import erl.bilico.ui.components.PlayerScrim
+import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Back
 import io.github.suqi8.coui.kmp.icon.extended.Home
@@ -113,6 +119,8 @@ internal fun VideoPlayer(
     onLongPressSpeedChange: (Boolean) -> Unit = {},
     liveMode: Boolean = false,
     statusText: String? = null,
+    chapters: List<VideoChapter> = emptyList(),
+    onChapterClick: (() -> Unit)? = null,
     sponsorSegments: List<SponsorSegment> = emptyList(),
     sponsorOverlay: @Composable BoxScope.(bottomPad: Dp, startPad: Dp) -> Unit = { _, _ -> },
     subtitleOverlay: @Composable (controlsVisible: Boolean) -> Unit = {},
@@ -155,7 +163,14 @@ internal fun VideoPlayer(
     // 黑底由全屏舞台决定：横屏转场靠它撑住整窗，竖屏全屏则让画面浮在页面上。
     // 画面一律按原始比例 FIT：槽位多高画面就多高，宽度跟着缩，整幅画面始终完整可见。
     val resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+    val menuBackdrop = rememberLayerBackdrop()
+    val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && fullscreenMoreOpen
     Box(if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdropIf(captureMenuBackdrop, menuBackdrop),
+        ) {
         AndroidView(
             factory = { context ->
                 (LayoutInflater.from(context)
@@ -348,7 +363,12 @@ internal fun VideoPlayer(
         }
 
         if (!inPipMode && !liveMode) {
-            sponsorOverlay(if (showChrome) 76.dp else 16.dp, horizontalBarPad)
+            val bottomChromePad = when {
+                !showChrome -> 16.dp
+                chapters.isNotEmpty() -> 110.dp
+                else -> 76.dp
+            }
+            sponsorOverlay(bottomChromePad, horizontalBarPad)
         }
 
         if (showChrome) {
@@ -361,11 +381,23 @@ internal fun VideoPlayer(
                     )
                     .padding(horizontal = horizontalBarPad, vertical = 6.dp),
             ) {
+                if (!liveMode && chapters.isNotEmpty()) {
+                    PlayerChapterStrip(
+                        chapters = chapters,
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        onSelectChapter = { chapter ->
+                            onSeek(chapter.fromMs)
+                            if (!isPlaying) onPlayPause()
+                        },
+                    )
+                }
                 if (!liveMode) {
                     PlayerProgress(
                         positionMs = positionMs,
                         durationMs = durationMs,
                         sponsorSegments = sponsorSegments,
+                        chapters = chapters,
                         onSeek = onSeek,
                     )
                 }
@@ -399,8 +431,15 @@ internal fun VideoPlayer(
                         }
                     }
                     Spacer(Modifier.weight(1f))
+                    if (!liveMode && chapters.isNotEmpty() && onChapterClick != null) {
+                        ControlLabel(text = "分段", onClick = onChapterClick)
+                    }
                     if (subtitleLabel != null && onSubtitleClick != null) {
-                        ControlLabel(text = subtitleLabel, onClick = onSubtitleClick)
+                        ControlLabel(
+                            text = subtitleLabel,
+                            onClick = onSubtitleClick,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
                     }
                     ControlLabel(
                         text = speedLabel(speed),
@@ -420,30 +459,35 @@ internal fun VideoPlayer(
                 }
             }
         }
+        }
 
         if (fullscreen) {
-            CouiStagePopupMenu(
-                show = fullscreenMoreOpen,
-                onDismiss = { fullscreenMoreOpen = false },
-                topMargin = 54.dp,
-                endMargin = horizontalBarPad,
-                items = buildList {
-                    onDanmakuSettingsClick?.let { openDm ->
-                        add(
-                            CouiMenuItem(
-                                label = "弹幕设置",
-                                onClick = {
-                                    controlsVisible = false
-                                    openDm()
-                                },
-                            ),
-                        )
-                    }
-                    onToggleAutoPlayNext?.let { add(autoPlayNextMenuItem(autoPlayNext, it)) }
-                    onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
-                    onShare?.let { add(CouiMenuItem("分享", it)) }
-                },
-            )
+            CompositionLocalProvider(
+                LocalBackdrop provides if (BlurEffectsEnabled) menuBackdrop else null,
+            ) {
+                CouiStagePopupMenu(
+                    show = fullscreenMoreOpen,
+                    onDismiss = { fullscreenMoreOpen = false },
+                    topMargin = 54.dp,
+                    endMargin = horizontalBarPad,
+                    items = buildList {
+                        onDanmakuSettingsClick?.let { openDm ->
+                            add(
+                                CouiMenuItem(
+                                    label = "弹幕设置",
+                                    onClick = {
+                                        controlsVisible = false
+                                        openDm()
+                                    },
+                                ),
+                            )
+                        }
+                        onToggleAutoPlayNext?.let { add(autoPlayNextMenuItem(autoPlayNext, it)) }
+                        onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
+                        onShare?.let { add(CouiMenuItem("分享", it)) }
+                    },
+                )
+            }
         }
     }
 }

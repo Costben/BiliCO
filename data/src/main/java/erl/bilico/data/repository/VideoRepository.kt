@@ -33,6 +33,7 @@ class VideoRepository(
                     index = page.page,
                     title = page.part,
                     durationSec = page.duration,
+                    aspect = page.dimension?.aspectRatio() ?: 0f,
                 )
             }
             val collection = data.ugcSeason?.let { season ->
@@ -73,6 +74,10 @@ class VideoRepository(
                 favorite = data.stat.favorite,
                 pages = pages,
                 collection = collection,
+                aspect = data.dimension?.aspectRatio()
+                    ?.takeIf { it > 0f }
+                    ?: pages.firstOrNull { it.aspect > 0f }?.aspect
+                    ?: 0f,
             )
         }
     }

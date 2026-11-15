@@ -1,6 +1,5 @@
 package erl.bilico.feature.pgc
 
-import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -48,7 +47,6 @@ import erl.bilico.feature.comment.CommentTab
 import erl.bilico.feature.video.DanmakuController
 import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
-import erl.bilico.feature.video.MANUAL_FULLSCREEN_COOLDOWN_MS
 import erl.bilico.feature.video.PlaybackAttempts
 import erl.bilico.feature.video.QualityDialog
 import erl.bilico.feature.video.SpeedDialog
@@ -60,16 +58,20 @@ import erl.bilico.feature.video.VideoMessageToast
 import erl.bilico.feature.video.VideoPlayer
 import erl.bilico.feature.video.describePlaybackError
 import erl.bilico.feature.video.findActivity
-import erl.bilico.feature.video.rememberDeviceOrientationSide
+import erl.bilico.feature.video.rememberPlayerFullscreenController
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.LocalCommentSeek
+import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 
@@ -114,27 +116,20 @@ fun PgcScreen(
     val activity = remember(context) { context.findActivity() }
     val player = remember { buildConfiguredExoPlayer(context) }
 
-    var fullscreen by rememberSaveable { mutableStateOf(false) }
-    // 视频本身的宽高比（宽 / 高），来自解码器上报的首帧尺寸；0 表示还没拿到。
-    var videoAspect by remember { mutableFloatStateOf(0f) }
-    // 竖屏视频的全屏方向跟着视频走：窗口不转，画面在竖屏里放到最大。
-    val portraitVideo = videoAspect > 0f && videoAspect < 1f
-    val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
-    var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
-    var lastManualActionTime by remember { mutableLongStateOf(0L) }
-    var manualEnterAwaitingLandscape by remember { mutableStateOf(false) }
-    val applyFullscreen: (Boolean) -> Unit = { value ->
-        lastManualActionTime = SystemClock.uptimeMillis()
-        if (value) {
-            manualFullscreenExit = false
-            manualEnterAwaitingLandscape = !portraitVideo && deviceSide == 0
-            fullscreen = true
-        } else {
-            manualFullscreenExit = true
-            manualEnterAwaitingLandscape = false
-            fullscreen = false
-        }
-    }
+    // 播放器解码上报的首帧宽高比（换集时同步重置），再回退到 dash 视频轨预设比例；0 表示仍未知。
+    val episode = viewModel.currentEpisode
+    var playerVideoAspect by remember(episode?.cid) { mutableFloatStateOf(0f) }
+    val effectiveVideoAspect = playerVideoAspect.takeIf { it > 0f }
+        ?: state.source?.aspect?.takeIf { it > 0f }
+        ?: 0f
+    val fsController = rememberPlayerFullscreenController(
+        videoAspect = effectiveVideoAspect,
+        autoRotateMode = autoRotateMode,
+        inPipMode = inPipMode,
+    )
+    val fullscreen = fsController.fullscreen
+    val deviceSide = fsController.deviceSide
+    val applyFullscreen = fsController.applyFullscreen
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var qualityDialogVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
@@ -154,7 +149,6 @@ fun PgcScreen(
 
     val playbackAttempts = remember(player) { PlaybackAttempts(player) { effectiveSpeed } }
 
-    val episode = viewModel.currentEpisode
     BindPlaybackSession(
         player = player,
         title = state.detail?.title.orEmpty(),
@@ -167,7 +161,7 @@ fun PgcScreen(
     DisposableEffect(player) {
         val initialSize = player.videoSize
         if (initialSize.width > 0 && initialSize.height > 0) {
-            videoAspect = (initialSize.width * initialSize.pixelWidthHeightRatio) / initialSize.height
+            playerVideoAspect = (initialSize.width * initialSize.pixelWidthHeightRatio) / initialSize.height
         }
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -176,7 +170,7 @@ fun PgcScreen(
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
-                    videoAspect = (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
+                    playerVideoAspect = (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
                 }
             }
 
@@ -244,30 +238,6 @@ fun PgcScreen(
         }
     }
 
-    // 竖屏视频不受手机朝向影响：全屏方向由视频决定，转手机不进也不退。
-    var wasLandscape by remember { mutableStateOf(deviceSide != 0) }
-    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape, portraitVideo) {
-        if (inPipMode) return@LaunchedEffect
-        if (portraitVideo) {
-            manualEnterAwaitingLandscape = false
-            wasLandscape = deviceSide != 0
-            return@LaunchedEffect
-        }
-        val now = SystemClock.uptimeMillis()
-        val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
-        if (deviceSide != 0) {
-            if (manualEnterAwaitingLandscape) manualEnterAwaitingLandscape = false
-            if (manualFullscreenExit && !inCooldown) manualFullscreenExit = false
-            if (!manualFullscreenExit && !inCooldown && !fullscreen) fullscreen = true
-        } else {
-            if (manualFullscreenExit) manualFullscreenExit = false
-            if (wasLandscape && !inCooldown && !manualEnterAwaitingLandscape && fullscreen) {
-                fullscreen = false
-            }
-        }
-        wasLandscape = deviceSide != 0
-    }
-
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
 
     val message = state.message
@@ -332,8 +302,12 @@ fun PgcScreen(
         inPipMode = inPipMode,
         activity = activity,
         darkMode = darkMode,
-        videoAspect = videoAspect,
+        videoAspect = effectiveVideoAspect,
         playerContent = {
+            val stageBackdrop = rememberLayerBackdrop()
+            val anyStageDialogOpen = fullscreen && (
+                speedDialogVisible || subtitleDialogVisible || qualityDialogVisible || danmakuSettingsDialogVisible
+                )
             VideoPlayer(
                 player = player,
                 title = state.detail?.title.orEmpty(),
@@ -345,7 +319,7 @@ fun PgcScreen(
                 qualityLabel = state.qualityLabel(),
                 speed = speed,
                 fullscreen = fullscreen,
-                portraitFullscreen = fullscreen && portraitVideo,
+                portraitFullscreen = fullscreen && fsController.portraitStage,
                 onPlayPause = {
                     if (player.isPlaying) player.pause() else player.play()
                 },
@@ -361,7 +335,9 @@ fun PgcScreen(
                     if (fullscreen) applyFullscreen(false) else nav.pop()
                 },
                 onRetry = viewModel::retryPlayback,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .layerBackdropIf(BlurEffectsEnabled && anyStageDialogOpen, stageBackdrop),
                 inPipMode = inPipMode,
                 danmakuEnabled = danmakuEnabled,
                 onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
@@ -397,7 +373,11 @@ fun PgcScreen(
             )
             if (fullscreen) {
                 VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)
-                RenderPgcDialogs(inlineInStage = true)
+                CompositionLocalProvider(
+                    LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
+                ) {
+                    RenderPgcDialogs(inlineInStage = true)
+                }
             }
         },
         detailContent = {

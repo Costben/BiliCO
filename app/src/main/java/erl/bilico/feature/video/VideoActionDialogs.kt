@@ -1,6 +1,5 @@
 package erl.bilico.feature.video
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,17 +7,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.data.model.QualityOption
 import io.github.suqi8.coui.kmp.basic.Text
@@ -32,16 +27,13 @@ internal fun CoinDialog(
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    PlayerModalHost(
+        inlineInStage = false,
+        onDismiss = onDismiss,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(COUITheme.colorScheme.surfaceContainer)
                 .padding(vertical = 10.dp),
         ) {
             Text(
@@ -82,16 +74,13 @@ internal fun FavoriteFolderDialog(
     onSelect: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+    PlayerModalHost(
+        inlineInStage = false,
+        onDismiss = onDismiss,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(COUITheme.colorScheme.surfaceContainer)
                 .padding(vertical = 10.dp),
         ) {
             Text(
@@ -149,9 +138,6 @@ internal fun QualityDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(COUITheme.colorScheme.surfaceContainer)
                 .padding(vertical = 10.dp),
         ) {
             Text(
@@ -221,9 +207,6 @@ internal fun SpeedDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(COUITheme.colorScheme.surfaceContainer)
                 .padding(vertical = 10.dp),
         ) {
             Text(

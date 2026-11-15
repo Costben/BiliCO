@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.OrientationEventListener
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
@@ -14,11 +15,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +46,7 @@ import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.data.model.PlaybackSource
+import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.di.AppContainer
@@ -158,6 +164,78 @@ internal fun rememberDeviceOrientationSide(mode: Int): Int {
     return side
 }
 
+@Stable
+internal class PlayerFullscreenController(
+    val fullscreen: Boolean,
+    val portraitStage: Boolean,
+    val deviceSide: Int,
+    val applyFullscreen: (Boolean) -> Unit,
+)
+
+/**
+ * 统一管理播放页全屏与重力自动横屏：
+ * 只有已确认宽高比 >= 1 的横屏视频才响应手机横握自动进/退全屏；
+ * 未知比例（<= 0）或竖屏视频（< 1）一律不触发自动横屏，保持在竖屏内。
+ */
+@Composable
+internal fun rememberPlayerFullscreenController(
+    videoAspect: Float,
+    autoRotateMode: Int,
+    inPipMode: Boolean,
+): PlayerFullscreenController {
+    var fullscreen by rememberSaveable { mutableStateOf(false) }
+    val portraitStage = videoAspect <= 0f || videoAspect < 1f
+    val allowAutoLandscape = videoAspect >= 1f
+    val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
+    // 用户主动退出全屏、而手机还横着时，先锁竖屏，等手机真的竖过来再交还给传感器。
+    var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
+    var lastManualActionTime by remember { mutableLongStateOf(0L) }
+    var manualEnterAwaitingLandscape by remember { mutableStateOf(false) }
+    val applyFullscreen: (Boolean) -> Unit = { value ->
+        lastManualActionTime = SystemClock.uptimeMillis()
+        manualFullscreenExit = !value
+        manualEnterAwaitingLandscape = value && allowAutoLandscape && deviceSide == 0
+        fullscreen = value
+    }
+
+    var wasLandscape by remember { mutableStateOf(deviceSide != 0) }
+    LaunchedEffect(
+        deviceSide,
+        manualFullscreenExit,
+        manualEnterAwaitingLandscape,
+        allowAutoLandscape,
+        inPipMode,
+    ) {
+        if (inPipMode) return@LaunchedEffect
+        if (!allowAutoLandscape) {
+            manualEnterAwaitingLandscape = false
+            wasLandscape = deviceSide != 0
+            return@LaunchedEffect
+        }
+        val now = SystemClock.uptimeMillis()
+        val inCooldown = lastManualActionTime > 0L &&
+            now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
+        if (deviceSide != 0) {
+            if (manualEnterAwaitingLandscape) manualEnterAwaitingLandscape = false
+            if (manualFullscreenExit && !inCooldown) manualFullscreenExit = false
+            if (!manualFullscreenExit && !inCooldown && !fullscreen) fullscreen = true
+        } else {
+            if (manualFullscreenExit) manualFullscreenExit = false
+            if (wasLandscape && !inCooldown && !manualEnterAwaitingLandscape && fullscreen) {
+                fullscreen = false
+            }
+        }
+        wasLandscape = deviceSide != 0
+    }
+
+    return PlayerFullscreenController(
+        fullscreen = fullscreen,
+        portraitStage = portraitStage,
+        deviceSide = deviceSide,
+        applyFullscreen = applyFullscreen,
+    )
+}
+
 internal fun shareVideo(context: Context, title: String, bvid: String) {
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
@@ -190,6 +268,11 @@ internal fun VideoScreenDialogs(
     danmakuSettings: DanmakuSettings? = null,
     settingsRepository: SettingsRepository? = null,
     onDismissDanmakuSettings: () -> Unit = {},
+    chapterDialogVisible: Boolean = false,
+    chapters: List<VideoChapter> = emptyList(),
+    positionMs: Long = 0L,
+    onSelectChapter: (VideoChapter) -> Unit = {},
+    onDismissChapter: () -> Unit = {},
     inlineInStage: Boolean = false,
 ) {
     if (speedDialogVisible) {
@@ -239,6 +322,16 @@ internal fun VideoScreenDialogs(
                 onDismiss = onDismissFavorite,
             )
         }
+    }
+
+    if (chapterDialogVisible && chapters.isNotEmpty()) {
+        ChapterDialog(
+            chapters = chapters,
+            positionMs = positionMs,
+            onSelectChapter = onSelectChapter,
+            onDismiss = onDismissChapter,
+            inlineInStage = inlineInStage,
+        )
     }
 
     val source = state.source

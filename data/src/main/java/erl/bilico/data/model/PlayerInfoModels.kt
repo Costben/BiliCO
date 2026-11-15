@@ -18,6 +18,16 @@ data class PlayerInfoData(
     @SerialName("last_play_time") val lastPlayTime: Long = 0,
     @SerialName("last_play_cid") val lastPlayCid: Long = 0,
     val subtitle: SubtitleContainer? = null,
+    @SerialName("view_points") val viewPoints: List<ViewPointRawItem> = emptyList(),
+)
+
+@Serializable
+data class ViewPointRawItem(
+    val type: Int = 0,
+    val from: Double = 0.0,
+    val to: Double = 0.0,
+    val content: String = "",
+    val imgUrl: String = "",
 )
 
 @Serializable
@@ -51,8 +61,16 @@ data class SubtitleCue(
     val content: String,
 )
 
+data class VideoChapter(
+    val title: String,
+    val fromMs: Long,
+    val toMs: Long,
+    val imgUrl: String = "",
+)
+
 data class PlayerAuxiliaryInfo(
     val lastPlayTimeMs: Long = 0L,
     val lastPlayCid: Long = 0L,
     val subtitles: List<SubtitleTrack> = emptyList(),
+    val chapters: List<VideoChapter> = emptyList(),
 )

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import erl.bilico.ui.BiliCoTheme
+import erl.bilico.ui.BlurEffectsEnabled
 import io.github.suqi8.coui.kmp.anim.BezierGravityPathMath
 import io.github.suqi8.coui.kmp.basic.DropdownImpl
 import io.github.suqi8.coui.kmp.basic.DropdownItem
@@ -181,7 +182,7 @@ internal fun CouiStagePopupMenu(
                         isRightAligned = true,
                     ),
                     localTransformOrigin = TransformOrigin(0.88f, 0f),
-                    enableGlass = false,
+                    enableGlass = BlurEffectsEnabled,
                     interactionEnabled = show,
                     content = {
                         CompositionLocalProvider(LocalDismissState provides onDismiss) {

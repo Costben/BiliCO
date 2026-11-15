@@ -61,6 +61,11 @@ internal fun PlayUrlData.toPlaybackSource(
             durationMs = timelength,
             lastPlayTimeMs = lastPlayTime.coerceAtLeast(0L),
             lastPlayCid = lastPlayCid.coerceAtLeast(0L),
+            aspect = if (video.width > 0 && video.height > 0) {
+                video.width.toFloat() / video.height.toFloat()
+            } else {
+                0f
+            },
         )
     }
 

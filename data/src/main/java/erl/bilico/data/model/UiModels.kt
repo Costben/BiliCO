@@ -22,6 +22,7 @@ data class VideoPart(
     val index: Int,
     val title: String,
     val durationSec: Long,
+    val aspect: Float = 0f,
 )
 
 /** 合集里的一集：换 bvid 就是另一条视频，同一 bvid 下按 cid 区分分 P。 */
@@ -58,7 +59,11 @@ data class VideoDetail(
     val favorite: Long,
     val pages: List<VideoPart>,
     val collection: VideoCollection? = null,
-)
+    val aspect: Float = 0f,
+) {
+    fun aspectFor(targetCid: Long): Float =
+        pages.firstOrNull { it.cid == targetCid }?.aspect?.takeIf { it > 0f } ?: aspect
+}
 
 data class QualityOption(
     val quality: Int,
@@ -77,6 +82,7 @@ data class PlaybackSource(
     val durationMs: Long,
     val lastPlayTimeMs: Long = 0L,
     val lastPlayCid: Long = 0L,
+    val aspect: Float = 0f,
 )
 
 data class EmoteImage(

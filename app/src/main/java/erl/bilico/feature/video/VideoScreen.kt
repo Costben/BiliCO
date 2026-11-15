@@ -1,12 +1,12 @@
 package erl.bilico.feature.video
 
-import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,8 +29,12 @@ import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import erl.bilico.ui.layerBackdropIf
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -81,22 +85,20 @@ fun VideoScreen(
     val activity = remember(context) { context.findActivity() }
     val player = remember { buildConfiguredExoPlayer(context) }
 
-    var fullscreen by rememberSaveable { mutableStateOf(false) }
-    // 视频本身的宽高比（宽 / 高），来自解码器上报的首帧尺寸；0 表示还没拿到。
-    var videoAspect by remember { mutableFloatStateOf(0f) }
-    // 竖屏视频的全屏方向跟着视频走：窗口不转，画面在竖屏里放到最大。
-    val portraitVideo = videoAspect > 0f && videoAspect < 1f
-    val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
-    // 用户主动退出全屏、而手机还横着时，先锁竖屏，等手机真的竖过来再交还给传感器。
-    var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
-    var lastManualActionTime by remember { mutableLongStateOf(0L) }
-    var manualEnterAwaitingLandscape by remember { mutableStateOf(false) }
-    val applyFullscreen: (Boolean) -> Unit = { value ->
-        lastManualActionTime = SystemClock.uptimeMillis()
-        manualFullscreenExit = !value
-        manualEnterAwaitingLandscape = value && !portraitVideo && deviceSide == 0
-        fullscreen = value
-    }
+    // 播放器解码上报的首帧宽高比（分 P 切换时同步重置），再回退到接口预设的 dimension / dash 尺寸；0 表示仍未知。
+    var playerVideoAspect by remember(state.selectedCid) { mutableFloatStateOf(0f) }
+    val effectiveVideoAspect = playerVideoAspect.takeIf { it > 0f }
+        ?: state.detail?.aspectFor(state.selectedCid)?.takeIf { it > 0f }
+        ?: state.source?.aspect?.takeIf { it > 0f }
+        ?: 0f
+    val fsController = rememberPlayerFullscreenController(
+        videoAspect = effectiveVideoAspect,
+        autoRotateMode = autoRotateMode,
+        inPipMode = inPipMode,
+    )
+    val fullscreen = fsController.fullscreen
+    val deviceSide = fsController.deviceSide
+    val applyFullscreen = fsController.applyFullscreen
     // 简介 / 评论两页横向翻。直接读 detailPager.currentPage 同步驱动页签，
     // 跟手无延迟，与私信页完全一致；点标签时开翻页动画。
     val detailPager = rememberPagerState(pageCount = { DETAIL_PAGES.size })
@@ -106,6 +108,7 @@ fun VideoScreen(
     var queueSheetVisible by remember { mutableStateOf(false) }
     var speedDialogVisible by remember { mutableStateOf(false) }
     var subtitleDialogVisible by remember { mutableStateOf(false) }
+    var chapterDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var coinDialogVisible by remember { mutableStateOf(false) }
     var favoriteFolders by remember { mutableStateOf<List<FavoriteFolder>?>(null) }
@@ -169,7 +172,7 @@ fun VideoScreen(
             // 线路坏了先换一条，候选表走完才把错误抛给界面。
             if (!playbackAttempts.next()) playerError = describePlaybackError(error)
         },
-        onVideoAspectChanged = { videoAspect = it },
+        onVideoAspectChanged = { playerVideoAspect = it },
         onPlaybackEnded = {
             // 下一 P 和「播放全部」的队列优先；都没有时，开着自动连播就接着播「其他推荐视频」的第一条。
             if (!viewModel.playNextPart()) {
@@ -246,41 +249,6 @@ fun VideoScreen(
         }
     }
 
-    // 手机横过来就进全屏；只有「横屏转回竖屏」才退出。
-    // 手势或按钮手动触发全屏后，享受冷却与物理朝向豁免保护，防止手机还没转过来就被强行切回。
-    // 竖屏视频不受手机朝向影响：全屏方向由视频决定，转手机不进也不退。
-    var wasLandscape by remember { mutableStateOf(deviceSide != 0) }
-    LaunchedEffect(deviceSide, manualFullscreenExit, manualEnterAwaitingLandscape, portraitVideo) {
-        if (inPipMode) return@LaunchedEffect
-        if (portraitVideo) {
-            manualEnterAwaitingLandscape = false
-            wasLandscape = deviceSide != 0
-            return@LaunchedEffect
-        }
-        val now = SystemClock.uptimeMillis()
-        val inCooldown = now - lastManualActionTime < MANUAL_FULLSCREEN_COOLDOWN_MS
-
-        if (deviceSide != 0) {
-            if (manualEnterAwaitingLandscape) {
-                manualEnterAwaitingLandscape = false
-            }
-            if (manualFullscreenExit && !inCooldown) {
-                manualFullscreenExit = false
-            }
-            if (!manualFullscreenExit && !inCooldown) {
-                if (!fullscreen) fullscreen = true
-            }
-        } else {
-            if (manualFullscreenExit) {
-                manualFullscreenExit = false
-            }
-            if (wasLandscape && !inCooldown && !manualEnterAwaitingLandscape) {
-                if (fullscreen) fullscreen = false
-            }
-        }
-        wasLandscape = deviceSide != 0
-    }
-
     // 宿主窗口的方向由 VideoFullscreenStage 统一接管：竖屏锁死，全屏时真正转成横屏。
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
 
@@ -298,7 +266,7 @@ fun VideoScreen(
         inPipMode = inPipMode,
         activity = activity,
         darkMode = darkMode,
-        videoAspect = videoAspect,
+        videoAspect = effectiveVideoAspect,
         portraitResizable = true,
         playing = isPlaying,
         canExpand = {
@@ -306,6 +274,11 @@ fun VideoScreen(
             list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0
         },
         playerContent = {
+            val stageBackdrop = rememberLayerBackdrop()
+            val anyStageDialogOpen = fullscreen && (
+                speedDialogVisible || subtitleDialogVisible || qualityDialogVisible ||
+                    danmakuSettingsDialogVisible || chapterDialogVisible
+                )
             VideoPlayer(
                 player = player,
                 title = state.detail?.title.orEmpty(),
@@ -317,7 +290,7 @@ fun VideoScreen(
                 qualityLabel = state.qualityLabel(),
                 speed = speed,
                 fullscreen = fullscreen,
-                portraitFullscreen = fullscreen && portraitVideo,
+                portraitFullscreen = fullscreen && fsController.portraitStage,
                 onPlayPause = {
                     if (player.isPlaying) player.pause() else player.play()
                 },
@@ -333,7 +306,9 @@ fun VideoScreen(
                     if (fullscreen) applyFullscreen(false) else nav.pop()
                 },
                 onRetry = viewModel::load,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .layerBackdropIf(BlurEffectsEnabled && anyStageDialogOpen, stageBackdrop),
                 inPipMode = inPipMode,
                 danmakuEnabled = danmakuEnabled,
                 onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
@@ -359,6 +334,8 @@ fun VideoScreen(
                 longPressSpeedActive = longPressSpeed,
                 longPressSpeedValue = boostSpeed,
                 onLongPressSpeedChange = { longPressSpeed = it },
+                chapters = subtitleController.chapters,
+                onChapterClick = { chapterDialogVisible = true },
                 sponsorSegments = if (sponsorBlockEnabled) {
                     sponsorController.segments.filter { it.category.id in sponsorCategories }
                 } else {
@@ -401,37 +378,44 @@ fun VideoScreen(
             )
             if (fullscreen) {
                 VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)
-                VideoScreenDialogs(
-                    speedDialogVisible = speedDialogVisible,
-                    speed = speed,
-                    onSpeedChange = { value ->
-                        speed = value
-                        speedDialogVisible = false
-                    },
-                    onDismissSpeed = { speedDialogVisible = false },
-                    subtitleDialogVisible = subtitleDialogVisible,
-                    subtitleController = subtitleController,
-                    onDismissSubtitle = { subtitleDialogVisible = false },
-                    coinDialogVisible = false,
-                    coined = state.coined,
-                    onSelectCoin = {},
-                    onDismissCoin = {},
-                    favoriteFolders = null,
-                    onSelectFavorite = {},
-                    onDismissFavorite = {},
-                    qualityDialogVisible = qualityDialogVisible,
-                    state = state,
-                    onSelectQuality = { qn ->
-                        qualityDialogVisible = false
-                        viewModel.selectQuality(qn, player.currentPosition)
-                    },
-                    onDismissQuality = { qualityDialogVisible = false },
-                    danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
-                    danmakuSettings = danmakuSettings,
-                    settingsRepository = container.settings,
-                    onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
-                    inlineInStage = true,
-                )
+                CompositionLocalProvider(
+                    LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
+                ) {
+                    VideoScreenDialogs(
+                        speedDialogVisible = speedDialogVisible,
+                        speed = speed,
+                        onSpeedChange = { speed = it; speedDialogVisible = false },
+                        onDismissSpeed = { speedDialogVisible = false },
+                        subtitleDialogVisible = subtitleDialogVisible,
+                        subtitleController = subtitleController,
+                        onDismissSubtitle = { subtitleDialogVisible = false },
+                        coinDialogVisible = false,
+                        coined = state.coined,
+                        onSelectCoin = {},
+                        onDismissCoin = {},
+                        favoriteFolders = null,
+                        onSelectFavorite = {},
+                        onDismissFavorite = {},
+                        qualityDialogVisible = qualityDialogVisible,
+                        state = state,
+                        onSelectQuality = { qn -> qualityDialogVisible = false; viewModel.selectQuality(qn, player.currentPosition) },
+                        onDismissQuality = { qualityDialogVisible = false },
+                        danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
+                        danmakuSettings = danmakuSettings,
+                        settingsRepository = container.settings,
+                        onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
+                        chapterDialogVisible = chapterDialogVisible,
+                        chapters = subtitleController.chapters,
+                        positionMs = positionMs,
+                        onSelectChapter = { chapter ->
+                            chapterDialogVisible = false
+                            player.seekTo(chapter.fromMs)
+                            if (!player.isPlaying) player.play()
+                        },
+                        onDismissChapter = { chapterDialogVisible = false },
+                        inlineInStage = true,
+                    )
+                }
             }
         },
         detailContent = {
@@ -490,6 +474,13 @@ fun VideoScreen(
                 onFollow = viewModel::toggleFollow,
                 onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
                 onOpenVideo = { next -> nav.push(Route.Video(next)) },
+                chapters = subtitleController.chapters,
+                positionMs = positionMs,
+                onSelectChapter = { chapter ->
+                    player.seekTo(chapter.fromMs)
+                    if (!player.isPlaying) player.play()
+                },
+                onOpenChapters = { chapterDialogVisible = true },
             )
         },
         portraitOverlay = {
@@ -536,6 +527,15 @@ fun VideoScreen(
             danmakuSettings = danmakuSettings,
             settingsRepository = container.settings,
             onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
+            chapterDialogVisible = chapterDialogVisible,
+            chapters = subtitleController.chapters,
+            positionMs = positionMs,
+            onSelectChapter = { chapter ->
+                chapterDialogVisible = false
+                player.seekTo(chapter.fromMs)
+                if (!player.isPlaying) player.play()
+            },
+            onDismissChapter = { chapterDialogVisible = false },
             inlineInStage = false,
         )
     }

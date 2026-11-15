@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.SponsorActionType
 import erl.bilico.data.model.SponsorSegment
+import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.util.Formatters
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -50,6 +51,7 @@ internal fun PlayerProgress(
     positionMs: Long,
     durationMs: Long,
     sponsorSegments: List<SponsorSegment> = emptyList(),
+    chapters: List<VideoChapter> = emptyList(),
     onSeek: (Long) -> Unit,
 ) {
     var dragging by remember { mutableStateOf(false) }
@@ -105,7 +107,7 @@ internal fun PlayerProgress(
                 .clip(RoundedCornerShape(1.5.dp))
                 .background(Color.White),
         )
-        if (durationMs > 0L && sponsorSegments.isNotEmpty()) {
+        if (durationMs > 0L && (sponsorSegments.isNotEmpty() || chapters.size > 1)) {
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -133,6 +135,20 @@ internal fun PlayerProgress(
                             size = Size(segW, trackH),
                             cornerRadius = radius,
                         )
+                    }
+                }
+                if (chapters.size > 1) {
+                    val dividerW = 2.dp.toPx()
+                    chapters.forEach { chapter ->
+                        if (chapter.fromMs in 1L until durationMs) {
+                            val x = ((chapter.fromMs.toFloat() / max).coerceIn(0f, 1f) * trackW - dividerW / 2f)
+                                .coerceIn(0f, (trackW - dividerW).coerceAtLeast(0f))
+                            drawRect(
+                                color = Color(0xE6000000),
+                                topLeft = Offset(x, 0f),
+                                size = Size(dividerW, trackH),
+                            )
+                        }
                     }
                 }
             }

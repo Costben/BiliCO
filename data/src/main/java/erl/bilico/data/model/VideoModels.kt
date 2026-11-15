@@ -19,6 +19,22 @@ data class ArchiveStatResponse(
 )
 
 @Serializable
+data class VideoDimension(
+    val width: Int = 0,
+    val height: Int = 0,
+    val rotate: Int = 0,
+) {
+    fun aspectRatio(): Float {
+        if (width <= 0 || height <= 0) return 0f
+        return if (rotate == 1 || rotate == 90 || rotate == 270) {
+            height.toFloat() / width.toFloat()
+        } else {
+            width.toFloat() / height.toFloat()
+        }
+    }
+}
+
+@Serializable
 data class ViewInfo(
     val bvid: String = "",
     val aid: Long = 0,
@@ -28,6 +44,7 @@ data class ViewInfo(
     val pic: String = "",
     val pubdate: Long = 0,
     val duration: Int = 0,
+    val dimension: VideoDimension? = null,
     val owner: VideoOwner = VideoOwner(),
     val stat: VideoStat = VideoStat(),
     val pages: List<VideoPage> = emptyList(),
@@ -94,6 +111,7 @@ data class VideoPage(
     val page: Int = 0,
     val part: String = "",
     val duration: Long = 0,
+    val dimension: VideoDimension? = null,
 )
 
 @Serializable

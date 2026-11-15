@@ -40,11 +40,9 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -69,44 +67,6 @@ private const val ORIENTATION_SETTLE_TIMEOUT_MS = 1500L
 
 /** 退出全屏时缩回到这个进度就让系统栏开始滑入，不等动画完全结束。 */
 private const val SYSTEM_BARS_REVEAL_PROGRESS = 0.5f
-
-
-/**
- * 读取忽略显隐状态的固定状态栏像素高度，避免全屏切换隐藏/显示系统栏时触发整页逐帧重排。
- */
-@Composable
-internal fun rememberStableStatusBarHeightPx(): Float {
-    val view = LocalView.current
-    val density = LocalDensity.current
-    return remember(view, density) {
-        val fromInsets = ViewCompat.getRootWindowInsets(view)
-            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars())
-            ?.top
-            ?: 0
-        if (fromInsets > 0) {
-            fromInsets.toFloat()
-        } else {
-            val resId = view.resources.getIdentifier("status_bar_height", "dimen", "android")
-            if (resId > 0) view.resources.getDimensionPixelSize(resId).toFloat() else with(density) { 28.dp.toPx() }
-        }
-    }
-}
-
-/**
- * 读取忽略显隐状态的固定导航栏底部内边距，防止进出全屏时因系统栏动画引发详情列表逐帧重测。
- */
-@Composable
-internal fun rememberStableNavBarBottomDp(): androidx.compose.ui.unit.Dp {
-    val view = LocalView.current
-    val density = LocalDensity.current
-    return remember(view, density) {
-        val bottomPx = ViewCompat.getRootWindowInsets(view)
-            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars())
-            ?.bottom
-            ?: 0
-        with(density) { bottomPx.toDp() }
-    }
-}
 
 
 /**
@@ -152,9 +112,9 @@ internal fun VideoFullscreenStage(
     val windowLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val currentWindowLandscape by rememberUpdatedState(windowLandscape)
 
-    // 竖屏视频的全屏方向跟着视频走：窗口不转，只在竖屏里把画面放到最大。
+    // 视频宽高比未知（<= 0f）或小于 1（竖屏）时，窗口一律保持竖屏，不转成横屏。
     val aspect = if (videoAspect > 0f) videoAspect else DEFAULT_VIDEO_ASPECT
-    val portraitStage = aspect < 1f
+    val portraitStage = videoAspect <= 0f || videoAspect < 1f
     val currentPortraitStage by rememberUpdatedState(portraitStage)
     val currentAspect by rememberUpdatedState(aspect)
 
@@ -293,13 +253,10 @@ internal fun VideoFullscreenStage(
                 activity?.requestedOrientation = degreesToOrientation(angle.value)
             }
         } else {
-            if (portraitStage) {
-                // 竖屏全屏退出：窗口本来就是竖屏，直接缩回 16:9 槽位。
-                angle.snapTo(0f)
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            } else if (currentWindowLandscape) {
-                // 从系统真横屏退出：先记下当前朝向，转回竖屏后从「旋转铺满」那一帧倒着放。
-                angle.snapTo(displayRotationDegrees(activity) ?: angle.value)
+            if (currentWindowLandscape) {
+                // 从系统真横屏退出：若当前是横屏视频则先记下朝向并从「旋转铺满」倒着缩回；
+                // 若已切到竖屏视频仍先等窗口彻底转回竖屏，避免竖屏动画在横屏尺寸里走偏。
+                angle.snapTo(if (portraitStage) 0f else displayRotationDegrees(activity) ?: angle.value)
                 progress.snapTo(1f)
                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 withTimeoutOrNull(ORIENTATION_SETTLE_TIMEOUT_MS) {
@@ -308,6 +265,7 @@ internal fun VideoFullscreenStage(
                 // 转回竖屏后的头一帧要整页重排，等它画完再起动画，否则前半段会被这一帧吞掉。
                 repeat(2) { withFrameNanos { } }
             } else {
+                if (portraitStage) angle.snapTo(0f)
                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
             // 缩回途中就放出系统栏：转过一半（约 140ms）开始滑入，和画面落位大致同时结束。
