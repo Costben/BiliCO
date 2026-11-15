@@ -1,6 +1,7 @@
 package erl.bilico.feature.video
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,10 +14,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.ui.components.ConfirmDialog
@@ -25,13 +29,16 @@ import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Refresh
 import io.github.suqi8.coui.kmp.layout.SheetActionButton
+import io.github.suqi8.coui.kmp.layout.SheetCloseCapsule
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
 import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
 import io.github.suqi8.coui.kmp.preference.SliderPreference
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import java.util.Locale
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlin.math.roundToInt
@@ -52,8 +59,25 @@ internal fun DanmakuSettingsSheet(
 
     OverlayBottomSheet(
         show = show,
-        title = "弹幕设置",
+        title = null,
         insideMargin = DpSize(12.dp, 0.dp),
+        startAction = {
+            Box(Modifier.fillMaxWidth()) {
+                SheetCloseCapsule(
+                    onClick = { show = false },
+                    modifier = Modifier.align(Alignment.CenterStart),
+                )
+                Text(
+                    text = "弹幕设置",
+                    style = COUITheme.textStyles.main.copy(
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = COUITheme.colorScheme.onSurface,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+        },
         endAction = {
             SheetActionButton(
                 onClick = { confirmReset = true },

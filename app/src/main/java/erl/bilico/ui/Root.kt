@@ -532,7 +532,15 @@ private fun ExpandLayer(
 private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
     when (route) {
         Route.Main -> MainShell(nav, container)
-        is Route.Video -> VideoScreen(container, nav, route.bvid, route.startSec * 1000, route.cid)
+        is Route.Video -> VideoScreen(
+            container = container,
+            nav = nav,
+            bvid = route.bvid,
+            startPositionMs = route.startSec * 1000,
+            initialCid = route.cid,
+            commentRootId = route.commentRootId,
+            commentTargetId = route.commentTargetId,
+        )
         is Route.LiveRoom -> LiveRoomScreen(container, nav, route.roomId)
         is Route.Space -> SpaceScreen(nav, container, route.mid)
         Route.History -> HistoryScreen(container, nav)
@@ -548,8 +556,21 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
         Route.Login -> LoginScreen(container, nav)
         Route.WebLogin -> WebLoginScreen(container, nav)
         Route.Update -> UpdateScreen(container, nav)
-        is Route.Article -> ArticleScreen(container, nav, route.cvId, route.title)
-        is Route.Opus -> DynamicDetailScreen(container, nav, route.dynamicId)
+        is Route.Article -> ArticleScreen(
+            container = container,
+            nav = nav,
+            cvId = route.cvId,
+            initialTitle = route.title,
+            commentRootId = route.commentRootId,
+            commentTargetId = route.commentTargetId,
+        )
+        is Route.Opus -> DynamicDetailScreen(
+            container = container,
+            nav = nav,
+            dynamicId = route.dynamicId,
+            commentRootId = route.commentRootId,
+            commentTargetId = route.commentTargetId,
+        )
         is Route.Chat -> ChatScreen(container, nav, route.talkerId, route.talkerName, route.talkerFace)
     }
 }

@@ -73,14 +73,35 @@ fun CommentTab(
     type: Int = 1,
     listState: LazyListState = rememberLazyListState(),
     topInset: Dp = 0.dp,
+    targetRootId: Long = 0L,
+    targetReplyId: Long = 0L,
 ) {
-    val viewModel: CommentViewModel = viewModel(key = "comment-$type-$oid") {
-        CommentViewModel(container.comments, oid, type)
+    val viewModel: CommentViewModel = viewModel(key = "comment-$type-$oid-$targetRootId-$targetReplyId") {
+        CommentViewModel(container.comments, oid, type, targetRootId, targetReplyId)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     var dialogRoot by remember { mutableStateOf<Comment?>(null) }
+    var dialogTargetReplyId by remember { mutableStateOf(0L) }
     var composeTarget by remember { mutableStateOf<ComposeTarget?>(null) }
     var imageViewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
+
+    LaunchedEffect(state.focusRootId, state.items.size) {
+        val focusId = state.focusRootId
+        if (focusId > 0L && state.items.isNotEmpty()) {
+            val idx = state.items.indexOfFirst { it.id == focusId }
+            if (idx >= 0) {
+                listState.animateScrollToItem(idx + 1)
+            }
+            viewModel.consumeFocusTarget()
+        }
+    }
+
+    LaunchedEffect(state.pendingReplyDialog) {
+        val pending = state.pendingReplyDialog ?: return@LaunchedEffect
+        dialogRoot = pending.first
+        dialogTargetReplyId = pending.second
+        viewModel.consumeReplyDialog()
+    }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -189,7 +210,10 @@ fun CommentTab(
                                         composeTarget = ComposeTarget.Reply(comment)
                                     }
                                 },
-                                onOpenReplies = { dialogRoot = it },
+                                onOpenReplies = {
+                                    dialogTargetReplyId = 0L
+                                    dialogRoot = it
+                                },
                                 onOpenUser = onOpenUser,
                                 onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
                             )
@@ -314,12 +338,17 @@ fun CommentTab(
             oid = oid,
             comment = state.items.firstOrNull { it.id == root.id } ?: root,
             type = type,
+            initialTargetReplyId = dialogTargetReplyId,
             onSubReplyAdded = { created -> viewModel.onSubReplyAdded(root.id, created) },
             onOpenUser = { mid ->
                 dialogRoot = null
+                dialogTargetReplyId = 0L
                 onOpenUser(mid)
             },
-            onDismiss = { dialogRoot = null },
+            onDismiss = {
+                dialogRoot = null
+                dialogTargetReplyId = 0L
+            },
         )
     }
 

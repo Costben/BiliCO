@@ -59,10 +59,16 @@ class MessageRepository(
                     resolveMessageTarget(
                         uri = it.uri,
                         nativeUri = it.nativeUri,
+                        type = it.type,
                         business = it.business,
                         businessId = it.businessId,
                         subjectId = it.subjectId,
                         title = it.title,
+                        rootId = it.rootId,
+                        targetId = it.targetId,
+                        sourceId = it.sourceId,
+                        itemId = it.itemId,
+                        onlyWhenCommentSignal = false,
                     )
                 },
             )
@@ -95,10 +101,16 @@ class MessageRepository(
                     resolveMessageTarget(
                         uri = it.uri,
                         nativeUri = it.nativeUri,
+                        type = it.type,
                         business = it.business,
                         businessId = it.businessId,
                         subjectId = it.subjectId,
                         title = it.title,
+                        rootId = it.rootId,
+                        targetId = it.targetId,
+                        sourceId = it.sourceId,
+                        itemId = it.itemId,
+                        onlyWhenCommentSignal = false,
                     )
                 },
             )
@@ -181,10 +193,16 @@ class MessageRepository(
                     resolveMessageTarget(
                         uri = it.uri,
                         nativeUri = it.nativeUri,
+                        type = it.type,
                         business = it.business,
                         businessId = it.businessId,
                         subjectId = it.subjectId,
                         title = sourceTitle.ifBlank { it.title },
+                        rootId = it.rootId,
+                        targetId = it.targetId,
+                        sourceId = it.sourceId,
+                        itemId = it.itemId,
+                        onlyWhenCommentSignal = true,
                     )
                 },
             )
@@ -228,35 +246,115 @@ class MessageRepository(
     private fun resolveMessageTarget(
         uri: String,
         nativeUri: String,
+        type: String,
         business: String,
         businessId: Long,
         subjectId: Long,
         title: String,
+        rootId: Long,
+        targetId: Long,
+        sourceId: Long,
+        itemId: Long,
+        onlyWhenCommentSignal: Boolean,
     ): MessageJumpTarget? {
-        parseJumpUrl(uri, title)?.let { return it }
-        parseJumpUrl(nativeUri, title)?.let { return it }
+        val (commentRootId, commentTargetId) = extractCommentIds(
+            uri = uri,
+            nativeUri = nativeUri,
+            type = type,
+            business = business,
+            subjectId = subjectId,
+            rootId = rootId,
+            targetId = targetId,
+            sourceId = sourceId,
+            itemId = itemId,
+            onlyWhenCommentSignal = onlyWhenCommentSignal,
+        )
+        parseJumpUrl(uri, title, commentRootId, commentTargetId)?.let { return it }
+        parseJumpUrl(nativeUri, title, commentRootId, commentTargetId)?.let { return it }
         if (subjectId <= 0L) return null
         val biz = business.lowercase()
         return when {
             businessId == 1L || biz == "archive" || biz == "video" || biz == "视频" ->
-                MessageJumpTarget.VideoAid(subjectId)
+                MessageJumpTarget.VideoAid(subjectId, commentRootId, commentTargetId)
             businessId == 12L || biz == "article" || biz == "专栏" ->
-                MessageJumpTarget.Article(subjectId, title)
+                MessageJumpTarget.Article(subjectId, title, commentRootId, commentTargetId)
             businessId == 17L || biz == "dynamic" || biz == "opus" || biz == "动态" ->
-                MessageJumpTarget.Opus(subjectId.toString(), title)
+                MessageJumpTarget.Opus(subjectId.toString(), title, commentRootId, commentTargetId)
             else -> null
         }
     }
 
-    private fun parseJumpUrl(rawUrl: String, title: String): MessageJumpTarget? {
+    private fun extractCommentIds(
+        uri: String,
+        nativeUri: String,
+        type: String,
+        business: String,
+        subjectId: Long,
+        rootId: Long,
+        targetId: Long,
+        sourceId: Long,
+        itemId: Long,
+        onlyWhenCommentSignal: Boolean,
+    ): Pair<Long, Long> {
+        val urls = listOf(uri, nativeUri)
+        val detailRoot = urls.firstNotNullOfOrNull {
+            COMMENT_DETAIL_REGEX.find(it)?.groupValues?.getOrNull(3)?.toLongOrNull()?.takeIf { id -> id > 0L }
+        } ?: 0L
+        val uriRoot = urls.firstNotNullOfOrNull {
+            COMMENT_ROOT_REGEX.find(it)?.groupValues?.getOrNull(1)?.toLongOrNull()?.takeIf { id -> id > 0L }
+        } ?: detailRoot
+        val uriTarget = urls.firstNotNullOfOrNull {
+            COMMENT_TARGET_REGEX.find(it)?.groupValues?.getOrNull(1)?.toLongOrNull()?.takeIf { id -> id > 0L }
+                ?: HASH_REPLY_REGEX.find(it)?.groupValues?.getOrNull(1)?.toLongOrNull()?.takeIf { id -> id > 0L }
+        } ?: 0L
+        val hasUriCommentHint = uriRoot > 0L || uriTarget > 0L || detailRoot > 0L
+        val isReplyType = business.equals("reply", ignoreCase = true) || type.equals("reply", ignoreCase = true)
+        if (onlyWhenCommentSignal && !isReplyType && rootId <= 0L && targetId <= 0L && !hasUriCommentHint) {
+            return 0L to 0L
+        }
+        val safeSource = sourceId.takeIf { it > 0L && (isReplyType || it != subjectId) } ?: 0L
+        val safeItem = itemId.takeIf { it > 0L && (isReplyType || it != subjectId) } ?: 0L
+        return when {
+            rootId > 0L -> {
+                val resolvedTarget = safeSource.takeIf { it > 0L }
+                    ?: targetId.takeIf { it > 0L }
+                    ?: safeItem.takeIf { it > 0L }
+                    ?: uriTarget.takeIf { it > 0L }
+                    ?: rootId
+                rootId to resolvedTarget
+            }
+            targetId > 0L && safeSource > 0L -> targetId to safeSource
+            safeSource > 0L -> safeSource to (uriTarget.takeIf { it > 0L } ?: safeSource)
+            targetId > 0L -> targetId to (
+                safeItem.takeIf { it > 0L && it != targetId }
+                    ?: uriTarget.takeIf { it > 0L }
+                    ?: targetId
+                )
+            safeItem > 0L -> safeItem to (uriTarget.takeIf { it > 0L } ?: safeItem)
+            uriRoot > 0L -> uriRoot to (uriTarget.takeIf { it > 0L } ?: uriRoot)
+            uriTarget > 0L -> uriTarget to uriTarget
+            else -> 0L to 0L
+        }
+    }
+
+    private fun parseJumpUrl(
+        rawUrl: String,
+        title: String,
+        commentRootId: Long = 0L,
+        commentTargetId: Long = 0L,
+    ): MessageJumpTarget? {
         if (rawUrl.isBlank()) return null
-        BVID_REGEX.find(rawUrl)?.let { return MessageJumpTarget.VideoBvid(it.groupValues[1]) }
-        OPUS_REGEX.find(rawUrl)?.let { return MessageJumpTarget.Opus(it.groupValues[1], title) }
+        BVID_REGEX.find(rawUrl)?.let {
+            return MessageJumpTarget.VideoBvid(it.groupValues[1], commentRootId, commentTargetId)
+        }
+        OPUS_REGEX.find(rawUrl)?.let {
+            return MessageJumpTarget.Opus(it.groupValues[1], title, commentRootId, commentTargetId)
+        }
         AVID_REGEX.find(rawUrl)?.groupValues?.getOrNull(1)?.toLongOrNull()?.takeIf { it > 0L }?.let {
-            return MessageJumpTarget.VideoAid(it)
+            return MessageJumpTarget.VideoAid(it, commentRootId, commentTargetId)
         }
         ARTICLE_REGEX.find(rawUrl)?.groupValues?.getOrNull(1)?.toLongOrNull()?.takeIf { it > 0L }?.let {
-            return MessageJumpTarget.Article(it, title)
+            return MessageJumpTarget.Article(it, title, commentRootId, commentTargetId)
         }
         PGC_EP_REGEX.find(rawUrl)?.groupValues?.getOrNull(1)?.toLongOrNull()?.takeIf { it > 0L }?.let {
             return MessageJumpTarget.PgcEpisode(it)
@@ -267,13 +365,26 @@ class MessageRepository(
         LIVE_REGEX.find(rawUrl)?.groupValues?.getOrNull(1)?.toLongOrNull()?.takeIf { it > 0L }?.let {
             return MessageJumpTarget.LiveRoom(it)
         }
+        COMMENT_DETAIL_REGEX.find(rawUrl)?.let { match ->
+            val pageType = match.groupValues[1].toLongOrNull()
+            val oid = match.groupValues[2].toLongOrNull()?.takeIf { it > 0L }
+            val detailRoot = match.groupValues[3].toLongOrNull()?.takeIf { it > 0L } ?: commentRootId
+            val detailTarget = commentTargetId.takeIf { it > 0L } ?: detailRoot
+            if (oid != null) {
+                when (pageType) {
+                    1L -> return MessageJumpTarget.VideoAid(oid, detailRoot, detailTarget)
+                    12L -> return MessageJumpTarget.Article(oid, title, detailRoot, detailTarget)
+                    17L -> return MessageJumpTarget.Opus(oid.toString(), title, detailRoot, detailTarget)
+                }
+            }
+        }
         val oid = OID_PARAM_REGEX.find(rawUrl)?.groupValues?.getOrNull(1)?.toLongOrNull()?.takeIf { it > 0L }
         val pageType = PAGE_TYPE_REGEX.find(rawUrl)?.groupValues?.getOrNull(1)?.toLongOrNull()
         if (oid != null) {
             when (pageType) {
-                1L -> return MessageJumpTarget.VideoAid(oid)
-                12L -> return MessageJumpTarget.Article(oid, title)
-                17L -> return MessageJumpTarget.Opus(oid.toString(), title)
+                1L -> return MessageJumpTarget.VideoAid(oid, commentRootId, commentTargetId)
+                12L -> return MessageJumpTarget.Article(oid, title, commentRootId, commentTargetId)
+                17L -> return MessageJumpTarget.Opus(oid.toString(), title, commentRootId, commentTargetId)
             }
         }
         return null
@@ -300,5 +411,9 @@ class MessageRepository(
         val LIVE_REGEX = Regex("""(?:live\.bilibili\.com/|bilibili://live/)(\d+)""", RegexOption.IGNORE_CASE)
         val OID_PARAM_REGEX = Regex("""[?&]oid=(\d+)""")
         val PAGE_TYPE_REGEX = Regex("""[?&](?:pageType|type|business_id)=(\d+)""")
+        val HASH_REPLY_REGEX = Regex("""#reply(\d+)""", RegexOption.IGNORE_CASE)
+        val COMMENT_ROOT_REGEX = Regex("""[?&](?:comment_root_id|root_id|root)=(\d+)""", RegexOption.IGNORE_CASE)
+        val COMMENT_TARGET_REGEX = Regex("""[?&](?:comment_secondary_id|comment_target_id|reply_id|anchor|target_id)=(\d+)""", RegexOption.IGNORE_CASE)
+        val COMMENT_DETAIL_REGEX = Regex("""bilibili://comment/detail/(\d+)/(\d+)/(\d+)""", RegexOption.IGNORE_CASE)
     }
 }

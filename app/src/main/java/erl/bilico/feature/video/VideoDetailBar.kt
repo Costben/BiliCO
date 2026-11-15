@@ -39,7 +39,7 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.CompactSendButton
 import erl.bilico.ui.components.DanmakuToggle
-import erl.bilico.ui.components.capsuleMaterial
+import erl.bilico.ui.components.inputCapsuleGlass
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.ChipTab
 import io.github.suqi8.coui.kmp.basic.ChipTabData
@@ -47,9 +47,12 @@ import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.SearchBar
 import io.github.suqi8.coui.kmp.basic.SearchBarDefaults
+import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.ProgressiveBlur
 import io.github.suqi8.coui.kmp.blur.isBlurEnabled
+import io.github.suqi8.coui.kmp.blur.layerBackdrop
 import io.github.suqi8.coui.kmp.blur.progressiveTextureBlur
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -73,11 +76,13 @@ internal fun VideoDetailBar(
     onComposingChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    backdrop: Backdrop? = LocalBackdrop.current,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val scheme = COUITheme.colorScheme
     val isDark = scheme.background.luminance() < 0.5f
-    val fieldColors = SearchBarDefaults.searchBarColors(backgroundColor = scheme.surfaceContainer)
+    val barBackdrop = if (BlurEffectsEnabled) backdrop else null
+    val fieldColors = SearchBarDefaults.searchBarColors(backgroundColor = Color.Transparent)
 
     // 「评论」后面带上评论数；数字没拿到之前维持原来的两段等宽。
     val tabs = remember(commentCount) {
@@ -146,6 +151,7 @@ internal fun VideoDetailBar(
                             label = title,
                             selected = selected == index,
                             onClick = { onSelect(index) },
+                            backdrop = barBackdrop,
                         )
                     }
                 }
@@ -167,6 +173,7 @@ internal fun VideoDetailBar(
                     colors = fieldColors,
                     stroke = null,
                     glowColor = null,
+                    backdrop = null,
                     leadingIcon = { Spacer(Modifier.width(14.dp)) },
                     trailingIcon = {
                         DanmakuToggle(
@@ -177,7 +184,11 @@ internal fun VideoDetailBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(DETAIL_CAPSULE_HEIGHT)
-                        .capsuleMaterial(isDark = isDark),
+                        .inputCapsuleGlass(
+                            backdrop = barBackdrop,
+                            isDark = isDark,
+                            fallbackColor = scheme.surfaceContainer,
+                        ),
                 )
             },
             onExpandedChange = onComposingChange,
@@ -200,6 +211,7 @@ internal fun VideoDetailBar(
                     height = DETAIL_CAPSULE_HEIGHT,
                     containerColor = scheme.surfaceContainer,
                     isDark = isDark,
+                    backdrop = barBackdrop,
                 )
             },
         ) { }
@@ -271,22 +283,60 @@ internal fun DetailBarGlassSurface(
     modifier: Modifier = Modifier,
     containerColor: Color = pageContainerColor(),
     backdrop: LayerBackdrop? = null,
-    extraHeight: Dp = 10.dp,
+    materialBackdrop: LayerBackdrop? = null,
+    topInset: Dp = 0.dp,
+    extraHeight: Dp = 6.dp,
     content: @Composable () -> Unit,
 ) {
     val isDark = containerColor.luminance() < 0.5f
     val blurEnabled = BlurEffectsEnabled && isBlurEnabled() && backdrop != null
-    val extraHeightPx = with(LocalDensity.current) { extraHeight.roundToPx() }
+    val density = LocalDensity.current
+    val extraHeightPx = with(density) { extraHeight.roundToPx() }
+    val totalHeight = topInset + DETAIL_BAR_HEIGHT + extraHeight
+    val isTwoRow = topInset > 0.dp
+    val blurStartFraction = remember(isTwoRow, topInset, totalHeight) {
+        if (isTwoRow && totalHeight > 0.dp) ((topInset + 5.dp) / totalHeight).coerceIn(0f, 0.85f) else 0.65f
+    }
+    val blurCurve = if (isTwoRow) 2.2f else 3f
+    val alphaMid = remember(isTwoRow, topInset, totalHeight) {
+        if (isTwoRow && totalHeight > 0.dp) (topInset / totalHeight).coerceIn(0.1f, 0.85f) else 0f
+    }
+    val engineBlurRadiusDp = remember(density) {
+        with(density) { (30f * 0.57735f / 0.45f).toDp().value }
+    }
 
-    val gradientBrush = remember(containerColor, isDark) {
-        Brush.verticalGradient(
-            0.00f to containerColor,
-            0.72f to containerColor,
-            0.82f to containerColor.copy(alpha = 0.85f),
-            0.90f to containerColor.copy(alpha = 0.45f),
-            0.96f to containerColor.copy(alpha = 0.15f),
-            1.00f to containerColor.copy(alpha = 0.00f),
-        )
+    val gradientBrush = remember(containerColor, isDark, alphaMid) {
+        if (alphaMid <= 0f) {
+            Brush.verticalGradient(
+                0.00f to containerColor,
+                0.72f to containerColor,
+                0.82f to containerColor.copy(alpha = 0.85f),
+                0.90f to containerColor.copy(alpha = 0.45f),
+                0.96f to containerColor.copy(alpha = 0.15f),
+                1.00f to containerColor.copy(alpha = 0.00f),
+            )
+        } else {
+            val tail = 1f - alphaMid
+            if (isDark) {
+                Brush.verticalGradient(
+                    0f to containerColor.copy(alpha = 0.40f),
+                    alphaMid to containerColor.copy(alpha = 0.38f),
+                    alphaMid + tail * 0.25f to containerColor.copy(alpha = 0.32f),
+                    alphaMid + tail * 0.50f to containerColor.copy(alpha = 0.22f),
+                    alphaMid + tail * 0.75f to containerColor.copy(alpha = 0.10f),
+                    1f to containerColor.copy(alpha = 0f),
+                )
+            } else {
+                Brush.verticalGradient(
+                    0f to containerColor.copy(alpha = 1f),
+                    alphaMid to containerColor.copy(alpha = 0.74f),
+                    alphaMid + tail * 0.25f to containerColor.copy(alpha = 0.62f),
+                    alphaMid + tail * 0.50f to containerColor.copy(alpha = 0.44f),
+                    alphaMid + tail * 0.75f to containerColor.copy(alpha = 0.20f),
+                    1f to containerColor.copy(alpha = 0f),
+                )
+            }
+        }
     }
 
     val materialModifier = if (blurEnabled) {
@@ -294,15 +344,16 @@ internal fun DetailBarGlassSurface(
         Modifier
             .layoutId("material")
             .fillMaxSize()
+            .then(if (materialBackdrop != null) Modifier.layerBackdrop(materialBackdrop) else Modifier)
             .progressiveTextureBlur(
                 backdrop = targetBackdrop,
                 shape = RectangleShape,
-                blurRadius = 16f,
+                blurRadius = engineBlurRadiusDp,
                 gradient = ProgressiveBlur(
                     angle = 90f,
-                    startFraction = 0.65f,
+                    startFraction = blurStartFraction,
                     endFraction = 1.00f,
-                    curve = 1.2f,
+                    curve = blurCurve,
                 ),
             )
             .background(gradientBrush)
@@ -317,7 +368,9 @@ internal fun DetailBarGlassSurface(
         content = {
             Box(modifier = materialModifier)
             Box(
-                modifier = Modifier.layoutId("content"),
+                modifier = Modifier
+                    .layoutId("content")
+                    .padding(top = topInset),
             ) {
                 content()
             }

@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -43,7 +45,9 @@ import io.github.suqi8.coui.kmp.basic.GradientStrokeStyle
 import io.github.suqi8.coui.kmp.basic.InnerShadowStyle
 import io.github.suqi8.coui.kmp.basic.couiGlassSurface
 import io.github.suqi8.coui.kmp.basic.materialShadowEdge
+import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.layout.DialogDefaults
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
@@ -81,6 +85,28 @@ internal fun BoxScope.CollapsedBarSlot(
     content: @Composable BoxScope.() -> Unit,
 ) {
     if (visible) content()
+}
+
+@Stable
+internal class VideoBarBackdrops(
+    val detail: LayerBackdrop?,
+    val barMaterial: LayerBackdrop?,
+)
+
+@Composable
+internal fun rememberVideoBarBackdrops(pageBg: Color): VideoBarBackdrops {
+    val detail = if (BlurEffectsEnabled) rememberLayerBackdrop() else null
+    val barMaterial = if (BlurEffectsEnabled && detail != null) {
+        rememberLayerBackdrop(upstream = detail) {
+            drawRect(pageBg)
+            drawContent()
+        }
+    } else {
+        null
+    }
+    return remember(detail, barMaterial) {
+        VideoBarBackdrops(detail = detail, barMaterial = barMaterial)
+    }
 }
 
 /**

@@ -158,6 +158,13 @@ internal fun VideoFullscreenStage(
             h > 0f && h < minSlotPx + barFadePx
         }
     }
+    val collapseAlpha: () -> Float = {
+        if (!portraitResizable || slotHeight.floatValue <= 0f) {
+            0f
+        } else {
+            ((minSlotPx + barFadePx - slotHeight.floatValue) / barFadePx).coerceIn(0f, 1f)
+        }
+    }
 
     // 手动全屏时手机可能还竖着拿，沿用最近一次的横屏方向，默认听筒朝左。
     var preferredSide by remember { mutableIntStateOf(1) }
@@ -410,11 +417,14 @@ internal fun VideoFullscreenStage(
                 modifier = Modifier.drawBehind {
                     val p = if (windowLandscape) 1f else progress.value
                     if (p < 0.9995f) {
-                        drawRect(
-                            color = Color.Black,
-                            topLeft = Offset(0f, statusBarPx),
-                            size = Size(size.width, slotMetrics[1]),
-                        )
+                        val slotAlpha = if (portraitResizable) (1f - collapseAlpha()).coerceIn(0f, 1f) else 1f
+                        if (slotAlpha > 0.001f) {
+                            drawRect(
+                                color = Color.Black.copy(alpha = slotAlpha),
+                                topLeft = Offset(0f, statusBarPx),
+                                size = Size(size.width, slotMetrics[1]),
+                            )
+                        }
                     }
                     if (p > 0.0005f) drawRect(Color.Black.copy(alpha = p.coerceIn(0f, 1f)))
                 },
@@ -432,6 +442,7 @@ internal fun VideoFullscreenStage(
                         scaleX = 1f
                         scaleY = 1f
                         rotationZ = 0f
+                        alpha = if (!windowLandscape && portraitResizable) (1f - collapseAlpha()).coerceIn(0f, 1f) else 1f
                         clip = !windowLandscape
                     } else if (currentPortraitStage) {
                         val portH = stageBox[1].toFloat()
@@ -443,6 +454,7 @@ internal fun VideoFullscreenStage(
                         scaleX = s
                         scaleY = s
                         rotationZ = 0f
+                        alpha = 1f
                         clip = false
                     } else {
                         val portW = size.height
@@ -456,6 +468,7 @@ internal fun VideoFullscreenStage(
                         scaleX = s
                         scaleY = s
                         rotationZ = p * angle.value
+                        alpha = 1f
                         clip = false
                     }
                 },
@@ -481,10 +494,7 @@ internal fun VideoFullscreenStage(
                                 CollapsedBarSlot(barFading) {
                                     Box(
                                         modifier = Modifier.graphicsLayer {
-                                            alpha = (
-                                                (minSlotPx + barFadePx - slotHeight.floatValue) /
-                                                    barFadePx
-                                                ).coerceIn(0f, 1f)
+                                            alpha = collapseAlpha()
                                         },
                                     ) { portraitCollapsedBar() }
                                 }
@@ -501,7 +511,10 @@ internal fun VideoFullscreenStage(
                     drawRect(Color.Black)
                 } else {
                     drawRect(pageSurface)
-                    drawRect(Color.Black, size = Size(size.width, statusBarPx))
+                    val barBgAlpha = if (portraitResizable) (1f - collapseAlpha()).coerceIn(0f, 1f) else 1f
+                    if (barBgAlpha > 0.001f) {
+                        drawRect(Color.Black.copy(alpha = barBgAlpha), size = Size(size.width, statusBarPx))
+                    }
                 }
             },
     ) { measurables, constraints ->
@@ -537,7 +550,11 @@ internal fun VideoFullscreenStage(
             slotFloor[0] = minSlotPx
             min(portW * 9f / 16f, portH * 0.7f).also { slotMetrics[1] = it }
         }
-        val detailTop = (statusBarPx + videoH).roundToInt()
+        val detailTop = if (portraitResizable) {
+            (videoH - minSlotPx).roundToInt().coerceAtLeast(0)
+        } else {
+            (statusBarPx + videoH).roundToInt()
+        }
 
         val detail = measurables[0].measure(
             Constraints.fixed(portW, (portH - detailTop).coerceAtLeast(1)),

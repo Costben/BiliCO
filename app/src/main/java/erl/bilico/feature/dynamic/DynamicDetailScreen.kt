@@ -92,6 +92,8 @@ fun DynamicDetailScreen(
     container: AppContainer,
     nav: NavState,
     dynamicId: String,
+    commentRootId: Long = 0L,
+    commentTargetId: Long = 0L,
 ) {
     val cleanId = remember(dynamicId) { dynamicId.trim() }
     var item by remember(cleanId) { mutableStateOf(container.dynamic.peekSeed(cleanId)) }
@@ -121,17 +123,32 @@ fun DynamicDetailScreen(
     val commentOid = currentItem?.commentOid ?: 0L
     val commentType = currentItem?.commentType?.takeIf { it > 0 } ?: 17
     val commentViewModel: CommentViewModel? = if (commentOid > 0L) {
-        viewModel(key = "dyn-comment-$commentType-$commentOid") {
-            CommentViewModel(container.comments, commentOid, commentType)
+        viewModel(key = "dyn-comment-$commentType-$commentOid-$commentRootId-$commentTargetId") {
+            CommentViewModel(container.comments, commentOid, commentType, commentRootId, commentTargetId)
         }
     } else {
         null
     }
     val commentState = commentViewModel?.state?.collectAsStateWithLifecycle()?.value
     var dialogRoot by remember { mutableStateOf<Comment?>(null) }
+    var dialogTargetReplyId by remember { mutableStateOf(0L) }
     var composeTarget by remember { mutableStateOf<DynComposeTarget?>(null) }
 
     val listState = rememberLazyListState()
+    LaunchedEffect(commentState?.focusRootId, commentState?.items?.size) {
+        val focusId = commentState?.focusRootId ?: 0L
+        if (focusId > 0L && !commentState?.items.isNullOrEmpty()) {
+            listState.animateScrollToItem(1)
+            commentViewModel?.consumeFocusTarget()
+        }
+    }
+
+    LaunchedEffect(commentState?.pendingReplyDialog) {
+        val pending = commentState?.pendingReplyDialog ?: return@LaunchedEffect
+        dialogRoot = pending.first
+        dialogTargetReplyId = pending.second
+        commentViewModel?.consumeReplyDialog()
+    }
     LaunchedEffect(listState, commentViewModel) {
         val vm = commentViewModel ?: return@LaunchedEffect
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -263,7 +280,10 @@ fun DynamicDetailScreen(
                                                             composeTarget = DynComposeTarget.Reply(comment)
                                                         }
                                                     },
-                                                    onOpenReplies = { dialogRoot = it },
+                                                    onOpenReplies = {
+                                                        dialogTargetReplyId = 0L
+                                                        dialogRoot = it
+                                                    },
                                                     onOpenUser = { mid -> nav.push(Route.Space(mid)) },
                                                     onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
                                                 )
@@ -412,12 +432,17 @@ fun DynamicDetailScreen(
                 oid = commentOid,
                 comment = commentState?.items?.firstOrNull { it.id == root.id } ?: root,
                 type = commentType,
+                initialTargetReplyId = dialogTargetReplyId,
                 onSubReplyAdded = { created -> commentViewModel.onSubReplyAdded(root.id, created) },
                 onOpenUser = { mid ->
                     dialogRoot = null
+                    dialogTargetReplyId = 0L
                     nav.push(Route.Space(mid))
                 },
-                onDismiss = { dialogRoot = null },
+                onDismiss = {
+                    dialogRoot = null
+                    dialogTargetReplyId = 0L
+                },
             )
         }
     }

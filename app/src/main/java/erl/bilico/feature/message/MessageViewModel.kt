@@ -65,9 +65,29 @@ class MessageViewModel(
         onError: (String) -> Unit,
     ) {
         when (val target = entry.target) {
-            is MessageJumpTarget.VideoBvid -> onNavigate(Route.Video(target.bvid))
-            is MessageJumpTarget.Opus -> onNavigate(Route.Opus(target.dynamicId, target.title))
-            is MessageJumpTarget.Article -> onNavigate(Route.Article(target.cvId, target.title))
+            is MessageJumpTarget.VideoBvid -> onNavigate(
+                Route.Video(
+                    bvid = target.bvid,
+                    commentRootId = target.commentRootId,
+                    commentTargetId = target.commentTargetId,
+                )
+            )
+            is MessageJumpTarget.Opus -> onNavigate(
+                Route.Opus(
+                    dynamicId = target.dynamicId,
+                    title = target.title,
+                    commentRootId = target.commentRootId,
+                    commentTargetId = target.commentTargetId,
+                )
+            )
+            is MessageJumpTarget.Article -> onNavigate(
+                Route.Article(
+                    cvId = target.cvId,
+                    title = target.title,
+                    commentRootId = target.commentRootId,
+                    commentTargetId = target.commentTargetId,
+                )
+            )
             is MessageJumpTarget.PgcSeason -> onNavigate(Route.Pgc(seasonId = target.seasonId))
             is MessageJumpTarget.PgcEpisode -> onNavigate(Route.Pgc(seasonId = 0L, epId = target.epId))
             is MessageJumpTarget.LiveRoom -> onNavigate(Route.LiveRoom(target.roomId))
@@ -76,7 +96,15 @@ class MessageViewModel(
                 resolvingJump = true
                 viewModelScope.launch {
                     repository.resolveBvid(target.aid)
-                        .onSuccess { bvid -> onNavigate(Route.Video(bvid)) }
+                        .onSuccess { bvid ->
+                            onNavigate(
+                                Route.Video(
+                                    bvid = bvid,
+                                    commentRootId = target.commentRootId,
+                                    commentTargetId = target.commentTargetId,
+                                )
+                            )
+                        }
                         .onFailure { err -> onError(err.message ?: "无法打开该视频") }
                     resolvingJump = false
                 }

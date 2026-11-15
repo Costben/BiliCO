@@ -129,7 +129,13 @@ fun Modifier.expandOrigin(origin: ExpandOrigin): Modifier =
 
 sealed interface Route {
     data object Main : Route
-    data class Video(val bvid: String, val startSec: Long = 0L, val cid: Long = 0L) : Route
+    data class Video(
+        val bvid: String,
+        val startSec: Long = 0L,
+        val cid: Long = 0L,
+        val commentRootId: Long = 0L,
+        val commentTargetId: Long = 0L,
+    ) : Route
     data class LiveRoom(val roomId: Long) : Route
     data class Space(val mid: Long) : Route
     data object History : Route
@@ -145,8 +151,18 @@ sealed interface Route {
     data object Login : Route
     data object WebLogin : Route
     data object Update : Route
-    data class Article(val cvId: Long, val title: String = "") : Route
-    data class Opus(val dynamicId: String, val title: String = "") : Route
+    data class Article(
+        val cvId: Long,
+        val title: String = "",
+        val commentRootId: Long = 0L,
+        val commentTargetId: Long = 0L,
+    ) : Route
+    data class Opus(
+        val dynamicId: String,
+        val title: String = "",
+        val commentRootId: Long = 0L,
+        val commentTargetId: Long = 0L,
+    ) : Route
     data class Chat(val talkerId: Long, val talkerName: String = "", val talkerFace: String = "") : Route
 }
 

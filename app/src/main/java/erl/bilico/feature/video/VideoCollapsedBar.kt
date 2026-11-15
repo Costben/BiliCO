@@ -1,10 +1,9 @@
 package erl.bilico.feature.video
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -16,28 +15,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.PlaybackEndMode
-import erl.bilico.ui.components.COUISmoothCapsuleShape
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.CouiPopupMenu
-import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.blur.Backdrop
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Back
 import io.github.suqi8.coui.kmp.icon.extended.Home
 import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 竖屏视频在详情页里滑到底之后顶替视频槽位的那一条：
- * 左边返回、首页，中间「继续播放」，右边更多。点「继续播放」把视频重新展开并开始播放。
+ * 左边返回，右边依次为继续播放/暂停、首页与更多按钮，统一采用 `HighlightedIconButton`。
  */
 @Composable
 internal fun CollapsedVideoBar(
@@ -51,19 +48,18 @@ internal fun CollapsedVideoBar(
     onShare: (() -> Unit)? = null,
     playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
+    backdrop: Backdrop? = LocalBackdrop.current,
 ) {
     val statusBar = with(LocalDensity.current) {
         rememberStableStatusBarHeightPx().toDp()
     }
     var moreOpen by remember { mutableStateOf(false) }
+    val effectiveBackdrop = if (BlurEffectsEnabled) backdrop else null
 
     // 照 COUI 顶栏：40dp 圆形按键，两端各留 16dp，相邻两颗隔 10dp（ActionMenuItemSpacing）。
-    // 左边只放返回，其余都在右端；中间那颗占掉两端剩下的空档再居中——
-    // 居中在「返回」和「首页」之间，而不是整屏正中：右边多一颗，按屏幕居中会偏向首页那边。
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(pageContainerColor())
             .padding(top = statusBar)
             .height(CollapsedBarHeight)
             .padding(
@@ -72,48 +68,34 @@ internal fun CollapsedVideoBar(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HighlightedIconButton(onClick = onBack) {
+        HighlightedIconButton(onClick = onBack, backdrop = effectiveBackdrop) {
             Icon(COUIIcons.Back, "返回", Modifier.size(IconSize))
         }
 
-        Box(
-            modifier = Modifier.weight(1f),
-            contentAlignment = Alignment.Center,
-        ) {
-            Row(
-                modifier = Modifier
-                    .clip(COUISmoothCapsuleShape)
-                    .clickable {
-                        onExpand()
-                        onPlayPause()
-                    }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) COUIIcons.Pause else COUIIcons.Play,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = COUITheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = if (isPlaying) "暂停" else "继续播放",
-                    style = COUITheme.textStyles.body2,
-                    color = COUITheme.colorScheme.onSurface,
-                )
-            }
-        }
+        Spacer(modifier = Modifier.weight(1f))
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(TopAppBarDefaults.ActionMenuItemSpacing),
         ) {
-            HighlightedIconButton(onClick = onHome) {
+            HighlightedIconButton(
+                onClick = {
+                    onExpand()
+                    onPlayPause()
+                },
+                backdrop = effectiveBackdrop,
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) COUIIcons.Pause else COUIIcons.Play,
+                    contentDescription = if (isPlaying) "暂停" else "继续播放",
+                    modifier = Modifier.size(IconSize),
+                )
+            }
+            HighlightedIconButton(onClick = onHome, backdrop = effectiveBackdrop) {
                 Icon(COUIIcons.Home, "首页", Modifier.size(IconSize))
             }
             Box {
-                HighlightedIconButton(onClick = { moreOpen = true }) {
+                HighlightedIconButton(onClick = { moreOpen = true }, backdrop = effectiveBackdrop) {
                     Icon(COUIIcons.More, "更多", Modifier.size(IconSize))
                 }
                 val moreItems = rememberPlayerMoreMenuItems(

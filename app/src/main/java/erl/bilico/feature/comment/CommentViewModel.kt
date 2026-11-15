@@ -24,6 +24,8 @@ data class CommentUiState(
     val total: Int = 0,
     val message: String? = null,
     val sort: CommentSort = CommentSort.Hot,
+    val focusRootId: Long = 0L,
+    val pendingReplyDialog: Pair<Comment, Long>? = null,
 )
 
 /** 评论主楼：按热度分页、发表评论与楼层回复、点赞主楼。 */
@@ -31,6 +33,8 @@ class CommentViewModel(
     private val repository: CommentRepository,
     private val oid: Long,
     private val type: Int = 1,
+    private val targetRootId: Long = 0L,
+    private val targetReplyId: Long = 0L,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CommentUiState())
@@ -39,6 +43,7 @@ class CommentViewModel(
     private var cursor: String? = null
     private var newestPage = 0
     private var messageJob: Job? = null
+    private var targetHandled = false
 
     init {
         refresh()
@@ -54,9 +59,31 @@ class CommentViewModel(
                 .onSuccess { page ->
                     cursor = page.nextOffset
                     if (sort == CommentSort.New) newestPage = 1
+                    var mergedItems = page.comments
+                    var focusRootId = 0L
+                    var pendingReplyDialog: Pair<Comment, Long>? = null
+                    if (!targetHandled && (targetRootId > 0L || targetReplyId > 0L) && sort == CommentSort.Hot) {
+                        targetHandled = true
+                        val lookupRootId = if (targetRootId > 0L) targetRootId else targetReplyId
+                        val existing = page.comments.firstOrNull { it.id == lookupRootId }
+                        val resolvedRoot = existing
+                            ?: repository.rootComment(oid, lookupRootId, type)
+                            ?: if (targetReplyId > 0L && targetReplyId != lookupRootId) {
+                                repository.rootComment(oid, targetReplyId, type)
+                            } else {
+                                null
+                            }
+                        if (resolvedRoot != null) {
+                            mergedItems = listOf(resolvedRoot) + page.comments.filterNot { it.id == resolvedRoot.id }
+                            focusRootId = resolvedRoot.id
+                            if (targetReplyId > 0L && targetReplyId != resolvedRoot.id) {
+                                pendingReplyDialog = resolvedRoot to targetReplyId
+                            }
+                        }
+                    }
                     _state.update {
                         it.copy(
-                            items = page.comments,
+                            items = mergedItems,
                             isLoading = false,
                             isLoadingMore = false,
                             // 按时间那一页的 is_end 不可信，按总条数判断还有没有下一页。
@@ -65,7 +92,9 @@ class CommentViewModel(
                             } else {
                                 page.isEnd || page.nextOffset == null
                             },
-                            total = if (page.total > 0) page.total else page.comments.size,
+                            total = maxOf(page.total, mergedItems.size),
+                            focusRootId = focusRootId,
+                            pendingReplyDialog = pendingReplyDialog,
                         )
                     }
                 }
@@ -301,6 +330,14 @@ class CommentViewModel(
                     showMessage(err.message ?: "操作失败")
                 }
         }
+    }
+
+    fun consumeFocusTarget() {
+        _state.update { it.copy(focusRootId = 0L) }
+    }
+
+    fun consumeReplyDialog() {
+        _state.update { it.copy(pendingReplyDialog = null) }
     }
 
     fun showMessage(text: String) {

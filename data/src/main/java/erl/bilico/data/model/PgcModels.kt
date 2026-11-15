@@ -254,6 +254,10 @@ data class MessageContent(
     @SerialName("root_reply_content") val rootReplyContent: String = "",
     @SerialName("business_id") val businessId: Long = 0,
     @SerialName("subject_id") @Serializable(with = FlexibleLongSerializer::class) val subjectId: Long = 0,
+    @SerialName("root_id") @Serializable(with = FlexibleLongSerializer::class) val rootId: Long = 0,
+    @SerialName("target_id") @Serializable(with = FlexibleLongSerializer::class) val targetId: Long = 0,
+    @SerialName("source_id") @Serializable(with = FlexibleLongSerializer::class) val sourceId: Long = 0,
+    @SerialName("item_id") @Serializable(with = FlexibleLongSerializer::class) val itemId: Long = 0,
     @SerialName("detail_title") val detailTitle: String = "",
     @SerialName("detail_name") val detailName: String = "",
     val desc: String = "",
@@ -289,6 +293,10 @@ data class MessageAtContent(
     val business: String = "",
     @SerialName("business_id") val businessId: Long = 0,
     @SerialName("subject_id") @Serializable(with = FlexibleLongSerializer::class) val subjectId: Long = 0,
+    @SerialName("root_id") @Serializable(with = FlexibleLongSerializer::class) val rootId: Long = 0,
+    @SerialName("target_id") @Serializable(with = FlexibleLongSerializer::class) val targetId: Long = 0,
+    @SerialName("source_id") @Serializable(with = FlexibleLongSerializer::class) val sourceId: Long = 0,
+    @SerialName("item_id") @Serializable(with = FlexibleLongSerializer::class) val itemId: Long = 0,
     val title: String = "",
     @SerialName("source_content") val sourceContent: String = "",
     @SerialName("image") val image: String = "",
@@ -378,10 +386,28 @@ enum class MessageKind {
 
 /** 消息通知点击后要跳转的目标内容。 */
 sealed interface MessageJumpTarget {
-    data class VideoBvid(val bvid: String) : MessageJumpTarget
-    data class VideoAid(val aid: Long) : MessageJumpTarget
-    data class Opus(val dynamicId: String, val title: String = "") : MessageJumpTarget
-    data class Article(val cvId: Long, val title: String = "") : MessageJumpTarget
+    data class VideoBvid(
+        val bvid: String,
+        val commentRootId: Long = 0L,
+        val commentTargetId: Long = 0L,
+    ) : MessageJumpTarget
+    data class VideoAid(
+        val aid: Long,
+        val commentRootId: Long = 0L,
+        val commentTargetId: Long = 0L,
+    ) : MessageJumpTarget
+    data class Opus(
+        val dynamicId: String,
+        val title: String = "",
+        val commentRootId: Long = 0L,
+        val commentTargetId: Long = 0L,
+    ) : MessageJumpTarget
+    data class Article(
+        val cvId: Long,
+        val title: String = "",
+        val commentRootId: Long = 0L,
+        val commentTargetId: Long = 0L,
+    ) : MessageJumpTarget
     data class PgcSeason(val seasonId: Long) : MessageJumpTarget
     data class PgcEpisode(val epId: Long) : MessageJumpTarget
     data class LiveRoom(val roomId: Long) : MessageJumpTarget

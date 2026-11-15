@@ -72,6 +72,8 @@ fun ArticleScreen(
     nav: NavState,
     cvId: Long,
     initialTitle: String,
+    commentRootId: Long = 0L,
+    commentTargetId: Long = 0L,
 ) {
     val viewModel: ArticleViewModel = viewModel(key = "article-$cvId") { ArticleViewModel() }
     LaunchedEffect(cvId) {
@@ -82,6 +84,8 @@ fun ArticleScreen(
         nav = nav,
         viewModel = viewModel,
         initialTitle = initialTitle,
+        commentRootId = commentRootId,
+        commentTargetId = commentTargetId,
         reload = { viewModel.load(cvId) { container.articles.article(cvId) } },
     )
 }
@@ -113,10 +117,14 @@ private fun ArticlePage(
     nav: NavState,
     viewModel: ArticleViewModel,
     initialTitle: String,
+    commentRootId: Long = 0L,
+    commentTargetId: Long = 0L,
     reload: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var showComments by remember { mutableStateOf(false) }
+    var showComments by remember(commentRootId, commentTargetId) {
+        mutableStateOf(commentRootId > 0L || commentTargetId > 0L)
+    }
     var viewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
 
     SecondaryPage(
@@ -163,6 +171,8 @@ private fun ArticlePage(
                 nav = nav,
                 oid = article.commentOid,
                 type = if (article.commentType > 0) article.commentType else 12,
+                commentRootId = commentRootId,
+                commentTargetId = commentTargetId,
                 title = article.title,
                 commentCount = article.stats?.reply ?: 0L,
                 onDismiss = { showComments = false },
@@ -541,6 +551,8 @@ private fun ArticleCommentSheet(
     nav: NavState,
     oid: Long,
     type: Int,
+    commentRootId: Long = 0L,
+    commentTargetId: Long = 0L,
     title: String,
     commentCount: Long,
     onDismiss: () -> Unit,
@@ -567,6 +579,8 @@ private fun ArticleCommentSheet(
                     container = container,
                     oid = oid,
                     type = type,
+                    targetRootId = commentRootId,
+                    targetReplyId = commentTargetId,
                     onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
                     modifier = Modifier.weight(1f).fillMaxWidth().navigationBarsPadding(),
                 )

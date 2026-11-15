@@ -33,6 +33,7 @@ import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.layerBackdropIf
+import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import kotlinx.coroutines.delay
@@ -45,6 +46,8 @@ fun VideoScreen(
     bvid: String,
     startPositionMs: Long = 0L,
     initialCid: Long = 0L,
+    commentRootId: Long = 0L,
+    commentTargetId: Long = 0L,
 ) {
     val viewModel: VideoViewModel = viewModel(key = "video-$bvid-$startPositionMs-$initialCid") {
         VideoViewModel(
@@ -101,7 +104,10 @@ fun VideoScreen(
     val applyFullscreen = fsController.applyFullscreen
     // 简介 / 评论两页横向翻。直接读 detailPager.currentPage 同步驱动页签，
     // 跟手无延迟，与私信页完全一致；点标签时开翻页动画。
-    val detailPager = rememberPagerState(pageCount = { DETAIL_PAGES.size })
+    val detailPager = rememberPagerState(
+        initialPage = if (commentRootId > 0L || commentTargetId > 0L) 1 else 0,
+        pageCount = { DETAIL_PAGES.size },
+    )
     val infoListState = rememberLazyListState()
     val commentListState = rememberLazyListState()
     var qualityDialogVisible by remember { mutableStateOf(false) }
@@ -289,6 +295,8 @@ fun VideoScreen(
             viewModel.consumeMessage()
         }
     }
+
+    val barBackdrops = rememberVideoBarBackdrops(pageContainerColor())
 
     VideoFullscreenStage(
         fullscreen = fullscreen,
@@ -511,6 +519,9 @@ fun VideoScreen(
                     if (!player.isPlaying) player.play()
                 },
                 onOpenChapters = { chapterDialogVisible = true },
+                barBackdrops = barBackdrops,
+                commentRootId = commentRootId,
+                commentTargetId = commentTargetId,
             )
         },
         portraitOverlay = {
@@ -529,6 +540,7 @@ fun VideoScreen(
                 playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
                 onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
+                backdrop = barBackdrops.barMaterial,
             )
         },
     )

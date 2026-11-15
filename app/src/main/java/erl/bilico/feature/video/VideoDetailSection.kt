@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -68,13 +69,20 @@ internal fun VideoDetailSection(
     positionMs: Long = 0L,
     onSelectChapter: (VideoChapter) -> Unit = {},
     onOpenChapters: () -> Unit = {},
+    barBackdrops: VideoBarBackdrops? = null,
+    commentRootId: Long = 0L,
+    commentTargetId: Long = 0L,
 ) {
     val navBarBottom = rememberStableNavBarBottomDp()
-    val detailLayerBackdrop = rememberLayerBackdrop()
+    val fallbackBackdrop = rememberLayerBackdrop()
+    val detailLayerBackdrop = barBackdrops?.detail ?: fallbackBackdrop
+    val barMaterialBackdrop = barBackdrops?.barMaterial
     val pageBg = pageContainerColor()
-    // 列表整块铺到最上面，滚动时正文从标签栏底下穿过去，由栏的毛玻璃盖住；
-    // 静止时靠列表自己的顶部内边距让开这一条，第一行不会被栏压住。
-    val contentTop = DETAIL_BAR_HEIGHT + 12.dp
+    val statusBarDp = with(LocalDensity.current) { rememberStableStatusBarHeightPx().toDp() }
+    val firstRowHeight = statusBarDp + CollapsedBarHeight
+    // 列表整块铺到最上面（一直到折叠态状态栏），滚动时正文从两行栏底下穿过去；
+    // 静止时靠列表顶部内边距让出折叠栏 + 弹幕切换栏，第一行不会被压住。
+    val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + 12.dp
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -155,6 +163,8 @@ internal fun VideoDetailSection(
                                 onOpenUser = onOpenUser,
                                 listState = commentListState,
                                 topInset = contentTop,
+                                targetRootId = commentRootId,
+                                targetReplyId = commentTargetId,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -169,6 +179,8 @@ internal fun VideoDetailSection(
                 .fillMaxWidth(),
             containerColor = pageBg,
             backdrop = if (BlurEffectsEnabled) detailLayerBackdrop else null,
+            materialBackdrop = if (BlurEffectsEnabled) barMaterialBackdrop else null,
+            topInset = firstRowHeight,
         ) {
             VideoDetailBar(
                 selected = detailPager.currentPage,
@@ -181,6 +193,7 @@ internal fun VideoDetailSection(
                 onDraftChange = onDanmakuDraftChange,
                 onComposingChange = onDanmakuComposingChange,
                 onSend = onSendDanmaku,
+                backdrop = if (BlurEffectsEnabled) barMaterialBackdrop ?: detailLayerBackdrop else null,
             )
         }
     }

@@ -14,6 +14,7 @@ data class ReplyResponse(
 data class ReplyData(
     val cursor: ReplyCursor = ReplyCursor(),
     val page: ReplyPage = ReplyPage(),
+    val root: ReplyItem? = null,
     val replies: List<ReplyItem>? = null,
     val hots: List<ReplyItem>? = null,
     @SerialName("top_replies") val topReplies: List<ReplyItem>? = null,

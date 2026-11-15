@@ -38,9 +38,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -49,16 +49,18 @@ import erl.bilico.data.model.Comment
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicImageViewer
-import erl.bilico.ui.components.EmptyState
-import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.components.LocalOpenBvid
+import erl.bilico.ui.components.navBottomPadding
+import erl.bilico.ui.layerBackdropIf
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.basic.Close
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -74,6 +76,7 @@ internal fun ReplyDialog(
     oid: Long,
     comment: Comment,
     type: Int = 1,
+    initialTargetReplyId: Long = 0L,
     onSubReplyAdded: (Comment) -> Unit = {},
     onOpenUser: (Long) -> Unit = {},
     onDismiss: () -> Unit,
@@ -95,19 +98,22 @@ internal fun ReplyDialog(
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
-    val keyboard = LocalSoftwareKeyboardController.current
     val composerFocus = remember { FocusRequester() }
     // 点评论即回复：先聚焦输入框拉起键盘，再等面板高度重新分配完，把这一条滚到面板顶部。
     var focusTick by remember(comment.id) { mutableIntStateOf(0) }
     var alignRequest by remember(comment.id) { mutableStateOf<Int?>(null) }
+    var targetReplyHandled by remember(comment.id, initialTargetReplyId) { mutableStateOf(false) }
+
+    LaunchedEffect(initialTargetReplyId, items.size) {
+        if (targetReplyHandled || initialTargetReplyId <= 0L) return@LaunchedEffect
+        val idx = items.indexOfFirst { it.id == initialTargetReplyId }
+        if (idx >= 0) {
+            targetReplyHandled = true
+            listState.animateScrollToItem(SUB_REPLY_ITEM_OFFSET + idx)
+        }
+    }
 
     LaunchedEffect(comment.id) { show = true }
-
-    LaunchedEffect(focusTick) {
-        if (focusTick == 0) return@LaunchedEffect
-        composerFocus.requestFocus()
-        keyboard?.show()
-    }
 
     LaunchedEffect(alignRequest) {
         val index = alignRequest ?: return@LaunchedEffect
@@ -300,7 +306,11 @@ internal fun ReplyDialog(
     val sheetMaxHeight = (screenHeight * 0.74f).coerceAtLeast(500.dp)
     val imeBottom = with(density) { WindowInsets.ime.getBottom(density).toDp() }
     val keyboardGapProgress = (imeBottom / 80.dp).coerceIn(0f, 1f)
-    val bottomGap = 24.dp + (6.dp - 24.dp) * keyboardGapProgress
+    val navBottom = navBottomPadding() * (1f - keyboardGapProgress)
+    val composerBottomPadding = 10.dp + navBottom
+    val listBottomPadding = 84.dp + navBottom
+    val topStripOffset = 10.dp
+    val topStripPx = with(density) { topStripOffset.roundToPx() }
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val parentOpenBvid = LocalOpenBvid.current
     val parentSeek = LocalCommentSeek.current
@@ -326,33 +336,10 @@ internal fun ReplyDialog(
     OverlayBottomSheet(
         show = show,
         title = null,
-        startAction = {
-            Text(
-                text = "评论详情",
-                style = COUITheme.textStyles.main.copy(
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-                color = COUITheme.colorScheme.onSurface,
-            )
-        },
-        endAction = {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clickable { show = false },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = COUIIcons.Basic.Close,
-                    contentDescription = "关闭",
-                    tint = COUITheme.colorScheme.onSurfaceSecondary,
-                    modifier = Modifier.size(19.dp),
-                )
-            }
-        },
+        startAction = null,
+        endAction = null,
         showDragHandle = false,
-        insideMargin = DpSize(16.dp, bottomGap),
+        insideMargin = DpSize(0.dp, 0.dp),
         panelPaddingBottom = 0.dp,
         // 评论详情是接近满屏的高面板，按原有比例要拖走几乎整块才关得上；这里改成拖走 1/3 就收，
         // 配合向下轻甩随时可关。
@@ -360,23 +347,44 @@ internal fun ReplyDialog(
         onDismissRequest = { show = false },
         onDismissFinished = onDismiss,
     ) {
+        val sheetBackdrop = rememberLayerBackdrop()
+        val sheetOverlayBackdrop = if (BlurEffectsEnabled) sheetBackdrop else null
+        val topBarColor = if (isDark) Color(0xFF1B1B1B) else AppBarBlurOverlayDefaults.containerColor()
         CompositionLocalProvider(
             LocalOpenBvid provides parentOpenBvid?.let { open -> { bvid -> show = false; open(bvid) } },
             LocalCommentSeek provides parentSeek?.let { seek -> { ms -> show = false; seek(ms) } },
+            LocalEdgeToEdge provides true,
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            // OverlayBottomSheet 无拖拽条时仍会在内容上方保留 10dp 空白拖动手柄带；把内容上移这段高度，
+            // 让顶栏渐进模糊与列表滚动直接贴齐面板圆角顶部，消除顶部未模糊黑带。
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // 键盘弹出后可用高度会被压缩，列表必须让出空间，否则底部输入行会被挤出面板外。
-                    .weight(1f, fill = false)
-                    .heightIn(max = sheetMaxHeight),
+                    .heightIn(max = sheetMaxHeight + topStripOffset)
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        layout(placeable.width, (placeable.height - topStripPx).coerceAtLeast(0)) {
+                            placeable.placeRelative(0, -topStripPx)
+                        }
+                    },
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxWidth().scrollEndHaptic(),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
+                val sheetBackdropTint = if (isDark) Color(0xF21B1B1B) else Color(0xF2F4F5F6)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .layerBackdropIf(BlurEffectsEnabled, sheetBackdrop)
+                        .background(sheetBackdropTint),
                 ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxWidth().scrollEndHaptic(),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            top = 60.dp + topStripOffset,
+                            end = 16.dp,
+                            bottom = listBottomPadding,
+                        ),
+                    ) {
                     // 1. 根评论卡片（与主评论区一致的卡片组件）
                     item(key = "root_comment") {
                         Card(
@@ -440,44 +448,16 @@ internal fun ReplyDialog(
                     }
 
                     // 4. 子评论内容与状态
-                    when {
-                        items.isEmpty() && isLoading -> {
-                            item(key = "sub_loading") {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(140.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(size = 22.dp)
-                                }
-                            }
+                    if (items.isEmpty()) {
+                        item(key = "sub_placeholder") {
+                            SubReplyPlaceholderBox(
+                                isLoading = isLoading,
+                                error = error,
+                                onRetry = { loadNext() },
+                            )
                         }
-                        items.isEmpty() && error != null -> {
-                            item(key = "sub_error") {
-                                ErrorState(
-                                    message = error.orEmpty(),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(140.dp),
-                                    onRetry = { loadNext() },
-                                )
-                            }
-                        }
-                        items.isEmpty() -> {
-                            item(key = "sub_empty") {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(140.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    EmptyState("暂时还没有相关回复")
-                                }
-                            }
-                        }
-                        else -> {
-                            itemsIndexed(items, key = { _, reply -> reply.id }) { index, reply ->
+                    } else {
+                        itemsIndexed(items, key = { _, reply -> reply.id }) { index, reply ->
                                 val itemIndex = SUB_REPLY_ITEM_OFFSET + index
                                 val displayReply = remember(reply, threadUserMids) {
                                     if (threadUserMids.isEmpty()) reply
@@ -528,7 +508,7 @@ internal fun ReplyDialog(
                         text = msg,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 12.dp)
+                            .padding(bottom = listBottomPadding)
                             .clip(SquircleShape(8.dp))
                             .background(Color(0xCC000000))
                             .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -536,18 +516,35 @@ internal fun ReplyDialog(
                         color = Color.White,
                     )
                 }
-            }
 
-            ReplyComposer(
-                draft = draft,
-                onDraftChange = { draft = it },
-                replyTarget = replyTarget,
-                onClearReplyTarget = { replyTarget = null },
-                isSending = isSending,
-                isDark = isDark,
-                focusRequester = composerFocus,
-                onSend = { sendReply() },
-            )
+                ReplyDetailTopBar(
+                    scrollFraction = {
+                        val rawScroll = if (listState.firstVisibleItemIndex > 0) 10_000f
+                        else listState.firstVisibleItemScrollOffset.toFloat()
+                        AppBarBlurOverlayDefaults.scrollAlpha(rawScroll, density)
+                    },
+                    containerColor = topBarColor,
+                    backdrop = sheetOverlayBackdrop,
+                    onClose = { show = false },
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    topInset = topStripOffset,
+                )
+
+                ReplyComposer(
+                    draft = draft,
+                    onDraftChange = { draft = it },
+                    replyTarget = replyTarget,
+                    onClearReplyTarget = { replyTarget = null },
+                    isSending = isSending,
+                    isDark = isDark,
+                    focusRequester = composerFocus,
+                    focusTick = focusTick,
+                    onSend = { sendReply() },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = composerBottomPadding),
+                    backdrop = sheetOverlayBackdrop,
+                )
             }
         }
     }

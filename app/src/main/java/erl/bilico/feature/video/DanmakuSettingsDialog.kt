@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.ui.components.ConfirmDialog
@@ -78,22 +79,25 @@ internal fun DanmakuSettingsDialog(
                 .padding(vertical = 12.dp)
                 .testTag("danmaku_settings_dialog"),
         ) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = "弹幕设置",
-                    style = COUITheme.textStyles.title3,
-                    fontWeight = FontWeight.SemiBold,
+                    style = COUITheme.textStyles.main.copy(
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
                     color = scheme.onSurface,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.align(Alignment.Center),
                 )
                 HighlightedIconButton(
                     onClick = { confirmReset = true },
-                    modifier = Modifier.testTag("dm_reset"),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .testTag("dm_reset"),
                 ) {
                     Icon(COUIIcons.Refresh, "恢复默认", Modifier.size(24.dp))
                 }

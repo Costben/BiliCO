@@ -133,6 +133,27 @@ class CommentRepository(
         }
     }
 
+    suspend fun rootComment(
+        oid: Long,
+        rootId: Long,
+        type: Int = 1,
+    ): Comment? = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val response = api.subComments(
+                mapOf(
+                    "oid" to oid.toString(),
+                    "type" to type.toString(),
+                    "root" to rootId.toString(),
+                    "pn" to "1",
+                    "ps" to "1",
+                ),
+            )
+            if (response.code != 0) return@runCatching null
+            response.data?.root?.toComment()
+        }.getOrNull()
+    }
+
     suspend fun addComment(
         oid: Long,
         message: String,
