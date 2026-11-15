@@ -23,11 +23,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.LibraryVideo
 import erl.bilico.data.util.Formatters
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Messages
@@ -35,6 +37,9 @@ import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 private val RowCoverWidth = 132.dp
+
+/** 封面圆角按外轮廓半径减去内边距收进去，两条弧才同心；间距不小于外圆角时退回直角。 */
+private fun coverCorner(outer: Dp, inset: Dp): Dp = (outer - inset).coerceAtLeast(0.dp)
 
 /** 空间投稿、收藏夹内容、稍后再看共用的横排视频卡：左侧封面，右侧标题与副标题。 */
 @Composable
@@ -44,12 +49,13 @@ fun LibraryVideoRow(
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val inset = 8.dp
     Card(
         modifier = modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(8.dp),
+        insideMargin = PaddingValues(inset),
         onClick = onClick,
     ) {
-        LibraryVideoBody(video = video, trailing = trailing)
+        LibraryVideoBody(video = video, coverInset = inset, trailing = trailing)
     }
 }
 
@@ -61,6 +67,9 @@ fun LibraryVideoRow(
 fun LibraryVideoBody(
     video: LibraryVideo,
     modifier: Modifier = Modifier,
+    coverInset: Dp = 8.dp,
+    coverCornerRadius: Dp = CardDefaults.CornerRadius,
+    coverCornerWeight: Float = CardDefaults.Weight,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val density = LocalDensity.current
@@ -84,7 +93,12 @@ fun LibraryVideoBody(
             modifier = Modifier
                 .width(RowCoverWidth)
                 .aspectRatio(16f / 9f)
-                .clip(SquircleShape(8.dp)),
+                .clip(
+                    SquircleShape(
+                        coverCorner(coverCornerRadius, coverInset),
+                        weight = coverCornerWeight,
+                    ),
+                ),
         ) {
             CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
             if (video.durationText.isNotBlank()) {

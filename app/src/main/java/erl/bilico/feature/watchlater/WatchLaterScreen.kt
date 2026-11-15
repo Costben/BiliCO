@@ -54,6 +54,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/**
+ * [io.github.suqi8.coui.kmp.basic.NotificationSwipeBox] 卡片的圆角。库里写死成 16dp、
+ * 曲线权重 1.1，封面要跟它同心，只能在这里按同样的数收。
+ */
+private val SwipeCardCornerRadius = 16.dp
+private const val SwipeCardCornerWeight = 1.1f
+
 /** 稍后再看的排列方式。接口只按收藏顺序给，切换排序都在本地做。 */
 enum class WatchLaterSort(val label: String) {
     DEFAULT("默认顺序"),
@@ -322,10 +329,14 @@ fun WatchLaterScreen(
                 dismissOnFullSwipe = true,
                 settingsDescription = "置顶",
                 dismissDescription = "删除",
-                modifier = Modifier.animateItem(),
+                // 划走结束时滑动盒会先把卡片弹回原位，默认淡出是在那之后才播的，看起来像闪回来再往下淡掉。
+                // 被删的这条直接拿掉；后面的条目仍按默认弹簧上移补位。
+                modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
             ) {
                 LibraryVideoBody(
                     video = video,
+                    coverCornerRadius = SwipeCardCornerRadius,
+                    coverCornerWeight = SwipeCardCornerWeight,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {

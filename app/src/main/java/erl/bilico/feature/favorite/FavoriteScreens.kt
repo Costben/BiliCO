@@ -78,6 +78,14 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
+/**
+ * [NotificationSwipeBox] 卡片的圆角。库里写死成 16dp、曲线权重 1.1
+ * （`NotificationSwipeDefaults.CardCornerRadius` / `CONIC_CORNER_WEIGHT`），封面要跟它同心，
+ * 只能在这里按同样的数收。
+ */
+private val SwipeCardCornerRadius = 16.dp
+private const val SwipeCardCornerWeight = 1.1f
+
 @Composable
 fun FavoriteFoldersScreen(
     container: AppContainer,
@@ -178,7 +186,12 @@ private fun FolderCover(urls: List<String>, size: Dp) {
     Box(
         modifier = Modifier
             .size(size)
-            .clip(SquircleShape(8.dp)),
+            .clip(
+                SquircleShape(
+                    (CardDefaults.CornerRadius - 10.dp).coerceAtLeast(0.dp),
+                    weight = CardDefaults.Weight,
+                ),
+            ),
     ) {
         when (covers.size) {
             0 -> CoverImage(url = null, modifier = Modifier.fillMaxSize())
@@ -357,7 +370,9 @@ fun FavoriteFolderScreen(
                 containerColor = CardDefaults.defaultColors().color,
                 dismissOnFullSwipe = true,
                 dismissDescription = "删除收藏的视频",
-                modifier = Modifier.animateItem(),
+                // 划走结束时滑动盒会先把卡片弹回原位，默认淡出是在那之后才播的，看起来像闪回来再往下淡掉。
+                // 被删的这条直接拿掉；后面的条目仍按默认弹簧上移补位。
+                modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
             ) {
                 MultiSelectSlideRow(
                     selectionMode = selectionMode,
@@ -387,6 +402,8 @@ fun FavoriteFolderScreen(
                     LibraryVideoBody(
                         video = video,
                         modifier = Modifier.fillMaxWidth(),
+                        coverCornerRadius = SwipeCardCornerRadius,
+                        coverCornerWeight = SwipeCardCornerWeight,
                     )
                 }
             }
