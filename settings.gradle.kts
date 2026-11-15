@@ -17,11 +17,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // COUI 17 本地构件仓：稳定副本优先，其次 ../coui 的构建产物目录。
+        // COUI 17 本地构件仓：优先 ../coui 的最新构建产物，其次稳定副本兜底。
         // 目录不存在时 Gradle 视作空仓库，不影响远端解析。
         listOf(
-            "coui-local-repo",
             "coui/build/repository/local",
+            "coui-local-repo",
         ).forEach { path ->
             maven { url = uri(rootDir.parentFile.resolve(path)) }
         }
