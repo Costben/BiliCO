@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +42,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
 import erl.bilico.feature.video.DanmakuController
@@ -100,6 +101,7 @@ fun PgcScreen(
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
+    val playbackEndMode by container.settings.playbackEndMode.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
@@ -180,7 +182,20 @@ fun PgcScreen(
                     viewModel.markPlaybackStarted()
                 } else if (playbackState == Player.STATE_ENDED) {
                     viewModel.flushHeartbeat(player.duration.coerceAtLeast(0L) / 1000, container.scope)
-                    viewModel.playNextEpisode()
+                    when (playbackEndMode) {
+                        PlaybackEndMode.OFF -> Unit
+                        PlaybackEndMode.SINGLE_LOOP -> {
+                            player.seekTo(0L)
+                            player.play()
+                        }
+                        PlaybackEndMode.LIST_LOOP -> {
+                            if (!viewModel.playNextEpisode(loop = true)) {
+                                player.seekTo(0L)
+                                player.play()
+                            }
+                        }
+                        PlaybackEndMode.AUTO_NEXT -> viewModel.playNextEpisode()
+                    }
                 }
             }
 
@@ -350,6 +365,8 @@ fun PgcScreen(
                     null
                 },
                 onHome = { nav.popToMain() },
+                playbackEndMode = playbackEndMode,
+                onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
                 longPressSpeedActive = longPressSpeed,
                 longPressSpeedValue = boostSpeed,
                 onLongPressSpeedChange = { longPressSpeed = it },
@@ -471,7 +488,7 @@ private fun PgcTabRow(selected: Int, onSelect: (Int) -> Unit) {
                     modifier = Modifier
                         .width(18.dp)
                         .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp))
+                        .clip(SquircleShape(2.dp))
                         .background(if (active) COUITheme.colorScheme.primary else Color.Transparent),
                 )
             }

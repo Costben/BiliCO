@@ -4,8 +4,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
@@ -59,7 +59,8 @@ private val InlineHighlightRegex = Regex("(@[\\w\\u4e00-\\u9fa5\\-]+|#[^#\\n]{1,
 private val TrailingUrlPunctuation = setOf('.', ',', ';', ':', '!', '?', ')', '）', '"', '\'', '。', '，', '；', '：', '！', '？')
 
 /**
- * 评论富文本：把 `[doge]` 等命中 [emotes] 的标记切为内联图片，其余保持原文本排版。
+ * 评论富文本：把 `[doge]` 等命中 [emotes] 的标记切为内联图片，其余保持原文本排版；
+ * 命中 [mentions] 的 `@用户名` 在提供 [onOpenUser] 时可点击跳转对应用户主页。
  * 小表情按 `1.3em` 内联；大表情包在主评论按 `2.4em`、在楼中楼预览（[compactEmotes]）按 `1.45em` 内联，均按控件像素尺寸请求缩略图。
  */
 @Composable
@@ -67,6 +68,7 @@ fun RichCommentText(
     content: String,
     emotes: Map<String, EmoteImage>,
     modifier: Modifier = Modifier,
+    mentions: Map<String, Long> = emptyMap(),
     prefixUserName: String? = null,
     badgeLabel: String? = null,
     compactEmotes: Boolean = false,
@@ -75,6 +77,7 @@ fun RichCommentText(
     color: Color = COUITheme.colorScheme.onSurface,
     prefixColor: Color = COUITheme.colorScheme.primary,
     maxLines: Int = Int.MAX_VALUE,
+    onOpenUser: ((Long) -> Unit)? = null,
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
@@ -86,12 +89,15 @@ fun RichCommentText(
     val currentOpenBvid by rememberUpdatedState(openBvidCallback)
     val currentSeek by rememberUpdatedState(commentSeekCallback)
     val currentUriHandler by rememberUpdatedState(uriHandler)
+    val currentOpenUser by rememberUpdatedState(onOpenUser)
     val enableTimestamps = commentSeekCallback != null
+    val enableUserLinks = onOpenUser != null && mentions.isNotEmpty()
 
     val rawDisplay = content.ifBlank { if (emotes.isEmpty()) "[图片评论]" else "" }
     val (annotated, inlineMap) = remember(
         rawDisplay,
         emotes,
+        mentions,
         prefixUserName,
         badgeLabel,
         compactEmotes,
@@ -99,6 +105,7 @@ fun RichCommentText(
         smallPx,
         largePx,
         enableTimestamps,
+        enableUserLinks,
     ) {
         val openBvidAction: (String) -> Unit = { bvid ->
             val opener = currentOpenBvid
@@ -113,6 +120,12 @@ fun RichCommentText(
         } else {
             null
         }
+        val openUserAction: ((Long) -> Unit)? = if (enableUserLinks) {
+            { mid -> currentOpenUser?.invoke(mid) }
+        } else {
+            null
+        }
+        val sortedMentionNames = mentions.keys.sortedByDescending { it.length }
         val inline = LinkedHashMap<String, InlineTextContent>()
         val builder = AnnotatedString.Builder()
         if (!badgeLabel.isNullOrBlank()) {
@@ -127,7 +140,7 @@ fun RichCommentText(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .border(1.dp, prefixColor, RoundedCornerShape(4.dp)),
+                        .border(1.dp, prefixColor, SquircleShape(4.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -149,19 +162,23 @@ fun RichCommentText(
                 append(": ")
             }
         }
-        val mentionMatch = ReplyMentionPrefixRegex.find(rawDisplay)
-        val display = if (mentionMatch != null) {
+        val replyPrefix = findReplyPrefix(rawDisplay, sortedMentionNames)
+        val display = if (replyPrefix != null) {
             builder.append("回复 ")
-            builder.withStyle(SpanStyle(color = prefixColor, fontWeight = FontWeight.Medium)) {
-                append(mentionMatch.groupValues[1])
-            }
+            builder.appendMentionToken(
+                token = replyPrefix.atToken,
+                mentionColor = prefixColor,
+                fontWeight = FontWeight.Medium,
+                mentions = mentions,
+                onOpenUser = openUserAction,
+            )
             builder.append(": ")
-            rawDisplay.substring(mentionMatch.range.last + 1)
+            rawDisplay.substring(replyPrefix.bodyStartIndex)
         } else {
             rawDisplay
         }
         if (emotes.isEmpty()) {
-            builder.appendRichSegment(display, prefixColor, openBvidAction, seekAction)
+            builder.appendRichSegment(display, prefixColor, openBvidAction, seekAction, mentions, sortedMentionNames, openUserAction)
         } else {
             var cursor = 0
             var index = 0
@@ -172,6 +189,9 @@ fun RichCommentText(
                         mentionColor = prefixColor,
                         onOpenBvid = openBvidAction,
                         onSeekTimeMs = seekAction,
+                        mentions = mentions,
+                        mentionNames = sortedMentionNames,
+                        onOpenUser = openUserAction,
                     )
                 }
                 val token = match.value
@@ -204,12 +224,12 @@ fun RichCommentText(
                         )
                     }
                 } else {
-                    builder.appendRichSegment(token, prefixColor, openBvidAction, seekAction)
+                    builder.appendRichSegment(token, prefixColor, openBvidAction, seekAction, mentions, sortedMentionNames, openUserAction)
                 }
                 cursor = match.range.last + 1
             }
             if (cursor < display.length) {
-                builder.appendRichSegment(display.substring(cursor), prefixColor, openBvidAction, seekAction)
+                builder.appendRichSegment(display.substring(cursor), prefixColor, openBvidAction, seekAction, mentions, sortedMentionNames, openUserAction)
             }
         }
         builder.toAnnotatedString() to inline
@@ -243,13 +263,81 @@ fun RichCommentText(
 
 private enum class RichTokenKind { BiliVideo, GenericUrl, Timestamp, Mention }
 
-private data class MatchedToken(val kind: RichTokenKind, val result: MatchResult)
+private data class MatchedToken(
+    val kind: RichTokenKind,
+    val range: IntRange,
+    val regexResult: MatchResult? = null,
+)
+
+private data class ReplyPrefixMatch(
+    val atToken: String,
+    val bodyStartIndex: Int,
+)
+
+private fun findReplyPrefix(rawDisplay: String, sortedMentionNames: List<String>): ReplyPrefixMatch? {
+    if (rawDisplay.startsWith("回复 ") && sortedMentionNames.isNotEmpty()) {
+        val afterReply = rawDisplay.indexOf('@')
+        if (afterReply in 3..5 && rawDisplay.substring(2, afterReply).isBlank()) {
+            for (name in sortedMentionNames) {
+                val atToken = "@$name"
+                if (rawDisplay.startsWith(atToken, startIndex = afterReply)) {
+                    var pos = afterReply + atToken.length
+                    while (pos < rawDisplay.length && rawDisplay[pos].isWhitespace()) pos++
+                    if (pos < rawDisplay.length && (rawDisplay[pos] == ':' || rawDisplay[pos] == '：')) {
+                        pos++
+                        while (pos < rawDisplay.length && rawDisplay[pos].isWhitespace()) pos++
+                        return ReplyPrefixMatch(atToken = atToken, bodyStartIndex = pos)
+                    }
+                }
+            }
+        }
+    }
+    val match = ReplyMentionPrefixRegex.find(rawDisplay) ?: return null
+    return ReplyPrefixMatch(
+        atToken = match.groupValues[1],
+        bodyStartIndex = match.range.last + 1,
+    )
+}
+
+private fun resolveMentionMid(rawName: String, mentions: Map<String, Long>): Long? {
+    val name = rawName.trim().removePrefix("@")
+    if (name.isEmpty()) return null
+    return mentions[name] ?: mentions.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+}
+
+private fun AnnotatedString.Builder.appendMentionToken(
+    token: String,
+    mentionColor: Color,
+    fontWeight: FontWeight?,
+    mentions: Map<String, Long>,
+    onOpenUser: ((Long) -> Unit)?,
+) {
+    val targetMid = if (token.startsWith("@")) resolveMentionMid(token, mentions) else null
+    if (targetMid != null && targetMid > 0L && onOpenUser != null) {
+        withLink(
+            LinkAnnotation.Clickable(
+                tag = "user:$targetMid",
+                styles = TextLinkStyles(style = SpanStyle(color = mentionColor, fontWeight = fontWeight)),
+                linkInteractionListener = { onOpenUser(targetMid) },
+            ),
+        ) {
+            append(token)
+        }
+    } else {
+        withStyle(SpanStyle(color = mentionColor, fontWeight = fontWeight)) {
+            append(token)
+        }
+    }
+}
 
 private fun AnnotatedString.Builder.appendRichSegment(
     segment: String,
     mentionColor: Color,
     onOpenBvid: (String) -> Unit,
     onSeekTimeMs: ((Long) -> Unit)?,
+    mentions: Map<String, Long>,
+    mentionNames: List<String>,
+    onOpenUser: ((Long) -> Unit)?,
 ) {
     val urlStyles = TextLinkStyles(
         style = SpanStyle(color = mentionColor, textDecoration = TextDecoration.Underline),
@@ -259,20 +347,21 @@ private fun AnnotatedString.Builder.appendRichSegment(
     )
     var cursor = 0
     while (cursor < segment.length) {
-        val next = earliestToken(segment, cursor, includeTimestamp = onSeekTimeMs != null)
+        val next = earliestToken(segment, cursor, includeTimestamp = onSeekTimeMs != null, mentionNames = mentionNames)
         if (next == null) {
             append(segment.substring(cursor))
             return
         }
-        val match = next.result
-        if (match.range.first > cursor) {
-            append(segment.substring(cursor, match.range.first))
+        val range = next.range
+        if (range.first > cursor) {
+            append(segment.substring(cursor, range.first))
         }
         when (next.kind) {
             RichTokenKind.BiliVideo -> {
+                val match = next.regexResult!!
                 val rawBv = match.groupValues[1]
                 val bvid = if (rawBv.length > 2) "BV${rawBv.substring(2)}" else rawBv
-                val consumedEnd = trimmedUrlEnd(segment, match.range)
+                val consumedEnd = trimmedUrlEnd(segment, range)
                 withLink(
                     LinkAnnotation.Clickable(
                         tag = "bvid:$bvid",
@@ -286,8 +375,8 @@ private fun AnnotatedString.Builder.appendRichSegment(
             }
 
             RichTokenKind.GenericUrl -> {
-                val consumedEnd = trimmedUrlEnd(segment, match.range)
-                val url = segment.substring(match.range.first, consumedEnd)
+                val consumedEnd = trimmedUrlEnd(segment, range)
+                val url = segment.substring(range.first, consumedEnd)
                 withLink(LinkAnnotation.Url(url = url, styles = urlStyles)) {
                     append(url)
                 }
@@ -295,6 +384,7 @@ private fun AnnotatedString.Builder.appendRichSegment(
             }
 
             RichTokenKind.Timestamp -> {
+                val match = next.regexResult!!
                 val ms = parseTimestampMs(match)
                 if (ms != null && onSeekTimeMs != null) {
                     withLink(
@@ -309,29 +399,67 @@ private fun AnnotatedString.Builder.appendRichSegment(
                 } else {
                     append(match.value)
                 }
-                cursor = match.range.last + 1
+                cursor = range.last + 1
             }
 
             RichTokenKind.Mention -> {
-                withStyle(SpanStyle(color = mentionColor)) {
-                    append(match.value)
-                }
-                cursor = match.range.last + 1
+                val token = segment.substring(range)
+                appendMentionToken(
+                    token = token,
+                    mentionColor = mentionColor,
+                    fontWeight = if (token.startsWith("@")) FontWeight.Medium else null,
+                    mentions = mentions,
+                    onOpenUser = onOpenUser,
+                )
+                cursor = range.last + 1
             }
         }
     }
 }
 
-private fun earliestToken(segment: String, startIndex: Int, includeTimestamp: Boolean): MatchedToken? {
+private fun earliestToken(
+    segment: String,
+    startIndex: Int,
+    includeTimestamp: Boolean,
+    mentionNames: List<String>,
+): MatchedToken? {
     val candidates = buildList {
-        BiliVideoUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.BiliVideo, it)) }
-        GenericUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.GenericUrl, it)) }
+        BiliVideoUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.BiliVideo, it.range, it)) }
+        GenericUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.GenericUrl, it.range, it)) }
         if (includeTimestamp) {
-            TimestampRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.Timestamp, it)) }
+            TimestampRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.Timestamp, it.range, it)) }
         }
-        InlineHighlightRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.Mention, it)) }
+        findEarliestKnownMention(segment, startIndex, mentionNames)?.let { add(MatchedToken(RichTokenKind.Mention, it)) }
+        InlineHighlightRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.Mention, it.range, it)) }
     }
-    return candidates.minWithOrNull(compareBy<MatchedToken> { it.result.range.first }.thenBy { it.kind.ordinal })
+    return candidates.minWithOrNull(
+        compareBy<MatchedToken> { it.range.first }
+            .thenBy { it.kind.ordinal }
+            .thenByDescending { it.range.last - it.range.first },
+    )
+}
+
+private fun findEarliestKnownMention(
+    segment: String,
+    startIndex: Int,
+    mentionNames: List<String>,
+): IntRange? {
+    if (mentionNames.isEmpty()) return null
+    var bestRange: IntRange? = null
+    for (name in mentionNames) {
+        val needle = "@$name"
+        val idx = segment.indexOf(needle, startIndex)
+        if (idx < 0) continue
+        val candidate = idx until (idx + needle.length)
+        if (
+            bestRange == null ||
+            candidate.first < bestRange.first ||
+            (candidate.first == bestRange.first && name.length > (bestRange.last - bestRange.first))
+        ) {
+            bestRange = candidate
+        }
+    }
+    return bestRange
 }
 
 private fun trimmedUrlEnd(segment: String, range: IntRange): Int {

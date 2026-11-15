@@ -36,8 +36,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -344,7 +344,7 @@ internal fun CommentComposerSheet(
                             contentDescription = null,
                             modifier = Modifier
                                 .size(64.dp)
-                                .clip(RoundedCornerShape(10.dp)),
+                                .clip(SquircleShape(10.dp)),
                             contentScale = ContentScale.Crop,
                         )
                         Box(
@@ -539,7 +539,7 @@ private fun EmoteGrid(
                     Box(
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(SquircleShape(8.dp))
                             .clickable { onPick(emote.insert) },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -597,7 +597,7 @@ private fun AtList(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(SquircleShape(10.dp))
                             .clickable { onPick(user) }
                             .padding(horizontal = 6.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,

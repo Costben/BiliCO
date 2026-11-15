@@ -19,8 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -45,12 +45,12 @@ import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import erl.bilico.R
+import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.QualityOption
 import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
-import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiStagePopupMenu
 import erl.bilico.ui.components.FullscreenExitIcon
 import erl.bilico.ui.components.FullscreenIcon
@@ -112,8 +112,8 @@ internal fun VideoPlayer(
     onHome: (() -> Unit)? = null,
     onWatchLater: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
-    autoPlayNext: Boolean = true,
-    onToggleAutoPlayNext: (() -> Unit)? = null,
+    playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
+    onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
     longPressSpeedActive: Boolean = false,
     longPressSpeedValue: Float = 2f,
     onLongPressSpeedChange: (Boolean) -> Unit = {},
@@ -267,7 +267,7 @@ internal fun VideoPlayer(
                 if (fullscreen && onHome != null) {
                     PlayerIconButton(COUIIcons.Home, "首页", onHome)
                 }
-                if (onWatchLater != null || onShare != null || onDanmakuSettingsClick != null) {
+                if (onWatchLater != null || onShare != null || onDanmakuSettingsClick != null || onSelectPlaybackEndMode != null) {
                     if (fullscreen) {
                         PlayerIconButton(COUIIcons.More, "更多", onClick = { fullscreenMoreOpen = !fullscreenMoreOpen })
                     } else {
@@ -275,8 +275,8 @@ internal fun VideoPlayer(
                             onDanmakuSettings = onDanmakuSettingsClick,
                             onWatchLater = onWatchLater,
                             onShare = onShare,
-                            autoPlayNext = autoPlayNext,
-                            onToggleAutoPlayNext = onToggleAutoPlayNext,
+                            playbackEndMode = playbackEndMode,
+                            onSelectPlaybackEndMode = onSelectPlaybackEndMode,
                         )
                     }
                 }
@@ -347,7 +347,7 @@ internal fun VideoPlayer(
                 Text(
                     text = "重试",
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(SquircleShape(6.dp))
                         .background(PlayerScrim)
                         .clickable(onClick = onRetry)
                         .padding(horizontal = 14.dp, vertical = 6.dp),
@@ -468,27 +468,24 @@ internal fun VideoPlayer(
             CompositionLocalProvider(
                 LocalBackdrop provides if (BlurEffectsEnabled) menuBackdrop else null,
             ) {
+                val stageMoreItems = rememberPlayerMoreMenuItems(
+                    onDanmakuSettings = onDanmakuSettingsClick?.let { openDm ->
+                        {
+                            controlsVisible = false
+                            openDm()
+                        }
+                    },
+                    playbackEndMode = playbackEndMode,
+                    onSelectPlaybackEndMode = onSelectPlaybackEndMode,
+                    onWatchLater = onWatchLater,
+                    onShare = onShare,
+                )
                 CouiStagePopupMenu(
                     show = fullscreenMoreOpen,
                     onDismiss = { fullscreenMoreOpen = false },
                     topMargin = 54.dp,
                     endMargin = horizontalBarPad,
-                    items = buildList {
-                        onDanmakuSettingsClick?.let { openDm ->
-                            add(
-                                CouiMenuItem(
-                                    label = "弹幕设置",
-                                    onClick = {
-                                        controlsVisible = false
-                                        openDm()
-                                    },
-                                ),
-                            )
-                        }
-                        onToggleAutoPlayNext?.let { add(autoPlayNextMenuItem(autoPlayNext, it)) }
-                        onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
-                        onShare?.let { add(CouiMenuItem("分享", it)) }
-                    },
+                    items = stageMoreItems,
                 )
             }
         }
@@ -504,7 +501,7 @@ private fun ControlLabel(
     Text(
         text = text,
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(SquircleShape(6.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 6.dp),
         style = COUITheme.textStyles.footnote1,

@@ -133,6 +133,8 @@ data class ReplyContent(
     @Serializable(with = UnescapedStringSerializer::class) val message: String = "",
     val emote: Map<String, ReplyEmote>? = null,
     val pictures: List<ReplyPicture>? = null,
+    val members: List<ReplyMember>? = null,
+    @SerialName("at_name_to_mid") val atNameToMid: Map<String, Long>? = null,
 )
 
 @Serializable

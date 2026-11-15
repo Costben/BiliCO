@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -150,6 +150,7 @@ internal fun BiliCommentItem(
                 RichCommentText(
                     content = comment.content,
                     emotes = comment.emotes,
+                    mentions = comment.mentions,
                     badgeLabel = if (!isSubReply && comment.isTop) "TOP" else null,
                     selectable = true,
                     modifier = Modifier.then(if (expandable && folded && !expanded) Modifier.clickable { expanded = !expanded } else Modifier),
@@ -161,6 +162,7 @@ internal fun BiliCommentItem(
                     color = COUITheme.colorScheme.onSurface,
                     prefixColor = linkBlue,
                     maxLines = if (unfolded) Int.MAX_VALUE else FOLDED_COMMENT_LINES,
+                    onOpenUser = onOpenUser,
                     onTextLayout = { result ->
                         // 展开态下 maxLines 不再截断，别把标记清掉，否则「收起」会跟着消失。
                         if (expandable && !expanded && result.hasVisualOverflow != folded) {
@@ -172,7 +174,7 @@ internal fun BiliCommentItem(
                     Text(
                         text = if (expanded) "收起" else "展开",
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(SquircleShape(4.dp))
                             .clickable { expanded = !expanded }
                             .padding(horizontal = 2.dp, vertical = 2.dp),
                         fontSize = 13.sp,
@@ -214,9 +216,9 @@ internal fun BiliCommentItem(
                     modifier = Modifier
                         .padding(top = 10.dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(SquircleShape(8.dp))
                         .background(subBoxBg)
-                        .border(0.5.dp, subBoxOutline, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, subBoxOutline, SquircleShape(8.dp))
                         .clickable { onOpenReplies(comment) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -225,6 +227,7 @@ internal fun BiliCommentItem(
                         RichCommentText(
                             content = reply.content,
                             emotes = reply.emotes,
+                            mentions = reply.mentions,
                             prefixUserName = reply.userName,
                             compactEmotes = true,
                             style = COUITheme.textStyles.body2.copy(
@@ -234,6 +237,7 @@ internal fun BiliCommentItem(
                             color = COUITheme.colorScheme.onSurface,
                             prefixColor = linkBlue,
                             maxLines = 2,
+                            onOpenUser = onOpenUser,
                         )
                         if (reply.pictures.isNotEmpty()) {
                             CommentPicturesGrid(
@@ -286,7 +290,7 @@ private fun CommentPicturesGrid(
                 .width(thumbW)
                 .aspectRatio(ratio)
                 .imageOrigin(url = keyUrl, cornerRadius = 8.dp, aspect = trueAspect, model = url)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(SquircleShape(8.dp))
                 .clickable { onOpenImage(pictures, 0) },
         ) {
             LoadingImage(
@@ -323,7 +327,7 @@ private fun CommentPicturesGrid(
                         modifier = Modifier
                             .size(cellDp)
                             .imageOrigin(url = keyUrl, cornerRadius = 6.dp, aspect = trueAspect, model = url)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(SquircleShape(6.dp))
                             .clickable { onOpenImage(pictures, index) },
                     ) {
                         LoadingImage(
@@ -413,7 +417,7 @@ private fun CommentActionBar(
     ) {
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
+                .clip(SquircleShape(6.dp))
                 .clickable(onClick = onReply)
                 .padding(vertical = 2.dp, horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -439,7 +443,7 @@ private fun CommentActionBar(
 
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
+                .clip(SquircleShape(6.dp))
                 .clickable(onClick = onDislike)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
             contentAlignment = Alignment.Center,
@@ -456,7 +460,7 @@ private fun CommentActionBar(
 
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
+                .clip(SquircleShape(6.dp))
                 .clickable(onClick = onLike)
                 .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,

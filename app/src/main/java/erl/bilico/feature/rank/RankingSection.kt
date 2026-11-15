@@ -15,8 +15,8 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import erl.bilico.ui.components.COUISmoothCapsuleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -200,7 +200,7 @@ private fun RankingTabs(
             Text(
                 text = section.label,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(50))
+                    .clip(COUISmoothCapsuleShape)
                     .background(
                         if (active) {
                             COUITheme.colorScheme.primary.copy(alpha = 0.14f)

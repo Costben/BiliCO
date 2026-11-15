@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -164,7 +164,7 @@ internal fun SubtitleOverlay(
         Text(
             text = text,
             modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
+                .clip(SquircleShape(6.dp))
                 .background(Color(0xBF000000))
                 .padding(horizontal = 10.dp, vertical = 4.dp),
             fontSize = fontSize,

@@ -1,12 +1,9 @@
 package erl.bilico.feature.message
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,8 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,28 +27,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import erl.bilico.data.model.ImSessionUi
-import erl.bilico.data.model.MessageEntry
+import kotlinx.coroutines.delay
 import erl.bilico.data.model.MessageKind
-import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.Route
-import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.AtSignIcon
 import erl.bilico.ui.components.BellOutlineIcon
@@ -64,7 +54,6 @@ import erl.bilico.ui.components.MailOutlineIcon
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
-import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.ChipTabData
 import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
 import io.github.suqi8.coui.kmp.basic.ChipTabGroup
@@ -84,8 +73,8 @@ import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.GridView
 import io.github.suqi8.coui.kmp.icon.extended.Reply
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import kotlinx.coroutines.flow.distinctUntilChanged
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @Composable
@@ -104,6 +93,14 @@ fun MessageScreen(
     val layerBackdrop = rememberLayerBackdrop()
 
     var menuExpanded by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(notice) {
+        if (notice != null) {
+            delay(2200L)
+            notice = null
+        }
+    }
 
     val chipTabItems = remember(MESSAGE_TABS) {
         MESSAGE_TABS.map { tab -> ChipTabData(label = tab.label, icon = tab.iconVector) }
@@ -153,8 +150,23 @@ fun MessageScreen(
                     contentTop = headerHeight + 8.dp,
                     viewModel = viewModel,
                     nav = nav,
+                    onNotice = { notice = it },
                 )
             }
+        }
+
+        if (notice != null) {
+            Text(
+                text = notice.orEmpty(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp + navBottomPadding())
+                    .clip(SquircleShape(8.dp))
+                    .background(Color(0xCC000000))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                style = COUITheme.textStyles.footnote1,
+                color = Color.White,
+            )
         }
 
         // 顶栏通过 bottomContent 承载分类页签栏，整块区域在同一个渐变毛玻璃材质下，
@@ -250,6 +262,7 @@ private fun MessageList(
     contentTop: Dp,
     viewModel: MessageViewModel,
     nav: NavState,
+    onNotice: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val itemCount by rememberUpdatedState(state.items.size)
@@ -316,244 +329,29 @@ private fun MessageList(
                 key = { state.items[it].key },
                 contentType = { "message" },
             ) { index ->
-                MessageRow(entry = state.items[index])
-            }
-
-            if (state.isLoadingMore) {
-                item(key = "loading-more") { LoadingState() }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MessageRow(entry: MessageEntry) {
-    val avatarUrl = remember(entry.avatar) { Formatters.sizedImageUrl(entry.avatar, 132, 132) }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(12.dp),
-    ) {
-        Row {
-            if (avatarUrl.isNullOrBlank()) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(COUITheme.colorScheme.surfaceContainerHigh),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = BellOutlineIcon,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = COUITheme.colorScheme.onSurfaceSecondary,
-                    )
-                }
-            } else {
-                Avatar(url = avatarUrl, size = 40.dp)
-            }
-            Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = entry.name.ifBlank { "未知用户" },
-                        modifier = Modifier.weight(1f),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = COUITheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = entry.timeText,
-                        fontSize = 11.sp,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                    )
-                }
-                if (entry.title.isNotBlank()) {
-                    Text(
-                        text = entry.title,
-                        modifier = Modifier.padding(top = 4.dp),
-                        fontSize = 12.sp,
-                        color = COUITheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (entry.content.isNotBlank()) {
-                    Text(
-                        text = entry.content,
-                        modifier = Modifier.padding(top = 4.dp),
-                        fontSize = 13.sp,
-                        color = COUITheme.colorScheme.onSurface,
-                        maxLines = 5,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (entry.extra.isNotBlank()) {
-                    Text(
-                        text = entry.extra,
-                        modifier = Modifier.padding(top = 4.dp),
-                        fontSize = 11.sp,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SessionList(
-    state: MessageUiState,
-    loggedIn: Boolean,
-    contentTop: Dp,
-    viewModel: MessageViewModel,
-    nav: NavState,
-) {
-    val listState = rememberLazyListState()
-    val itemCount by rememberUpdatedState(state.sessions.size)
-    val transitionSpec = SearchResultContainerDefaults.transitionSpec(
-        riseTrigger = SearchResultsRiseTrigger.OnlyAfterLoading,
-    )
-    val transitionState = rememberSearchResultsTransitionState(
-        showingResults = true,
-        loading = loggedIn && state.isSessionsLoading,
-        queryKey = state.sessionsLoaded,
-        spec = transitionSpec,
-    )
-
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-            .distinctUntilChanged()
-            .collect { lastVisible ->
-                if (lastVisible >= 0 && itemCount > 0 && lastVisible >= itemCount - 3) {
-                    viewModel.loadMore(MessageKind.SESSION)
-                }
-            }
-    }
-
-    SearchResultContainer(
-        state = transitionState,
-        modifier = Modifier.fillMaxSize(),
-        loadingTopPadding = contentTop,
-        loadingContent = { LoadingState() },
-    ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().scrollEndHaptic(),
-            contentPadding = PaddingValues(
-                start = 12.dp,
-                top = contentTop,
-                end = 12.dp,
-                bottom = 24.dp + navBottomPadding(),
-            ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (!loggedIn) {
-                item(key = "login") {
-                    EmptyState(
-                        text = "登录后查看",
-                        action = { TextButton(text = "去登录", onClick = nav::popToMe) },
-                    )
-                }
-                return@LazyColumn
-            }
-
-            if (!resultsVisible) return@LazyColumn
-
-            when {
-                state.sessionsError != null -> item(key = "state") {
-                    ErrorState(state.sessionsError.orEmpty(), onRetry = { viewModel.reload(MessageKind.SESSION) })
-                }
-                state.sessionsLoaded && state.sessions.isEmpty() -> item(key = "state") {
-                    EmptyState("暂无私信消息")
-                }
-            }
-
-            items(
-                count = state.sessions.size,
-                key = { state.sessions[it].talkerId },
-                contentType = { "session" },
-            ) { index ->
-                val session = state.sessions[index]
-                SessionRow(
-                    session = session,
-                    onClick = {
-                        nav.push(Route.Chat(session.talkerId, session.name, session.face))
+                val entry = state.items[index]
+                val canOpen = entry.target != null || entry.senderMid > 0L
+                MessageRow(
+                    entry = entry,
+                    onClick = if (canOpen) {
+                        {
+                            viewModel.openEntry(
+                                entry = entry,
+                                onNavigate = { nav.push(it) },
+                                onError = onNotice,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    onOpenUser = entry.senderMid.takeIf { it > 0L }?.let { mid ->
+                        { nav.push(Route.Space(mid)) }
                     },
                 )
             }
 
-            if (state.isSessionsLoadingMore) {
+            if (state.isLoadingMore) {
                 item(key = "loading-more") { LoadingState() }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SessionRow(
-    session: ImSessionUi,
-    onClick: () -> Unit,
-) {
-    val avatarUrl = remember(session.face) { Formatters.sizedImageUrl(session.face, 132, 132) }
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        insideMargin = PaddingValues(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box {
-                Avatar(url = avatarUrl, size = 44.dp)
-                if (session.unreadCount > 0) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFFA3E3E)),
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 12.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = session.name.ifBlank { "用户 ${session.talkerId}" },
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = COUITheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (session.timeText.isNotBlank()) {
-                        Text(
-                            text = session.timeText,
-                            fontSize = 11.sp,
-                            color = COUITheme.colorScheme.onSurfaceSecondary,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    }
-                }
-                if (session.lastMessage.isNotBlank()) {
-                    Text(
-                        text = session.lastMessage,
-                        modifier = Modifier.padding(top = 4.dp),
-                        fontSize = 13.sp,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
         }
     }

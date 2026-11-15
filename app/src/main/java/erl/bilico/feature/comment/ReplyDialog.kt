@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -38,11 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -58,6 +53,7 @@ import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.components.LocalOpenBvid
+import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -70,41 +66,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
-
-private val SortTimeIcon: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "SortTime",
-        defaultWidth = 14.dp,
-        defaultHeight = 14.dp,
-        viewportWidth = 14f,
-        viewportHeight = 14f,
-    ).apply {
-        path(
-            stroke = SolidColor(Color(0xFF9499A0)),
-            strokeLineWidth = 1.6f,
-            strokeLineCap = StrokeCap.Round,
-        ) {
-            moveTo(2f, 3.5f)
-            lineTo(12f, 3.5f)
-        }
-        path(
-            stroke = SolidColor(Color(0xFF9499A0)),
-            strokeLineWidth = 1.6f,
-            strokeLineCap = StrokeCap.Round,
-        ) {
-            moveTo(2f, 7f)
-            lineTo(9.5f, 7f)
-        }
-        path(
-            stroke = SolidColor(Color(0xFF9499A0)),
-            strokeLineWidth = 1.6f,
-            strokeLineCap = StrokeCap.Round,
-        ) {
-            moveTo(2f, 10.5f)
-            lineTo(6.5f, 10.5f)
-        }
-    }.build()
-}
 
 /** 楼中楼从底部弹出：支持分页查看、点赞子评论与直接回复。 */
 @Composable
@@ -343,6 +304,24 @@ internal fun ReplyDialog(
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val parentOpenBvid = LocalOpenBvid.current
     val parentSeek = LocalCommentSeek.current
+    val openUserAndClose: (Long) -> Unit = remember(onOpenUser) {
+        { mid ->
+            if (mid > 0L) {
+                show = false
+                onOpenUser(mid)
+            }
+        }
+    }
+    val threadUserMids = remember(rootComment, items) {
+        buildMap {
+            if (rootComment.mid > 0L && rootComment.userName.isNotBlank()) {
+                put(rootComment.userName, rootComment.mid)
+            }
+            items.forEach { reply ->
+                if (reply.mid > 0L && reply.userName.isNotBlank()) put(reply.userName, reply.mid)
+            }
+        }
+    }
 
     OverlayBottomSheet(
         show = show,
@@ -398,45 +377,38 @@ internal fun ReplyDialog(
                     modifier = Modifier.fillMaxWidth().scrollEndHaptic(),
                     contentPadding = PaddingValues(top = 4.dp, bottom = 12.dp),
                 ) {
-                    // 1. 根评论卡片（补全主评论）
+                    // 1. 根评论卡片（与主评论区一致的卡片组件）
                     item(key = "root_comment") {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 2.dp)
-                                .tapToReply { startReply(rootComment, 0) },
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                         ) {
-                            BiliCommentItem(
-                                comment = rootComment,
-                                onLike = { toggleRootLike() },
-                                onDislike = { toggleRootDislike() },
-                                onReply = { startReply(rootComment, 0) },
-                                onOpenReplies = null,
-                                onOpenUser = onOpenUser,
-                                onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
-                                isSubReply = false,
-                                expandable = false,
-                            )
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .tapToReply { startReply(rootComment, 0) },
+                            ) {
+                                BiliCommentItem(
+                                    comment = rootComment,
+                                    onLike = { toggleRootLike() },
+                                    onDislike = { toggleRootDislike() },
+                                    onReply = { startReply(rootComment, 0) },
+                                    onOpenReplies = null,
+                                    onOpenUser = openUserAndClose,
+                                    onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
+                                    isSubReply = false,
+                                    expandable = false,
+                                )
+                            }
                         }
                     }
 
-                    // 2. 主评论与相关回复之间的深色分割槽
-                    item(key = "divider_gap") {
-                        Spacer(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp)
-                                .height(8.dp)
-                                .background(if (isDark) Color(0xFF141517) else Color(0xFFF2F3F5)),
-                        )
-                    }
-
-                    // 3. 小节标题栏：相关回复共N条 + 按时间
+                    // 2. 小节标题栏：相关回复共N条 + 按时间
                     item(key = "sub_header") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 2.dp, vertical = 4.dp),
+                                .padding(top = 14.dp, bottom = 2.dp, start = 2.dp, end = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
@@ -507,22 +479,32 @@ internal fun ReplyDialog(
                         else -> {
                             itemsIndexed(items, key = { _, reply -> reply.id }) { index, reply ->
                                 val itemIndex = SUB_REPLY_ITEM_OFFSET + index
-                                Column(
+                                val displayReply = remember(reply, threadUserMids) {
+                                    if (threadUserMids.isEmpty()) reply
+                                    else reply.copy(mentions = threadUserMids + reply.mentions)
+                                }
+                                Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 2.dp, vertical = 6.dp)
-                                        .tapToReply { startReply(reply, itemIndex) },
+                                        .padding(top = 10.dp),
+                                    insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                                 ) {
-                                    BiliCommentItem(
-                                        comment = reply,
-                                        onLike = { toggleLike(reply) },
-                                        onDislike = { toggleDislike(reply) },
-                                        onReply = { startReply(reply, itemIndex) },
-                                        onOpenUser = onOpenUser,
-                                        onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
-                                        isSubReply = true,
-                                        expandable = false,
-                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .tapToReply { startReply(reply, itemIndex) },
+                                    ) {
+                                        BiliCommentItem(
+                                            comment = displayReply,
+                                            onLike = { toggleLike(reply) },
+                                            onDislike = { toggleDislike(reply) },
+                                            onReply = { startReply(reply, itemIndex) },
+                                            onOpenUser = openUserAndClose,
+                                            onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
+                                            isSubReply = true,
+                                            expandable = false,
+                                        )
+                                    }
                                 }
                             }
                             if (isLoading) {
@@ -579,8 +561,8 @@ internal fun ReplyDialog(
     }
 }
 
-/** 列表最前面固定三项：根评论、分割槽、相关回复标题，子回复从下标 3 开始。 */
-private const val SUB_REPLY_ITEM_OFFSET = 3
+/** 列表最前面固定两项：根评论卡片、相关回复标题，子回复从下标 2 开始。 */
+private const val SUB_REPLY_ITEM_OFFSET = 2
 
 /**
  * 点评论空白处即进入回复。评论里自己的头像、用户名、图片、回复按钮都带各自的点击，

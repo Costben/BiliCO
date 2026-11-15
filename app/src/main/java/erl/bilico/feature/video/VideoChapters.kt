@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -38,6 +37,7 @@ import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.CoverImage
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlin.math.roundToInt
@@ -74,7 +74,7 @@ internal fun PlayerChapterStrip(
     Layout(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp)),
+            .clip(SquircleShape(4.dp)),
         content = {
             chapters.forEachIndexed { index, chapter ->
                 val active = index == activeIndex
@@ -191,7 +191,7 @@ internal fun VideoChaptersSection(
                 lineHeight = 16.sp,
                 color = COUITheme.colorScheme.onSurfaceSecondary,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(SquircleShape(6.dp))
                     .clickable(onClick = onOpenAll)
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             )
@@ -206,7 +206,7 @@ internal fun VideoChaptersSection(
                 key = { _, item -> "info-${item.fromMs}-${item.title}" },
             ) { index, chapter ->
                 val active = index == activeIndex
-                val cardShape = RoundedCornerShape(10.dp)
+                val cardShape = SquircleShape(10.dp)
                 val border = if (active) {
                     BorderStroke(1.dp, COUITheme.colorScheme.primary)
                 } else {
@@ -348,7 +348,7 @@ internal fun ChapterDialog(
                                 modifier = Modifier
                                     .width(72.dp)
                                     .height(40.dp)
-                                    .clip(RoundedCornerShape(6.dp)),
+                                    .clip(SquircleShape(6.dp)),
                             )
                         }
                         Column(

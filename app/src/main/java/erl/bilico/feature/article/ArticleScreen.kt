@@ -17,8 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -214,7 +214,7 @@ private fun BannerImage(
         modifier = Modifier
             .fillMaxWidth()
             .imageOrigin(url = keyUrl, cornerRadius = 12.dp, model = model)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(SquircleShape(12.dp))
             .clickable(onClick = onClick),
         contentScale = ContentScale.FillWidth,
     )
@@ -333,7 +333,7 @@ private fun ArticleBlockView(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(SquircleShape(8.dp))
                     .background(COUITheme.colorScheme.surfaceContainerHigh)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
@@ -379,7 +379,7 @@ private fun ArticleBlockView(
         is ArticleBlock.Code -> Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
+                .clip(SquircleShape(10.dp))
                 .background(COUITheme.colorScheme.surfaceContainerHigh)
                 .padding(12.dp),
         ) {
@@ -429,7 +429,7 @@ private fun ArticleImageBlock(
         modifier = Modifier
             .fillMaxWidth()
             .imageOrigin(url = keyUrl, cornerRadius = 10.dp, aspect = trueAspect, model = url)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(SquircleShape(10.dp))
             .clickable { onOpenImage(group, index.coerceAtLeast(0)) },
     ) {
         AsyncImage(
@@ -438,7 +438,7 @@ private fun ArticleImageBlock(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (ratio != null) Modifier.aspectRatio(ratio, matchHeightConstraintsFirst = false) else Modifier)
-                .clip(RoundedCornerShape(10.dp)),
+                .clip(SquircleShape(10.dp)),
             contentScale = ContentScale.FillWidth,
         )
     }
@@ -450,7 +450,7 @@ private fun LinkCardView(block: ArticleBlock.LinkCard) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(SquircleShape(10.dp))
             .background(COUITheme.colorScheme.surfaceContainerHigh)
             .clickable {
                 if (block.card.url.isNotBlank()) runCatching { uriHandler.openUri(block.card.url) }
@@ -465,7 +465,7 @@ private fun LinkCardView(block: ArticleBlock.LinkCard) {
                 modifier = Modifier
                     .width(80.dp)
                     .height(56.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(SquircleShape(8.dp)),
                 contentScale = ContentScale.Crop,
             )
             Spacer(Modifier.width(10.dp))
@@ -524,7 +524,7 @@ private fun ArticleFooter(article: ArticleDetail, onOpenComments: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(SquircleShape(10.dp))
                     .clickable(onClick = onOpenComments)
                     .padding(vertical = 10.dp),
                 fontSize = 14.sp,

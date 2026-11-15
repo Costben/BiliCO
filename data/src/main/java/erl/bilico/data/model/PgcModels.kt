@@ -246,17 +246,20 @@ data class MessageReplyItem(
 
 @Serializable
 data class MessageContent(
+    val type: String = "",
     val business: String = "",
     val title: String = "",
     @SerialName("source_content") val sourceContent: String = "",
     @SerialName("target_reply_content") val targetReplyContent: String = "",
     @SerialName("root_reply_content") val rootReplyContent: String = "",
     @SerialName("business_id") val businessId: Long = 0,
+    @SerialName("subject_id") @Serializable(with = FlexibleLongSerializer::class) val subjectId: Long = 0,
     @SerialName("detail_title") val detailTitle: String = "",
     @SerialName("detail_name") val detailName: String = "",
     val desc: String = "",
     val image: String = "",
     val uri: String = "",
+    @SerialName("native_uri") val nativeUri: String = "",
 )
 
 @Serializable
@@ -282,9 +285,15 @@ data class MessageAtItem(
 
 @Serializable
 data class MessageAtContent(
+    val type: String = "",
+    val business: String = "",
+    @SerialName("business_id") val businessId: Long = 0,
+    @SerialName("subject_id") @Serializable(with = FlexibleLongSerializer::class) val subjectId: Long = 0,
     val title: String = "",
     @SerialName("source_content") val sourceContent: String = "",
     @SerialName("image") val image: String = "",
+    val uri: String = "",
+    @SerialName("native_uri") val nativeUri: String = "",
 )
 
 @Serializable
@@ -367,6 +376,17 @@ enum class MessageKind {
     SESSION,
 }
 
+/** 消息通知点击后要跳转的目标内容。 */
+sealed interface MessageJumpTarget {
+    data class VideoBvid(val bvid: String) : MessageJumpTarget
+    data class VideoAid(val aid: Long) : MessageJumpTarget
+    data class Opus(val dynamicId: String, val title: String = "") : MessageJumpTarget
+    data class Article(val cvId: Long, val title: String = "") : MessageJumpTarget
+    data class PgcSeason(val seasonId: Long) : MessageJumpTarget
+    data class PgcEpisode(val epId: Long) : MessageJumpTarget
+    data class LiveRoom(val roomId: Long) : MessageJumpTarget
+}
+
 data class MessageEntry(
     val key: String,
     val avatar: String,
@@ -375,6 +395,8 @@ data class MessageEntry(
     val content: String,
     val extra: String,
     val timeText: String,
+    val senderMid: Long = 0L,
+    val target: MessageJumpTarget? = null,
 )
 
 data class MessagePage(

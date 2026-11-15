@@ -30,8 +30,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import erl.bilico.ui.components.COUISmoothCapsuleShape
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -301,7 +301,7 @@ internal fun ImageViewerOverlay(
                 Box(
                     modifier = Modifier
                         .height(32.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(COUISmoothCapsuleShape)
                         .background(
                             if (isOriginal) COUITheme.colorScheme.primary else Color(0x33FFFFFF),
                         )
@@ -344,7 +344,7 @@ internal fun ImageViewerOverlay(
                     .graphicsLayer { alpha = chromeFade() }
                     .navigationBarsPadding()
                     .padding(bottom = 28.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(COUISmoothCapsuleShape)
                     .background(Color(0x66000000))
                     .padding(horizontal = 12.dp, vertical = 5.dp),
                 style = COUITheme.textStyles.footnote1,

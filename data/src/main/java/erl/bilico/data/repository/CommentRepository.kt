@@ -205,6 +205,9 @@ class CommentRepository(
                     liked = false,
                     replyCount = 0,
                     mid = account?.mid ?: session.mid(),
+                    mentions = atMids
+                        .mapKeys { (name, _) -> name.trim().removePrefix("@") }
+                        .filter { (name, targetMid) -> name.isNotBlank() && targetMid > 0L },
                 )
             }
         }
@@ -417,6 +420,18 @@ class CommentRepository(
                 )
             }
 
+        val commentMentions = buildMap {
+            content.members.orEmpty().forEach { mentioned ->
+                val name = mentioned.uname.trim().removePrefix("@")
+                val targetMid = mentioned.mid.toLongOrNull() ?: 0L
+                if (name.isNotBlank() && targetMid > 0L) put(name, targetMid)
+            }
+            content.atNameToMid.orEmpty().forEach { (rawName, targetMid) ->
+                val name = rawName.trim().removePrefix("@")
+                if (name.isNotBlank() && targetMid > 0L) put(name, targetMid)
+            }
+        }
+
         return Comment(
             id = rpid,
             rootId = if (root > 0) root else rpid,
@@ -445,6 +460,7 @@ class CommentRepository(
                     )
                 }
                 .filterValues { it.url.isNotBlank() },
+            mentions = commentMentions,
             pictures = commentPictures,
             replies = replies.orEmpty().map { it.toComment(upMid = upMid) },
         )

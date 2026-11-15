@@ -18,8 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -331,7 +331,7 @@ fun DynamicDetailScreen(
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
                         .padding(bottom = 20.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(SquircleShape(8.dp))
                         .background(Color(0xCC000000))
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     style = COUITheme.textStyles.footnote1,

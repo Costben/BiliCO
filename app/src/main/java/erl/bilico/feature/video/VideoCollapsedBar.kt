@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,7 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import erl.bilico.ui.components.CouiMenuItem
+import erl.bilico.data.model.PlaybackEndMode
+import erl.bilico.ui.components.COUISmoothCapsuleShape
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
@@ -49,8 +49,8 @@ internal fun CollapsedVideoBar(
     onDanmakuSettings: (() -> Unit)? = null,
     onWatchLater: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
-    autoPlayNext: Boolean = true,
-    onToggleAutoPlayNext: (() -> Unit)? = null,
+    playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
+    onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
 ) {
     val statusBar = with(LocalDensity.current) {
         rememberStableStatusBarHeightPx().toDp()
@@ -82,7 +82,7 @@ internal fun CollapsedVideoBar(
         ) {
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(50))
+                    .clip(COUISmoothCapsuleShape)
                     .clickable {
                         onExpand()
                         onPlayPause()
@@ -116,15 +116,17 @@ internal fun CollapsedVideoBar(
                 HighlightedIconButton(onClick = { moreOpen = true }) {
                     Icon(COUIIcons.More, "更多", Modifier.size(IconSize))
                 }
+                val moreItems = rememberPlayerMoreMenuItems(
+                    onDanmakuSettings = onDanmakuSettings,
+                    playbackEndMode = playbackEndMode,
+                    onSelectPlaybackEndMode = onSelectPlaybackEndMode,
+                    onWatchLater = onWatchLater,
+                    onShare = onShare,
+                )
                 CouiPopupMenu(
                     show = moreOpen,
                     onDismiss = { moreOpen = false },
-                    items = buildList {
-                        onDanmakuSettings?.let { add(CouiMenuItem("弹幕设置", it)) }
-                        onToggleAutoPlayNext?.let { add(autoPlayNextMenuItem(autoPlayNext, it)) }
-                        onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
-                        onShare?.let { add(CouiMenuItem("分享", it)) }
-                    },
+                    items = moreItems,
                 )
             }
         }

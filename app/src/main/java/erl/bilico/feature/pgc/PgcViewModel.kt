@@ -122,9 +122,10 @@ class PgcViewModel(
         loadPlayback(episode, _state.value.requestedQuality, notifyDowngrade = false, positionMs = 0L)
     }
 
-    fun playNextEpisode(): Boolean {
+    fun playNextEpisode(loop: Boolean = false): Boolean {
         val detail = _state.value.detail ?: return false
-        val nextIndex = _state.value.selectedEpIndex + 1
+        val rawNext = _state.value.selectedEpIndex + 1
+        val nextIndex = if (loop && detail.episodes.size > 1) rawNext % detail.episodes.size else rawNext
         val nextEp = detail.episodes.getOrNull(nextIndex) ?: return false
         _state.update {
             it.copy(

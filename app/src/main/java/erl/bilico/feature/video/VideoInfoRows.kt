@@ -16,8 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import erl.bilico.ui.components.COUISmoothCapsuleShape
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -115,7 +116,7 @@ private fun FollowButton(following: Boolean, onClick: () -> Unit) {
     Text(
         text = if (following) "已关注" else "关注",
         modifier = Modifier
-            .clip(RoundedCornerShape(100.dp))
+            .clip(COUISmoothCapsuleShape)
             .background(if (following) scheme.surfaceContainer else scheme.primary)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 7.dp),
@@ -180,7 +181,7 @@ internal fun RelatedVideoRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(SquircleShape(10.dp))
             .clickable(onClick = onOpen)
             .padding(vertical = 4.dp),
     ) {
@@ -188,7 +189,7 @@ internal fun RelatedVideoRow(
             Modifier
                 .width(coverWidth)
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(8.dp)),
+                .clip(SquircleShape(8.dp)),
         ) {
             LoadingImage(
                 url = Formatters.sizedImageUrl(video.cover, coverWidthPx, coverHeightPx),
@@ -200,7 +201,7 @@ internal fun RelatedVideoRow(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(5.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(SquircleShape(4.dp))
                         .background(Color(0xB3000000))
                         .padding(horizontal = 4.dp, vertical = 1.dp),
                     fontSize = 10.sp,
@@ -267,7 +268,7 @@ internal fun VideoAction(
     }
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(SquircleShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -288,7 +289,7 @@ internal fun CollectionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(SquircleShape(8.dp))
             .background(
                 if (selected) COUITheme.colorScheme.pressBackground else COUITheme.colorScheme.surface,
             )
@@ -330,7 +331,7 @@ internal fun PartRow(part: VideoPart, selected: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(SquircleShape(8.dp))
             .background(
                 if (selected) COUITheme.colorScheme.pressBackground else COUITheme.colorScheme.surface,
             )

@@ -13,7 +13,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -47,11 +46,14 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import erl.bilico.data.model.FavoriteFolder
+import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.di.AppContainer
+import erl.bilico.ui.NavState
+import erl.bilico.ui.Route
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import java.net.ConnectException
@@ -534,11 +536,51 @@ internal fun BoxScope.VideoMessageToast(
                 .align(Alignment.BottomCenter)
                 .then(if (inFullscreen) Modifier else Modifier.navigationBarsPadding())
                 .padding(bottom = if (inFullscreen) 64.dp else 96.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(io.github.suqi8.coui.kmp.squircle.SquircleShape(8.dp))
                 .background(Color(0xCC000000))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             style = COUITheme.textStyles.footnote1,
             color = Color.White,
         )
+    }
+}
+
+/** 根据自动联播模式处理视频播放结束后的动作：停在末尾、单曲循环、列表循环或自动连播下一条。 */
+internal fun handleVideoPlaybackEnded(
+    mode: PlaybackEndMode,
+    player: ExoPlayer,
+    viewModel: VideoViewModel,
+    nav: NavState,
+    state: VideoUiState,
+) {
+    when (mode) {
+        PlaybackEndMode.OFF -> Unit
+        PlaybackEndMode.SINGLE_LOOP -> {
+            player.seekTo(0L)
+            player.play()
+        }
+        PlaybackEndMode.LIST_LOOP -> {
+            if (!viewModel.playNextPart(loop = true)) {
+                val queued = nav.playQueue.next(loop = true)
+                if (queued != null) {
+                    nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
+                } else {
+                    player.seekTo(0L)
+                    player.play()
+                }
+            }
+        }
+        PlaybackEndMode.AUTO_NEXT -> {
+            if (!viewModel.playNextPart()) {
+                val queued = nav.playQueue.next()
+                if (queued != null) {
+                    nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
+                } else {
+                    state.related.firstOrNull()?.let { next ->
+                        nav.replaceTop(Route.Video(next.bvid, 0L))
+                    }
+                }
+            }
+        }
     }
 }

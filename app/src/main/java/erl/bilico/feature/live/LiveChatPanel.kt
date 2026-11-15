@@ -12,8 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,7 +111,7 @@ private fun DanmakuRow(message: LiveDanmakuMessage) {
                 Text(
                     text = "${message.medalName} ${message.medalLevel}",
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(SquircleShape(4.dp))
                         .background(COUITheme.colorScheme.surfaceContainerHigh)
                         .padding(horizontal = 4.dp, vertical = 1.dp),
                     fontSize = 10.sp,

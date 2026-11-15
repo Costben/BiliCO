@@ -5,22 +5,26 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
@@ -33,9 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -50,20 +55,23 @@ import erl.bilico.di.AppContainer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.Avatar
+import erl.bilico.ui.components.COUISmoothCapsuleShape
+import erl.bilico.ui.components.CompactSendButton
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.SecondaryPage
+import erl.bilico.ui.components.capsuleMaterial
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import erl.bilico.ui.pageContainerColor
-import io.github.suqi8.coui.kmp.basic.Button
-import io.github.suqi8.coui.kmp.basic.ButtonSize
-import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.IconButton
-import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.TextField
+import io.github.suqi8.coui.kmp.basic.TextFieldMode
+import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Community
+import io.github.suqi8.coui.kmp.icon.extended.Contacts
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -189,17 +197,21 @@ fun ChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(pageColor)
-            .imePadding(),
+            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))),
     ) {
         SecondaryPage(
             title = talkerName.ifBlank { "UID: $talkerId" },
             onBack = nav::pop,
             listState = listState,
             actions = {
-                IconButton(onClick = { nav.push(Route.Space(talkerId)) }) {
+                HighlightedIconButton(
+                    onClick = { nav.push(Route.Space(talkerId)) },
+                    modifier = Modifier.couiTopAppBarActionItem(),
+                ) {
                     Icon(
-                        imageVector = COUIIcons.Community,
+                        imageVector = COUIIcons.Contacts,
                         contentDescription = "个人空间",
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             },
@@ -226,6 +238,7 @@ fun ChatScreen(
                     ChatBubbleRow(
                         message = msg,
                         talkerFace = talkerFace,
+                        onAvatarClick = { nav.push(Route.Space(talkerId)) },
                     )
                 }
             }
@@ -236,6 +249,7 @@ fun ChatScreen(
             text = inputText,
             onTextChange = { inputText = it },
             onSend = {
+                keyboard?.hide()
                 viewModel.send(inputText) {
                     inputText = ""
                 }
@@ -249,9 +263,11 @@ fun ChatScreen(
 private fun ChatBubbleRow(
     message: ImMessageUi,
     talkerFace: String,
+    onAvatarClick: () -> Unit,
 ) {
     val isMe = message.isMe
     val scheme = COUITheme.colorScheme
+    val avatarUrl = remember(talkerFace) { Formatters.sizedImageUrl(talkerFace, 108, 108) }
 
     Column(
         modifier = Modifier
@@ -265,7 +281,13 @@ private fun ChatBubbleRow(
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (!isMe) {
-                Avatar(url = talkerFace, size = 36.dp)
+                Avatar(
+                    url = avatarUrl,
+                    size = 36.dp,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(onClick = onAvatarClick),
+                )
                 Spacer(Modifier.width(8.dp))
             }
 
@@ -274,7 +296,7 @@ private fun ChatBubbleRow(
                 modifier = Modifier
                     .widthIn(max = 260.dp)
                     .clip(
-                        RoundedCornerShape(
+                        SquircleShape(
                             topStart = 16.dp,
                             topEnd = 16.dp,
                             bottomStart = if (isMe) 16.dp else 4.dp,
@@ -308,6 +330,8 @@ private fun ChatBubbleRow(
     }
 }
 
+private val CHAT_COMPOSER_HEIGHT = 36.dp
+
 @Composable
 private fun ChatBottomBar(
     text: String,
@@ -315,39 +339,49 @@ private fun ChatBottomBar(
     onSend: () -> Unit,
     isSending: Boolean,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+    val scheme = COUITheme.colorScheme
+    val isDark = scheme.background.luminance() < 0.5f
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            InputField(
-                query = text,
-                onQueryChange = onTextChange,
-                onSearch = { onSend() },
-                expanded = false,
-                onExpandedChange = {},
-                label = "发送私信...",
-                modifier = Modifier
-                    .weight(1f)
-                    .height(42.dp),
-            )
-
-            Spacer(Modifier.width(8.dp))
-
-            Button(
-                onClick = onSend,
-                enabled = text.isNotBlank() && !isSending,
-                size = ButtonSize.Small,
-            ) {
-                Text(
-                    text = "发送",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(CHAT_COMPOSER_HEIGHT)
+                .capsuleMaterial(isDark)
+                .background(
+                    color = scheme.surfaceContainer,
+                    shape = COUISmoothCapsuleShape,
                 )
-            }
+                .clip(COUISmoothCapsuleShape),
+        ) {
+            TextField(
+                value = text,
+                onValueChange = onTextChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(CHAT_COMPOSER_HEIGHT),
+                label = "发送私信...",
+                backgroundMode = TextFieldMode.None,
+                insideMargin = DpSize(14.dp, 4.dp),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { onSend() }),
+            )
         }
+
+        Spacer(Modifier.width(8.dp))
+
+        CompactSendButton(
+            text = if (isSending) "发送中" else "发送",
+            onClick = onSend,
+            enabled = text.isNotBlank() && !isSending,
+            height = CHAT_COMPOSER_HEIGHT,
+            containerColor = scheme.surfaceContainer,
+            isDark = isDark,
+        )
     }
 }

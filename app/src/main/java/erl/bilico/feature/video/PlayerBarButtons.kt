@@ -2,7 +2,6 @@ package erl.bilico.feature.video
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -10,18 +9,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
+import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.PiliIcon
-import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.More
@@ -71,47 +70,80 @@ internal fun PlayerGlyphButton(
 }
 
 /**
- * 「自动连播」这一行：右侧一个复选框表示开没开，菜单不收起，勾完立刻能看见状态。
- * 放在顶栏菜单里「稍后再看」的上面。
+ * 组装播放器「更多」菜单项，含「自动联播」二级菜单，并缓存列表实例以防播放进度刷新时闪烁。
  */
 @Composable
-internal fun autoPlayNextMenuItem(checked: Boolean, onToggle: () -> Unit): CouiMenuItem = CouiMenuItem(
-    label = "自动连播",
-    onClick = onToggle,
-    keepOpen = true,
-    hint = {
-        // 菜单在 hint 后面还留着一个透明的选中图标位（4dp + 24dp），把它让出来的距离补掉，
-        // 复选框才会贴着菜单右边缘，而不是停在中间。
-        Checkbox(
-            state = ToggleableState(checked),
-            onClick = { onToggle() },
-            modifier = Modifier.offset(x = 28.dp),
-        )
-    },
-)
+internal fun rememberPlayerMoreMenuItems(
+    onDanmakuSettings: (() -> Unit)?,
+    playbackEndMode: PlaybackEndMode,
+    onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
+    onWatchLater: (() -> Unit)?,
+    onShare: (() -> Unit)?,
+): List<CouiMenuItem> {
+    val danmakuState by rememberUpdatedState(onDanmakuSettings)
+    val selectModeState by rememberUpdatedState(onSelectPlaybackEndMode)
+    val watchLaterState by rememberUpdatedState(onWatchLater)
+    val shareState by rememberUpdatedState(onShare)
+    val hasDanmaku = onDanmakuSettings != null
+    val hasPlaybackEnd = onSelectPlaybackEndMode != null
+    val hasWatchLater = onWatchLater != null
+    val hasShare = onShare != null
+    return remember(playbackEndMode, hasDanmaku, hasPlaybackEnd, hasWatchLater, hasShare) {
+        buildList {
+            if (hasPlaybackEnd) {
+                add(
+                    CouiMenuItem(
+                        label = "自动联播",
+                        summary = playbackEndMode.label,
+                        onClick = {},
+                        group = 0,
+                        children = PlaybackEndMode.entries.map { option ->
+                            CouiMenuItem(
+                                label = option.label,
+                                selected = option == playbackEndMode,
+                                onClick = { selectModeState?.invoke(option) },
+                            )
+                        },
+                    ),
+                )
+            }
+            if (hasDanmaku) {
+                add(CouiMenuItem(label = "弹幕设置", onClick = { danmakuState?.invoke() }, group = 1))
+            }
+            if (hasWatchLater) {
+                add(CouiMenuItem(label = "稍后再看", onClick = { watchLaterState?.invoke() }, group = 1))
+            }
+            if (hasShare) {
+                add(CouiMenuItem(label = "分享", onClick = { shareState?.invoke() }, group = 1))
+            }
+        }
+    }
+}
 
-/** 顶栏右端的三个点：弹幕设置、自动连播、稍后再看与分享。 */
+/** 顶栏右端的三个点：弹幕设置、自动联播（二级菜单）、稍后再看与分享。 */
 @Composable
 internal fun PlayerMoreMenu(
     onDanmakuSettings: (() -> Unit)?,
     onWatchLater: (() -> Unit)?,
     onShare: (() -> Unit)?,
-    autoPlayNext: Boolean = true,
-    onToggleAutoPlayNext: (() -> Unit)? = null,
+    playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
+    onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val items = rememberPlayerMoreMenuItems(
+        onDanmakuSettings = onDanmakuSettings,
+        playbackEndMode = playbackEndMode,
+        onSelectPlaybackEndMode = onSelectPlaybackEndMode,
+        onWatchLater = onWatchLater,
+        onShare = onShare,
+    )
 
     Box {
         PlayerIconButton(COUIIcons.More, "更多", onClick = { expanded = true })
         CouiPopupMenu(
             show = expanded,
             onDismiss = { expanded = false },
-            items = buildList {
-                onDanmakuSettings?.let { add(CouiMenuItem("弹幕设置", it)) }
-                onToggleAutoPlayNext?.let { add(autoPlayNextMenuItem(autoPlayNext, it)) }
-                onWatchLater?.let { add(CouiMenuItem("稍后再看", it)) }
-                onShare?.let { add(CouiMenuItem("分享", it)) }
-            },
+            items = items,
         )
     }
 }

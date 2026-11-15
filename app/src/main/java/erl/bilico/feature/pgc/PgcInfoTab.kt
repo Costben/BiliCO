@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,8 +30,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.BangumiDetail
 import erl.bilico.data.model.BangumiEpisode
+import erl.bilico.ui.components.COUISmoothCapsuleShape
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -104,7 +105,7 @@ private fun PgcInfoContent(
                 Text(
                     text = if (followed) "已追番" else "追番",
                     modifier = Modifier
-                        .clip(RoundedCornerShape(50))
+                        .clip(COUISmoothCapsuleShape)
                         .background(
                             if (followed) {
                                 COUITheme.colorScheme.surfaceContainer
@@ -187,7 +188,7 @@ private fun PgcInfoContent(
                         Text(
                             text = season.title,
                             modifier = Modifier
-                                .clip(RoundedCornerShape(50))
+                                .clip(COUISmoothCapsuleShape)
                                 .background(
                                     if (active) {
                                         COUITheme.colorScheme.primary.copy(alpha = 0.14f)
@@ -244,7 +245,7 @@ private fun PgcInfoContent(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(SquircleShape(10.dp))
                         .background(COUITheme.colorScheme.surfaceVariant)
                         .clickable { descExpanded = !descExpanded }
                         .padding(12.dp),
@@ -283,7 +284,7 @@ private fun EpisodeChip(
     Box(
         modifier = modifier
             .height(44.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(SquircleShape(8.dp))
             .background(
                 if (selected) {
                     COUITheme.colorScheme.primary.copy(alpha = 0.14f)

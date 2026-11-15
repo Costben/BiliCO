@@ -22,7 +22,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import erl.bilico.ui.components.COUISmoothCapsuleShape
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -337,7 +338,7 @@ internal fun PlayerGestureLayer(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 14.dp)
-                    .clip(RoundedCornerShape(50))
+                    .clip(COUISmoothCapsuleShape)
                     .background(Color(0xCC000000))
                     .padding(horizontal = 14.dp, vertical = 6.dp),
                 style = COUITheme.textStyles.footnote1,
@@ -353,7 +354,7 @@ internal fun PlayerGestureLayer(
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(SquircleShape(10.dp))
                         .background(Color(0xCC000000))
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
@@ -402,7 +403,7 @@ internal fun PlayerGestureLayer(
                 val text = if (isEnter) "已进入全屏" else "已退出全屏"
                 Column(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(SquircleShape(16.dp))
                         .background(Color(0xCC000000))
                         .padding(horizontal = 20.dp, vertical = 14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -449,7 +450,7 @@ private fun LevelIndicator(
     Column(
         modifier = modifier
             .width(cardWidth)
-            .clip(RoundedCornerShape(cornerRadius))
+            .clip(SquircleShape(cornerRadius))
             .background(Color(0xCC000000))
             .padding(horizontal = cardPaddingH, vertical = cardPaddingV),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -465,7 +466,7 @@ private fun LevelIndicator(
             modifier = Modifier
                 .width(trackWidth)
                 .height(trackHeight)
-                .clip(RoundedCornerShape(trackWidth / 2))
+                .clip(SquircleShape(trackWidth / 2))
                 .background(Color.White.copy(alpha = 0.22f)),
             contentAlignment = Alignment.BottomCenter,
         ) {
@@ -473,7 +474,7 @@ private fun LevelIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(fraction.coerceIn(0f, 1f))
-                    .clip(RoundedCornerShape(trackWidth / 2))
+                    .clip(SquircleShape(trackWidth / 2))
                     .background(COUITheme.colorScheme.primary),
             )
         }

@@ -131,9 +131,27 @@ data class Comment(
     val isTop: Boolean = false,
     val isUp: Boolean = false,
     val emotes: Map<String, EmoteImage> = emptyMap(),
+    val mentions: Map<String, Long> = emptyMap(),
     val pictures: List<DynamicImage> = emptyList(),
     val replies: List<Comment> = emptyList(),
 )
+
+/** 播完后的连播/循环方式。 */
+enum class PlaybackEndMode(val code: Int, val label: String) {
+    /** 播完当前视频后停止。 */
+    OFF(0, "关闭"),
+    /** 播完自动接下一 P、队列或推荐视频。 */
+    AUTO_NEXT(1, "自动联播"),
+    /** 循环播放当前视频或当前分 P。 */
+    SINGLE_LOOP(2, "循环播放"),
+    /** 按分 P 或播单顺序播放，到末尾回到开头循环。 */
+    LIST_LOOP(3, "列表循环"),
+    ;
+
+    companion object {
+        fun fromCode(code: Int): PlaybackEndMode = entries.firstOrNull { it.code == code } ?: AUTO_NEXT
+    }
+}
 
 data class CommentPage(
     val comments: List<Comment>,

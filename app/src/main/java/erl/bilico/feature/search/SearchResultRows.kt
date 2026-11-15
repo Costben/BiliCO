@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -164,7 +164,7 @@ private fun SearchVideoRow(
                 modifier = Modifier
                     .width(SearchVideoCoverWidth)
                     .height(SearchVideoCoverHeight)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(SquircleShape(8.dp)),
             ) {
                 CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
                 if (video.playText.isNotBlank()) {
@@ -172,7 +172,7 @@ private fun SearchVideoRow(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(4.dp)
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(SquircleShape(4.dp))
                             .background(Color(0xB3000000))
                             .padding(horizontal = 4.dp, vertical = 1.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -199,7 +199,7 @@ private fun SearchVideoRow(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(4.dp)
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(SquircleShape(4.dp))
                             .background(Color(0xB3000000))
                             .padding(horizontal = 4.dp, vertical = 1.dp),
                         fontSize = 10.sp,
@@ -274,7 +274,7 @@ private fun SearchArticleRow(article: SearchArticle, onClick: () -> Unit) {
                 modifier = Modifier
                     .width(96.dp)
                     .aspectRatio(4f / 3f)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(SquircleShape(8.dp))
                     .background(COUITheme.colorScheme.surfaceContainerHigh),
             ) {
                 if (article.cover.isNotBlank()) {

@@ -16,7 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import erl.bilico.ui.components.COUISmoothCapsuleShape
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -97,14 +98,14 @@ internal fun PlayerProgress(
             Modifier
                 .fillMaxWidth()
                 .height(3.dp)
-                .clip(RoundedCornerShape(1.5.dp))
+                .clip(SquircleShape(1.5.dp))
                 .background(Color.White.copy(alpha = 0.24f)),
         )
         Box(
             Modifier
                 .fillMaxWidth(fraction)
                 .height(3.dp)
-                .clip(RoundedCornerShape(1.5.dp))
+                .clip(SquircleShape(1.5.dp))
                 .background(Color.White),
         )
         if (durationMs > 0L && (sponsorSegments.isNotEmpty() || chapters.size > 1)) {
@@ -112,7 +113,7 @@ internal fun PlayerProgress(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(3.dp)
-                    .clip(RoundedCornerShape(1.5.dp)),
+                    .clip(SquircleShape(1.5.dp)),
             ) {
                 val trackW = size.width
                 val trackH = size.height
@@ -232,7 +233,7 @@ private fun SponsorCapsule(
 ) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
+            .clip(COUISmoothCapsuleShape)
             .background(Color(0xB8000000))
             .clickable(onClick = onAction)
             .padding(horizontal = 11.dp, vertical = 6.dp),

@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.ImSessionUi
 import erl.bilico.data.model.MessageCursor
 import erl.bilico.data.model.MessageEntry
+import erl.bilico.data.model.MessageJumpTarget
 import erl.bilico.data.model.MessageKind
 import erl.bilico.data.repository.ImRepository
 import erl.bilico.data.repository.MessageRepository
 import erl.bilico.data.session.SessionRepository
+import erl.bilico.ui.Route
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,9 +52,43 @@ class MessageViewModel(
 
     private val cursors = mutableMapOf<MessageKind, MessageCursor?>()
     private val loading = mutableSetOf<MessageKind>()
+    private var resolvingJump = false
 
     init {
         ensureLoaded(MessageKind.SESSION)
+    }
+
+    /** 点击回复、@、点赞通知条目后跳转到对应的视频、动态、专栏或用户主页。 */
+    fun openEntry(
+        entry: MessageEntry,
+        onNavigate: (Route) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        when (val target = entry.target) {
+            is MessageJumpTarget.VideoBvid -> onNavigate(Route.Video(target.bvid))
+            is MessageJumpTarget.Opus -> onNavigate(Route.Opus(target.dynamicId, target.title))
+            is MessageJumpTarget.Article -> onNavigate(Route.Article(target.cvId, target.title))
+            is MessageJumpTarget.PgcSeason -> onNavigate(Route.Pgc(seasonId = target.seasonId))
+            is MessageJumpTarget.PgcEpisode -> onNavigate(Route.Pgc(seasonId = 0L, epId = target.epId))
+            is MessageJumpTarget.LiveRoom -> onNavigate(Route.LiveRoom(target.roomId))
+            is MessageJumpTarget.VideoAid -> {
+                if (resolvingJump) return
+                resolvingJump = true
+                viewModelScope.launch {
+                    repository.resolveBvid(target.aid)
+                        .onSuccess { bvid -> onNavigate(Route.Video(bvid)) }
+                        .onFailure { err -> onError(err.message ?: "无法打开该视频") }
+                    resolvingJump = false
+                }
+            }
+            null -> {
+                if (entry.senderMid > 0L) {
+                    onNavigate(Route.Space(entry.senderMid))
+                } else {
+                    onError("该通知暂不支持跳转")
+                }
+            }
+        }
     }
 
     /** 第一次滑到某一类时拉它的第一页。 */

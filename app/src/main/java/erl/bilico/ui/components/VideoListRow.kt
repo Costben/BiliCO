@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,7 +84,7 @@ fun LibraryVideoBody(
             modifier = Modifier
                 .width(RowCoverWidth)
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(8.dp)),
+                .clip(SquircleShape(8.dp)),
         ) {
             CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
             if (video.durationText.isNotBlank()) {
@@ -93,7 +93,7 @@ fun LibraryVideoBody(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(4.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(SquircleShape(4.dp))
                         .background(Color(0xB3000000))
                         .padding(horizontal = 4.dp, vertical = 1.dp),
                     fontSize = 10.sp,

@@ -219,14 +219,19 @@ class PlayQueue {
         if (playingBvid != bvid) clear()
     }
 
-    fun next(): QueuedVideo? {
+    fun next(loop: Boolean = false): QueuedVideo? {
+        if (_items.isEmpty()) return null
         val nextIndex = index + 1
-        if (nextIndex !in _items.indices) {
-            clear()
-            return null
+        val resolvedIndex = when {
+            nextIndex in _items.indices -> nextIndex
+            loop && _items.size > 1 -> 0
+            else -> {
+                if (!loop) clear()
+                return null
+            }
         }
-        index = nextIndex
-        val next = _items[nextIndex]
+        index = resolvedIndex
+        val next = _items[resolvedIndex]
         playingBvid = next.video.bvid
         return next
     }

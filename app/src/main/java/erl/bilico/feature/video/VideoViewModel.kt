@@ -111,9 +111,10 @@ class VideoViewModel(
         )
     }
 
-    fun playNextPart(): Boolean {
+    fun playNextPart(loop: Boolean = false): Boolean {
         val detail = _state.value.detail ?: return false
-        val nextIndex = _state.value.selectedPartIndex + 1
+        val rawNext = _state.value.selectedPartIndex + 1
+        val nextIndex = if (loop && detail.pages.size > 1) rawNext % detail.pages.size else rawNext
         val nextPart = detail.pages.getOrNull(nextIndex) ?: return false
         initialResumeSettled = true
         _state.update {

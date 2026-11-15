@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -106,7 +106,7 @@ internal fun DynamicCard(
         modifier = modifier
             .fillMaxWidth()
             .then(if (cardOrigin != null) Modifier.expandOrigin(cardOrigin) else Modifier)
-            .clip(RoundedCornerShape(cardCornerRadius)),
+            .clip(SquircleShape(cardCornerRadius)),
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
         onClick = if (!isDetail) onCardClick else null,
     ) {
@@ -264,7 +264,7 @@ private fun DynamicStatAction(
     val tint = COUITheme.colorScheme.onSurfaceSecondary
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(SquircleShape(8.dp))
             .clickable(onClick = onClick)
             // 横向不留内边距：左边那组的图标正好压在正文左边缘上，右边那组贴到右边缘。
             .padding(vertical = 8.dp)
@@ -325,7 +325,7 @@ private fun DynamicVideoCardView(
         modifier = modifier
             .fillMaxWidth()
             .then(if (ownOrigin != null) Modifier.expandOrigin(ownOrigin) else Modifier)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(SquircleShape(10.dp))
             .then(
                 if (ownOrigin != null && containerBackground != null) {
                     Modifier.background(containerBackground)
@@ -339,7 +339,7 @@ private fun DynamicVideoCardView(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(10.dp)),
+                .clip(SquircleShape(10.dp)),
         ) {
             LoadingImage(
                 url = coverUrl,
@@ -352,7 +352,7 @@ private fun DynamicVideoCardView(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(6.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(SquircleShape(4.dp))
                         .background(Color(0xB3000000))
                         .padding(horizontal = 5.dp, vertical = 2.dp),
                     fontSize = 11.sp,
@@ -389,7 +389,7 @@ private fun ForwardBox(
     rowKey: Any? = null,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = SquircleShape(10.dp)
     val bgColor = (if (isDark) Color(0x22FFFFFF) else Color(0xFFF2F3F5)).compositeOver(cardColor)
     val borderColor = if (isDark) Color(0x1FFFFFFF) else Color(0x14000000)
     val topBar = LocalTopBarBounds.current

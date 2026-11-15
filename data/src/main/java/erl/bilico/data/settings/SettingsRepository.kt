@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import erl.bilico.data.biliDataStore
+import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.SponsorCategory
 import erl.bilico.data.repository.CdnOption
 import kotlinx.coroutines.CoroutineScope
@@ -60,6 +61,10 @@ class SettingsRepository(
     /** 一个视频播完是否自动接着播下一个（下一 P 或播放队列里的下一条）。 */
     private val _autoPlayNext = MutableStateFlow(true)
     val autoPlayNext: StateFlow<Boolean> = _autoPlayNext.asStateFlow()
+
+    /** 播完后的连播/循环策略。 */
+    private val _playbackEndMode = MutableStateFlow(PlaybackEndMode.AUTO_NEXT)
+    val playbackEndMode: StateFlow<PlaybackEndMode> = _playbackEndMode.asStateFlow()
 
     private val _autoPip = MutableStateFlow(true)
     val autoPip: StateFlow<Boolean> = _autoPip.asStateFlow()
@@ -135,7 +140,12 @@ class SettingsRepository(
             )
             syncDanmakuState(dm)
             _backgroundPlay.value = prefs[KEY_BACKGROUND_PLAY] ?: true
-            _autoPlayNext.value = prefs[KEY_AUTO_PLAY_NEXT] ?: true
+            val legacyAutoPlay = prefs[KEY_AUTO_PLAY_NEXT] ?: true
+            val resolvedEndMode = prefs[KEY_PLAYBACK_END_MODE]
+                ?.let(PlaybackEndMode::fromCode)
+                ?: if (legacyAutoPlay) PlaybackEndMode.AUTO_NEXT else PlaybackEndMode.OFF
+            _playbackEndMode.value = resolvedEndMode
+            _autoPlayNext.value = resolvedEndMode == PlaybackEndMode.AUTO_NEXT
             _autoPip.value = prefs[KEY_AUTO_PIP] ?: true
             _gestureHaptic.value = prefs[KEY_GESTURE_HAPTIC] ?: true
             _longPressSpeed.value = (prefs[KEY_LONG_PRESS_SPEED] ?: DEFAULT_LONG_PRESS_SPEED)
@@ -216,8 +226,18 @@ class SettingsRepository(
     }
 
     fun setAutoPlayNext(enabled: Boolean) {
-        _autoPlayNext.value = enabled
-        scope.launch { context.biliDataStore.edit { it[KEY_AUTO_PLAY_NEXT] = enabled } }
+        setPlaybackEndMode(if (enabled) PlaybackEndMode.AUTO_NEXT else PlaybackEndMode.OFF)
+    }
+
+    fun setPlaybackEndMode(mode: PlaybackEndMode) {
+        _playbackEndMode.value = mode
+        _autoPlayNext.value = mode == PlaybackEndMode.AUTO_NEXT
+        scope.launch {
+            context.biliDataStore.edit {
+                it[KEY_PLAYBACK_END_MODE] = mode.code
+                it[KEY_AUTO_PLAY_NEXT] = mode == PlaybackEndMode.AUTO_NEXT
+            }
+        }
     }
 
     fun setAutoPip(enabled: Boolean) {
@@ -418,6 +438,7 @@ class SettingsRepository(
         val KEY_BACKGROUND_PLAY = booleanPreferencesKey("background_play")
         val KEY_AUTO_PIP = booleanPreferencesKey("auto_pip")
         val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
+        val KEY_PLAYBACK_END_MODE = intPreferencesKey("playback_end_mode")
         val KEY_GESTURE_HAPTIC = booleanPreferencesKey("gesture_haptic")
         val KEY_AUTO_ROTATE_MODE = intPreferencesKey("auto_rotate_mode")
         val KEY_LONG_PRESS_SPEED = intPreferencesKey("long_press_speed")

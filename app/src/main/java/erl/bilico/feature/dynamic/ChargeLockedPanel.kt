@@ -14,8 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,10 +73,10 @@ internal fun ChargeLockedPanel(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(SquircleShape(12.dp))
             .background(base)
             .background(gradient)
-            .border(1.dp, outline, RoundedCornerShape(12.dp))
+            .border(1.dp, outline, SquircleShape(12.dp))
             .clickable(onClick = open)
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -113,7 +113,7 @@ internal fun ChargeLockedPanel(
             Spacer(Modifier.width(12.dp))
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(SquircleShape(10.dp))
                     .background(ChargePink)
                     .clickable(onClick = open)
                     .padding(horizontal = 14.dp, vertical = 9.dp),
@@ -203,7 +203,7 @@ internal fun ChargeLockedPlaceholder(modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .height(96.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(SquircleShape(12.dp))
             .background(if (isDark) Color(0xFF2A2226) else Color(0xFFFFF5F7)),
     )
 }

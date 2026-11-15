@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -167,7 +167,7 @@ private fun HistoryRow(item: HistoryItem, stat: HistoryStat?, onClick: () -> Uni
                 modifier = Modifier
                     .width(132.dp)
                     .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(SquircleShape(8.dp)),
             ) {
                 CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
                 if (playedFraction > 0f) {

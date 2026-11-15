@@ -21,8 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -138,7 +138,7 @@ fun CommentTab(
                             )
                             Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(SquircleShape(8.dp))
                                     .clickable { viewModel.toggleSort() }
                                     .padding(start = 8.dp, top = 4.dp, end = 2.dp, bottom = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -234,7 +234,7 @@ fun CommentTab(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 16.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(SquircleShape(8.dp))
                         .background(Color(0xCC000000))
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     style = COUITheme.textStyles.footnote1,
