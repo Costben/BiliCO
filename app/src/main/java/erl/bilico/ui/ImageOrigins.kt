@@ -65,6 +65,9 @@ class ImageOrigins {
     /** 卡片缩略图实际请求并已解码的模型地址，首帧先由它顶上避免空白闪屏。 */
     internal fun modelOf(url: String): String? = slots[url]?.model
 
+    /** 卡片登记的真实宽高比，未携带尺寸字段时可先于大图解码对齐容器大小。 */
+    internal fun aspectOf(url: String): Float? = slots[url]?.aspect
+
     /** 实时读取缩略图当前屏幕位置，退场时即使列表滚过也能准确缩回目标位置。 */
     internal fun boundsOf(url: String, host: LayoutCoordinates, density: Float): ThumbBounds? {
         val slot = slots[url] ?: return null

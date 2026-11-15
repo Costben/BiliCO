@@ -81,12 +81,16 @@ internal fun ZoomableImage(
     val glide = remember { mutableStateOf<Job?>(null) }
     var loaded by remember(keyUrl, requestUrl) { mutableStateOf(false) }
     var reveal by remember(keyUrl, requestUrl) { mutableFloatStateOf(0f) }
+    var thumbIntrinsicAspect by remember(thumbModel) { mutableStateOf<Float?>(null) }
 
     val couiHaptic = rememberCouiHaptic()
     var edgeHit by remember(keyUrl) { mutableIntStateOf(0) }
 
+    val effectiveAspect = frame.aspects[keyUrl] ?: origins.aspectOf(keyUrl)
+    val thumbAspect = thumbIntrinsicAspect ?: thumbModel?.takeIf { it.contains("_1c.") }?.let { 1f }
+
     val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
-    val decodeSize = frame.aspects[keyUrl]?.takeIf { it < LongImageAspect }?.let { aspect ->
+    val decodeSize = effectiveAspect?.takeIf { it < LongImageAspect }?.let { aspect ->
         val width = screenWidthPx.coerceAtLeast(1)
         val height = (width / aspect).toInt().coerceAtLeast(1)
         Size(width, minOf(height, (MaxDecodePixels / width).coerceAtLeast(1)))
@@ -106,7 +110,7 @@ internal fun ZoomableImage(
     }
 
     fun shown(): ComposeSize {
-        val aspect = frame.aspects[keyUrl] ?: return ComposeSize(box.width.toFloat(), box.height.toFloat())
+        val aspect = effectiveAspect ?: return ComposeSize(box.width.toFloat(), box.height.toFloat())
         return restSize(box.width.toFloat(), box.height.toFloat(), aspect)
     }
 
@@ -193,8 +197,8 @@ internal fun ZoomableImage(
         }
     }
 
-    LaunchedEffect(isCurrent, box, frame.aspects[keyUrl]) {
-        if (box == IntSize.Zero || frame.aspects[keyUrl] == null) return@LaunchedEffect
+    LaunchedEffect(isCurrent, box, effectiveAspect) {
+        if (box == IntSize.Zero || effectiveAspect == null) return@LaunchedEffect
         if (isCurrent && !placed) {
             offset = restPosition()
             placed = true
@@ -216,7 +220,15 @@ internal fun ZoomableImage(
         if (isCurrent) snapshotFlow { scale > 1f + ZoomEpsilon }.collect { frame.zoomed = it }
     }
     LaunchedEffect(loaded, requestUrl) {
-        if (loaded) animate(0f, 1f, animationSpec = tween(LoadFadeMillis)) { value, _ -> reveal = value }
+        if (!loaded) return@LaunchedEffect
+        val aspect = frame.aspects[keyUrl] ?: origins.aspectOf(keyUrl)
+        val croppedThumb = thumbAspect != null && aspect != null && abs(thumbAspect - aspect) > 0.02f
+        if (croppedThumb) {
+            // 裁切缩略图外侧边缘没有底图覆盖，直接切到完整大图避免淡入期间中心亮、两侧暗。
+            reveal = 1f
+        } else {
+            animate(0f, 1f, animationSpec = tween(LoadFadeMillis)) { value, _ -> reveal = value }
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -268,7 +280,7 @@ internal fun ZoomableImage(
                     },
             ) {
                 val rest = shown()
-                val resting = if (rest.height > box.height + 0.5f) {
+                val resting = if (box != IntSize.Zero && effectiveAspect != null) {
                     Modifier.requiredSize(
                         with(density) { rest.width.toDp() },
                         with(density) { rest.height.toDp() },
@@ -278,11 +290,35 @@ internal fun ZoomableImage(
                 }
                 Box(Modifier.align(Alignment.Center).then(resting)) {
                     if (thumbModel != null && (!loaded || reveal < 1f)) {
+                        val thumbModifier = if (
+                            box != IntSize.Zero &&
+                            effectiveAspect != null &&
+                            thumbAspect != null &&
+                            abs(thumbAspect - effectiveAspect) > 0.02f
+                        ) {
+                            // 九宫格/评论缩略图多为 1:1 中心裁切，按缩略图比例内切对齐原图中心，避免溢出成断层。
+                            val thumbW = minOf(rest.width, rest.height * thumbAspect)
+                            val thumbH = minOf(rest.height, rest.width / thumbAspect)
+                            Modifier
+                                .align(Alignment.Center)
+                                .requiredSize(
+                                    with(density) { thumbW.toDp() },
+                                    with(density) { thumbH.toDp() },
+                                )
+                        } else {
+                            Modifier.fillMaxSize()
+                        }
                         AsyncImage(
                             model = thumbModel,
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = thumbModifier,
+                            onSuccess = { state ->
+                                val picture = state.painter.intrinsicSize
+                                if (picture.width > 0f && picture.height > 0f) {
+                                    thumbIntrinsicAspect = picture.width / picture.height
+                                }
+                            },
                         )
                     }
                     AsyncImage(
@@ -291,11 +327,11 @@ internal fun ZoomableImage(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize().graphicsLayer { alpha = reveal },
                         onSuccess = { state ->
-                            loaded = true
                             val picture = state.painter.intrinsicSize
                             if (picture.width > 0f && picture.height > 0f) {
                                 frame.aspects[keyUrl] = picture.width / picture.height
                             }
+                            loaded = true
                         },
                     )
                 }
