@@ -349,6 +349,7 @@ fun PgcScreen(
                 } else {
                     null
                 },
+                onHome = { nav.popToMain() },
                 longPressSpeedActive = longPressSpeed,
                 longPressSpeedValue = boostSpeed,
                 onLongPressSpeedChange = { longPressSpeed = it },

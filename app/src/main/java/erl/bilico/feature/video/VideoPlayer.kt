@@ -258,6 +258,9 @@ internal fun VideoPlayer(
                         tint = if (danmakuEnabled) Color.White else Color.White.copy(alpha = 0.45f),
                     )
                 }
+                if (!fullscreen && onHome != null) {
+                    PlayerIconButton(COUIIcons.Home, "首页", onHome)
+                }
                 if (onEnterPip != null) {
                     PlayerIconButton(PipIcon, "小窗", onEnterPip)
                 }
