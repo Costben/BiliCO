@@ -45,14 +45,21 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             lastFrameNanos = 0L
             lastExternalMs = 0L
             renderTimeMs = -1.0
+            liveBuffer.reset()
+            if (value != null) rebuildFilteredAndLayout()
             invalidate()
         }
 
     var items: List<DanmakuItem> = emptyList()
         set(value) {
             if (field === value) return
+            val previous = field
             field = value
-            rebuildFilteredAndLayout()
+            if (timeline != null) {
+                onLiveItemsChanged(previous, value)
+            } else {
+                rebuildFilteredAndLayout()
+            }
         }
 
     private var settings: DanmakuSettings = DanmakuSettings()
@@ -115,6 +122,7 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
     private var filteredItems: List<FilteredDanmaku> = emptyList()
     private var placed: List<PlacedDanmaku> = emptyList()
+    private val liveBuffer = LiveDanmakuBuffer()
 
     private var loopRunning = false
     private var lastFrameNanos = 0L
@@ -279,50 +287,101 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
     }
 
     private fun rebuildFilteredAndLayout() {
+        if (timeline != null) {
+            liveBuffer.reset()
+            relayout()
+            return
+        }
         filteredItems = filterAndMergeDanmaku(items, settings)
         relayout()
     }
 
-    private fun relayout() {
-        if (width <= 0 || height <= 0 || filteredItems.isEmpty()) {
+    private fun onLiveItemsChanged(previous: List<DanmakuItem>, next: List<DanmakuItem>) {
+        if (next.isEmpty()) {
+            liveBuffer.reset()
             placed = emptyList()
             syncLoopState()
             invalidate()
             return
         }
         val density = resources.displayMetrics.density
+        val fontPx = syncMeasureFontPx()
+        val nowMs = if (renderTimeMs >= 0.0) renderTimeMs else timeline?.nowMs?.toDouble() ?: 0.0
+        placed = liveBuffer.updateIncremental(
+            previous = previous,
+            next = next,
+            settings = settings,
+            nowMs = nowMs,
+            measure = ::measureDanmakuText,
+            widthPx = width.toFloat(),
+            heightPx = height.toFloat(),
+            fontPx = fontPx,
+            bottomInsetPx = BOTTOM_INSET_DP * density,
+        )
+        syncLoopState()
+        invalidate()
+    }
+
+    private fun syncMeasureFontPx(): Float {
+        val density = resources.displayMetrics.density
         val fontPx = BASE_FONT_DP * density * (settings.fontScale / 100f)
         fillPaint.textSize = fontPx
         strokePaint.textSize = fontPx
-
         if (abs(cachedFontPx - fontPx) > 0.05f || cachedWeight != settings.fontWeight) {
             widthCache.clear()
             countWidthCache.clear()
             cachedFontPx = fontPx
             cachedWeight = settings.fontWeight
         }
+        return fontPx
+    }
 
-        placed = layoutDanmaku(
-            items = filteredItems,
-            measure = { text, scale ->
-                if (scale == 1f) {
-                    widthCache.getOrPut(text) { fillPaint.measureText(text) }
-                } else {
-                    countWidthCache.getOrPut(text) {
-                        countFillPaint.textSize = fillPaint.textSize * scale
-                        countFillPaint.measureText(text)
-                    }
-                }
-            },
-            widthPx = width.toFloat(),
-            heightPx = height.toFloat(),
-            fontPx = fontPx,
-            areaFraction = settings.areaFraction,
-            lineHeightRatio = settings.lineHeightRatio,
-            scrollDurationMs = settings.scrollDurationMs,
-            massiveMode = settings.massiveMode,
-            bottomInsetPx = BOTTOM_INSET_DP * density,
-        )
+    private fun measureDanmakuText(text: String, scale: Float): Float =
+        if (scale == 1f) {
+            widthCache.getOrPut(text) { fillPaint.measureText(text) }
+        } else {
+            countWidthCache.getOrPut(text) {
+                countFillPaint.textSize = fillPaint.textSize * scale
+                countFillPaint.measureText(text)
+            }
+        }
+
+    private fun relayout() {
+        val liveMode = timeline != null
+        val emptySource = if (liveMode) items.isEmpty() else filteredItems.isEmpty()
+        if (width <= 0 || height <= 0 || emptySource) {
+            if (liveMode) liveBuffer.reset()
+            placed = emptyList()
+            syncLoopState()
+            invalidate()
+            return
+        }
+        val density = resources.displayMetrics.density
+        val fontPx = syncMeasureFontPx()
+        placed = if (liveMode) {
+            liveBuffer.rebuild(
+                items = items,
+                settings = settings,
+                measure = ::measureDanmakuText,
+                widthPx = width.toFloat(),
+                heightPx = height.toFloat(),
+                fontPx = fontPx,
+                bottomInsetPx = BOTTOM_INSET_DP * density,
+            )
+        } else {
+            layoutDanmaku(
+                items = filteredItems,
+                measure = ::measureDanmakuText,
+                widthPx = width.toFloat(),
+                heightPx = height.toFloat(),
+                fontPx = fontPx,
+                areaFraction = settings.areaFraction,
+                lineHeightRatio = settings.lineHeightRatio,
+                scrollDurationMs = settings.scrollDurationMs,
+                massiveMode = settings.massiveMode,
+                bottomInsetPx = BOTTOM_INSET_DP * density,
+            )
+        }
         syncLoopState()
         invalidate()
     }

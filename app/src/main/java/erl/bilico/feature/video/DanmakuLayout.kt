@@ -25,6 +25,7 @@ internal data class PlacedDanmaku(
 internal fun filterAndMergeDanmaku(
     items: List<DanmakuItem>,
     settings: DanmakuSettings,
+    recentTexts: MutableMap<String, Int>? = null,
 ): List<FilteredDanmaku> {
     if (items.isEmpty()) return emptyList()
     val filtered = ArrayList<DanmakuItem>(items.size)
@@ -51,12 +52,27 @@ internal fun filterAndMergeDanmaku(
             val prevItem = result[prevResultIdx].item
             if (item.timeMs - prevItem.timeMs <= MERGE_WINDOW_MS) {
                 counts[prevResultIdx]++
+                recentTexts?.set(key, item.timeMs)
                 continue
             }
         }
+        // 直播增量批次内只跳过跨批次已入屏的重复文案，避免回改在屏弹幕宽度引发重排顶掉后续弹幕。
+        val prevCommittedTime = recentTexts?.get(key)
+        if (prevCommittedTime != null && item.timeMs - prevCommittedTime <= MERGE_WINDOW_MS) {
+            recentTexts[key] = item.timeMs
+            continue
+        }
         val newIdx = result.size
         recentIdxByText[key] = newIdx
+        recentTexts?.set(key, item.timeMs)
         result.add(FilteredDanmaku(item, item.content))
+    }
+    if (recentTexts != null && recentTexts.size > 512) {
+        val cutoff = filtered.last().timeMs - MERGE_WINDOW_MS
+        val iterator = recentTexts.entries.iterator()
+        while (iterator.hasNext()) {
+            if (iterator.next().value < cutoff) iterator.remove()
+        }
     }
     for (i in result.indices) {
         val c = counts[i]
@@ -68,40 +84,39 @@ internal fun filterAndMergeDanmaku(
     return result
 }
 
-internal fun layoutDanmaku(
-    items: List<FilteredDanmaku>,
-    /** 按 [fontScale] 倍字号量文本宽度：正文是 1，合并数量那截是 [COUNT_FONT_SCALE]。 */
-    measure: (String, Float) -> Float,
-    widthPx: Float,
+internal class DanmakuTrackPlanner(
+    private val widthPx: Float,
     heightPx: Float,
-    fontPx: Float,
+    private val fontPx: Float,
     areaFraction: Float,
     lineHeightRatio: Float = LINE_HEIGHT_RATIO,
-    scrollDurationMs: Long = SCROLL_DURATION_MS,
-    massiveMode: Boolean = false,
+    private val scrollDurationMs: Long = SCROLL_DURATION_MS,
+    private val massiveMode: Boolean = false,
     bottomInsetPx: Float,
-): List<PlacedDanmaku> {
-    if (items.isEmpty() || widthPx <= 0f || heightPx <= 0f || fontPx <= 0f) return emptyList()
-    val lineHeight = fontPx * lineHeightRatio
-    val effectiveArea = if (massiveMode) max(areaFraction, 0.75f) else areaFraction
-    val areaHeight = (heightPx * effectiveArea).coerceIn(lineHeight, heightPx)
-    val scrollLanes = max(1, ((areaHeight - fontPx) / lineHeight).toInt() + 1)
-    val topLanes = max(1, scrollLanes / 3)
-    val bottomLanes = max(1, scrollLanes / 3)
-    val scrollFree = LongArray(scrollLanes) { Long.MIN_VALUE }
+) {
+    private val lineHeight = fontPx * lineHeightRatio
+    private val effectiveArea = if (massiveMode) max(areaFraction, 0.75f) else areaFraction
+    private val areaHeight = (heightPx * effectiveArea).coerceIn(lineHeight, heightPx)
+    private val scrollLanes = max(1, ((areaHeight - fontPx) / lineHeight).toInt() + 1)
+    private val topLanes = max(1, scrollLanes / 3)
+    private val bottomLanes = max(1, scrollLanes / 3)
+    private val scrollFree = LongArray(scrollLanes) { Long.MIN_VALUE }
     // 每轨最后放进去的那条：起播时间和宽度，用来算它现在跑到哪、新弹幕会不会追上它。
-    val scrollSince = LongArray(scrollLanes) { Long.MIN_VALUE }
-    val scrollWidth = FloatArray(scrollLanes)
-    val topFree = LongArray(topLanes) { Long.MIN_VALUE }
-    val bottomFree = LongArray(bottomLanes) { Long.MIN_VALUE }
-    val bottomBase = (heightPx - bottomInsetPx).coerceAtLeast(lineHeight)
+    private val scrollSince = LongArray(scrollLanes) { Long.MIN_VALUE }
+    private val scrollWidth = FloatArray(scrollLanes)
+    private val topFree = LongArray(topLanes) { Long.MIN_VALUE }
+    private val bottomFree = LongArray(bottomLanes) { Long.MIN_VALUE }
+    private val bottomBase = (heightPx - bottomInsetPx).coerceAtLeast(lineHeight)
 
-    val result = ArrayList<PlacedDanmaku>(items.size)
-    for (entry in items) {
+    fun placeNext(
+        entry: FilteredDanmaku,
+        /** 按 [fontScale] 倍字号量文本宽度：正文是 1，合并数量那截是 [COUNT_FONT_SCALE]。 */
+        measure: (String, Float) -> Float,
+    ): PlacedDanmaku? {
         val item = entry.item
         val width = measure(entry.displayText, 1f) +
             if (entry.count > 1) measure(countLabel(entry.count), COUNT_FONT_SCALE) else 0f
-        when (item.type) {
+        return when (item.type) {
             DanmakuType.SCROLL -> {
                 var lane = -1
                 var earliestLane = 0
@@ -127,13 +142,13 @@ internal fun layoutDanmaku(
                     }
                 }
                 if (lane < 0) {
-                    if (massiveMode) lane = earliestLane else continue
+                    if (massiveMode) lane = earliestLane else return null
                 }
                 val occupancy = scrollDurationMs * (width + fontPx) / (widthPx + width)
                 scrollFree[lane] = item.timeMs + occupancy.toLong()
                 scrollSince[lane] = item.timeMs.toLong()
                 scrollWidth[lane] = width
-                result += PlacedDanmaku(item, entry.displayText, item.type, lane * lineHeight, width, lane, entry.count)
+                PlacedDanmaku(item, entry.displayText, item.type, lane * lineHeight, width, lane, entry.count)
             }
 
             DanmakuType.TOP -> {
@@ -144,9 +159,9 @@ internal fun layoutDanmaku(
                         break
                     }
                 }
-                if (lane < 0) continue
+                if (lane < 0) return null
                 topFree[lane] = item.timeMs + FIXED_DURATION_MS
-                result += PlacedDanmaku(item, entry.displayText, item.type, lane * lineHeight, width, lane, entry.count)
+                PlacedDanmaku(item, entry.displayText, item.type, lane * lineHeight, width, lane, entry.count)
             }
 
             DanmakuType.BOTTOM -> {
@@ -157,14 +172,150 @@ internal fun layoutDanmaku(
                         break
                     }
                 }
-                if (lane < 0) continue
+                if (lane < 0) return null
                 bottomFree[lane] = item.timeMs + FIXED_DURATION_MS
                 val y = bottomBase - (lane + 1) * lineHeight
-                result += PlacedDanmaku(item, entry.displayText, item.type, y, width, lane, entry.count)
+                PlacedDanmaku(item, entry.displayText, item.type, y, width, lane, entry.count)
             }
         }
     }
+}
+
+internal fun layoutDanmaku(
+    items: List<FilteredDanmaku>,
+    /** 按 [fontScale] 倍字号量文本宽度：正文是 1，合并数量那截是 [COUNT_FONT_SCALE]。 */
+    measure: (String, Float) -> Float,
+    widthPx: Float,
+    heightPx: Float,
+    fontPx: Float,
+    areaFraction: Float,
+    lineHeightRatio: Float = LINE_HEIGHT_RATIO,
+    scrollDurationMs: Long = SCROLL_DURATION_MS,
+    massiveMode: Boolean = false,
+    bottomInsetPx: Float,
+): List<PlacedDanmaku> {
+    if (items.isEmpty() || widthPx <= 0f || heightPx <= 0f || fontPx <= 0f) return emptyList()
+    val planner = DanmakuTrackPlanner(
+        widthPx = widthPx,
+        heightPx = heightPx,
+        fontPx = fontPx,
+        areaFraction = areaFraction,
+        lineHeightRatio = lineHeightRatio,
+        scrollDurationMs = scrollDurationMs,
+        massiveMode = massiveMode,
+        bottomInsetPx = bottomInsetPx,
+    )
+    val result = ArrayList<PlacedDanmaku>(items.size)
+    for (entry in items) {
+        planner.placeNext(entry, measure)?.let(result::add)
+    }
     return result
+}
+
+/**
+ * 直播流增量弹幕布局缓冲：
+ * 只给新到达的弹幕（`id > lastId`）接着既有轨道状态追加入轨，不再因为头部裁剪过期条目或新来重复文案
+ * 而从头重排整屏，保证已在屏幕上滚动的弹幕既不会跳轨、也不会还没播完就突然消失。
+ */
+internal class LiveDanmakuBuffer {
+    private val placedLive = ArrayList<PlacedDanmaku>()
+    private var planner: DanmakuTrackPlanner? = null
+    private var firstId = Long.MIN_VALUE
+    private var lastId = Long.MIN_VALUE
+    private val recentTexts = HashMap<String, Int>(256)
+
+    fun reset() {
+        placedLive.clear()
+        planner = null
+        firstId = Long.MIN_VALUE
+        lastId = Long.MIN_VALUE
+        recentTexts.clear()
+    }
+
+    fun rebuild(
+        items: List<DanmakuItem>,
+        settings: DanmakuSettings,
+        measure: (String, Float) -> Float,
+        widthPx: Float,
+        heightPx: Float,
+        fontPx: Float,
+        bottomInsetPx: Float,
+    ): List<PlacedDanmaku> {
+        reset()
+        if (items.isEmpty() || widthPx <= 0f || heightPx <= 0f || fontPx <= 0f) return emptyList()
+        val newPlanner = DanmakuTrackPlanner(
+            widthPx = widthPx,
+            heightPx = heightPx,
+            fontPx = fontPx,
+            areaFraction = settings.areaFraction,
+            lineHeightRatio = settings.lineHeightRatio,
+            scrollDurationMs = settings.scrollDurationMs,
+            massiveMode = settings.massiveMode,
+            bottomInsetPx = bottomInsetPx,
+        )
+        planner = newPlanner
+        for (entry in filterAndMergeDanmaku(items, settings, recentTexts)) {
+            newPlanner.placeNext(entry, measure)?.let(placedLive::add)
+        }
+        firstId = items.first().id
+        lastId = items.last().id
+        return ArrayList(placedLive)
+    }
+
+    fun updateIncremental(
+        previous: List<DanmakuItem>,
+        next: List<DanmakuItem>,
+        settings: DanmakuSettings,
+        nowMs: Double,
+        measure: (String, Float) -> Float,
+        widthPx: Float,
+        heightPx: Float,
+        fontPx: Float,
+        bottomInsetPx: Float,
+    ): List<PlacedDanmaku> {
+        if (next.isEmpty()) {
+            reset()
+            return emptyList()
+        }
+        val activePlanner = planner
+        val canAppend = activePlanner != null &&
+            widthPx > 0f &&
+            heightPx > 0f &&
+            fontPx > 0f &&
+            previous.isNotEmpty() &&
+            next.first().id >= firstId &&
+            next.last().id >= lastId
+        if (!canAppend) {
+            return rebuild(next, settings, measure, widthPx, heightPx, fontPx, bottomInsetPx)
+        }
+
+        firstId = next.first().id
+        var startIdx = next.size
+        for (i in next.lastIndex downTo 0) {
+            if (next[i].id <= lastId) {
+                startIdx = i + 1
+                break
+            }
+            if (i == 0) startIdx = 0
+        }
+        if (startIdx < next.size) {
+            val newEntries = filterAndMergeDanmaku(
+                items = next.subList(startIdx, next.size),
+                settings = settings,
+                recentTexts = recentTexts,
+            )
+            for (entry in newEntries) {
+                activePlanner.placeNext(entry, measure)?.let(placedLive::add)
+            }
+            lastId = next.last().id
+        }
+        val maxDuration = max(settings.scrollDurationMs.toDouble(), FIXED_DURATION_MS.toDouble())
+        val expireBefore = (nowMs - maxDuration - FADE_MS - 1_000.0).toLong()
+        while (placedLive.isNotEmpty() && placedLive.first().item.timeMs < expireBefore) {
+            placedLive.removeAt(0)
+        }
+        return ArrayList(placedLive)
+    }
 }
 
 /**
