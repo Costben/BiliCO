@@ -292,7 +292,12 @@ class CommentRepository(
             val data = response.data ?: error("图片上传失败")
             val url = Formatters.normalizeImageUrl(data.imageUrl)
             require(url.isNotBlank()) { "图片上传失败" }
-            UploadedPicture(url = url, width = data.imageWidth, height = data.imageHeight)
+            UploadedPicture(
+                url = url,
+                width = data.imageWidth,
+                height = data.imageHeight,
+                sizeKb = bytes.size / 1024.0,
+            )
         }
     }
 

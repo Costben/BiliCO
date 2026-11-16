@@ -54,8 +54,21 @@ data class UploadedPicture(
     val url: String,
     val width: Int = 0,
     val height: Int = 0,
+    val sizeKb: Double = 0.0,
 ) {
     fun toJson(): String =
         """{"img_src":"$url","img_width":${width.coerceAtLeast(1)},""" +
             """"img_height":${height.coerceAtLeast(1)}}"""
 }
+
+@Serializable
+data class CreateDynamicResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: CreateDynamicData? = null,
+)
+
+@Serializable
+data class CreateDynamicData(
+    @SerialName("dyn_id_str") val dynIdStr: String = "",
+)

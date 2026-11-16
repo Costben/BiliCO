@@ -2,14 +2,17 @@ package erl.bilico.feature.dynamic
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +29,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +44,7 @@ import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.comment.CommentComposerSheet
 import erl.bilico.feature.feed.FeedSegmentRowHeight
 import erl.bilico.ui.ExpandOrigin
 import erl.bilico.ui.NavState
@@ -58,7 +64,9 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.rememberFullPagePullToRefreshState
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
@@ -401,3 +409,57 @@ internal val DynamicFilters = listOf(
     DynamicFilter.VIDEO to "视频",
     DynamicFilter.LIVE to "直播",
 )
+
+@Composable
+internal fun BoxScope.DynamicPublishOverlay(
+    container: AppContainer,
+    composerOpen: Boolean,
+    onDismissComposer: () -> Unit,
+    onPublished: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var toast by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(toast) {
+        if (toast != null) {
+            delay(2400)
+            toast = null
+        }
+    }
+    toast?.let { text ->
+        Text(
+            text = text,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 104.dp)
+                .clip(SquircleShape(8.dp))
+                .background(Color(0xCC000000))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            style = COUITheme.textStyles.footnote1,
+            color = Color.White,
+        )
+    }
+    if (composerOpen) {
+        CommentComposerSheet(
+            container = container,
+            hint = "发布动态",
+            allowPictures = true,
+            submitLabel = "发布",
+            allowBlankWithPictures = true,
+            onSubmit = { text, pictures, atMids ->
+                onDismissComposer()
+                scope.launch {
+                    container.dynamic.publishDynamic(text, pictures, atMids)
+                        .onSuccess {
+                            toast = "动态已发布"
+                            onPublished()
+                        }
+                        .onFailure {
+                            toast = it.message ?: "发布动态失败"
+                        }
+                }
+            },
+            onDismiss = onDismissComposer,
+        )
+    }
+}

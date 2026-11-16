@@ -5,6 +5,7 @@ import erl.bilico.data.model.ArchiveStatResponse
 import erl.bilico.data.model.ArticleViewResponse
 import erl.bilico.data.model.BangumiFollowResponse
 import erl.bilico.data.model.BaseResponse
+import erl.bilico.data.model.CreateDynamicResponse
 import erl.bilico.data.model.DynamicDetailResponse
 import erl.bilico.data.model.DynamicFeedResponse
 import erl.bilico.data.model.EmotePanelResponse
@@ -25,6 +26,7 @@ import erl.bilico.data.model.HistoryResponse
 import erl.bilico.data.model.ImFetchMsgsResponse
 import erl.bilico.data.model.ImSendMsgResponse
 import erl.bilico.data.model.ImSessionListResponse
+import erl.bilico.data.model.LiveContributionRankResponse
 import erl.bilico.data.model.LiveDanmakuInfoResponse
 import erl.bilico.data.model.LiveFollowingResponse
 import erl.bilico.data.model.LiveListResponse
@@ -137,6 +139,12 @@ interface BiliApi {
     @GET("x/polymer/web-dynamic/v1/feed/space")
     suspend fun spaceDynamicFeed(@QueryMap params: Map<String, String>): DynamicFeedResponse
 
+    @POST("x/dynamic/feed/create/dyn")
+    suspend fun createDynamic(
+        @Query("csrf") csrf: String,
+        @retrofit2.http.Body body: kotlinx.serialization.json.JsonObject,
+    ): CreateDynamicResponse
+
     // ---------- 专栏 / 图文 ----------
 
     @GET("x/article/view")
@@ -171,6 +179,9 @@ interface BiliApi {
 
     @GET("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo")
     suspend fun liveDanmakuInfo(@QueryMap params: Map<String, String>): LiveDanmakuInfoResponse
+
+    @GET("https://api.live.bilibili.com/xlive/general-interface/v1/rank/queryContributionRank")
+    suspend fun liveContributionRank(@QueryMap params: Map<String, String>): LiveContributionRankResponse
 
     @GET("x/web-interface/wbi/search/square")
     suspend fun searchSquare(@QueryMap params: Map<String, String>): SearchSquareResponse

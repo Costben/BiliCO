@@ -99,11 +99,13 @@ private data class PickedImage(val uri: Uri)
  * 发表评论 / 回复的底部输入面板：遵循 ColorOS 17 面板规范，左右 12.dp 缩进与全项目卡片对齐。
  */
 @Composable
-internal fun CommentComposerSheet(
+fun CommentComposerSheet(
     container: AppContainer,
     hint: String,
     initial: String = "",
     allowPictures: Boolean = true,
+    submitLabel: String = "发送",
+    allowBlankWithPictures: Boolean = false,
     onSubmit: (text: String, pictures: List<UploadedPicture>, atMids: Map<String, Long>) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -210,7 +212,7 @@ internal fun CommentComposerSheet(
 
     fun submit() {
         val text = field.text.trim()
-        if (text.isEmpty() || uploading) return
+        if ((text.isEmpty() && !(allowBlankWithPictures && pictures.isNotEmpty())) || uploading) return
         if (pictures.isEmpty()) {
             onSubmit(text, emptyList(), atMids)
             return
@@ -459,8 +461,8 @@ internal fun CommentComposerSheet(
 
         Spacer(Modifier.height(ACTION_GAP))
         ActionCapsule(
-            text = if (uploading) "上传中…" else "发送",
-            enabled = field.text.isNotBlank() && !uploading,
+            text = if (uploading) "上传中…" else submitLabel,
+            enabled = (field.text.isNotBlank() || (allowBlankWithPictures && pictures.isNotEmpty())) && !uploading,
             onClick = { submit() },
         )
     }

@@ -60,7 +60,7 @@ class AppContainer(context: Context) {
 
     val heartbeat = HeartbeatReporter(client.api, session)
 
-    val dynamic = DynamicRepository(client.api, client.buvid)
+    val dynamic = DynamicRepository(client.api, client.buvid, session)
 
     val articles = ArticleRepository(client.api, client.wbi, client.buvid)
 

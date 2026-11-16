@@ -19,9 +19,11 @@ import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.LiveMajor
 import erl.bilico.data.model.LiveRcmdContent
+import erl.bilico.data.model.UploadedPicture
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.BuvidManager
+import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,8 +56,15 @@ data class DynamicOpusContent(
 class DynamicRepository(
     private val api: BiliApi,
     private val buvid: BuvidManager,
+    private val session: SessionRepository? = null,
 ) {
     private val detailSeedCache = ConcurrentHashMap<String, DynamicItemUi>()
+
+    suspend fun publishDynamic(
+        text: String,
+        pictures: List<UploadedPicture> = emptyList(),
+        atMids: Map<String, Long> = emptyMap(),
+    ): Result<String> = publishDynamicRequest(api, buvid, session, text, pictures, atMids)
 
     fun rememberSeed(item: DynamicItemUi) {
         if (item.dynamicId.isNotBlank()) {
@@ -293,7 +302,7 @@ class DynamicRepository(
             .map { DynamicImage(Formatters.normalizeImageUrl(it.displayUrl), it.width, it.height) }
             .toList()
         val video = major?.archive?.toCard()
-        val live = major?.toLiveCard()
+        val live = major?.toLiveCard(authorMid = author?.mid ?: 0L)
 
         val articleId = major?.article?.id ?: 0L
         val selfId = idStr.ifBlank { basic?.ridStr.orEmpty() }
@@ -384,7 +393,7 @@ class DynamicRepository(
      * 开播动态：`major.live` 和 `major.live_rcmd.content` 里是同一份直播间信息，
      * 后者是 JSON 文本，要先解一层。
      */
-    private fun DynamicMajor.toLiveCard(): DynamicLiveCard? {
+    private fun DynamicMajor.toLiveCard(authorMid: Long): DynamicLiveCard? {
         val info = live ?: liveRcmd?.content
             ?.takeIf { it.isNotBlank() }
             ?.let { raw ->
@@ -394,18 +403,12 @@ class DynamicRepository(
         if (info.roomId <= 0L) return null
         return DynamicLiveCard(
             roomId = info.roomId,
+            uid = info.uid.takeIf { it > 0L } ?: authorMid,
             title = info.title,
             cover = Formatters.normalizeImageUrl(info.cover),
             areaName = info.areaName.ifBlank { info.parentAreaName },
-            watchedText = info.watchedText(),
             living = info.liveStatus == 1,
         )
-    }
-
-    private fun LiveMajor.watchedText(): String {
-        val show = watchedShow ?: return ""
-        return show.textLarge.ifBlank { show.textSmall }
-            .ifBlank { show.num.takeIf { it > 0L }?.let { "${Formatters.formatStat(it)}人看过" }.orEmpty() }
     }
 
     private fun firstNumericId(vararg candidates: String?): Long? {
@@ -511,74 +514,6 @@ class DynamicRepository(
             }
         }.getOrNull()
     }
-
-    /**
-     * 长文型 opus 的正文与图片全在 `module_content.paragraphs` 里：
-     * 图片段（`para_type == 2`）是内嵌大图，文字段（`para_type == 1`）的 `text.nodes` 里
-     * 每个节点要么是 `word.words`，要么是 `rich.text`。feed 卡片里同一份正文只给「[图片]」占位，
-     * 所以这条路径主要给 opus/detail 用。
-     */
-    private fun JsonElement?.decodeOpusParagraphs(): OpusBlocks {
-        val modules = when (this) {
-            is JsonArray -> mapNotNull { it as? JsonObject }
-            is JsonObject -> listOf(this)
-            else -> return OpusBlocks()
-        }
-        val content = modules.firstNotNullOfOrNull { it["module_content"] as? JsonObject }
-            ?: return OpusBlocks()
-        val paragraphs = (content["paragraphs"] as? JsonArray).orEmpty()
-        val text = StringBuilder()
-        val images = mutableListOf<DynamicImageData>()
-        paragraphs.forEach paragraph@{ element ->
-            val paragraph = element as? JsonObject ?: return@paragraph
-            val pic = paragraph["pic"] as? JsonObject
-            if (pic != null) {
-                (pic["pics"] as? JsonArray).orEmpty().forEach picItem@{ item ->
-                    val obj = item as? JsonObject ?: return@picItem
-                    val url = obj.text("url")
-                    if (url.isBlank()) return@picItem
-                    images += DynamicImageData(
-                        src = url,
-                        url = url,
-                        width = obj.int("width"),
-                        height = obj.int("height"),
-                    )
-                }
-                return@paragraph
-            }
-            val paragraphText = (paragraph["text"] as? JsonObject)
-                ?.let { it["nodes"] as? JsonArray }
-                .orEmpty()
-                .mapNotNull { node ->
-                    val obj = node as? JsonObject ?: return@mapNotNull null
-                    (obj["word"] as? JsonObject)?.text("words")
-                        ?: (obj["rich"] as? JsonObject)?.text("text")
-                        ?: (obj["formula"] as? JsonObject)?.text("latex")
-                }
-                .joinToString("")
-                .trim()
-            if (paragraphText.isNotEmpty()) {
-                if (text.isNotEmpty()) text.append('\n')
-                text.append(paragraphText)
-            }
-        }
-        return OpusBlocks(text.toString(), images)
-    }
-
-    /** 段落解析结果：正文文本 + 内嵌图片。 */
-    private data class OpusBlocks(
-        val text: String = "",
-        val images: List<DynamicImageData> = emptyList(),
-    )
-
-    private fun JsonObject.text(key: String): String {
-        val value = this[key] as? JsonPrimitive ?: return ""
-        if (value is JsonNull) return ""
-        return value.content.takeIf { it != "null" }.orEmpty()
-    }
-
-    private fun JsonObject.int(key: String): Int =
-        (this[key] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
 
     private companion object {
         const val MAJOR_TYPE_OPUS = "MAJOR_TYPE_OPUS"
