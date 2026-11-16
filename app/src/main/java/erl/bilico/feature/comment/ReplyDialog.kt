@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -361,6 +362,7 @@ internal fun ReplyDialog(
         showDragHandle = false,
         insideMargin = DpSize(0.dp, 0.dp),
         panelPaddingBottom = 0.dp,
+        defaultWindowInsetsPadding = false,
         // 评论详情是接近满屏的高面板，按原有比例要拖走几乎整块才关得上；这里改成拖走 1/3 就收，
         // 配合向下轻甩随时可关。
         dismissOffsetFraction = 1f / 3f,
@@ -393,7 +395,8 @@ internal fun ReplyDialog(
                     modifier = Modifier
                         .fillMaxSize()
                         .layerBackdropIf(BlurEffectsEnabled, sheetBackdrop)
-                        .background(sheetBackdropTint),
+                        .background(sheetBackdropTint)
+                        .imePadding(),
                 ) {
                     LazyColumn(
                         state = listState,
