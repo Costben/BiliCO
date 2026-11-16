@@ -63,11 +63,12 @@ class LiveRoomViewModel(
             danmakuClient.state.collect { state -> _state.update { it.copy(danmakuState = state) } }
         }
         viewModelScope.launch {
-            danmakuClient.watchers.collect { watchers ->
+            danmakuClient.onlineCount.collect { count ->
                 _state.update { state ->
                     val detail = state.detail ?: return@update state
-                    if (watchers.count <= 0L) return@update state
-                    state.copy(detail = detail.copy(watched = watchers.count))
+                    val realId = detail.roomId.takeIf { it > 0L } ?: roomId
+                    repository.cacheOnlineRankCount(realId, count)
+                    state.copy(detail = detail.copy(onlineCount = count))
                 }
             }
         }
@@ -78,15 +79,31 @@ class LiveRoomViewModel(
             _state.update { it.copy(isLoading = true, error = null) }
             repository.detail(roomId)
                 .onSuccess { detail ->
+                    val realRoomId = detail.roomId.takeIf { it > 0L } ?: roomId
                     _state.update { it.copy(detail = detail, isLoading = false) }
                     if (detail.isLive) {
+                        loadOnlineRankCount(realRoomId, detail.uid)
                         loadPlayback(_state.value.requestedQuality)
-                        connectDanmaku(detail.roomId.takeIf { it > 0L } ?: roomId)
+                        connectDanmaku(realRoomId)
                     }
                 }
                 .onFailure { error ->
                     _state.update {
                         it.copy(isLoading = false, error = error.message ?: "直播间加载失败")
+                    }
+                }
+        }
+    }
+
+    private fun loadOnlineRankCount(realRoomId: Long, ruid: Long) {
+        if (ruid <= 0L) return
+        viewModelScope.launch {
+            repository.onlineRankCount(realRoomId, ruid, forceRefresh = true)
+                .onSuccess { count ->
+                    _state.update { state ->
+                        val detail = state.detail ?: return@update state
+                        // WebSocket 已经推进来更新时保留后者，否则填初始高能观众数。
+                        state.copy(detail = detail.copy(onlineCount = detail.onlineCount ?: count))
                     }
                 }
         }

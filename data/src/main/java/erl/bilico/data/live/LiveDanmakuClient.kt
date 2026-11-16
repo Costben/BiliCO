@@ -2,7 +2,6 @@ package erl.bilico.data.live
 
 import android.util.Log
 import erl.bilico.data.model.LiveDanmakuMessage
-import erl.bilico.data.model.LiveWatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
@@ -52,13 +51,13 @@ class LiveDanmakuClient(
     private val _state = MutableStateFlow(LiveDanmakuState.Idle)
     val state: StateFlow<LiveDanmakuState> = _state.asStateFlow()
 
-    private val _watchers = MutableSharedFlow<LiveWatchers>(
+    private val _onlineCount = MutableSharedFlow<Long>(
         extraBufferCapacity = 4,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    /** 服务端隔一会儿就推一次「本场看过人数」，房间页拿它刷新观众数。 */
-    val watchers: SharedFlow<LiveWatchers> = _watchers.asSharedFlow()
+    /** 服务端实时推送的「高能观众」人数（ONLINE_RANK_COUNT），与 PiliPlus 口径一致。 */
+    val onlineCount: SharedFlow<Long> = _onlineCount.asSharedFlow()
 
     private var socket: WebSocket? = null
     private var heartbeat: Job? = null
@@ -205,21 +204,19 @@ class LiveDanmakuClient(
         }
         items.forEach { element ->
             val obj = element as? JsonObject ?: return@forEach
-            parseWatched(obj)?.let { _watchers.tryEmit(it) }
+            parseOnlineRankCount(obj)?.let { _onlineCount.tryEmit(it) }
             val message = parseDanmaku(obj) ?: return@forEach
             _messages.tryEmit(message)
         }
     }
 
-    /** `{"cmd":"WATCHED_CHANGE","data":{"num":19342,"text_small":"1.9万","text_large":"1.9万人看过"}}` */
-    private fun parseWatched(obj: JsonObject): LiveWatchers? {
+    /** `{"cmd":"ONLINE_RANK_COUNT","data":{"count":7041}}` */
+    private fun parseOnlineRankCount(obj: JsonObject): Long? {
         val cmd = obj["cmd"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        if (!cmd.startsWith("WATCHED_CHANGE")) return null
+        if (!cmd.startsWith("ONLINE_RANK_COUNT")) return null
         val data = obj["data"]?.jsonObject ?: return null
-        val count = data["num"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: return null
-        val text = data["text_small"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            .ifBlank { data["text_large"]?.jsonPrimitive?.contentOrNull.orEmpty() }
-        return LiveWatchers(count = count, text = text)
+        return data["count"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+            ?: data["online_count"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
     }
 
     /** `info` 是个位置敏感数组：1 是正文，2 是发送者，3 是粉丝牌，0 是原始元信息。 */

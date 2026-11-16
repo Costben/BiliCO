@@ -231,6 +231,8 @@ data class LiveMajor(
     @SerialName("room_id")
     @Serializable(with = FlexibleLongSerializer::class)
     val roomId: Long = 0,
+    @Serializable(with = FlexibleLongSerializer::class)
+    val uid: Long = 0,
     val title: String = "",
     val cover: String = "",
     @SerialName("area_name") val areaName: String = "",

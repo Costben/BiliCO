@@ -32,8 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicLiveCard
-import erl.bilico.ui.imageOrigin
 import erl.bilico.data.util.Formatters
+import erl.bilico.feature.live.rememberOnlineRankCount
+import erl.bilico.ui.imageOrigin
 import erl.bilico.ui.components.COUISmoothCapsuleShape
 import erl.bilico.ui.components.LoadingImage
 import io.github.suqi8.coui.kmp.basic.Text
@@ -45,7 +46,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 internal fun cardContentWidthDp(): Dp = LocalConfiguration.current.screenWidthDp.dp - 52.dp
 
 /**
- * 开播动态：封面右上角是「N人看过」与「直播中」，左下角是分区名，封面下面是直播间标题。
+ * 开播动态：封面右上角是「高能观众(N)」与「直播中」，左下角是分区名，封面下面是直播间标题。
  * 整块点进直播间。
  */
 @Composable
@@ -62,6 +63,12 @@ internal fun DynamicLiveCardView(
     val coverUrl = remember(live.cover, widthPx) {
         Formatters.sizedImageUrl(live.cover, widthPx, widthPx * 9 / 16)
     }
+    val onlineCount = rememberOnlineRankCount(
+        roomId = live.roomId,
+        uid = live.uid,
+        initial = live.onlineCount,
+        active = live.living,
+    )
     val onClick = remember(live.roomId, onOpenLive) { { onOpenLive(live.roomId) } }
 
     Column(
@@ -88,9 +95,9 @@ internal fun DynamicLiveCardView(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (live.watchedText.isNotBlank()) {
+                if (live.living && onlineCount != null) {
                     Text(
-                        text = live.watchedText,
+                        text = "高能观众(${Formatters.formatStat(onlineCount)})",
                         modifier = Modifier
                             .clip(COUISmoothCapsuleShape)
                             .background(Color(0x66000000))

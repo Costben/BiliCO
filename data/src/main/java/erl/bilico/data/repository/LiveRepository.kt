@@ -15,7 +15,10 @@ import erl.bilico.data.network.WbiKeyManager
 import erl.bilico.data.network.WbiUtils
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 data class LiveRoomPage(
     val items: List<LiveRoomItem>,
@@ -27,6 +30,59 @@ class LiveRepository(
     private val wbi: WbiKeyManager,
     private val buvid: BuvidManager,
 ) {
+    private val onlineRankCache = ConcurrentHashMap<Long, Long>()
+    private val onlineRankSemaphore = Semaphore(4)
+
+    fun cachedOnlineRankCount(roomId: Long): Long? = onlineRankCache[roomId]
+
+    fun cacheOnlineRankCount(roomId: Long, count: Long) {
+        if (roomId > 0L && count >= 0L) {
+            onlineRankCache[roomId] = count
+        }
+    }
+
+    /**
+     * PiliPlus `Api.liveContributionRank` 对应的高能观众数：
+     * 用 `type=online_rank` 拉第 1 页第 1 条即可拿到 `data.count`。
+     */
+    suspend fun onlineRankCount(
+        roomId: Long,
+        ruid: Long,
+        forceRefresh: Boolean = false,
+    ): Result<Long> = withContext(Dispatchers.IO) {
+        if (roomId <= 0L || ruid <= 0L) {
+            return@withContext Result.failure(IllegalArgumentException("缺少直播间或主播 ID"))
+        }
+        if (!forceRefresh) {
+            onlineRankCache[roomId]?.let { return@withContext Result.success(it) }
+        }
+        runCatching {
+            onlineRankSemaphore.withPermit {
+                if (!forceRefresh) {
+                    onlineRankCache[roomId]?.let { return@withPermit it }
+                }
+                buvid.ensure()
+                val keys = wbi.getKeys()
+                val params = mapOf(
+                    "ruid" to ruid.toString(),
+                    "room_id" to roomId.toString(),
+                    "page" to "1",
+                    "page_size" to "1",
+                    "type" to "online_rank",
+                    "switch" to "contribution_rank",
+                    "platform" to "web",
+                    "web_location" to "444.8",
+                )
+                val response = api.liveContributionRank(WbiUtils.sign(params, keys.first, keys.second))
+                if (response.code != 0) {
+                    error(response.message.ifBlank { "高能观众获取失败(${response.code})" })
+                }
+                val count = response.data?.count ?: error("高能观众为空")
+                onlineRankCache[roomId] = count
+                count
+            }
+        }
+    }
     suspend fun rooms(page: Int): Result<LiveRoomPage> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -46,6 +102,7 @@ class LiveRepository(
                 if (room.roomId <= 0L) return@mapNotNull null
                 LiveRoomItem(
                     roomId = room.roomId,
+                    uid = room.uid,
                     title = room.title,
                     cover = Formatters.normalizeImageUrl(
                         listOf(room.cover, room.userCover, room.systemCover, room.keyframe)
@@ -54,6 +111,7 @@ class LiveRepository(
                     anchor = room.uname,
                     online = room.online,
                     areaName = room.areaV2Name.ifBlank { room.areaName },
+                    onlineCount = onlineRankCache[room.roomId],
                 )
             }
             LiveRoomPage(
@@ -88,12 +146,13 @@ class LiveRepository(
                 .map { room ->
                     LiveRoomItem(
                         roomId = room.roomId,
+                        uid = room.uid,
                         title = room.title.ifBlank { "未命名直播间" },
                         cover = Formatters.normalizeImageUrl(room.roomCover),
                         anchor = room.uname,
                         online = 0L,
                         areaName = room.areaName,
-                        popularityText = room.textSmall,
+                        onlineCount = onlineRankCache[room.roomId],
                     )
                 }
             val pageCount = data.pageCount
@@ -110,8 +169,10 @@ class LiveRepository(
             val response = api.liveRoomDetail(roomId)
             val room = response.data?.roomInfo
             if (response.code == 0 && room != null) {
+                val resolvedId = room.roomId.takeIf { it > 0L } ?: roomId
                 return@runCatching LiveRoomDetail(
-                    roomId = room.roomId.takeIf { it > 0L } ?: roomId,
+                    roomId = resolvedId,
+                    uid = room.uid,
                     title = room.title,
                     cover = Formatters.normalizeImageUrl(
                         listOf(room.cover, room.keyframe).firstOrNull { it.isNotBlank() },
@@ -124,19 +185,22 @@ class LiveRepository(
                     description = room.description,
                     areaName = room.areaName,
                     isLive = room.liveStatus == 1,
+                    onlineCount = onlineRankCache[resolvedId],
                 )
             }
             fallbackDetail(roomId)
         }
     }
 
-    /** getInfoByRoom 偶发 -352，用 room/v1 兜底拿标题、开播状态与人气。 */
+    /** getInfoByRoom 偶发 -352，用 room/v1 兜底拿标题、开播状态与主播 uid。 */
     private suspend fun fallbackDetail(roomId: Long): LiveRoomDetail {
         val response = api.liveRoomInfo(roomId)
         val data = response.data
             ?: error(response.message.ifBlank { "直播间信息获取失败(${response.code})" })
+        val resolvedId = data.roomId.takeIf { it > 0L } ?: roomId
         return LiveRoomDetail(
-            roomId = data.roomId.takeIf { it > 0L } ?: roomId,
+            roomId = resolvedId,
+            uid = data.uid,
             title = data.title,
             cover = Formatters.normalizeImageUrl(
                 listOf(data.userCover, data.keyframe, data.cover).firstOrNull { it.isNotBlank() },
@@ -147,6 +211,7 @@ class LiveRepository(
             description = data.description,
             areaName = data.areaName,
             isLive = data.liveStatus == 1,
+            onlineCount = onlineRankCache[resolvedId],
         )
     }
 

@@ -69,6 +69,7 @@ import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.components.ErrorState
@@ -105,7 +106,7 @@ fun LiveRoomScreen(
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val player = remember { buildConfiguredExoPlayer(context) }
+    val player = rememberPlaybackPlayer("live-$roomId") { buildConfiguredExoPlayer(context) }
 
     // 视频本身的宽高比（宽 / 高），来自解码器上报的首帧尺寸；0 表示还没拿到。
     var videoAspect by remember(roomId) { mutableFloatStateOf(0f) }
@@ -204,7 +205,6 @@ fun LiveRoomScreen(
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
-            player.release()
         }
     }
 
@@ -212,6 +212,7 @@ fun LiveRoomScreen(
         player = player,
         title = state.detail?.title.orEmpty(),
         subtitle = state.detail?.anchorName.orEmpty(),
+        artworkUrl = state.detail?.cover.orEmpty(),
         isPlaying = isPlaying,
         backgroundPlay = backgroundPlay,
         autoPip = autoPip,
@@ -494,11 +495,12 @@ private fun LiveRoomInfo(detail: LiveRoomDetail, modifier: Modifier = Modifier) 
                     text = buildString {
                         if (detail.areaName.isNotBlank()) append(detail.areaName).append(" · ")
                         if (detail.isLive) {
-                            // 先给真实观众数（本场看过），人气是加权热度，标清楚免得又混在一起。
-                            if (detail.watched > 0L) {
-                                append(Formatters.formatStat(detail.watched)).append("人看过 · ")
+                            val count = detail.onlineCount
+                            if (count != null) {
+                                append("高能观众(").append(Formatters.formatStat(count)).append(")")
+                            } else {
+                                append("高能观众")
                             }
-                            append(Formatters.formatStat(detail.online)).append("人气")
                         } else {
                             append("未开播")
                         }

@@ -196,14 +196,15 @@ data class DynamicVideoCard(
     val aid: Long = 0L,
 )
 
-/** 开播动态的直播间预览：封面、看过人数与分区名都直接来自接口。 */
+/** 开播动态的直播间预览：封面、主播 uid、高能观众数与分区名。 */
 data class DynamicLiveCard(
     val roomId: Long,
+    val uid: Long = 0L,
     val title: String,
     val cover: String,
     val areaName: String,
-    val watchedText: String,
     val living: Boolean,
+    val onlineCount: Long? = null,
 )
 
 /** 动态卡片下方外露的精选/热评：整段文字已经拼好，表情单独给图。 */
@@ -296,17 +297,19 @@ data class HistoryStat(
 
 data class LiveRoomItem(
     val roomId: Long,
+    val uid: Long = 0L,
     val title: String,
     val cover: String,
     val anchor: String,
     val online: Long,
     val areaName: String,
-    /** 接口直接给的人气文案（如「1.2万」）；没有数值 online 时用它兜底。 */
-    val popularityText: String = "",
+    /** 高能观众数（与 PiliPlus 一致，来自 queryContributionRank）；null 表示尚未拉取。 */
+    val onlineCount: Long? = null,
 )
 
 data class LiveRoomDetail(
     val roomId: Long,
+    val uid: Long = 0L,
     val title: String,
     val cover: String,
     val anchorName: String,
@@ -315,8 +318,8 @@ data class LiveRoomDetail(
     val description: String,
     val areaName: String,
     val isLive: Boolean,
-    /** 本场「看过」人数，官方客户端显示的就是它；0 表示接口没给。 */
-    val watched: Long = 0L,
+    /** 高能观众数（与 PiliPlus `ONLINE_RANK_COUNT` / `queryContributionRank` 一致）；null 表示尚未拿到。 */
+    val onlineCount: Long? = null,
 )
 
 data class LivePlayback(

@@ -222,10 +222,16 @@ data class LiveDanmakuMessage(
     val medalLevel: Int = 0,
 )
 
-/** 弹幕流里下发的「本场看过人数」更新（WATCHED_CHANGE）。 */
-data class LiveWatchers(
-    val count: Long,
-    val text: String,
+@Serializable
+data class LiveContributionRankResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: LiveContributionRankData? = null,
+)
+
+@Serializable
+data class LiveContributionRankData(
+    val count: Long = 0,
 )
 
 /** 弹幕服务端：token 用在认证包里，urls 按顺序尝试。 */
