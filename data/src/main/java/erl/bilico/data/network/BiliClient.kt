@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.Response
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -76,6 +77,14 @@ class BiliClient(
 
     /** 给 ExoPlayer 使用同一套请求头，避免 CDN 403。 */
     fun mediaClient(): OkHttpClient = mediaOkHttp
+
+    /** 封面走同一条网络栈。系统自己去拉图床会被拒。 */
+    fun fetchBytes(url: String): ByteArray {
+        okHttp.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) error("HTTP ${response.code}")
+            return response.body.bytes()
+        }
+    }
 
     /** 播放器取流必须自带 UA 与 Referer，否则 CDN 直接拒绝。 */
     fun mediaRequestHeaders(bvid: String? = null): Map<String, String> = buildMap {
