@@ -55,6 +55,9 @@ class SettingsRepository(
     private val _danmakuArea = MutableStateFlow(1)
     val danmakuArea: StateFlow<Int> = _danmakuArea.asStateFlow()
 
+    private val _inAppBackgroundPlay = MutableStateFlow(true)
+    val inAppBackgroundPlay: StateFlow<Boolean> = _inAppBackgroundPlay.asStateFlow()
+
     private val _backgroundPlay = MutableStateFlow(true)
     val backgroundPlay: StateFlow<Boolean> = _backgroundPlay.asStateFlow()
 
@@ -139,6 +142,7 @@ class SettingsRepository(
                 lineHeight = (prefs[KEY_DM_LINE_HEIGHT] ?: 135).coerceIn(100, 200),
             )
             syncDanmakuState(dm)
+            _inAppBackgroundPlay.value = prefs[KEY_IN_APP_BACKGROUND_PLAY] ?: true
             _backgroundPlay.value = prefs[KEY_BACKGROUND_PLAY] ?: true
             val legacyAutoPlay = prefs[KEY_AUTO_PLAY_NEXT] ?: true
             val resolvedEndMode = prefs[KEY_PLAYBACK_END_MODE]
@@ -218,6 +222,11 @@ class SettingsRepository(
     fun setGestureHaptic(enabled: Boolean) {
         _gestureHaptic.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_GESTURE_HAPTIC] = enabled } }
+    }
+
+    fun setInAppBackgroundPlay(enabled: Boolean) {
+        _inAppBackgroundPlay.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_IN_APP_BACKGROUND_PLAY] = enabled } }
     }
 
     fun setBackgroundPlay(enabled: Boolean) {
@@ -435,6 +444,7 @@ class SettingsRepository(
         val KEY_DM_STROKE = intPreferencesKey("danmaku_stroke_width")
         val KEY_DM_WEIGHT = intPreferencesKey("danmaku_font_weight")
         val KEY_DM_LINE_HEIGHT = intPreferencesKey("danmaku_line_height")
+        val KEY_IN_APP_BACKGROUND_PLAY = booleanPreferencesKey("in_app_background_play")
         val KEY_BACKGROUND_PLAY = booleanPreferencesKey("background_play")
         val KEY_AUTO_PIP = booleanPreferencesKey("auto_pip")
         val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")

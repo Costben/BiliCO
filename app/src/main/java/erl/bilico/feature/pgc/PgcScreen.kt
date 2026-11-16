@@ -65,6 +65,7 @@ import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
@@ -116,7 +117,7 @@ fun PgcScreen(
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val player = remember { buildConfiguredExoPlayer(context) }
+    val player = rememberPlaybackPlayer("pgc-$seasonId") { buildConfiguredExoPlayer(context) }
 
     // 播放器解码上报的首帧宽高比（换集时同步重置），再回退到 dash 视频轨预设比例；0 表示仍未知。
     val episode = viewModel.currentEpisode
@@ -155,6 +156,7 @@ fun PgcScreen(
         player = player,
         title = state.detail?.title.orEmpty(),
         subtitle = episode?.title.orEmpty(),
+        artworkUrl = episode?.cover?.ifBlank { null } ?: state.detail?.cover.orEmpty(),
         isPlaying = isPlaying,
         backgroundPlay = backgroundPlay,
         autoPip = autoPip,
@@ -208,7 +210,6 @@ fun PgcScreen(
         onDispose {
             viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
             player.removeListener(listener)
-            player.release()
         }
     }
 

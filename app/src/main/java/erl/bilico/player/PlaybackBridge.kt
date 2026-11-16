@@ -15,15 +15,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import erl.bilico.ui.LocalRouteIsTop
+import erl.bilico.ui.LocalRouteMinimized
 
 val LocalInPipMode = compositionLocalOf { false }
 
@@ -47,19 +56,45 @@ object PlaybackBridge {
         private set
 
     @Volatile
+    var activeArtworkUrl: String = ""
+        private set
+
+    @Volatile
     var autoPipEnabled: Boolean = true
+        private set
+
+    var currentTitle by mutableStateOf("")
+        private set
+
+    var currentSubtitle by mutableStateOf("")
+        private set
+
+    var currentArtworkUrl by mutableStateOf("")
+        private set
+
+    var currentIsPlaying by mutableStateOf(false)
+        private set
+
+    var stopVersion by mutableIntStateOf(0)
         private set
 
     fun bind(
         player: Player,
         title: String,
         subtitle: String,
+        artworkUrl: String,
+        isPlaying: Boolean,
         autoPip: Boolean,
     ) {
         activePlayer = player
         activeTitle = title
         activeSubtitle = subtitle
+        activeArtworkUrl = artworkUrl
         autoPipEnabled = autoPip
+        currentTitle = title
+        currentSubtitle = subtitle
+        currentArtworkUrl = artworkUrl
+        currentIsPlaying = isPlaying
     }
 
     fun unbind(player: Player, context: Context) {
@@ -67,19 +102,42 @@ object PlaybackBridge {
             activePlayer = null
             activeTitle = ""
             activeSubtitle = ""
+            activeArtworkUrl = ""
+            currentTitle = ""
+            currentSubtitle = ""
+            currentArtworkUrl = ""
+            currentIsPlaying = false
             PlaybackService.stop(context)
         }
+    }
+
+    fun canMinimizeSession(): Boolean {
+        val p = activePlayer ?: return false
+        return p.playbackState != Player.STATE_IDLE &&
+            p.playbackState != Player.STATE_ENDED &&
+            (p.isPlaying || p.playWhenReady)
+    }
+
+    fun refreshSession(context: Context) {
+        PlaybackService.refreshIfRunning(context)
     }
 
     fun togglePlayPause(context: Context) {
         val p = activePlayer ?: return
         if (p.isPlaying) p.pause() else p.play()
+        currentIsPlaying = p.playWhenReady
         PlaybackService.refreshIfRunning(context)
     }
 
-    fun stopPlayback(context: Context) {
+    fun pauseAndStopSession(context: Context) {
         activePlayer?.pause()
+        currentIsPlaying = false
         PlaybackService.stop(context)
+    }
+
+    fun stopPlayback(context: Context) {
+        pauseAndStopSession(context)
+        stopVersion++
     }
 
     fun canEnterPip(activity: Activity?): Boolean {
@@ -127,6 +185,31 @@ object PlaybackBridge {
     }
 }
 
+/**
+ * 播放器跟着页面走，不跟某一次组合走。
+ * 点媒体条封面会让系统重建 Activity，组合里的 remember 会重新建一个播放器并把旧的释放掉，
+ * 媒体条还指着旧的，一点就崩。同一个页面的 key 不变，重建后还是原来那个播放器。
+ */
+@Composable
+fun rememberPlaybackPlayer(key: Any, factory: () -> ExoPlayer): ExoPlayer {
+    val holder: PlaybackPlayerHolder = viewModel(
+        key = "playback-player-$key",
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return PlaybackPlayerHolder(factory()) as T
+            }
+        },
+    )
+    return holder.player
+}
+
+private class PlaybackPlayerHolder(val player: ExoPlayer) : ViewModel() {
+    override fun onCleared() {
+        player.release()
+    }
+}
+
 fun buildConfiguredExoPlayer(context: Context): ExoPlayer {
     val attrs = AudioAttributes.Builder()
         .setUsage(C.USAGE_MEDIA)
@@ -144,6 +227,7 @@ fun BindPlaybackSession(
     player: Player,
     title: String,
     subtitle: String,
+    artworkUrl: String = "",
     isPlaying: Boolean,
     backgroundPlay: Boolean,
     autoPip: Boolean,
@@ -151,21 +235,24 @@ fun BindPlaybackSession(
     val context = LocalContext.current
     val activity = LocalContext.current.findPipActivity()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val isTop = LocalRouteIsTop.current
+    val isMinimized = LocalRouteMinimized.current
+    val activeSession = isTop || isMinimized
+    val effectiveAutoPip = autoPip && isTop
 
     val currentBackgroundPlay = rememberUpdatedState(backgroundPlay)
-    val currentTitle = rememberUpdatedState(title)
-    val currentSubtitle = rememberUpdatedState(subtitle)
 
-    LaunchedEffect(player, title, subtitle, isPlaying, autoPip) {
-        PlaybackBridge.bind(player, title, subtitle, autoPip)
+    LaunchedEffect(activeSession, player, title, subtitle, artworkUrl, isPlaying, effectiveAutoPip) {
+        if (!activeSession) return@LaunchedEffect
+        PlaybackBridge.bind(player, title, subtitle, artworkUrl, isPlaying, effectiveAutoPip)
+        PlaybackService.start(context)
         if (activity != null && PlaybackBridge.canEnterPip(activity)) {
             runCatching {
                 activity.setPictureInPictureParams(
-                    PlaybackBridge.buildPipParams(activity, isPlaying, autoPip),
+                    PlaybackBridge.buildPipParams(activity, isPlaying, effectiveAutoPip),
                 )
             }
         }
-        PlaybackService.refreshIfRunning(context)
     }
 
     DisposableEffect(player, lifecycleOwner) {
@@ -175,20 +262,15 @@ fun BindPlaybackSession(
                     val inPip = activity?.isInPictureInPictureMode == true
                     if (!inPip) {
                         if (currentBackgroundPlay.value && player.isPlaying) {
-                            PlaybackService.start(
-                                context = context,
-                                title = currentTitle.value.ifBlank { "BiliCO 正在播放" },
-                                subtitle = currentSubtitle.value,
-                            )
-                        } else if (!currentBackgroundPlay.value && player.isPlaying) {
+                            PlaybackService.promote(context)
+                        } else if (player.isPlaying) {
                             player.pause()
+                            PlaybackService.stop(context)
                         }
                     }
                 }
 
-                Lifecycle.Event.ON_START -> {
-                    PlaybackService.stop(context)
-                }
+                Lifecycle.Event.ON_START -> Unit
 
                 else -> Unit
             }

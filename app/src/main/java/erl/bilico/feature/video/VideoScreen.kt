@@ -29,6 +29,7 @@ import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
@@ -86,7 +87,8 @@ fun VideoScreen(
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val player = remember { buildConfiguredExoPlayer(context) }
+    // 点媒体条封面会重建 Activity。播放器跟着页面记住，重建时还是同一个，媒体条不会拿到已释放的实例。
+    val player = rememberPlaybackPlayer(bvid) { buildConfiguredExoPlayer(context) }
 
     // 播放器解码上报的首帧宽高比（换视频或切分 P 时重置），再回退到接口预设的 dimension / dash 尺寸；0 表示仍未知。
     var playerVideoAspect by remember(bvid, state.selectedCid) { mutableFloatStateOf(0f) }
@@ -162,6 +164,7 @@ fun VideoScreen(
         player = player,
         title = state.detail?.title.orEmpty(),
         subtitle = state.detail?.upName.orEmpty(),
+        artworkUrl = state.detail?.cover.orEmpty(),
         isPlaying = isPlaying,
         backgroundPlay = backgroundPlay,
         autoPip = autoPip,

@@ -1,6 +1,7 @@
 package erl.bilico.feature.video
 
 import android.view.LayoutInflater
+import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,6 +52,7 @@ import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalRouteMinimized
 import erl.bilico.ui.components.CouiStagePopupMenu
 import erl.bilico.ui.components.FullscreenExitIcon
 import erl.bilico.ui.components.FullscreenIcon
@@ -165,6 +167,7 @@ internal fun VideoPlayer(
     val resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
     val menuBackdrop = rememberLayerBackdrop()
     val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && fullscreenMoreOpen
+    val minimized = LocalRouteMinimized.current
     Box(if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier) {
         Box(
             modifier = Modifier
@@ -186,6 +189,7 @@ internal fun VideoPlayer(
             update = { view ->
                 view.player = player
                 view.resizeMode = resizeMode
+                view.visibility = if (minimized) View.INVISIBLE else View.VISIBLE
             },
             modifier = Modifier.fillMaxSize(),
         )

@@ -66,6 +66,7 @@ fun SettingsScreen(
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val quality by container.settings.defaultQuality.collectAsStateWithLifecycle()
     val cdnOption by container.settings.cdnOption.collectAsStateWithLifecycle()
+    val inAppBackgroundPlay by container.settings.inAppBackgroundPlay.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
@@ -124,9 +125,18 @@ fun SettingsScreen(
                     onClick = { pickCdn = true },
                 )
                 SwitchPreference(
+                    checked = inAppBackgroundPlay,
+                    onCheckedChange = container.settings::setInAppBackgroundPlay,
+                    title = "应用内后台播放",
+                    summary = "返回上一级时缩到底栏融合球继续播放",
+                    modifier = Modifier.testTag("settings_in_app_bg_play"),
+                    cardListPosition = CardListPosition.Middle,
+                )
+                SwitchPreference(
                     checked = backgroundPlay,
                     onCheckedChange = container.settings::setBackgroundPlay,
-                    title = "后台播放",
+                    title = "应用外后台播放",
+                    summary = "切到桌面或其他应用时继续播放",
                     modifier = Modifier.testTag("settings_bg_play"),
                     cardListPosition = CardListPosition.Middle,
                 )

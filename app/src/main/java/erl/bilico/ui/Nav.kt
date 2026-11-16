@@ -1,5 +1,6 @@
 package erl.bilico.ui
 
+import android.content.Context
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearEasing
@@ -30,7 +31,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import erl.bilico.data.model.LibraryVideo
+import erl.bilico.player.PlaybackBridge
 import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
@@ -56,6 +57,9 @@ val LocalRouteTransition = staticCompositionLocalOf<RouteTransition?> { null }
 
 /** 当前路由是否在栈顶。窗口级的状态（比如状态栏图标颜色）只该由栈顶页面接管。 */
 val LocalRouteIsTop = compositionLocalOf { true }
+
+/** 当前路由是否已最小化收进底栏融合球。收起期间只保活音频与会话，跳过画布与视频纹理渲染。 */
+val LocalRouteMinimized = compositionLocalOf { false }
 
 /**
  * 详情页从哪张卡片长出来。卡片在 [expandOrigin] 里把这一帧录进图层，
@@ -166,6 +170,8 @@ sealed interface Route {
     data class Chat(val talkerId: Long, val talkerName: String = "", val talkerFace: String = "") : Route
 }
 
+fun Route.isPlayback(): Boolean = this is Route.Video || this is Route.Pgc || this is Route.LiveRoom
+
 class NavEntry(
     route: Route,
     val origin: ExpandOrigin? = null,
@@ -182,105 +188,22 @@ class NavEntry(
     /** 返回手势把它拉出去的过程中为 true，还没真的出栈。 */
     var previewing by mutableStateOf(false)
 
-    /** 是否最初挂载在展开容器中；切集后保持槽位不变以免重建播放器舞台。 */
-    val hasExpandOrigin: Boolean get() = (route is Route.Video || route is Route.Opus) && origin?.bounds != null
+    /** 最小化或从融合球还原期间，临时接管展开/收起锚点，不覆盖卡片原始 origin。 */
+    var orbOverrideOrigin by mutableStateOf<ExpandOrigin?>(null)
+    var minimizingToOrb by mutableStateOf(false)
 
-    /** 视频页与动态详情页从卡片长大；原地连播切到下一条后退场改为整页右滑。 */
-    val expand: Boolean get() = !replaced && hasExpandOrigin
+    val activeOrigin: ExpandOrigin? get() = orbOverrideOrigin ?: origin
+
+    /** 是否最初挂载在展开容器中；切集后保持槽位不变以免重建播放器舞台。 */
+    val hasExpandOrigin: Boolean
+        get() = (route.isPlayback() || route is Route.Opus) && activeOrigin?.bounds != null
+
+    /** 视频页与动态详情页从卡片长大；原地连播切到下一条后退场改为整页右滑，最小化进融合球时强制走缩放。 */
+    val expand: Boolean
+        get() = (orbOverrideOrigin != null && activeOrigin?.bounds != null) || (!replaced && hasExpandOrigin)
 
     private companion object {
         var nextId = 0
-    }
-}
-
-/** 队列里的一条视频：卡片要显示的字段都在 [video] 里，[startSec] 是点开后从哪里播。 */
-data class QueuedVideo(
-    val video: LibraryVideo,
-    val startSec: Long = 0L,
-)
-
-/**
- * 连续播放队列。只在「播放全部」发起时存在；用户从别处打开任何视频都会把它作废，
- * 免得一条播完后莫名跳到另一个列表的下一条。
- *
- * 队列内容是可观察的，播放页的队列面板直接读它；面板里增删、跳播都改这一份。
- */
-class PlayQueue {
-    private val _items = mutableStateListOf<QueuedVideo>()
-    val items: List<QueuedVideo> get() = _items
-
-    /** 正在播的那条在队列里的位置；被移出队列后停在原位，下一条就是新挪上来的这条。 */
-    private var index = -1
-
-    /** 正在播的那条是谁。移出队列后仍然记着它，[sync] 才不会误清空剩下的队列。 */
-    var playingBvid: String? = null
-        private set
-
-    /** 从第一条开始播，返回要打开的那条。 */
-    fun start(list: List<QueuedVideo>): QueuedVideo? {
-        _items.clear()
-        _items.addAll(list)
-        if (_items.isEmpty()) {
-            index = -1
-            playingBvid = null
-            return null
-        }
-        index = 0
-        playingBvid = _items[0].video.bvid
-        return _items[0]
-    }
-
-    /** 播放页确认自己放的就是队列里那条；对不上说明是用户另开的视频，队列作废。 */
-    fun sync(bvid: String) {
-        if (playingBvid != bvid) clear()
-    }
-
-    fun next(loop: Boolean = false): QueuedVideo? {
-        if (_items.isEmpty()) return null
-        val nextIndex = index + 1
-        val resolvedIndex = when {
-            nextIndex in _items.indices -> nextIndex
-            loop && _items.size > 1 -> 0
-            else -> {
-                if (!loop) clear()
-                return null
-            }
-        }
-        index = resolvedIndex
-        val next = _items[resolvedIndex]
-        playingBvid = next.video.bvid
-        return next
-    }
-
-    /** 面板里点某一条：直接跳到它，返回要打开的那条。 */
-    fun jumpTo(position: Int): QueuedVideo? {
-        val target = _items.getOrNull(position) ?: return null
-        index = position
-        playingBvid = target.video.bvid
-        return target
-    }
-
-    /** 面板里点叉：把这一条移出队列。正在播的那条被移出时继续播，指针停在原位。 */
-    fun removeAt(position: Int) {
-        if (position !in _items.indices) return
-        _items.removeAt(position)
-        if (_items.isEmpty()) {
-            index = -1
-            playingBvid = null
-            return
-        }
-        if (position < index) {
-            index--
-        } else if (position == index) {
-            // 正在播的这条被移出：它不占位了，下一条就是挪上来的这一位。
-            index = position - 1
-        }
-    }
-
-    fun clear() {
-        _items.clear()
-        index = -1
-        playingBvid = null
     }
 }
 
@@ -290,22 +213,45 @@ class NavState {
 
     val playQueue = PlayQueue()
 
+    var minimizedEntry by mutableStateOf<NavEntry?>(null)
+        private set
+
+    var orbOrigin: ExpandOrigin? = null
+    var inAppBackgroundPlay: () -> Boolean = { true }
+
     private var host: CoroutineScope? = null
+    private var appContext: Context? = null
 
     var mainTab by mutableIntStateOf(0)
         private set
 
     val current: Route get() = stack.last().route
 
-    fun attach(scope: CoroutineScope) {
+    val isMinimizingToOrb: Boolean get() = stack.lastOrNull()?.minimizingToOrb == true
+
+    fun attach(scope: CoroutineScope, context: Context? = null) {
         host = scope
+        if (context != null) appContext = context.applicationContext
     }
 
     fun setTab(index: Int) {
         mainTab = index
     }
 
+    private fun canMinimizeSession(entry: NavEntry): Boolean =
+        entry.route.isPlayback() && inAppBackgroundPlay() && PlaybackBridge.canMinimizeSession()
+
+    /** 只有下一层直接就是一级页（推荐/动态等 [Route.Main]）时，返回才缩进右下角融合球。 */
+    fun shouldMinimizeOnPop(entry: NavEntry): Boolean {
+        if (!canMinimizeSession(entry)) return false
+        val index = stack.indexOf(entry)
+        return index > 0 && stack[index - 1].route == Route.Main
+    }
+
     fun push(route: Route, origin: ExpandOrigin? = null) {
+        if (route.isPlayback() && minimizedEntry != null) {
+            dismissMinimized(pausePlayback = true)
+        }
         val entry = NavEntry(route, origin, initialProgress = 0f, initialFade = 0f)
         stack.add(entry)
         val scope = host ?: return
@@ -335,13 +281,19 @@ class NavState {
         }
     }
 
-    /** 连续播放换下一条：同为视频页时原地更新路由，保留全屏舞台与横竖屏朝向。 */
+    /** 连续播放换下一条：同为视频页时原地更新路由，保留全屏舞台与横竖屏朝向；后台最小化期间也同步更新。 */
     fun replaceTop(route: Route) {
         if (stack.isEmpty()) return
         val top = stack.last()
         if (top.route is Route.Video && route is Route.Video) {
             top.route = route
             top.replaced = true
+            return
+        }
+        val minimized = minimizedEntry
+        if (minimized != null && minimized.route is Route.Video && route is Route.Video) {
+            minimized.route = route
+            minimized.replaced = true
             return
         }
         stack[stack.lastIndex] = NavEntry(route)
@@ -351,15 +303,31 @@ class NavState {
         if (stack.size <= 1) return
         val entry = stack.last()
         if (entry.exiting) return
+        val minimize = shouldMinimizeOnPop(entry) && orbOrigin?.bounds != null
+        if (minimize) {
+            orbOrigin?.let { it.refreshKey++ }
+            entry.orbOverrideOrigin = orbOrigin
+            entry.minimizingToOrb = true
+        } else {
+            if (entry.route.isPlayback()) {
+                appContext?.let(PlaybackBridge::pauseAndStopSession)
+            }
+            if (entry.expand) entry.origin?.let { it.refreshKey++ }
+        }
         entry.exiting = true
-        if (entry.expand) entry.origin?.let { it.refreshKey++ }
         val scope = host
         if (scope == null) {
+            if (minimize) {
+                entry.exiting = false
+                entry.minimizingToOrb = false
+                entry.orbOverrideOrigin = null
+                minimizedEntry = entry
+            }
             stack.remove(entry)
             return
         }
         scope.launch {
-            if (entry.expand) alignCardBelowBar(entry.origin)
+            if (!minimize && entry.expand) alignCardBelowBar(entry.origin)
             val expand = entry.expand
             val baseMillis = if (expand) ExpandExitMillis else RouteSlideMillis
             val remaining = entry.progress.value.coerceIn(0f, 1f)
@@ -383,27 +351,132 @@ class NavState {
                     }
                 }
             }
-            stack.remove(entry)
+            if (minimize) {
+                finalizeMinimize(entry)
+            } else {
+                stack.remove(entry)
+            }
         }
+    }
+
+    fun preparePredictivePop(entry: NavEntry) {
+        if (shouldMinimizeOnPop(entry) && orbOrigin?.bounds != null) {
+            orbOrigin?.let { it.refreshKey++ }
+            entry.orbOverrideOrigin = orbOrigin
+            entry.minimizingToOrb = true
+        } else if (entry.expand) {
+            entry.origin?.let { it.refreshKey++ }
+        }
+    }
+
+    fun cancelPredictivePop(entry: NavEntry) {
+        entry.previewing = false
+        entry.minimizingToOrb = false
+        entry.orbOverrideOrigin = null
+    }
+
+    fun restoreMinimized() {
+        val entry = minimizedEntry ?: return
+        if (entry.exiting || stack.lastOrNull() === entry) return
+        val origin = orbOrigin
+        origin?.let { it.refreshKey++ }
+        minimizedEntry = null
+        entry.orbOverrideOrigin = origin
+        entry.minimizingToOrb = false
+        entry.exiting = false
+        entry.previewing = false
+        stack.add(entry)
+        val scope = host ?: return
+        scope.launch {
+            entry.progress.snapTo(0f)
+            entry.fade.snapTo(0f)
+            withFrameNanos { }
+            val expand = entry.expand
+            if (!expand) entry.fade.snapTo(1f)
+            val millis = if (expand) ExpandEnterMillis else RouteSlideMillis
+            coroutineScope {
+                launch {
+                    entry.progress.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(millis, easing = ExpandEasing),
+                    )
+                }
+                if (expand) {
+                    launch {
+                        entry.fade.animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(ExpandEnterMillis, easing = LinearEasing),
+                        )
+                    }
+                }
+            }
+            entry.orbOverrideOrigin = null
+        }
+    }
+
+    fun dismissMinimized(pausePlayback: Boolean = true) {
+        if (minimizedEntry == null) return
+        if (pausePlayback) {
+            appContext?.let(PlaybackBridge::pauseAndStopSession)
+        }
+        minimizedEntry = null
+    }
+
+    private suspend fun finalizeMinimize(entry: NavEntry) {
+        entry.exiting = false
+        entry.previewing = false
+        entry.minimizingToOrb = false
+        entry.orbOverrideOrigin = null
+        entry.progress.snapTo(0f)
+        entry.fade.snapTo(0f)
+        minimizedEntry = entry
+        stack.remove(entry)
     }
 
     /** 未登录空态的「去登录」：退出当前二级页并切到「我的」。 */
     fun popToMe() {
         mainTab = ME_TAB_INDEX
         while (stack.size > 1) {
-            stack.removeAt(stack.lastIndex)
+            val removed = stack.removeAt(stack.lastIndex)
+            if (removed.route.isPlayback() && minimizedEntry == null) {
+                appContext?.let(PlaybackBridge::pauseAndStopSession)
+            }
         }
     }
 
-    /** 播放页的「首页」：退出所有二级页，回到第一个标签。 */
+    /** 播放页的「首页」：退出所有二级页，回到第一个标签；符合应用内后台播放时缩进融合球。 */
     fun popToMain() {
         mainTab = 0
-        while (stack.size > 1) {
+        val top = stack.lastOrNull()
+        if (stack.size >= 2 && top != null && canMinimizeSession(top) && orbOrigin?.bounds != null) {
+            while (stack.size > 2) {
+                stack.removeAt(1)
+            }
+            pop()
+            return
+        }
+        if (stack.size > 2 && top != null && canMinimizeSession(top)) {
+            top.exiting = false
+            top.previewing = false
+            top.minimizingToOrb = false
+            top.orbOverrideOrigin = null
+            minimizedEntry = top
             stack.removeAt(stack.lastIndex)
+            host?.launch {
+                top.progress.snapTo(0f)
+                top.fade.snapTo(0f)
+            }
+        }
+        while (stack.size > 1) {
+            val removed = stack.removeAt(stack.lastIndex)
+            if (removed.route.isPlayback() && minimizedEntry == null) {
+                appContext?.let(PlaybackBridge::pauseAndStopSession)
+            }
         }
     }
 
     fun reset(route: Route) {
+        dismissMinimized(pausePlayback = true)
         stack.clear()
         stack.add(NavEntry(route))
     }
@@ -411,8 +484,24 @@ class NavState {
     /** 返回手势已经把进度拉到 0 的条目：直接出栈，不再播一次动画。 */
     fun completePredictivePop(entry: NavEntry) {
         if (stack.lastOrNull() === entry) {
-            entry.exiting = true
-            stack.remove(entry)
+            if (entry.minimizingToOrb) {
+                entry.exiting = false
+                entry.previewing = false
+                entry.minimizingToOrb = false
+                entry.orbOverrideOrigin = null
+                minimizedEntry = entry
+                stack.remove(entry)
+                host?.launch {
+                    entry.progress.snapTo(0f)
+                    entry.fade.snapTo(0f)
+                }
+            } else {
+                entry.exiting = true
+                if (entry.route.isPlayback()) {
+                    appContext?.let(PlaybackBridge::pauseAndStopSession)
+                }
+                stack.remove(entry)
+            }
         }
     }
 }

@@ -52,6 +52,7 @@ import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.di.AppContainer
+import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import io.github.suqi8.coui.kmp.basic.Text
@@ -90,7 +91,8 @@ internal fun Context.findActivity(): Activity? {
  */
 @Composable
 internal fun rememberDeviceOrientationSide(mode: Int): Int {
-    if (mode == 0) return 0
+    val isTop = LocalRouteIsTop.current
+    if (mode == 0 || !isTop) return 0
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var side by remember { mutableIntStateOf(0) }
@@ -518,7 +520,6 @@ internal fun BindPlayerEvents(
         onDispose {
             currentViewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
             player.removeListener(listener)
-            player.release()
         }
     }
 }

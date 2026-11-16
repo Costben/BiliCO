@@ -55,7 +55,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
+import erl.bilico.player.PlaybackBridge
 import erl.bilico.feature.dynamic.DynamicFilters
+import erl.bilico.feature.dynamic.DynamicPublishOverlay
 import erl.bilico.feature.dynamic.DynamicScreen
 import erl.bilico.feature.feed.FEED_SEGMENTS
 import erl.bilico.feature.feed.FeedScreen
@@ -189,6 +191,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
 
     val topBarHeight = pinnedHeight(TitleRowHeight)
     val account by container.session.account.collectAsStateWithLifecycle()
+    var dynamicComposerOpen by remember { mutableStateOf(false) }
     var segment by rememberSaveable { mutableIntStateOf(0) }
     val feedPager = rememberPagerState(initialPage = segment, pageCount = { FEED_SEGMENTS.size })
     val dynamicPager = rememberPagerState(initialPage = dynamicFilterIndex, pageCount = { DynamicFilters.size })
@@ -301,6 +304,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
         }
 
         // Layer 3: 悬浮底部导航栏（在搜索面板之下，展开时被面板盖住）
+        val context = LocalContext.current
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
             LocalPlatformBottomBarMaterialEnabled provides false,
@@ -317,6 +321,19 @@ fun MainShell(nav: NavState, container: AppContainer) {
                             }
                         }
                     },
+                    orbVisible = nav.minimizedEntry != null || nav.isMinimizingToOrb,
+                    leftOrbVisible = tab == DYNAMIC_TAB_INDEX,
+                    onLeftOrbClick = {
+                        if (!feedPanelCovering) {
+                            if (account == null) nav.push(Route.Login) else dynamicComposerOpen = true
+                        }
+                    },
+                    orbOrigin = nav.orbOrigin,
+                    orbArtworkUrl = PlaybackBridge.currentArtworkUrl,
+                    orbIsPlaying = PlaybackBridge.currentIsPlaying,
+                    onOrbClick = { if (!feedPanelCovering) nav.restoreMinimized() },
+                    onOrbTogglePlay = { PlaybackBridge.togglePlayPause(context) },
+                    onOrbStop = { nav.dismissMinimized(pausePlayback = true) },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .then(if (feedPanelCovering) Modifier.clearAndSetSemantics {} else Modifier),
@@ -387,6 +404,13 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 }
             }
         }
+
+        DynamicPublishOverlay(
+            container = container,
+            composerOpen = dynamicComposerOpen,
+            onDismissComposer = { dynamicComposerOpen = false },
+            onPublished = { dynamicRefreshTick++ },
+        )
     }
 
     val inHomeSearchResults =
@@ -538,58 +562,6 @@ private fun MainTitleRow(
                 title = tabTitles.getOrElse(page) { "" },
                 collapsed = collapsed,
                 actions = { TabActions(page, nav, onSearch = {}) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun PageTitleBar(
-    title: String,
-    collapsed: () -> Float,
-    actions: @Composable RowScope.() -> Unit = {},
-) {
-    val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
-    ) {
-        Box(Modifier.fillMaxWidth().height(TitleRowHeight)) {
-            Box(Modifier.fillMaxSize().clipToBounds()) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            translationY = -collapsed() * titleHeightPx
-                            alpha = 1f - collapsed()
-                        },
-                ) {
-                    Text(
-                        title,
-                        color = COUITheme.colorScheme.onSurface,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp, bottom = 6.dp),
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = TopAppBarDefaults.ActionIconPadding)
-                    .graphicsLayer {
-                        translationY = -collapsed() * titleHeightPx / 2f
-                        alpha = 1f - collapsed()
-                    },
-                horizontalArrangement = Arrangement.spacedBy(
-                    TopAppBarDefaults.ActionMenuItemSpacing,
-                    Alignment.End,
-                ),
-                verticalAlignment = Alignment.CenterVertically,
-                content = actions,
             )
         }
     }

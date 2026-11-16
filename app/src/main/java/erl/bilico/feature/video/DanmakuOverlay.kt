@@ -1,11 +1,13 @@
 package erl.bilico.feature.video
 
+import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import erl.bilico.data.model.DanmakuItem
 import erl.bilico.data.settings.DanmakuSettings
+import erl.bilico.ui.LocalRouteMinimized
 
 /**
  * 弹幕层的宿主：把 [DanmakuSurfaceView] 放进播放器，播放期间由 Choreographer VSync 直接驱动亚像素渲染，
@@ -21,6 +23,7 @@ internal fun DanmakuOverlay(
     modifier: Modifier = Modifier,
     timeline: DanmakuTimeline? = null,
 ) {
+    val minimized = LocalRouteMinimized.current
     AndroidView(
         factory = { context ->
             DanmakuSurfaceView(context).apply {
@@ -28,7 +31,8 @@ internal fun DanmakuOverlay(
                 this.timeline = timeline
                 this.items = items
                 applySettings(settings)
-                playing = isPlaying
+                playing = isPlaying && !minimized
+                visibility = if (minimized) View.INVISIBLE else View.VISIBLE
             }
         },
         update = { view ->
@@ -36,7 +40,8 @@ internal fun DanmakuOverlay(
             view.timeline = timeline
             view.items = items
             view.applySettings(settings)
-            view.playing = isPlaying
+            view.playing = isPlaying && !minimized
+            view.visibility = if (minimized) View.INVISIBLE else View.VISIBLE
         },
         modifier = modifier,
     )
