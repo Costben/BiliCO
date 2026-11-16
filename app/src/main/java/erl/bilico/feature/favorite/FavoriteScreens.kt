@@ -97,7 +97,12 @@ fun FavoriteFoldersScreen(
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    SecondaryPage(title = "收藏夹", onBack = nav::pop) {
+    SecondaryPage(
+        title = "收藏夹",
+        onBack = nav::pop,
+        refreshing = state.isRefreshing,
+        onRefresh = if (loggedIn != null) viewModel::refresh else null,
+    ) {
         if (loggedIn == null) {
             item(key = "login") {
                 EmptyState(
@@ -287,6 +292,8 @@ fun FavoriteFolderScreen(
         onBack = { if (selectionMode) exitSelectionMode() else nav.pop() },
         listState = listState,
         platformBarMaterial = false,
+        refreshing = state.isRefreshing,
+        onRefresh = viewModel::refresh,
         actions = {
             if (selectionMode) {
                 AnimatedVisibility(

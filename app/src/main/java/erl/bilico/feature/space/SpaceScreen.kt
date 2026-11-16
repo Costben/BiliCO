@@ -59,6 +59,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Close
+import io.github.suqi8.coui.kmp.icon.extended.FavoritesFill
 import io.github.suqi8.coui.kmp.icon.extended.Search
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -268,14 +269,40 @@ private fun ProfileCard(profile: SpaceProfile) {
                 Avatar(url = avatarUrl, size = 64.dp)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        text = profile.name,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = COUITheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = profile.name,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = COUITheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (profile.likesText.isNotBlank()) {
+                            Spacer(Modifier.width(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = profile.likesText,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                                Spacer(Modifier.width(3.dp))
+                                Icon(
+                                    imageVector = COUIIcons.FavoritesFill,
+                                    contentDescription = "获赞",
+                                    modifier = Modifier.size(13.dp),
+                                    tint = COUITheme.colorScheme.onSurfaceSecondary,
+                                )
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -283,7 +310,6 @@ private fun ProfileCard(profile: SpaceProfile) {
                     ) {
                         ProfileStatItem("粉丝", profile.followersText)
                         ProfileStatItem("关注", profile.followingText)
-                        ProfileStatItem("获赞", profile.likesText)
                     }
                 }
             }

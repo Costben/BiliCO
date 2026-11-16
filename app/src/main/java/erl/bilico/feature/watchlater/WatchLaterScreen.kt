@@ -80,6 +80,7 @@ data class WatchLaterUiState(
     val items: List<LibraryVideo> = emptyList(),
     val sort: WatchLaterSort = WatchLaterSort.DEFAULT,
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
     val isEnd: Boolean = false,
     val error: String? = null,
@@ -103,6 +104,9 @@ class WatchLaterViewModel(
     }
 
     fun retry() = load()
+
+    /** 下拉刷新：还是从第一页重拉，已有列表留在原地，不切回整页加载。 */
+    fun refresh() = load(refreshing = true)
 
     fun setSort(value: WatchLaterSort) {
         if (value == sort) return
@@ -155,9 +159,17 @@ class WatchLaterViewModel(
         return _state.value.items
     }
 
-    private fun load() {
+    private fun load(refreshing: Boolean = false) {
+        if (inFlight) return
         nextPage = 1
-        _state.update { it.copy(isLoading = true, error = null) }
+        val hasItems = _state.value.items.isNotEmpty()
+        _state.update {
+            it.copy(
+                isLoading = !hasItems,
+                isRefreshing = refreshing && hasItems,
+                error = null,
+            )
+        }
         viewModelScope.launch { fetch(1) }
     }
 
@@ -174,6 +186,7 @@ class WatchLaterViewModel(
                     it.copy(
                         items = raw.orderedBy(sort),
                         isLoading = false,
+                        isRefreshing = false,
                         isLoadingMore = false,
                         isEnd = !hasMore,
                         error = null,
@@ -185,8 +198,13 @@ class WatchLaterViewModel(
                 _state.update {
                     it.copy(
                         isLoading = false,
+                        isRefreshing = false,
                         isLoadingMore = false,
-                        error = if (page == 1) error.message ?: "稍后再看加载失败" else it.error,
+                        error = if (page == 1 && it.items.isEmpty()) {
+                            error.message ?: "稍后再看加载失败"
+                        } else {
+                            it.error
+                        },
                     )
                 }
                 false
@@ -250,6 +268,8 @@ fun WatchLaterScreen(
         title = "稍后再看",
         onBack = nav::pop,
         listState = listState,
+        refreshing = state.isRefreshing,
+        onRefresh = if (loggedIn != null) viewModel::refresh else null,
         actions = {
             Box {
                 HighlightedIconButton(

@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.withPermit
 data class FavoriteFoldersUiState(
     val items: List<FavoriteFolder> = emptyList(),
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
 )
 
@@ -42,7 +43,14 @@ class FavoriteFoldersViewModel(
             _state.value = FavoriteFoldersUiState(isLoading = false)
             return
         }
-        _state.update { it.copy(isLoading = it.items.isEmpty(), error = null) }
+        val hasItems = _state.value.items.isNotEmpty()
+        _state.update {
+            it.copy(
+                isLoading = !hasItems,
+                isRefreshing = hasItems,
+                error = null,
+            )
+        }
         viewModelScope.launch {
             repository.folders(mid)
                 .onSuccess { list ->
@@ -52,7 +60,11 @@ class FavoriteFoldersViewModel(
                 }
                 .onFailure { error ->
                     _state.update {
-                        it.copy(isLoading = false, error = error.message ?: "收藏夹加载失败")
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = if (it.items.isEmpty()) error.message ?: "收藏夹加载失败" else it.error,
+                        )
                     }
                 }
         }
@@ -85,6 +97,7 @@ class FavoriteFoldersViewModel(
 data class FolderContentUiState(
     val items: List<LibraryVideo> = emptyList(),
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
     val isEnd: Boolean = false,
     val error: String? = null,
@@ -106,6 +119,9 @@ class FavoriteFolderContentViewModel(
     }
 
     fun retry() = load(firstPage = true)
+
+    /** 下拉刷新：还是从第一页重拉，已有列表留在原地，不切回整页加载。 */
+    fun refresh() = load(firstPage = true, refreshing = true)
 
     fun loadMore() {
         val current = _state.value
@@ -174,9 +190,11 @@ class FavoriteFolderContentViewModel(
         }
     }
 
-    private fun load(firstPage: Boolean) {
+    private fun load(firstPage: Boolean, refreshing: Boolean = false) {
+        if (inFlight) return
         inFlight = true
         val page = if (firstPage) 1 else nextPage
+        if (refreshing) _state.update { it.copy(isRefreshing = true, error = null) }
         viewModelScope.launch {
             repository.videos(mediaId, page)
                 .onSuccess { (list, hasMore) ->
@@ -185,6 +203,7 @@ class FavoriteFolderContentViewModel(
                         it.copy(
                             items = if (firstPage) list else it.items + list,
                             isLoading = false,
+                            isRefreshing = false,
                             isLoadingMore = false,
                             isEnd = !hasMore,
                             error = null,
@@ -195,8 +214,13 @@ class FavoriteFolderContentViewModel(
                     _state.update {
                         it.copy(
                             isLoading = false,
+                            isRefreshing = false,
                             isLoadingMore = false,
-                            error = if (firstPage) error.message ?: "收藏内容加载失败" else it.error,
+                            error = if (firstPage && it.items.isEmpty()) {
+                                error.message ?: "收藏内容加载失败"
+                            } else {
+                                it.error
+                            },
                         )
                     }
                 }

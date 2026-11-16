@@ -229,14 +229,12 @@ private fun EntryRow(
         title = title,
         cardListPosition = position,
         startAction = {
-            Box(Modifier.padding(end = 10.dp)) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    tint = COUITheme.colorScheme.onSurface,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = COUITheme.colorScheme.onSurface,
+                modifier = Modifier.size(24.dp),
+            )
         },
         onClick = onClick,
     )

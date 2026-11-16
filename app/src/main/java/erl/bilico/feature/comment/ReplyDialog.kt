@@ -13,10 +13,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -41,10 +41,14 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import erl.bilico.data.model.Comment
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.di.AppContainer
@@ -302,15 +306,31 @@ internal fun ReplyDialog(
             }
     }
 
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    val sheetMaxHeight = (screenHeight * 0.74f).coerceAtLeast(500.dp)
+    val topStripOffset = 10.dp
+    val topStripPx = with(density) { topStripOffset.roundToPx() }
+    val windowInfo = LocalWindowInfo.current
+    val view = LocalView.current
+    val statusBarTop = remember(view, density) {
+        val rootTop = ViewCompat.getRootWindowInsets(view)
+            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars())
+            ?.top ?: 0
+        val px = if (rootTop > 0) {
+            rootTop
+        } else {
+            val resId = view.resources.getIdentifier("status_bar_height", "dimen", "android")
+            if (resId > 0) view.resources.getDimensionPixelSize(resId) else 0
+        }
+        with(density) { px.toDp() }
+    }.takeIf { it > 0.dp } ?: with(density) { WindowInsets.statusBars.getTop(density).toDp() }
+    val windowHeight = with(density) { windowInfo.containerSize.height.toDp() }
+        .takeIf { it > 0.dp } ?: LocalConfiguration.current.screenHeightDp.dp
+    // 面板顶部停在上一级顶栏第一行下沿（statusBar + 52dp），完整盖住第二行（简介/评论切换与弹幕栏）。
+    val sheetMaxHeight = (windowHeight - statusBarTop - 52.dp - topStripOffset).coerceAtLeast(360.dp)
     val imeBottom = with(density) { WindowInsets.ime.getBottom(density).toDp() }
     val keyboardGapProgress = (imeBottom / 80.dp).coerceIn(0f, 1f)
     val navBottom = navBottomPadding() * (1f - keyboardGapProgress)
     val composerBottomPadding = 10.dp + navBottom
     val listBottomPadding = 84.dp + navBottom
-    val topStripOffset = 10.dp
-    val topStripPx = with(density) { topStripOffset.roundToPx() }
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val parentOpenBvid = LocalOpenBvid.current
     val parentSeek = LocalCommentSeek.current
@@ -360,7 +380,7 @@ internal fun ReplyDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = sheetMaxHeight + topStripOffset)
+                    .height(sheetMaxHeight + topStripOffset)
                     .layout { measurable, constraints ->
                         val placeable = measurable.measure(constraints)
                         layout(placeable.width, (placeable.height - topStripPx).coerceAtLeast(0)) {
@@ -371,13 +391,13 @@ internal fun ReplyDialog(
                 val sheetBackdropTint = if (isDark) Color(0xF21B1B1B) else Color(0xF2F4F5F6)
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .layerBackdropIf(BlurEffectsEnabled, sheetBackdrop)
                         .background(sheetBackdropTint),
                 ) {
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxWidth().scrollEndHaptic(),
+                        modifier = Modifier.fillMaxSize().scrollEndHaptic(),
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             top = 60.dp + topStripOffset,

@@ -46,38 +46,57 @@ internal class ThumbSlot {
     var model: String? = null
 }
 
-/** 屏幕上各图片缩略图的位置索引（按规范化图片 URL 建索引）。 */
+/** 屏幕上各图片缩略图的位置索引（按规范化图片 URL 保留叠加层栈，弹窗关闭后自动还原底层缩略图）。 */
 @Stable
 class ImageOrigins {
-    private val slots = HashMap<String, ThumbSlot>()
+    private val slots = HashMap<String, MutableList<ThumbSlot>>()
 
     /** 看图页正在展示或拖拽的那一张图片 URL；为空表示看图页未打开。 */
     var viewing by mutableStateOf<String?>(null)
 
     internal fun put(url: String, slot: ThumbSlot) {
-        slots[url] = slot
+        val list = slots.getOrPut(url) { ArrayList(2) }
+        if (list.lastOrNull() !== slot) {
+            list.remove(slot)
+            list.add(slot)
+        }
     }
 
     internal fun remove(url: String, slot: ThumbSlot) {
-        if (slots[url] === slot) slots.remove(url)
+        val list = slots[url] ?: return
+        list.remove(slot)
+        if (list.isEmpty()) slots.remove(url)
+    }
+
+    private fun activeSlot(url: String): ThumbSlot? {
+        val list = slots[url] ?: return null
+        for (i in list.lastIndex downTo 0) {
+            val slot = list[i]
+            if (slot.coordinates?.isAttached == true) return slot
+        }
+        return list.lastOrNull()
     }
 
     /** 卡片缩略图实际请求并已解码的模型地址，首帧先由它顶上避免空白闪屏。 */
-    internal fun modelOf(url: String): String? = slots[url]?.model
+    internal fun modelOf(url: String): String? = activeSlot(url)?.model
 
     /** 卡片登记的真实宽高比，未携带尺寸字段时可先于大图解码对齐容器大小。 */
-    internal fun aspectOf(url: String): Float? = slots[url]?.aspect
+    internal fun aspectOf(url: String): Float? = activeSlot(url)?.aspect
 
     /** 实时读取缩略图当前屏幕位置，退场时即使列表滚过也能准确缩回目标位置。 */
     internal fun boundsOf(url: String, host: LayoutCoordinates, density: Float): ThumbBounds? {
-        val slot = slots[url] ?: return null
-        val coordinates = slot.coordinates?.takeIf { it.isAttached } ?: return null
         if (!host.isAttached) return null
-        val rect = host.localBoundingBoxOf(coordinates, clipBounds = false)
-        if (rect.width <= 0f || rect.height <= 0f) return null
-        val radius = (slot.cornerRadius.value * density)
-            .coerceAtMost(minOf(rect.width, rect.height) / 2f)
-        return ThumbBounds(rect, radius, slot.aspect, slot.model)
+        val list = slots[url] ?: return null
+        for (i in list.lastIndex downTo 0) {
+            val slot = list[i]
+            val coordinates = slot.coordinates?.takeIf { it.isAttached } ?: continue
+            val rect = host.localBoundingBoxOf(coordinates, clipBounds = false)
+            if (rect.width <= 0f || rect.height <= 0f) continue
+            val radius = (slot.cornerRadius.value * density)
+                .coerceAtMost(minOf(rect.width, rect.height) / 2f)
+            return ThumbBounds(rect, radius, slot.aspect, slot.model)
+        }
+        return null
     }
 }
 

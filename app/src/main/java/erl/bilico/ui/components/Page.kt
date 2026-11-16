@@ -42,7 +42,8 @@ import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
-import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
+import io.github.suqi8.coui.kmp.basic.FullPagePullToRefresh
+import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
@@ -70,11 +71,14 @@ fun SecondaryPage(
     actions: @Composable RowScope.() -> Unit = {},
     topBar: (@Composable () -> Unit)? = null,
     platformBarMaterial: Boolean = true,
+    refreshing: Boolean? = null,
+    onRefresh: (() -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val pageColor = pageContainerColor()
     val backdrop = rememberLayerBackdrop()
     val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
+    val contentTop = glassBarContentTop(topBarHeight, 10.dp)
 
     Box(modifier.fillMaxSize().background(pageColor)) {
         Box(
@@ -83,18 +87,34 @@ fun SecondaryPage(
                 .layerBackdropIf(BlurEffectsEnabled, backdrop)
                 .background(pageColor)
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize().scrollEndHaptic(),
-                contentPadding = PaddingValues(
-                    start = 12.dp,
-                    top = glassBarContentTop(topBarHeight, 10.dp),
-                    end = 12.dp,
-                    bottom = 24.dp + navBottomPadding(),
-                ),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                content = content,
-            )
+            val list: @Composable () -> Unit = {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize().scrollEndHaptic(),
+                    contentPadding = PaddingValues(
+                        start = 12.dp,
+                        top = contentTop,
+                        end = 12.dp,
+                        bottom = 24.dp + navBottomPadding(),
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    content = content,
+                )
+            }
+            if (onRefresh != null) {
+                FullPagePullToRefresh(
+                    isRefreshing = refreshing == true,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = contentTop),
+                    colors = fullPagePullToRefreshColors(backgroundColor = pageColor),
+                    refreshTexts = FullPageRefreshTexts,
+                    completeHoldDurationMillis = FullPageRefreshHoldMillis,
+                    content = list,
+                )
+            } else {
+                list()
+            }
         }
 
         CompositionLocalProvider(
