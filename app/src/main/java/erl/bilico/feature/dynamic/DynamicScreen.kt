@@ -23,6 +23,7 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -278,8 +279,10 @@ private fun DynamicContent(
     }
 
     // 双击底栏当前 Tab / 双击当前筛选 / 双击顶栏：直接停在被下拉位置刷新，回顶对齐该位置，刷新完再回顶。
+    // 切走底栏会把这一页拆掉。进来时先记住当时的计数，回来重组不会把上次那次再刷一遍。
+    val refreshBaseline = remember { mutableIntStateOf(refreshTick) }
     LaunchedEffect(refreshTick) {
-        if (refreshTick == 0 || !active) return@LaunchedEffect
+        if (refreshTick == refreshBaseline.intValue || !active) return@LaunchedEffect
         pullState.snapToRefreshing { viewModel.refresh() }
         if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
             if (listState.firstVisibleItemIndex > 6) {
