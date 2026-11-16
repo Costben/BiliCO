@@ -218,10 +218,17 @@ fun MainShell(nav: NavState, container: AppContainer) {
     }
     val collapsed: () -> Float = { collapseShown.value }
 
-    val topEntry = nav.stack.lastOrNull()
-    val mainVisible = topEntry == null ||
-        topEntry.route == Route.Main ||
-        (nav.stack.size == 2 && (topEntry.progress.value < 1f || topEntry.exiting || topEntry.previewing))
+    val mainVisible by remember(nav) {
+        derivedStateOf {
+            val topEntry = nav.stack.lastOrNull()
+            topEntry == null ||
+                topEntry.route == Route.Main ||
+                (nav.stack.size == 2 && (topEntry.progress.value < 1f || topEntry.exiting || topEntry.previewing))
+        }
+    }
+    val onMainTab by remember(nav) {
+        derivedStateOf { nav.stack.lastOrNull()?.route == Route.Main }
+    }
 
     Box(Modifier.fillMaxSize()) {
         // Layer 1: 页面主内容
@@ -330,7 +337,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     },
                     orbOrigin = nav.orbOrigin,
                     orbArtworkUrl = PlaybackBridge.currentArtworkUrl,
-                    orbIsPlaying = PlaybackBridge.currentIsPlaying,
+                    orbIsPlaying = PlaybackBridge.currentIsPlaying && onMainTab,
                     onOrbClick = { if (!feedPanelCovering) nav.restoreMinimized() },
                     onOrbTogglePlay = { PlaybackBridge.togglePlayPause(context) },
                     onOrbStop = { nav.dismissMinimized(pausePlayback = true) },

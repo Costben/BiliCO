@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBarDefaults
+import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarDefaults
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +46,7 @@ import erl.bilico.data.model.CommentSort
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicImageViewer
+import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
@@ -286,29 +289,44 @@ fun CommentTab(
                     },
                 )
             }
-            FloatingActionButton(
-                onClick = {
-                    if (!container.session.isLoggedIn()) {
-                        viewModel.showMessage("请先登录")
-                    } else {
-                        composeTarget = ComposeTarget.Main
-                    }
-                },
-                interactionSource = ballInteraction,
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + bottomInset)
-                    .graphicsLayer {
-                        scaleX = ballScale.value
-                        scaleY = ballScale.value
-                    },
+                    .fillMaxSize()
+                    .padding(bottom = bottomInset),
             ) {
-                Icon(
-                    imageVector = COUIIcons.Send,
-                    contentDescription = "发送评论",
-                    modifier = Modifier.size(24.dp),
-                    tint = COUITheme.colorScheme.onPrimary,
-                )
+                PinnedBarDensity {
+                    Box(Modifier.fillMaxSize()) {
+                        FloatingActionButton(
+                            onClick = {
+                                if (!container.session.isLoggedIn()) {
+                                    viewModel.showMessage("请先登录")
+                                } else {
+                                    composeTarget = ComposeTarget.Main
+                                }
+                            },
+                            interactionSource = ballInteraction,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(
+                                    end = BottomFloatingAccessoryNavigationBarDefaults.PaddingHorizontal,
+                                    bottom = (BottomFloatingNavigationBarDefaults.MinHeightWithoutPaddingVertical -
+                                        BottomFloatingAccessoryNavigationBarDefaults.AccessorySize) / 2,
+                                )
+                                .size(BottomFloatingAccessoryNavigationBarDefaults.AccessorySize)
+                                .graphicsLayer {
+                                    scaleX = ballScale.value
+                                    scaleY = ballScale.value
+                                },
+                        ) {
+                            Icon(
+                                imageVector = COUIIcons.Send,
+                                contentDescription = "发送评论",
+                                modifier = Modifier.size(24.dp),
+                                tint = COUITheme.colorScheme.onPrimary,
+                            )
+                        }
+                    }
+                }
             }
         }
     }

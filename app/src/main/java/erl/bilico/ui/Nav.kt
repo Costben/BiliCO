@@ -273,14 +273,16 @@ class NavState {
     }
 
     fun push(route: Route, origin: ExpandOrigin? = null) {
-        if (route.isPlayback() && minimizedEntry != null) {
-            dismissMinimized(pausePlayback = true)
+        val hadMinimized = route.isPlayback() && minimizedEntry != null
+        if (hadMinimized) {
+            appContext?.let(PlaybackBridge::pauseAndStopSession)
+            if (host == null) dismissMinimized(pausePlayback = false)
         }
         val entry = NavEntry(route, origin, initialProgress = 0f, initialFade = 0f)
         stack.add(entry)
         val scope = host ?: return
         scope.launch {
-            withFrameNanos { }
+            repeat(2) { withFrameNanos { } }
             val expand = entry.expand
             if (!expand) entry.fade.snapTo(1f)
             val millis = if (expand) ExpandEnterMillis else RouteSlideMillis
@@ -299,6 +301,9 @@ class NavState {
                         )
                     }
                 }
+            }
+            if (hadMinimized) {
+                dismissMinimized(pausePlayback = false)
             }
             // 这时详情页已经把列表盖住了，挪行看不见；返回时卡片已经在栏下方。
             alignCardBelowBar(entry.origin)
@@ -420,7 +425,7 @@ class NavState {
         scope.launch {
             entry.progress.snapTo(0f)
             entry.fade.snapTo(0f)
-            withFrameNanos { }
+            repeat(2) { withFrameNanos { } }
             val expand = entry.expand
             if (!expand) entry.fade.snapTo(1f)
             val millis = if (expand) ExpandEnterMillis else RouteSlideMillis

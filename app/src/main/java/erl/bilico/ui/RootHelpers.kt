@@ -13,11 +13,11 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import io.github.suqi8.coui.kmp.squircle.addSquircleRect
 import kotlin.math.pow
 
 internal class ExpandShape(
@@ -48,14 +47,9 @@ internal class ExpandShape(
         density: Density,
     ): Outline {
         val height = heightPx.coerceIn(0f, size.height)
-        // 和静止时的框同一个超级椭圆，最后一段才不会从屏幕圆角上脱开。
-        val path = Path()
-        path.addSquircleRect(
-            width = size.width,
-            height = height,
-            cornerRadius = radiusPx,
-        )
-        return Outline.Generic(path)
+        val r = radiusPx.coerceAtLeast(0f)
+        // 用硬件 RoundRect 裁剪替代逐帧重算通用 Path，避免过渡期 RenderThread 反复生成蒙版。
+        return Outline.Rounded(RoundRect(0f, 0f, size.width, height, r, r))
     }
 }
 

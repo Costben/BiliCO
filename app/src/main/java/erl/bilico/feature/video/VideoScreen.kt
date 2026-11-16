@@ -2,6 +2,8 @@ package erl.bilico.feature.video
 
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -17,7 +19,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,6 +35,7 @@ import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalRouteTransition
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.layerBackdropIf
@@ -38,6 +43,7 @@ import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @Composable
@@ -85,10 +91,26 @@ fun VideoScreen(
     val subtitleController = remember { SubtitleController(container.subtitles, scope) }
     val sponsorController = remember { SponsorBlockController(container.sponsorBlock, scope) }
 
+    val routeTransition = LocalRouteTransition.current
+    var stageReady by remember {
+        mutableStateOf(
+            routeTransition == null ||
+                (!routeTransition.exiting() && routeTransition.progress() >= 0.999f),
+        )
+    }
+    if (!stageReady && routeTransition != null) {
+        LaunchedEffect(routeTransition) {
+            snapshotFlow { !routeTransition.exiting() && routeTransition.progress() >= 0.999f }
+                .first { it }
+            stageReady = true
+        }
+    }
+
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     // 点媒体条封面会重建 Activity。播放器跟着页面记住，重建时还是同一个，媒体条不会拿到已释放的实例。
-    val player = rememberPlaybackPlayer(bvid) { buildConfiguredExoPlayer(context) }
+    // 进场过渡期间先保留黑底播放器槽位与详情内容，落位后再挂载 ExoPlayer 与 PlayerView。
+    val player = if (stageReady) rememberPlaybackPlayer(bvid) { buildConfiguredExoPlayer(context) } else null
 
     // 播放器解码上报的首帧宽高比（换视频或切分 P 时重置），再回退到接口预设的 dimension / dash 尺寸；0 表示仍未知。
     var playerVideoAspect by remember(bvid, state.selectedCid) { mutableFloatStateOf(0f) }
@@ -133,7 +155,7 @@ fun VideoScreen(
             text.isEmpty() -> Unit
             !container.session.isLoggedIn() -> viewModel.showLoginHint()
             else -> scope.launch {
-                val position = player.currentPosition.coerceAtLeast(0L)
+                val position = player?.currentPosition?.coerceAtLeast(0L) ?: 0L
                 container.danmaku.send(aid, cid, text, position)
                     .onSuccess {
                         danmakuDraft = ""
@@ -158,40 +180,42 @@ fun VideoScreen(
     val dataSourceFactory = remember(headers) {
         OkHttpDataSource.Factory(container.client.mediaClient()).setDefaultRequestProperties(headers)
     }
-    val playbackAttempts = remember(player) { PlaybackAttempts(player) { effectiveSpeed } }
+    val playbackAttempts = remember(player) { player?.let { PlaybackAttempts(it) { effectiveSpeed } } }
 
-    BindPlaybackSession(
-        player = player,
-        title = state.detail?.title.orEmpty(),
-        subtitle = state.detail?.upName.orEmpty(),
-        artworkUrl = state.detail?.cover.orEmpty(),
-        isPlaying = isPlaying,
-        backgroundPlay = backgroundPlay,
-        autoPip = autoPip,
-    )
+    if (player != null) {
+        BindPlaybackSession(
+            player = player,
+            title = state.detail?.title.orEmpty(),
+            subtitle = state.detail?.upName.orEmpty(),
+            artworkUrl = state.detail?.cover.orEmpty(),
+            isPlaying = isPlaying,
+            backgroundPlay = backgroundPlay,
+            autoPip = autoPip,
+        )
 
-    BindPlayerEvents(
-        player = player,
-        viewModel = viewModel,
-        container = container,
-        onPlayingChanged = { isPlaying = it },
-        onBufferingChanged = { isBuffering = it },
-        onError = { error ->
-            Log.w("BiliPlayer", describePlaybackError(error), error)
-            // 线路坏了先换一条，候选表走完才把错误抛给界面。
-            if (!playbackAttempts.next()) playerError = describePlaybackError(error)
-        },
-        onVideoAspectChanged = { playerVideoAspect = it },
-        onPlaybackEnded = {
-            handleVideoPlaybackEnded(
-                mode = playbackEndMode,
-                player = player,
-                viewModel = viewModel,
-                nav = nav,
-                state = state,
-            )
-        },
-    )
+        BindPlayerEvents(
+            player = player,
+            viewModel = viewModel,
+            container = container,
+            onPlayingChanged = { isPlaying = it },
+            onBufferingChanged = { isBuffering = it },
+            onError = { error ->
+                Log.w("BiliPlayer", describePlaybackError(error), error)
+                // 线路坏了先换一条，候选表走完才把错误抛给界面。
+                if (playbackAttempts?.next() != true) playerError = describePlaybackError(error)
+            },
+            onVideoAspectChanged = { playerVideoAspect = it },
+            onPlaybackEnded = {
+                handleVideoPlaybackEnded(
+                    mode = playbackEndMode,
+                    player = player,
+                    viewModel = viewModel,
+                    nav = nav,
+                    state = state,
+                )
+            },
+        )
+    }
 
     var routeInitialized by remember { mutableStateOf(false) }
     LaunchedEffect(bvid, startPositionMs, initialCid) {
@@ -201,8 +225,8 @@ fun VideoScreen(
             return@LaunchedEffect
         }
         // 原地连播切到下一条时清掉上一条的播控与列表态，仅保留当前舞台与全屏朝向。
-        player.stop()
-        player.clearMediaItems()
+        player?.stop()
+        player?.clearMediaItems()
         positionMs = 0L
         durationMs = 0L
         isPlaying = false
@@ -222,32 +246,34 @@ fun VideoScreen(
         queueSheetVisible = false
         danmakuController.attach(0L)
         subtitleController.clear()
-        sponsorController.clear(player)
+        if (player != null) sponsorController.clear(player)
         detailPager.scrollToPage(0)
         infoListState.scrollToItem(0)
         commentListState.scrollToItem(0)
     }
 
-    LaunchedEffect(bvid, state.selectedCid, sponsorBlockEnabled) {
-        sponsorController.attach(bvid, state.selectedCid, sponsorBlockEnabled, player)
+    LaunchedEffect(player, bvid, state.selectedCid, sponsorBlockEnabled) {
+        if (player != null) {
+            sponsorController.attach(bvid, state.selectedCid, sponsorBlockEnabled, player)
+        }
     }
 
     DisposableEffect(player) {
-        onDispose { sponsorController.restoreMuteIfNeeded(player) }
+        onDispose { if (player != null) sponsorController.restoreMuteIfNeeded(player) }
     }
 
     LaunchedEffect(state.selectedCid, state.detail?.aid) {
         val cid = state.selectedCid
         if (cid > 0L) {
             danmakuController.attach(cid)
-            danmakuController.onPosition(player.currentPosition)
+            danmakuController.onPosition(player?.currentPosition ?: 0L)
             subtitleController.attach(
                 bvid = bvid,
                 aid = state.detail?.aid ?: 0L,
                 cid = cid,
                 onAuxiliaryLoaded = { info ->
                     val seekMs = viewModel.applyServerResumeHint(info.lastPlayCid, info.lastPlayTimeMs)
-                    if (seekMs > 0L && player.playbackState != Player.STATE_IDLE && player.currentPosition < 3_000L) {
+                    if (player != null && seekMs > 0L && player.playbackState != Player.STATE_IDLE && player.currentPosition < 3_000L) {
                         player.seekTo(seekMs)
                         viewModel.consumeResumePosition()
                     }
@@ -256,30 +282,33 @@ fun VideoScreen(
         }
     }
 
-    LaunchedEffect(bvid, state.source) {
+    LaunchedEffect(player, bvid, state.source) {
+        val currentPlayer = player ?: return@LaunchedEffect
+        val attempts = playbackAttempts ?: return@LaunchedEffect
         val source = state.source ?: return@LaunchedEffect
         playerError = null
         if (state.resumePositionMs <= 0L && source.lastPlayTimeMs >= 3_000L) {
             viewModel.applyServerResumeHint(source.lastPlayCid, source.lastPlayTimeMs)
         }
         val resumeAt = viewModel.state.value.resumePositionMs
-        playbackAttempts.start(source, dataSourceFactory, resumeAt)
+        attempts.start(source, dataSourceFactory, resumeAt)
         if (resumeAt > 0L) viewModel.consumeResumePosition()
     }
 
-    LaunchedEffect(effectiveSpeed) {
-        player.setPlaybackSpeed(effectiveSpeed)
+    LaunchedEffect(player, effectiveSpeed) {
+        player?.setPlaybackSpeed(effectiveSpeed)
     }
 
     LaunchedEffect(player) {
+        val currentPlayer = player ?: return@LaunchedEffect
         while (true) {
-            positionMs = player.currentPosition.coerceAtLeast(0L)
-            durationMs = player.duration.coerceAtLeast(0L)
-            viewModel.reportHeartbeat(positionMs / 1000, player.isPlaying)
+            positionMs = currentPlayer.currentPosition.coerceAtLeast(0L)
+            durationMs = currentPlayer.duration.coerceAtLeast(0L)
+            viewModel.reportHeartbeat(positionMs / 1000, currentPlayer.isPlaying)
             danmakuController.onPosition(positionMs)
             sponsorController.onPosition(
                 positionMs = positionMs,
-                player = player,
+                player = currentPlayer,
                 enabled = container.settings.sponsorBlockEnabled.value,
                 skipMode = container.settings.sponsorSkipMode.value,
                 enabledCategories = container.settings.sponsorCategories.value,
@@ -315,147 +344,151 @@ fun VideoScreen(
             list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0
         },
         playerContent = {
-            val stageBackdrop = rememberLayerBackdrop()
-            val anyStageDialogOpen = fullscreen && (
-                speedDialogVisible || subtitleDialogVisible || qualityDialogVisible ||
-                    danmakuSettingsDialogVisible || chapterDialogVisible
-                )
-            VideoPlayer(
-                player = player,
-                title = state.detail?.title.orEmpty(),
-                isPlaying = isPlaying,
-                positionMs = positionMs,
-                durationMs = durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
-                isBuffering = state.isPlaybackLoading || isBuffering,
-                errorMessage = state.playbackError ?: playerError,
-                qualityLabel = state.qualityLabel(),
-                speed = speed,
-                fullscreen = fullscreen,
-                portraitFullscreen = fullscreen && fsController.portraitStage,
-                onPlayPause = {
-                    if (player.isPlaying) player.pause() else player.play()
-                },
-                onSeek = { player.seekTo(it) },
-                onToggleFullscreen = { applyFullscreen(!fullscreen) },
-                onFullscreenChange = applyFullscreen,
-                hapticEnabled = gestureHaptic,
-                volumeBrightnessEnabled = gestureVolBright,
-                fullscreenHintEnabled = fullscreenGestureHint,
-                onQualityClick = { qualityDialogVisible = true },
-                onSpeedClick = { speedDialogVisible = true },
-                onBack = {
-                    if (fullscreen) applyFullscreen(false) else nav.pop()
-                },
-                onRetry = viewModel::load,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .layerBackdropIf(BlurEffectsEnabled && anyStageDialogOpen, stageBackdrop),
-                inPipMode = inPipMode,
-                danmakuEnabled = danmakuEnabled,
-                onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
-                subtitleLabel = subtitleController.buttonLabel,
-                onSubtitleClick = { subtitleDialogVisible = true },
-                onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
-                    { PlaybackBridge.enterPipNow(activity) }
-                } else {
-                    null
-                },
-                onHome = { nav.popToMain() },
-                onWatchLater = viewModel::addToWatchLater,
-                playbackEndMode = playbackEndMode,
-                onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
-                onShare = {
-                    shareVideo(
-                        context = context,
-                        title = state.detail?.title.orEmpty(),
-                        bvid = bvid,
+            if (player == null) {
+                Box(Modifier.fillMaxSize().background(Color.Black))
+            } else {
+                val stageBackdrop = rememberLayerBackdrop()
+                val anyStageDialogOpen = fullscreen && (
+                    speedDialogVisible || subtitleDialogVisible || qualityDialogVisible ||
+                        danmakuSettingsDialogVisible || chapterDialogVisible
                     )
-                },
-                longPressSpeedActive = longPressSpeed,
-                longPressSpeedValue = boostSpeed,
-                onLongPressSpeedChange = { longPressSpeed = it },
-                chapters = subtitleController.chapters,
-                onChapterClick = { chapterDialogVisible = true },
-                sponsorSegments = if (sponsorBlockEnabled) {
-                    sponsorController.segments.filter { it.category.id in sponsorCategories }
-                } else {
-                    emptyList()
-                },
-                sponsorOverlay = { bottomPad, startPad ->
-                    if (sponsorBlockEnabled && sponsorSkipMode >= 0) {
-                        SponsorBlockPromptOverlay(
-                            undoNotice = sponsorController.undoNotice,
-                            promptSegment = sponsorController.promptSegment,
-                            poiSegment = sponsorController.poiSegment,
-                            bottomPad = bottomPad,
-                            startPad = startPad,
-                            onUndoSkip = { sponsorController.undoSkip(player) },
-                            onSkipPrompt = { sponsorController.skipPromptSegment(player) },
-                            onDismissPrompt = { sponsorController.dismissPromptSegment() },
-                            onJumpPoi = { sponsorController.jumpToPoi(player) },
-                            onDismissPoi = { sponsorController.dismissPoi() },
+                VideoPlayer(
+                    player = player,
+                    title = state.detail?.title.orEmpty(),
+                    isPlaying = isPlaying,
+                    positionMs = positionMs,
+                    durationMs = durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
+                    isBuffering = state.isPlaybackLoading || isBuffering,
+                    errorMessage = state.playbackError ?: playerError,
+                    qualityLabel = state.qualityLabel(),
+                    speed = speed,
+                    fullscreen = fullscreen,
+                    portraitFullscreen = fullscreen && fsController.portraitStage,
+                    onPlayPause = {
+                        if (player.isPlaying) player.pause() else player.play()
+                    },
+                    onSeek = { player.seekTo(it) },
+                    onToggleFullscreen = { applyFullscreen(!fullscreen) },
+                    onFullscreenChange = applyFullscreen,
+                    hapticEnabled = gestureHaptic,
+                    volumeBrightnessEnabled = gestureVolBright,
+                    fullscreenHintEnabled = fullscreenGestureHint,
+                    onQualityClick = { qualityDialogVisible = true },
+                    onSpeedClick = { speedDialogVisible = true },
+                    onBack = {
+                        if (fullscreen) applyFullscreen(false) else nav.pop()
+                    },
+                    onRetry = viewModel::load,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .layerBackdropIf(BlurEffectsEnabled && anyStageDialogOpen, stageBackdrop),
+                    inPipMode = inPipMode,
+                    danmakuEnabled = danmakuEnabled,
+                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                    onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
+                    subtitleLabel = subtitleController.buttonLabel,
+                    onSubtitleClick = { subtitleDialogVisible = true },
+                    onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
+                        { PlaybackBridge.enterPipNow(activity) }
+                    } else {
+                        null
+                    },
+                    onHome = { nav.popToMain() },
+                    onWatchLater = viewModel::addToWatchLater,
+                    playbackEndMode = playbackEndMode,
+                    onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
+                    onShare = {
+                        shareVideo(
+                            context = context,
+                            title = state.detail?.title.orEmpty(),
+                            bvid = bvid,
+                        )
+                    },
+                    longPressSpeedActive = longPressSpeed,
+                    longPressSpeedValue = boostSpeed,
+                    onLongPressSpeedChange = { longPressSpeed = it },
+                    chapters = subtitleController.chapters,
+                    onChapterClick = { chapterDialogVisible = true },
+                    sponsorSegments = if (sponsorBlockEnabled) {
+                        sponsorController.segments.filter { it.category.id in sponsorCategories }
+                    } else {
+                        emptyList()
+                    },
+                    sponsorOverlay = { bottomPad, startPad ->
+                        if (sponsorBlockEnabled && sponsorSkipMode >= 0) {
+                            SponsorBlockPromptOverlay(
+                                undoNotice = sponsorController.undoNotice,
+                                promptSegment = sponsorController.promptSegment,
+                                poiSegment = sponsorController.poiSegment,
+                                bottomPad = bottomPad,
+                                startPad = startPad,
+                                onUndoSkip = { sponsorController.undoSkip(player) },
+                                onSkipPrompt = { sponsorController.skipPromptSegment(player) },
+                                onDismissPrompt = { sponsorController.dismissPromptSegment() },
+                                onJumpPoi = { sponsorController.jumpToPoi(player) },
+                                onDismissPoi = { sponsorController.dismissPoi() },
+                            )
+                        }
+                    },
+                    subtitleOverlay = { chromeVisible ->
+                        SubtitleOverlay(
+                            cues = subtitleController.cues,
+                            positionMs = positionMs,
+                            fullscreen = fullscreen,
+                            controlsVisible = chromeVisible,
+                            inPip = inPipMode,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
+                    overlay = {
+                        DanmakuOverlay(
+                            player = player,
+                            items = danmakuController.items,
+                            isPlaying = isPlaying,
+                            settings = danmakuSettings,
+                        )
+                    },
+                )
+                if (fullscreen) {
+                    VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)
+                    CompositionLocalProvider(
+                        LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
+                    ) {
+                        VideoScreenDialogs(
+                            speedDialogVisible = speedDialogVisible,
+                            speed = speed,
+                            onSpeedChange = { speed = it; speedDialogVisible = false },
+                            onDismissSpeed = { speedDialogVisible = false },
+                            subtitleDialogVisible = subtitleDialogVisible,
+                            subtitleController = subtitleController,
+                            onDismissSubtitle = { subtitleDialogVisible = false },
+                            coinDialogVisible = false,
+                            coined = state.coined,
+                            onSelectCoin = {},
+                            onDismissCoin = {},
+                            favoriteFolders = null,
+                            onSelectFavorite = {},
+                            onDismissFavorite = {},
+                            qualityDialogVisible = qualityDialogVisible,
+                            state = state,
+                            onSelectQuality = { qn -> qualityDialogVisible = false; viewModel.selectQuality(qn, player.currentPosition) },
+                            onDismissQuality = { qualityDialogVisible = false },
+                            danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
+                            danmakuSettings = danmakuSettings,
+                            settingsRepository = container.settings,
+                            onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
+                            chapterDialogVisible = chapterDialogVisible,
+                            chapters = subtitleController.chapters,
+                            positionMs = positionMs,
+                            onSelectChapter = { chapter ->
+                                chapterDialogVisible = false
+                                player.seekTo(chapter.fromMs)
+                                if (!player.isPlaying) player.play()
+                            },
+                            onDismissChapter = { chapterDialogVisible = false },
+                            inlineInStage = true,
                         )
                     }
-                },
-                subtitleOverlay = { chromeVisible ->
-                    SubtitleOverlay(
-                        cues = subtitleController.cues,
-                        positionMs = positionMs,
-                        fullscreen = fullscreen,
-                        controlsVisible = chromeVisible,
-                        inPip = inPipMode,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                },
-                overlay = {
-                    DanmakuOverlay(
-                        player = player,
-                        items = danmakuController.items,
-                        isPlaying = isPlaying,
-                        settings = danmakuSettings,
-                    )
-                },
-            )
-            if (fullscreen) {
-                VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)
-                CompositionLocalProvider(
-                    LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
-                ) {
-                    VideoScreenDialogs(
-                        speedDialogVisible = speedDialogVisible,
-                        speed = speed,
-                        onSpeedChange = { speed = it; speedDialogVisible = false },
-                        onDismissSpeed = { speedDialogVisible = false },
-                        subtitleDialogVisible = subtitleDialogVisible,
-                        subtitleController = subtitleController,
-                        onDismissSubtitle = { subtitleDialogVisible = false },
-                        coinDialogVisible = false,
-                        coined = state.coined,
-                        onSelectCoin = {},
-                        onDismissCoin = {},
-                        favoriteFolders = null,
-                        onSelectFavorite = {},
-                        onDismissFavorite = {},
-                        qualityDialogVisible = qualityDialogVisible,
-                        state = state,
-                        onSelectQuality = { qn -> qualityDialogVisible = false; viewModel.selectQuality(qn, player.currentPosition) },
-                        onDismissQuality = { qualityDialogVisible = false },
-                        danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
-                        danmakuSettings = danmakuSettings,
-                        settingsRepository = container.settings,
-                        onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
-                        chapterDialogVisible = chapterDialogVisible,
-                        chapters = subtitleController.chapters,
-                        positionMs = positionMs,
-                        onSelectChapter = { chapter ->
-                            chapterDialogVisible = false
-                            player.seekTo(chapter.fromMs)
-                            if (!player.isPlaying) player.play()
-                        },
-                        onDismissChapter = { chapterDialogVisible = false },
-                        inlineInStage = true,
-                    )
                 }
             }
         },
@@ -479,14 +512,16 @@ fun VideoScreen(
                 onSelectPage = { page -> scope.launch { detailPager.animateScrollToPage(page) } },
                 onRetry = viewModel::load,
                 onSelectPart = { index ->
-                    viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-                    viewModel.selectPart(index, player.currentPosition)
+                    val currentPos = player?.currentPosition ?: 0L
+                    viewModel.flushHeartbeat(currentPos / 1000, container.scope)
+                    viewModel.selectPart(index, currentPos)
                 },
                 onSelectEpisode = { episode ->
                     val partIndex = state.detail?.pages?.indexOfFirst { it.cid == episode.cid } ?: -1
                     if (episode.bvid == bvid && partIndex >= 0) {
-                        viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-                        viewModel.selectPart(partIndex, player.currentPosition)
+                        val currentPos = player?.currentPosition ?: 0L
+                        viewModel.flushHeartbeat(currentPos / 1000, container.scope)
+                        viewModel.selectPart(partIndex, currentPos)
                     } else {
                         nav.push(Route.Video(episode.bvid, 0L, episode.cid))
                     }
@@ -506,8 +541,8 @@ fun VideoScreen(
                 },
                 onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
                 onSeekCommentMs = { ms ->
-                    player.seekTo(ms)
-                    if (!player.isPlaying) player.play()
+                    player?.seekTo(ms)
+                    if (player?.isPlaying == false) player.play()
                 },
                 onLike = viewModel::toggleLike,
                 onDislike = viewModel::toggleDislike,
@@ -518,11 +553,12 @@ fun VideoScreen(
                 chapters = subtitleController.chapters,
                 positionMs = positionMs,
                 onSelectChapter = { chapter ->
-                    player.seekTo(chapter.fromMs)
-                    if (!player.isPlaying) player.play()
+                    player?.seekTo(chapter.fromMs)
+                    if (player?.isPlaying == false) player.play()
                 },
                 onOpenChapters = { chapterDialogVisible = true },
                 barBackdrops = barBackdrops,
+                blurActive = stageReady,
                 commentRootId = commentRootId,
                 commentTargetId = commentTargetId,
             )
@@ -536,7 +572,10 @@ fun VideoScreen(
                 isPlaying = isPlaying,
                 onBack = { nav.pop() },
                 onHome = { nav.popToMain() },
-                onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+                onPlayPause = {
+                    val p = player ?: return@CollapsedVideoBar
+                    if (p.isPlaying) p.pause() else p.play()
+                },
                 onExpand = { slotHeight.floatValue = 0f },
                 onDanmakuSettings = { danmakuSettingsDialogVisible = true },
                 onWatchLater = viewModel::addToWatchLater,
@@ -566,7 +605,7 @@ fun VideoScreen(
             onDismissFavorite = { favoriteFolders = null },
             qualityDialogVisible = qualityDialogVisible,
             state = state,
-            onSelectQuality = { qn -> qualityDialogVisible = false; viewModel.selectQuality(qn, player.currentPosition) },
+            onSelectQuality = { qn -> qualityDialogVisible = false; viewModel.selectQuality(qn, player?.currentPosition ?: 0L) },
             onDismissQuality = { qualityDialogVisible = false },
             danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
             danmakuSettings = danmakuSettings,
@@ -577,8 +616,8 @@ fun VideoScreen(
             positionMs = positionMs,
             onSelectChapter = { chapter ->
                 chapterDialogVisible = false
-                player.seekTo(chapter.fromMs)
-                if (!player.isPlaying) player.play()
+                player?.seekTo(chapter.fromMs)
+                if (player?.isPlaying == false) player.play()
             },
             onDismissChapter = { chapterDialogVisible = false },
             inlineInStage = false,
@@ -592,7 +631,7 @@ fun VideoScreen(
         onPlay = { queued ->
             queueSheetVisible = false
             if (queued.video.bvid != nav.playQueue.playingBvid) {
-                viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                viewModel.flushHeartbeat((player?.currentPosition ?: 0L) / 1000, container.scope)
                 nav.playQueue.jumpTo(nav.playQueue.items.indexOf(queued))
                 nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
             }

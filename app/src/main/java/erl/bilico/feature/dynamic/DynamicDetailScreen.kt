@@ -2,7 +2,9 @@ package erl.bilico.feature.dynamic
 
 import android.widget.Toast
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,12 +52,14 @@ import erl.bilico.feature.comment.CommentComposerSheet
 import erl.bilico.feature.comment.CommentViewModel
 import erl.bilico.feature.comment.ReplyDialog
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.ExpandEasing
 import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.Route
 import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.asRowScrollState
+import erl.bilico.player.LocalInPipMode
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
@@ -65,6 +70,8 @@ import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
 import erl.bilico.ui.reportTopBarBottom
+import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBarDefaults
+import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
@@ -116,7 +123,12 @@ fun DynamicDetailScreen(
         error = null
         container.dynamic.detail(cleanId)
             .onSuccess { fetched ->
-                item = fetched
+                val current = item
+                item = if (current != null && current.dynamicId == fetched.dynamicId && current.liked != fetched.liked) {
+                    fetched.copy(liked = current.liked, likeCount = current.likeCount)
+                } else {
+                    fetched
+                }
                 isLoading = false
             }
             .onFailure { err ->
@@ -240,6 +252,24 @@ fun DynamicDetailScreen(
                                                 Toast.makeText(
                                                     context,
                                                     err.message ?: "删除动态失败",
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                            }
+                                    }
+                                },
+                                onLike = { target ->
+                                    val next = !target.liked
+                                    item = target.copy(
+                                        liked = next,
+                                        likeCount = (target.likeCount + if (next) 1 else -1).coerceAtLeast(0),
+                                    )
+                                    scope.launch {
+                                        container.dynamic.thumbDynamic(target.dynamicId, next)
+                                            .onFailure { err ->
+                                                item = target
+                                                Toast.makeText(
+                                                    context,
+                                                    err.message ?: "点赞失败",
                                                     Toast.LENGTH_SHORT,
                                                 ).show()
                                             }
@@ -399,30 +429,54 @@ fun DynamicDetailScreen(
                     },
                 )
             }
-            FloatingActionButton(
-                onClick = {
-                    if (!container.session.isLoggedIn()) {
-                        commentViewModel.showMessage("请先登录")
+            val orbVisible = !LocalInPipMode.current && (nav.minimizedEntry != null || nav.isMinimizingToOrb)
+            PinnedBarDensity {
+                val fabLift by animateDpAsState(
+                    targetValue = if (orbVisible) {
+                        BottomFloatingAccessoryNavigationBarDefaults.AccessorySize +
+                            BottomFloatingAccessoryNavigationBarDefaults.SideSpacing
                     } else {
-                        composeTarget = DynComposeTarget.Main
-                    }
-                },
-                interactionSource = ballInteraction,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(16.dp)
-                    .graphicsLayer {
-                        scaleX = ballScale.value
-                        scaleY = ballScale.value
+                        0.dp
                     },
-            ) {
-                Icon(
-                    imageVector = COUIIcons.Send,
-                    contentDescription = "发送评论",
-                    modifier = Modifier.size(24.dp),
-                    tint = COUITheme.colorScheme.onPrimary,
+                    animationSpec = tween(durationMillis = 280, easing = ExpandEasing),
+                    label = "dynamicCommentFabLift",
                 )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .navigationBarsPadding(),
+                ) {
+                    FloatingActionButton(
+                        onClick = {
+                            if (!container.session.isLoggedIn()) {
+                                commentViewModel.showMessage("请先登录")
+                            } else {
+                                composeTarget = DynComposeTarget.Main
+                            }
+                        },
+                        interactionSource = ballInteraction,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset(y = -fabLift)
+                            .padding(
+                                end = BottomFloatingAccessoryNavigationBarDefaults.PaddingHorizontal,
+                                bottom = (BottomFloatingNavigationBarDefaults.MinHeightWithoutPaddingVertical -
+                                    BottomFloatingAccessoryNavigationBarDefaults.AccessorySize) / 2,
+                            )
+                            .size(BottomFloatingAccessoryNavigationBarDefaults.AccessorySize)
+                            .graphicsLayer {
+                                scaleX = ballScale.value
+                                scaleY = ballScale.value
+                            },
+                    ) {
+                        Icon(
+                            imageVector = COUIIcons.Send,
+                            contentDescription = "发送评论",
+                            modifier = Modifier.size(24.dp),
+                            tint = COUITheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
             }
         }
     }

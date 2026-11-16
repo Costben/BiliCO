@@ -23,9 +23,12 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
+import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
+import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBarDefaults
+import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarDefaults
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
@@ -70,6 +73,7 @@ internal fun VideoDetailSection(
     onSelectChapter: (VideoChapter) -> Unit = {},
     onOpenChapters: () -> Unit = {},
     barBackdrops: VideoBarBackdrops? = null,
+    blurActive: Boolean = true,
     commentRootId: Long = 0L,
     commentTargetId: Long = 0L,
 ) {
@@ -92,7 +96,7 @@ internal fun VideoDetailSection(
             state = detailPager,
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdropIf(BlurEffectsEnabled, detailLayerBackdrop)
+                .layerBackdropIf(BlurEffectsEnabled && blurActive, detailLayerBackdrop)
                 .background(pageBg),
             beyondViewportPageCount = 0,
             key = { DETAIL_PAGES[it] },
@@ -134,19 +138,34 @@ internal fun VideoDetailSection(
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (nav.playQueue.items.isNotEmpty()) {
-                        FloatingActionButton(
-                            onClick = onOpenQueue,
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + navBarBottom)
-                                .semantics { contentDescription = "播放队列" },
+                                .fillMaxSize()
+                                .padding(bottom = navBarBottom),
                         ) {
-                            Icon(
-                                imageVector = COUIIcons.Playlist,
-                                contentDescription = "播放队列",
-                                modifier = Modifier.size(24.dp),
-                                tint = COUITheme.colorScheme.onPrimary,
-                            )
+                            PinnedBarDensity {
+                                Box(Modifier.fillMaxSize()) {
+                                    FloatingActionButton(
+                                        onClick = onOpenQueue,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(
+                                                end = BottomFloatingAccessoryNavigationBarDefaults.PaddingHorizontal,
+                                                bottom = (BottomFloatingNavigationBarDefaults.MinHeightWithoutPaddingVertical -
+                                                    BottomFloatingAccessoryNavigationBarDefaults.AccessorySize) / 2,
+                                            )
+                                            .size(BottomFloatingAccessoryNavigationBarDefaults.AccessorySize)
+                                            .semantics { contentDescription = "播放队列" },
+                                    ) {
+                                        Icon(
+                                            imageVector = COUIIcons.Playlist,
+                                            contentDescription = "播放队列",
+                                            modifier = Modifier.size(24.dp),
+                                            tint = COUITheme.colorScheme.onPrimary,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -179,8 +198,8 @@ internal fun VideoDetailSection(
                 .align(Alignment.TopCenter)
                 .fillMaxWidth(),
             containerColor = pageBg,
-            backdrop = if (BlurEffectsEnabled) detailLayerBackdrop else null,
-            materialBackdrop = if (BlurEffectsEnabled) barMaterialBackdrop else null,
+            backdrop = if (BlurEffectsEnabled && blurActive) detailLayerBackdrop else null,
+            materialBackdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop else null,
             topInset = firstRowHeight,
         ) {
             VideoDetailBar(
@@ -194,7 +213,7 @@ internal fun VideoDetailSection(
                 onDraftChange = onDanmakuDraftChange,
                 onComposingChange = onDanmakuComposingChange,
                 onSend = onSendDanmaku,
-                backdrop = if (BlurEffectsEnabled) barMaterialBackdrop ?: detailLayerBackdrop else null,
+                backdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
             )
         }
     }
