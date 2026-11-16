@@ -5,7 +5,6 @@ import kotlinx.serialization.Serializable
 
 /**
  * 评论表情面板：`x/emote/user/panel/web?business=reply`。
- * 面板按包分组，包本身只有类型和封面，没有名字。
  */
 @Serializable
 data class EmotePanelResponse(
@@ -16,11 +15,19 @@ data class EmotePanelResponse(
 
 @Serializable
 data class EmotePanelData(
-    val packages: List<EmotePackageDto> = emptyList(),
+    val setting: EmoteSettingDto? = null,
+    val packages: List<EmotePackageDto>? = null,
+)
+
+@Serializable
+data class EmoteSettingDto(
+    val schema: String = "",
 )
 
 @Serializable
 data class EmotePackageDto(
+    val id: Long = 0L,
+    val text: String = "",
     /** 4 表示纯文字表情（颜文字），其余是图片。 */
     val type: Int = 0,
     val url: String = "",

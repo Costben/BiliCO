@@ -3,9 +3,11 @@ package erl.bilico.data.repository
 import erl.bilico.data.model.Comment
 import erl.bilico.data.model.CommentEmote
 import erl.bilico.data.model.CommentEmotePackage
+import erl.bilico.data.model.CommentEmotePanel
 import erl.bilico.data.model.CommentPage
 import erl.bilico.data.model.CommentSailing
 import erl.bilico.data.model.CommentSort
+import erl.bilico.data.model.DEFAULT_EMOTE_MANAGE_URL
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.ReplyData
@@ -235,12 +237,15 @@ class CommentRepository(
     }
 
     /** 表情面板：未登录时服务端不给包，直接返回空表，界面只显示「登录后可用表情」。 */
-    suspend fun emotePanel(): Result<List<CommentEmotePackage>> = withContext(Dispatchers.IO) {
+    suspend fun emotePanel(): Result<CommentEmotePanel> = withContext(Dispatchers.IO) {
         runCatching {
-            if (!session.isLoggedIn()) return@runCatching emptyList()
+            if (!session.isLoggedIn()) return@runCatching CommentEmotePanel(emptyList())
             val response = api.emotePanel()
-            if (response.code != 0) return@runCatching emptyList()
-            response.data?.packages.orEmpty().mapNotNull { pkg ->
+            if (response.code != 0) return@runCatching CommentEmotePanel(emptyList())
+            val data = response.data
+            val manageUrl = data?.setting?.schema?.trim()?.takeIf { it.isNotBlank() }
+                ?: DEFAULT_EMOTE_MANAGE_URL
+            val packages = data?.packages.orEmpty().mapNotNull { pkg ->
                 val textOnly = pkg.type == 4
                 val emotes = pkg.emote.mapNotNull { emote ->
                     val text = emote.text.trim()
@@ -259,8 +264,19 @@ class CommentRepository(
                         )
                     }
                 }
-                if (emotes.isEmpty()) null else CommentEmotePackage(emotes)
+                if (emotes.isEmpty()) {
+                    null
+                } else {
+                    CommentEmotePackage(
+                        id = pkg.id,
+                        text = pkg.text.trim(),
+                        url = Formatters.normalizeImageUrl(pkg.url),
+                        type = pkg.type,
+                        emotes = emotes,
+                    )
+                }
             }
+            CommentEmotePanel(packages = packages, manageUrl = manageUrl)
         }
     }
 

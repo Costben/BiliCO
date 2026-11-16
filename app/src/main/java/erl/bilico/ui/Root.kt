@@ -41,6 +41,7 @@ import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.article.ArticleScreen
 import erl.bilico.feature.chat.ChatScreen
+import erl.bilico.feature.comment.EmoteManagerScreen
 import erl.bilico.feature.dynamic.DynamicDetailScreen
 import erl.bilico.feature.dynamic.DynamicScreen
 import erl.bilico.feature.dynamic.ImageViewerOverlay
@@ -128,6 +129,7 @@ fun BiliCoRoot(container: AppContainer) {
     val rootBackdrop = rememberLayerBackdrop()
 
     CompositionLocalProvider(
+        LocalNavState provides nav,
         LocalImageOrigins provides origins,
         LocalImageViewerHost provides viewerHost,
         LocalOpenBvid provides { bvid -> nav.push(Route.Video(bvid)) },
@@ -195,7 +197,8 @@ fun BiliCoRoot(container: AppContainer) {
             !topRoute.isPlayback() &&
             topRoute !is Route.Chat &&
             topRoute !is Route.Login &&
-            topRoute !is Route.WebLogin
+            topRoute !is Route.WebLogin &&
+            topRoute !is Route.EmoteManager
         if (showSecondaryOrb) {
             Box(Modifier.fillMaxSize().zIndex(4f)) {
                 CompositionLocalProvider(
@@ -450,6 +453,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
         Route.BangumiFollow -> BangumiFollowScreen(container, nav)
         Route.Login -> LoginScreen(container, nav)
         Route.WebLogin -> WebLoginScreen(container, nav)
+        is Route.EmoteManager -> EmoteManagerScreen(container, nav, route.url)
         Route.Update -> UpdateScreen(container, nav)
         is Route.Article -> ArticleScreen(
             container = container,

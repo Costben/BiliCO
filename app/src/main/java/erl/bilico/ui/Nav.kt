@@ -154,6 +154,7 @@ sealed interface Route {
     data object BangumiFollow : Route
     data object Login : Route
     data object WebLogin : Route
+    data class EmoteManager(val url: String) : Route
     data object Update : Route
     data class Article(
         val cvId: Long,
@@ -206,6 +207,8 @@ class NavEntry(
         var nextId = 0
     }
 }
+
+val LocalNavState = staticCompositionLocalOf<NavState?> { null }
 
 @Stable
 class NavState {

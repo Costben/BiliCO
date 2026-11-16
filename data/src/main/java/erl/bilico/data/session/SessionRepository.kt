@@ -57,6 +57,8 @@ class SessionRepository(
 
     fun hasAccessToken(): Boolean = !cookies.get("access_token").isNullOrBlank()
 
+    fun webCookies(): Map<String, String> = cookies.snapshot()
+
     suspend fun generateQr(): Result<QrLogin> = runCatching {
         val response = passportApi.generateQrCode()
         if (response.code != 0) error(response.message.ifBlank { "二维码获取失败(${response.code})" })

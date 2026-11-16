@@ -100,8 +100,19 @@ data class CommentEmote(
 )
 
 data class CommentEmotePackage(
+    val id: Long = 0L,
+    val text: String = "",
+    val url: String = "",
+    val type: Int = 0,
     val emotes: List<CommentEmote>,
 )
+
+data class CommentEmotePanel(
+    val packages: List<CommentEmotePackage>,
+    val manageUrl: String = DEFAULT_EMOTE_MANAGE_URL,
+)
+
+const val DEFAULT_EMOTE_MANAGE_URL = "https://www.bilibili.com/h5/mall/emoji-package/home?navhide=1"
 
 data class CommentSailing(
     val imageUrl: String,
