@@ -6,7 +6,7 @@
 
 **轻量、流畅的哔哩哔哩第三方 Android 客户端**
 
-Kotlin · Jetpack Compose · COUI（ColorOS 17 设计语言）
+Kotlin · Jetpack Compose · COUI
 
 [![Release](https://img.shields.io/github/v/release/Costben/BiliCO?include_prereleases&label=Release&color=FB7299&style=flat-square)](https://github.com/Costben/BiliCO/releases)
 ![Android](https://img.shields.io/badge/Android-8.0%2B%20(API%2026)-3DDC84?style=flat-square&logo=android&logoColor=white)
