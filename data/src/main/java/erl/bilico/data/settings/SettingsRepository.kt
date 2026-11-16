@@ -117,7 +117,7 @@ class SettingsRepository(
         scope.launch {
             val prefs = context.biliDataStore.data.first()
             _darkMode.value = prefs[KEY_DARK_MODE] ?: 0
-            _defaultQuality.value = prefs[KEY_QUALITY] ?: DefaultQuality.P1080.id
+            _defaultQuality.value = DefaultQuality.fromId(prefs[KEY_QUALITY] ?: DefaultQuality.P1080.id).id
             _cdnOption.value = CdnOption.fromId(prefs[KEY_CDN]).id
             _searchHistory.value = prefs[KEY_SEARCH_HISTORY]
                 ?.split('\u0001')
@@ -390,8 +390,9 @@ class SettingsRepository(
     }
 
     fun setDefaultQuality(quality: Int) {
-        _defaultQuality.value = quality
-        scope.launch { context.biliDataStore.edit { it[KEY_QUALITY] = quality } }
+        val resolved = DefaultQuality.fromId(quality).id
+        _defaultQuality.value = resolved
+        scope.launch { context.biliDataStore.edit { it[KEY_QUALITY] = resolved } }
     }
 
     fun setCdnOption(id: String) {

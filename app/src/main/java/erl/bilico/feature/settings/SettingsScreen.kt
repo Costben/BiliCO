@@ -44,6 +44,7 @@ import erl.bilico.ui.Route
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
+import io.github.suqi8.coui.kmp.basic.DropdownEntry
 import io.github.suqi8.coui.kmp.basic.DropdownImpl
 import io.github.suqi8.coui.kmp.basic.DropdownItem
 import io.github.suqi8.coui.kmp.basic.ListPopupColumn
@@ -108,14 +109,29 @@ fun SettingsScreen(
                     cardListPosition = CardListPosition.Head,
                     onSelectedIndexChange = container.settings::setDarkMode,
                 )
+                val selectedQuality = DefaultQuality.fromId(quality)
+                val qualityEntry = remember(selectedQuality) {
+                    DropdownEntry(
+                        DefaultQuality.entries.map { option ->
+                            DropdownItem(
+                                text = option.label,
+                                summary = if (option.needVip) "大会员可用，不可用时自动降级" else null,
+                                selected = option == selectedQuality,
+                                onClick = { container.settings.setDefaultQuality(option.id) },
+                            )
+                        },
+                    )
+                }
                 OverlayDropdownPreference(
-                    items = QUALITY_LABELS,
-                    selectedIndex = DefaultQuality.entries.indexOfFirst { it.id == quality }
-                        .coerceAtLeast(0),
+                    entry = qualityEntry,
                     title = "默认清晰度",
+                    summary = if (selectedQuality.needVip) {
+                        "需要大会员，无权限或片源不支持时自动降到可用最高画质"
+                    } else {
+                        null
+                    },
                     modifier = Modifier.testTag("settings_quality"),
                     cardListPosition = CardListPosition.Middle,
-                    onSelectedIndexChange = { container.settings.setDefaultQuality(DefaultQuality.entries[it].id) },
                 )
                 ArrowPreference(
                     title = "播放线路",
@@ -470,7 +486,6 @@ private fun OptionPicker(
 
 /** 下标即存储值：0 跟随系统，1 浅色，2 深色。 */
 private val DARK_MODE_OPTIONS = listOf("跟随系统", "浅色", "深色")
-private val QUALITY_LABELS = DefaultQuality.entries.map { it.label }
 private val AUTO_ROTATE_OPTIONS = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
 private val LONG_PRESS_SPEED_OPTIONS = listOf(150, 200, 250, 300, 400)
 private val LONG_PRESS_SPEED_LABELS = LONG_PRESS_SPEED_OPTIONS.map { speedLabel(it / 100f) }

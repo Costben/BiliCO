@@ -1,11 +1,22 @@
 package erl.bilico.data.settings
 
 /** 默认清晰度档位，值就是 B 站的 quality 编号。 */
-enum class DefaultQuality(val id: Int, val label: String) {
+enum class DefaultQuality(
+    val id: Int,
+    val label: String,
+    val needVip: Boolean = false,
+) {
+    P2160(120, "4K 超高清", needVip = true),
+    P1080_60(116, "1080P 60帧", needVip = true),
     P1080(80, "1080P 高清"),
     P720(64, "720P 高清"),
     P480(32, "480P 清晰"),
     P360(16, "360P 流畅"),
+    ;
+
+    companion object {
+        fun fromId(id: Int): DefaultQuality = entries.firstOrNull { it.id == id } ?: P1080
+    }
 }
 
 /**

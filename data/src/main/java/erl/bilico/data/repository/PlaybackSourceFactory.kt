@@ -91,12 +91,15 @@ private fun pickDashVideo(videos: List<DashTrack>, targetQn: Int): DashTrack? {
     val playable = videos.filter { it.baseUrl.isNotBlank() }
     if (playable.isEmpty()) return null
     val within = playable.filter { it.id <= targetQn }
-    val pool = within.ifEmpty { playable }
     // 同一档位优先 AVC，兼容性最好；没有 AVC 时再用 HEVC/AV1。
-    return pool.sortedWith(
+    // 没有不超过目标清晰度的轨时（例如低画质偏好遇到高起跳片源），取最低可用档位，行为对齐 PiliPlus。
+    val comparator = if (within.isNotEmpty()) {
         compareByDescending<DashTrack> { it.id }
-            .thenBy { if (it.codecs.startsWith("avc")) 0 else 1 },
-    ).firstOrNull()
+    } else {
+        compareBy<DashTrack> { it.id }
+    }.thenBy { if (it.codecs.startsWith("avc")) 0 else 1 }
+    val pool = within.ifEmpty { playable }
+    return pool.sortedWith(comparator).firstOrNull()
 }
 
 private fun pickDashAudio(audios: List<DashTrack>): DashTrack? {
