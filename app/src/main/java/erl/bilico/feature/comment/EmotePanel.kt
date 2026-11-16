@@ -77,7 +77,7 @@ private val CATEGORY_BAR_HEIGHT = 40.dp
  * 拦截子列表滑到顶部/底部并回弹后的剩余垂直滚动与抛滑速度，防止手势穿透到外层
  * `OverlayBottomSheet` 导致误滑关闭发布面板。
  */
-private object SheetScrollBlocker : NestedScrollConnection {
+internal object SheetScrollBlocker : NestedScrollConnection {
     override fun onPostScroll(
         consumed: Offset,
         available: Offset,
@@ -284,73 +284,6 @@ private fun EmoteManageButton(onClick: () -> Unit) {
             modifier = Modifier.size(18.dp),
             tint = COUITheme.colorScheme.onSurface,
         )
-    }
-}
-
-@Composable
-internal fun AtList(
-    users: List<FollowingUser>,
-    failed: Boolean,
-    onPick: (FollowingUser) -> Unit,
-) {
-    val showList = users.isNotEmpty()
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(if (showList) EMOTE_PANEL_HEIGHT else EMPTY_PANEL_HEIGHT)
-            .padding(top = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            showList -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .nestedScroll(SheetScrollBlocker)
-                    .overScrollVertical(nestedScrollToParent = false),
-            ) {
-                LazyColumn(
-                    overscrollEffect = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 4.dp),
-                ) {
-                    items(users.size) { index ->
-                        val user = users[index]
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(SquircleShape(10.dp))
-                                .clickable { onPick(user) }
-                                .padding(horizontal = 6.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            AsyncImage(
-                                model = user.face,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(30.dp)
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop,
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                text = user.name,
-                                style = COUITheme.textStyles.body2,
-                                maxLines = 1,
-                                color = COUITheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-                }
-            }
-
-            failed -> Text(
-                text = "登录后才能 @ 关注的人",
-                style = COUITheme.textStyles.footnote2,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-            )
-
-            else -> CircularProgressIndicator(size = 18.dp)
-        }
     }
 }
 

@@ -6,6 +6,8 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import erl.bilico.data.model.CommentEmote
 import erl.bilico.data.model.CommentEmotePackage
 import erl.bilico.data.model.DEFAULT_EMOTE_MANAGE_URL
 import erl.bilico.data.model.FollowingUser
@@ -57,8 +60,6 @@ import erl.bilico.ui.Route
 import erl.bilico.ui.components.EmojiIcon
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.basic.TextField
-import io.github.suqi8.coui.kmp.basic.TextFieldMode
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Close
 import io.github.suqi8.coui.kmp.icon.extended.Photos
@@ -104,6 +105,9 @@ fun CommentComposerSheet(
     var manageUrl by remember { mutableStateOf(DEFAULT_EMOTE_MANAGE_URL) }
     var emotesFailed by remember { mutableStateOf(false) }
     var followings by remember { mutableStateOf<List<FollowingUser>>(emptyList()) }
+    var followingsPage by remember { mutableIntStateOf(0) }
+    var followingsHasMore by remember { mutableStateOf(true) }
+    var followingsLoading by remember { mutableStateOf(false) }
     var atFailed by remember { mutableStateOf(false) }
     var atMids by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var pictures by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
@@ -111,13 +115,31 @@ fun CommentComposerSheet(
     var message by remember { mutableStateOf<String?>(null) }
     var openedEmoteManager by remember { mutableStateOf(false) }
 
+    val loggedIn = container.session.isLoggedIn()
     val managingEmotes = nav?.stack?.any { it.route is Route.EmoteManager } == true
+    val editorInteractionSource = remember { MutableInteractionSource() }
+    val editorFocused by editorInteractionSource.collectIsFocusedAsState()
+    var wasEditorFocused by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        show = true
-        delay(80)
-        runCatching { focusRequester.requestFocus() }
-        keyboard?.show()
+    val emoteLookup: Map<String, CommentEmote> = remember(packages) {
+        buildMap {
+            packages.forEach { pkg ->
+                if (pkg.type != 4) {
+                    pkg.emotes.forEach { emote ->
+                        if (emote.url.isNotBlank() && emote.insert.isNotBlank()) {
+                            putIfAbsent(emote.insert, emote)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(editorFocused) {
+        if (editorFocused && !wasEditorFocused && panel == ComposerPanel.At) {
+            panel = ComposerPanel.None
+        }
+        wasEditorFocused = editorFocused
     }
 
     fun toast(text: String) {
@@ -137,6 +159,40 @@ fun CommentComposerSheet(
         packages = result.packages
         manageUrl = result.manageUrl
         emotesFailed = result.packages.isEmpty()
+    }
+
+    fun loadMoreFollowings() {
+        if (followingsLoading || !followingsHasMore) return
+        val mid = container.session.mid()
+        if (mid <= 0L) {
+            followingsHasMore = false
+            atFailed = true
+            return
+        }
+        followingsLoading = true
+        scope.launch {
+            val nextPage = followingsPage + 1
+            container.relations.followings(mid, nextPage, pageSize = 50)
+                .onSuccess { (list, hasMore) ->
+                    followings = (followings + list).distinctBy { it.mid }
+                    followingsPage = nextPage
+                    followingsHasMore = hasMore && list.isNotEmpty()
+                    atFailed = false
+                }
+                .onFailure {
+                    if (followings.isEmpty()) atFailed = true
+                    followingsHasMore = false
+                }
+            followingsLoading = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        show = true
+        launch { loadEmotes(force = false) }
+        delay(80)
+        runCatching { focusRequester.requestFocus() }
+        keyboard?.show()
     }
 
     LaunchedEffect(managingEmotes) {
@@ -173,6 +229,8 @@ fun CommentComposerSheet(
         insert("@${user.name} ")
         atMids = atMids + (user.name to user.mid)
         panel = ComposerPanel.None
+        runCatching { focusRequester.requestFocus() }
+        keyboard?.show()
     }
 
     fun openEmoteManager(url: String) {
@@ -203,15 +261,9 @@ fun CommentComposerSheet(
             ComposerPanel.Emote -> loadEmotes(force = false)
 
             ComposerPanel.At -> {
-                if (followings.isNotEmpty() || atFailed) return@LaunchedEffect
-                followings = container.relations.followings(container.session.mid(), 1)
-                    .getOrElse {
-                        atFailed = true
-                        null
-                    }
-                    ?.first
-                    .orEmpty()
-                if (followings.isEmpty()) atFailed = true
+                if (followings.isEmpty() && !followingsLoading && !atFailed) {
+                    loadMoreFollowings()
+                }
             }
 
             ComposerPanel.None -> Unit
@@ -307,7 +359,7 @@ fun CommentComposerSheet(
                         (if (hasEmotes) EMOTE_PANEL_HEIGHT else EMPTY_PANEL_HEIGHT) + 8.dp
                     }
                     ComposerPanel.At -> {
-                        (if (followings.isNotEmpty()) EMOTE_PANEL_HEIGHT else EMPTY_PANEL_HEIGHT) + 8.dp
+                        (if (loggedIn) EMOTE_PANEL_HEIGHT else EMPTY_PANEL_HEIGHT) + 8.dp
                     }
                     ComposerPanel.None -> 0.dp
                 }
@@ -316,6 +368,7 @@ fun CommentComposerSheet(
                     TOOLS_GAP + TOOLS_HEIGHT +
                     ACTION_GAP + ACTION_HEIGHT
                 val editorMax = (maxHeight - belowField).coerceAtLeast(MIN_EDITOR_HEIGHT)
+                val editorBoxMax = (editorMax - 20.dp).coerceIn(MIN_EDITOR_HEIGHT, 112.dp)
 
                 Column(
                     modifier = Modifier
@@ -326,7 +379,7 @@ fun CommentComposerSheet(
                             cornerRadius = EDITOR_RADIUS,
                         ),
                 ) {
-                    TextField(
+                    ComposerEmoteTextField(
                         value = field,
                         onValueChange = {
                             field = if (it.text.length <= MAX_COMMENT_LENGTH) {
@@ -336,14 +389,10 @@ fun CommentComposerSheet(
                             }
                             if (panel != ComposerPanel.None) panel = ComposerPanel.None
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        label = "说点什么…",
-                        backgroundMode = TextFieldMode.None,
-                        insideMargin = DpSize(12.dp, 10.dp),
-                        minLines = 3,
-                        maxLines = 4,
+                        emotes = emoteLookup,
+                        maxHeight = editorBoxMax,
+                        focusRequester = focusRequester,
+                        interactionSource = editorInteractionSource,
                     )
                     Box(
                         modifier = Modifier
@@ -412,9 +461,14 @@ fun CommentComposerSheet(
                     onPick = { insert(it) },
                 )
             } else if (panel == ComposerPanel.At) {
-                AtList(
-                    users = followings,
-                    failed = atFailed,
+                AtUserPanel(
+                    container = container,
+                    loggedIn = loggedIn,
+                    followings = followings,
+                    followingsLoading = followingsLoading,
+                    followingsHasMore = followingsHasMore,
+                    followingsFailed = atFailed,
+                    onLoadMoreFollowings = { loadMoreFollowings() },
                     onPick = { pickAt(it) },
                 )
             }

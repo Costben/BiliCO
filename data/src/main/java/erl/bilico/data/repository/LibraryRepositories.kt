@@ -80,16 +80,21 @@ class RelationRepository(
     private val buvid: BuvidManager,
     private val session: SessionRepository,
 ) {
-    suspend fun followings(mid: Long, page: Int): Result<Pair<List<FollowingUser>, Boolean>> =
+    suspend fun followings(
+        mid: Long,
+        page: Int,
+        pageSize: Int = PAGE_SIZE,
+    ): Result<Pair<List<FollowingUser>, Boolean>> =
         withContext(Dispatchers.IO) {
             runCatching {
                 buvid.ensure()
                 val pn = page.coerceAtLeast(1)
+                val ps = pageSize.coerceIn(1, 50)
                 val response = api.followings(
                     mapOf(
                         "vmid" to mid.toString(),
                         "pn" to pn.toString(),
-                        "ps" to PAGE_SIZE.toString(),
+                        "ps" to ps.toString(),
                         "order" to "desc",
                         "order_type" to "attention",
                     )
@@ -107,7 +112,7 @@ class RelationRepository(
                         sign = user.sign,
                     )
                 }
-                items to (pn * PAGE_SIZE < (data?.total ?: 0))
+                items to (pn * ps < (data?.total ?: 0))
             }
         }
 
