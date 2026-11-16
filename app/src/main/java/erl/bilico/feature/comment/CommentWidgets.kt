@@ -1,8 +1,11 @@
 package erl.bilico.feature.comment
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,12 +44,15 @@ import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.Comment
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.util.Formatters
+import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.imageOrigin
 import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 评论正文默认折叠到这个行数，超出才给一行「展开」。 */
@@ -60,6 +66,7 @@ private const val FOLDED_COMMENT_LINES = 8
  * - 底部操作栏左侧为左弯回复图标 +「回复」，右侧为点踩与点赞图标 + 计数；
  * - 下方圆角灰底卡片展示子回复预览与「共N条回复」。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun BiliCommentItem(
     comment: Comment,
@@ -71,6 +78,9 @@ internal fun BiliCommentItem(
     onOpenImage: (List<DynamicImage>, Int) -> Unit = { _, _ -> },
     isSubReply: Boolean = false,
     expandable: Boolean = true,
+    currentMid: Long = 0L,
+    onDelete: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
 ) {
     var expanded by remember(comment.id) { mutableStateOf(false) }
     // 正文真的被截断了才给「展开」；短评论不占这一行。
@@ -94,7 +104,33 @@ internal fun BiliCommentItem(
         parseCommentColor(comment.vipColorHex) ?: defaultNameColor
     }
     val metaColor = if (isDark) Color(0xFF848994) else Color(0xFF9499A0)
+    val canManageOwn = currentMid > 0L && comment.mid == currentMid && comment.id > 0L && onDelete != null
+    val pressAnchor = rememberPreciseClickState()
+    var longPressMenuExpanded by remember(comment.id) { mutableStateOf(false) }
+    var confirmDelete by remember(comment.id) { mutableStateOf(false) }
+    val menuItems = rememberCommentMenuItems(
+        comment = comment,
+        enabled = canManageOwn,
+        onRequestDelete = { confirmDelete = true },
+    )
 
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (canManageOwn) Modifier.preciseClickAnchor(pressAnchor) else Modifier)
+            .then(
+                if (onClick != null || canManageOwn) {
+                    Modifier.combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onClick?.invoke() },
+                        onLongClick = if (canManageOwn) { { longPressMenuExpanded = true } } else null,
+                    )
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
     Row(modifier = Modifier.fillMaxWidth()) {
         CoverImage(
             url = Formatters.sizedImageUrl(comment.avatar, avatarPx, avatarPx),
@@ -143,6 +179,12 @@ internal fun BiliCommentItem(
                     Spacer(Modifier.width(8.dp))
                     CommentSailingBadge(sailing = sailing, isDark = isDark)
                 }
+                if (canManageOwn) {
+                    CommentMoreButton(
+                        menuItems = menuItems,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
             }
 
             if (comment.content.isNotBlank() || comment.emotes.isNotEmpty() || comment.pictures.isEmpty()) {
@@ -152,7 +194,7 @@ internal fun BiliCommentItem(
                     emotes = comment.emotes,
                     mentions = comment.mentions,
                     badgeLabel = if (!isSubReply && comment.isTop) "TOP" else null,
-                    selectable = true,
+                    selectable = !canManageOwn,
                     modifier = Modifier.then(if (expandable && folded && !expanded) Modifier.clickable { expanded = !expanded } else Modifier),
                     style = COUITheme.textStyles.body1.copy(
                         fontSize = 15.sp,
@@ -262,6 +304,26 @@ internal fun BiliCommentItem(
                 }
             }
         }
+    }
+
+    if (canManageOwn) {
+        CouiPopupMenu(
+            show = longPressMenuExpanded,
+            onDismiss = { longPressMenuExpanded = false },
+            items = menuItems,
+            preciseClickState = pressAnchor,
+        )
+    }
+    }
+
+    if (confirmDelete) {
+        DeleteCommentConfirmDialog(
+            onDismiss = { confirmDelete = false },
+            onConfirm = {
+                confirmDelete = false
+                onDelete?.invoke()
+            },
+        )
     }
 }
 

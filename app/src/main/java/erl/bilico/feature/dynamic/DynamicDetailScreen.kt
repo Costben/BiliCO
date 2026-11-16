@@ -1,5 +1,6 @@
 package erl.bilico.feature.dynamic
 
+import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -25,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -32,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -77,6 +80,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Send
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 private sealed interface DynComposeTarget {
     data object Main : DynComposeTarget
@@ -102,6 +106,10 @@ fun DynamicDetailScreen(
     var reloadTrigger by remember(cleanId) { mutableStateOf(0) }
     var imageViewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
     val onWatchLater = rememberDynamicWatchLater(container)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val account by container.session.account.collectAsStateWithLifecycle()
+    val currentMid = account?.mid ?: container.session.mid()
 
     LaunchedEffect(cleanId, reloadTrigger) {
         if (item == null) isLoading = true
@@ -220,6 +228,23 @@ fun DynamicDetailScreen(
                                 },
                                 onWatchLater = onWatchLater,
                                 onOpenLive = { roomId -> nav.push(Route.LiveRoom(roomId)) },
+                                currentMid = currentMid,
+                                onDelete = { target ->
+                                    scope.launch {
+                                        container.dynamic.deleteDynamic(target.dynamicId)
+                                            .onSuccess {
+                                                Toast.makeText(context, "已删除动态", Toast.LENGTH_SHORT).show()
+                                                nav.pop()
+                                            }
+                                            .onFailure { err ->
+                                                Toast.makeText(
+                                                    context,
+                                                    err.message ?: "删除动态失败",
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                            }
+                                    }
+                                },
                                 rowScrollState = rowScrollState,
                                 rowKey = "dynamic-card",
                             )
@@ -286,6 +311,8 @@ fun DynamicDetailScreen(
                                                     },
                                                     onOpenUser = { mid -> nav.push(Route.Space(mid)) },
                                                     onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
+                                                    currentMid = currentMid,
+                                                    onDelete = { commentViewModel.deleteComment(comment) },
                                                 )
                                             }
                                             when {
@@ -434,6 +461,8 @@ fun DynamicDetailScreen(
                 type = commentType,
                 initialTargetReplyId = dialogTargetReplyId,
                 onSubReplyAdded = { created -> commentViewModel.onSubReplyAdded(root.id, created) },
+                onSubReplyDeleted = { replyId -> commentViewModel.onSubReplyDeleted(root.id, replyId) },
+                onRootDeleted = { commentViewModel.removeCommentLocally(root.id) },
                 onOpenUser = { mid ->
                     dialogRoot = null
                     dialogTargetReplyId = 0L

@@ -1,5 +1,6 @@
 package erl.bilico.feature.space
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -74,6 +76,9 @@ fun SpaceScreen(
         SpaceViewModel(container.space, container.dynamic, mid)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val account by container.session.account.collectAsStateWithLifecycle()
+    val currentMid = account?.mid ?: container.session.mid()
+    val context = LocalContext.current
     val listState = rememberLazyListState()
     val rowScrollState = remember(listState) { listState.asRowScrollState() }
 
@@ -238,6 +243,12 @@ fun SpaceScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         onOpenLive = { roomId -> nav.push(Route.LiveRoom(roomId)) },
+                        currentMid = currentMid,
+                        onDelete = { target ->
+                            viewModel.deleteDynamic(target.dynamicId) { _, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         rowScrollState = rowScrollState,
                         rowKey = "d-${dyn.dynamicId}",
                     )

@@ -19,7 +19,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +49,8 @@ import erl.bilico.ui.ExpandOrigin
 import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.RowScrollState
 import erl.bilico.ui.attachToRow
+import erl.bilico.ui.components.ConfirmDialog
+import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.RichCommentText
 import erl.bilico.ui.expandOrigin
@@ -53,6 +58,8 @@ import erl.bilico.ui.rememberExpandOrigin
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Community
 import io.github.suqi8.coui.kmp.icon.extended.Share
@@ -69,6 +76,8 @@ internal fun DynamicCard(
     isDetail: Boolean = false,
     onWatchLater: ((DynamicVideoCard) -> Unit)? = null,
     onOpenLive: (Long) -> Unit = {},
+    currentMid: Long = 0L,
+    onDelete: ((DynamicItemUi) -> Unit)? = null,
     rowScrollState: RowScrollState? = null,
     rowKey: Any? = null,
 ) {
@@ -102,19 +111,35 @@ internal fun DynamicCard(
         }
     }
 
-    Card(
+    val canDelete = currentMid > 0L && item.authorMid == currentMid && item.dynamicId.isNotBlank() && onDelete != null
+    val pressAnchor = rememberPreciseClickState()
+    var longPressMenuExpanded by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val menuItems = rememberDynamicMenuItems(
+        item = item,
+        onWatchLater = onWatchLater,
+        onDelete = if (canDelete) { { confirmDelete = true } } else null,
+    )
+
+    Box(
         modifier = modifier
+            .fillMaxWidth()
+            .then(if (canDelete) Modifier.preciseClickAnchor(pressAnchor) else Modifier),
+    ) {
+    Card(
+        modifier = Modifier
             .fillMaxWidth()
             .then(if (cardOrigin != null) Modifier.expandOrigin(cardOrigin) else Modifier)
             .clip(SquircleShape(cardCornerRadius)),
         insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
         onClick = if (!isDetail) onCardClick else null,
+        onLongPress = if (canDelete) { { longPressMenuExpanded = true } } else null,
     ) {
         DynamicHeader(
             item = item,
             avatarSize = 40.dp,
             onClick = { if (item.authorMid > 0L) onOpenUser(item.authorMid) else onCardClick() },
-            onWatchLater = onWatchLater,
+            menuItems = menuItems,
         )
 
         if (item.title.isNotBlank() && item.title != item.content) {
@@ -250,6 +275,29 @@ internal fun DynamicCard(
                 )
             }
         }
+    }
+
+    if (canDelete) {
+        CouiPopupMenu(
+            show = longPressMenuExpanded,
+            onDismiss = { longPressMenuExpanded = false },
+            items = menuItems,
+            preciseClickState = pressAnchor,
+        )
+    }
+    }
+
+    if (confirmDelete) {
+        ConfirmDialog(
+            title = "删除动态",
+            message = "确定删除这条动态吗？删除后无法恢复。",
+            confirmText = "删除",
+            onDismiss = { confirmDelete = false },
+            onConfirm = {
+                confirmDelete = false
+                onDelete?.invoke(item)
+            },
+        )
     }
 }
 

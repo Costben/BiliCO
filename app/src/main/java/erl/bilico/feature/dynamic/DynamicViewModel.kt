@@ -46,7 +46,26 @@ class DynamicViewModel(
     private val lockedEnriched = mutableSetOf<String>()
 
     init {
+        viewModelScope.launch {
+            repository.deletedIds.collect { deletedId ->
+                _state.update { s ->
+                    val next = s.items.filterNot { it.dynamicId == deletedId }
+                    if (next.size == s.items.size) s else s.copy(items = next)
+                }
+            }
+        }
         if (session.isLoggedIn()) initialLoad()
+    }
+
+    fun deleteDynamic(
+        item: DynamicItemUi,
+        onResult: (ok: Boolean, message: String) -> Unit = { _, _ -> },
+    ) {
+        viewModelScope.launch {
+            repository.deleteDynamic(item.dynamicId)
+                .onSuccess { onResult(true, "已删除动态") }
+                .onFailure { err -> onResult(false, err.message ?: "删除动态失败") }
+        }
     }
 
     fun onLoginStateChanged(loggedIn: Boolean) {

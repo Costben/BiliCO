@@ -26,6 +26,9 @@ import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -33,6 +36,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.util.concurrent.ConcurrentHashMap
 
 enum class DynamicFeedType(val apiValue: String) {
@@ -59,12 +64,37 @@ class DynamicRepository(
     private val session: SessionRepository? = null,
 ) {
     private val detailSeedCache = ConcurrentHashMap<String, DynamicItemUi>()
+    private val _deletedIds = MutableSharedFlow<String>(extraBufferCapacity = 32)
+    val deletedIds: SharedFlow<String> = _deletedIds.asSharedFlow()
 
     suspend fun publishDynamic(
         text: String,
         pictures: List<UploadedPicture> = emptyList(),
         atMids: Map<String, Long> = emptyMap(),
     ): Result<String> = publishDynamicRequest(api, buvid, session, text, pictures, atMids)
+
+    suspend fun deleteDynamic(dynamicId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val id = dynamicId.trim()
+            require(id.isNotEmpty()) { "动态编号无效" }
+            buvid.ensure()
+            val csrf = session?.csrf().orEmpty()
+            require(csrf.isNotBlank()) { "登录后可用" }
+            val body = buildJsonObject { put("dyn_id_str", id) }
+            val response = api.removeDynamic(csrf = csrf, body = body)
+            if (response.code != 0) {
+                val msg = when (response.code) {
+                    -101 -> "请先登录"
+                    4101144 -> "只能删除自己的动态"
+                    else -> response.message.ifBlank { "删除动态失败(${response.code})" }
+                }
+                error(msg)
+            }
+            detailSeedCache.remove(id)
+            _deletedIds.tryEmit(id)
+            Unit
+        }
+    }
 
     fun rememberSeed(item: DynamicItemUi) {
         if (item.dynamicId.isNotBlank()) {

@@ -68,8 +68,27 @@ class SpaceViewModel(
     private var inFlightDynamics = false
 
     init {
+        viewModelScope.launch {
+            dynamicRepository.deletedIds.collect { deletedId ->
+                _state.update { s ->
+                    val next = s.dynamics.filterNot { it.dynamicId == deletedId }
+                    if (next.size == s.dynamics.size) s else s.copy(dynamics = next)
+                }
+            }
+        }
         loadProfile()
         loadVideos(firstPage = true)
+    }
+
+    fun deleteDynamic(
+        dynamicId: String,
+        onResult: (ok: Boolean, message: String) -> Unit = { _, _ -> },
+    ) {
+        viewModelScope.launch {
+            dynamicRepository.deleteDynamic(dynamicId)
+                .onSuccess { onResult(true, "已删除动态") }
+                .onFailure { err -> onResult(false, err.message ?: "删除动态失败") }
+        }
     }
 
     fun selectTab(tab: SpaceTab) {

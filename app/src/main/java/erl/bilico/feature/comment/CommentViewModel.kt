@@ -268,6 +268,44 @@ class CommentViewModel(
         }
     }
 
+    fun onSubReplyDeleted(rootId: Long, replyId: Long) {
+        _state.update { s ->
+            var removed = false
+            val nextItems = s.items.map { item ->
+                if (item.id == rootId) {
+                    removed = true
+                    item.copy(
+                        replyCount = (item.replyCount - 1).coerceAtLeast(0),
+                        replies = item.replies.filterNot { it.id == replyId },
+                    )
+                } else {
+                    item
+                }
+            }
+            if (!removed) s else s.copy(total = (s.total - 1).coerceAtLeast(0), items = nextItems)
+        }
+    }
+
+    fun removeCommentLocally(commentId: Long) {
+        _state.update { s ->
+            val next = s.items.filterNot { it.id == commentId }
+            if (next.size == s.items.size) s else s.copy(items = next, total = (s.total - 1).coerceAtLeast(0))
+        }
+    }
+
+    fun deleteComment(target: Comment) {
+        viewModelScope.launch {
+            repository.deleteComment(oid = oid, rpid = target.id, type = type)
+                .onSuccess {
+                    removeCommentLocally(target.id)
+                    showMessage("已删除评论")
+                }
+                .onFailure { err ->
+                    showMessage(err.message ?: "删除评论失败")
+                }
+        }
+    }
+
     fun toggleLike(target: Comment) {
         val nextLiked = !target.liked
         val nextDisliked = if (nextLiked) false else target.disliked

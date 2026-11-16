@@ -2,7 +2,6 @@ package erl.bilico.feature.comment
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import erl.bilico.data.model.Comment
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.di.AppContainer
@@ -86,10 +86,14 @@ internal fun ReplyDialog(
     type: Int = 1,
     initialTargetReplyId: Long = 0L,
     onSubReplyAdded: (Comment) -> Unit = {},
+    onSubReplyDeleted: (Long) -> Unit = {},
+    onRootDeleted: () -> Unit = {},
     onOpenUser: (Long) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val account by container.session.account.collectAsStateWithLifecycle()
+    val currentMid = account?.mid ?: container.session.mid()
     var show by remember(comment.id) { mutableStateOf(false) }
     var rootComment by remember(comment.id) { mutableStateOf(comment) }
     var items by remember(comment.id) { mutableStateOf<List<Comment>>(emptyList()) }
@@ -236,6 +240,34 @@ internal fun ReplyDialog(
         }
     }
 
+    fun deleteRootComment() {
+        scope.launch {
+            container.comments.deleteComment(oid = oid, rpid = rootComment.id, type = type)
+                .onSuccess {
+                    show = false
+                    onRootDeleted()
+                }
+                .onFailure { err ->
+                    showToast(err.message ?: "删除失败")
+                }
+        }
+    }
+
+    fun deleteSubReply(target: Comment) {
+        scope.launch {
+            container.comments.deleteComment(oid = oid, rpid = target.id, type = type)
+                .onSuccess {
+                    items = items.filterNot { it.id == target.id }
+                    totalCount = (totalCount - 1).coerceAtLeast(0)
+                    onSubReplyDeleted(target.id)
+                    showToast("已删除评论")
+                }
+                .onFailure { err ->
+                    showToast(err.message ?: "删除失败")
+                }
+        }
+    }
+
     LaunchedEffect(comment.id) {
         if (items.isEmpty()) loadNext()
     }
@@ -371,23 +403,20 @@ internal fun ReplyDialog(
                             modifier = Modifier.fillMaxWidth(),
                             insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .tapToReply { startReply(rootComment, 0) },
-                            ) {
-                                BiliCommentItem(
-                                    comment = rootComment,
-                                    onLike = { toggleRootLike() },
-                                    onDislike = { toggleRootDislike() },
-                                    onReply = { startReply(rootComment, 0) },
-                                    onOpenReplies = null,
-                                    onOpenUser = openUserAndClose,
-                                    onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
-                                    isSubReply = false,
-                                    expandable = false,
-                                )
-                            }
+                            BiliCommentItem(
+                                comment = rootComment,
+                                onLike = { toggleRootLike() },
+                                onDislike = { toggleRootDislike() },
+                                onReply = { startReply(rootComment, 0) },
+                                onOpenReplies = null,
+                                onOpenUser = openUserAndClose,
+                                onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
+                                isSubReply = false,
+                                expandable = false,
+                                currentMid = currentMid,
+                                onDelete = { deleteRootComment() },
+                                onClick = { startReply(rootComment, 0) },
+                            )
                         }
                     }
 
@@ -449,22 +478,19 @@ internal fun ReplyDialog(
                                         .padding(top = 10.dp),
                                     insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .tapToReply { startReply(reply, itemIndex) },
-                                    ) {
-                                        BiliCommentItem(
-                                            comment = displayReply,
-                                            onLike = { toggleLike(reply) },
-                                            onDislike = { toggleDislike(reply) },
-                                            onReply = { startReply(reply, itemIndex) },
-                                            onOpenUser = openUserAndClose,
-                                            onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
-                                            isSubReply = true,
-                                            expandable = false,
-                                        )
-                                    }
+                                    BiliCommentItem(
+                                        comment = displayReply,
+                                        onLike = { toggleLike(reply) },
+                                        onDislike = { toggleDislike(reply) },
+                                        onReply = { startReply(reply, itemIndex) },
+                                        onOpenUser = openUserAndClose,
+                                        onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
+                                        isSubReply = true,
+                                        expandable = false,
+                                        currentMid = currentMid,
+                                        onDelete = { deleteSubReply(reply) },
+                                        onClick = { startReply(reply, itemIndex) },
+                                    )
                                 }
                             }
                             if (isLoading) {
@@ -540,13 +566,3 @@ internal fun ReplyDialog(
 
 /** 列表最前面固定两项：根评论卡片、相关回复标题，子回复从下标 2 开始。 */
 private const val SUB_REPLY_ITEM_OFFSET = 2
-
-/**
- * 点评论空白处即进入回复。评论里自己的头像、用户名、图片、回复按钮都带各自的点击，
- * 先把事件吃掉，所以这里只管其余区域；不加波纹，聚焦回复框与滚动到位本身就是反馈。
- */
-@Composable
-private fun Modifier.tapToReply(onClick: () -> Unit): Modifier {
-    val interactionSource = remember { MutableInteractionSource() }
-    return clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-}

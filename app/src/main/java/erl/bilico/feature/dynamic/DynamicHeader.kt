@@ -56,7 +56,7 @@ internal fun DynamicHeader(
     item: DynamicItemUi,
     avatarSize: Dp,
     onClick: () -> Unit,
-    onWatchLater: ((DynamicVideoCard) -> Unit)?,
+    menuItems: List<CouiMenuItem>,
     modifier: Modifier = Modifier,
 ) {
     val defaultNameColor = COUITheme.colorScheme.onSurface
@@ -106,8 +106,7 @@ internal fun DynamicHeader(
             }
         }
         DynamicMoreButton(
-            item = item,
-            onWatchLater = onWatchLater,
+            menuItems = menuItems,
             modifier = Modifier.padding(start = 2.dp),
         )
     }
@@ -214,12 +213,31 @@ private fun DynamicNameplate(
 }
 
 @Composable
-private fun DynamicMoreButton(
+internal fun rememberDynamicMenuItems(
     item: DynamicItemUi,
     onWatchLater: ((DynamicVideoCard) -> Unit)?,
+    onDelete: (() -> Unit)?,
+): List<CouiMenuItem> {
+    val context = LocalContext.current
+    return remember(item, onWatchLater, onDelete, context) {
+        buildList {
+            val video = item.video
+            if (video != null && onWatchLater != null) {
+                add(CouiMenuItem("稍后再看", { onWatchLater(video) }))
+            }
+            add(CouiMenuItem("分享动态", { shareDynamic(context, item) }))
+            if (onDelete != null) {
+                add(CouiMenuItem("删除动态", onDelete, group = 1))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DynamicMoreButton(
+    menuItems: List<CouiMenuItem>,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
 
     Box(modifier) {
@@ -246,13 +264,7 @@ private fun DynamicMoreButton(
         CouiPopupMenu(
             show = expanded,
             onDismiss = { expanded = false },
-            items = buildList {
-                val video = item.video
-                if (video != null && onWatchLater != null) {
-                    add(CouiMenuItem("稍后再看", { onWatchLater(video) }))
-                }
-                add(CouiMenuItem("分享动态", { shareDynamic(context, item) }))
-            },
+            items = menuItems,
         )
     }
 }

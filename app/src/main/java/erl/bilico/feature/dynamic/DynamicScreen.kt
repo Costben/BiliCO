@@ -1,5 +1,6 @@
 package erl.bilico.feature.dynamic
 
+import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -84,6 +86,8 @@ fun DynamicScreen(
 ) {
     val account by container.session.account.collectAsStateWithLifecycle()
     val loggedIn = account != null
+    val currentMid = account?.mid ?: container.session.mid()
+    val context = LocalContext.current
     var viewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
     val onWatchLater = rememberDynamicWatchLater(container)
 
@@ -165,6 +169,12 @@ fun DynamicScreen(
                         },
                         onWatchLater = onWatchLater,
                         onOpenLive = { roomId -> nav.push(Route.LiveRoom(roomId)) },
+                        currentMid = currentMid,
+                        onDelete = { target ->
+                            viewModel.deleteDynamic(target) { _, message ->
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            }
+                        },
                     )
                 }
             }
@@ -208,6 +218,8 @@ private fun DynamicContent(
     onOpenDynamic: (DynamicItemUi, ExpandOrigin?) -> Unit,
     onWatchLater: (DynamicVideoCard) -> Unit,
     onOpenLive: (Long) -> Unit,
+    currentMid: Long,
+    onDelete: (DynamicItemUi) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -322,6 +334,8 @@ private fun DynamicContent(
                         onOpenDynamic = onOpenDynamic,
                         onWatchLater = onWatchLater,
                         onOpenLive = onOpenLive,
+                        currentMid = currentMid,
+                        onDelete = onDelete,
                         rowScrollState = rowScrollState,
                         rowKey = item.id,
                     )

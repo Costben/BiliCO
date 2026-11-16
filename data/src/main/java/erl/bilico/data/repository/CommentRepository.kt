@@ -366,6 +366,34 @@ class CommentRepository(
         }
     }
 
+    suspend fun deleteComment(
+        oid: Long,
+        rpid: Long,
+        type: Int = 1,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val csrf = session.csrf()
+            require(csrf.isNotBlank()) { "登录后可用" }
+            val response = api.deleteComment(
+                mapOf(
+                    "oid" to oid.toString(),
+                    "type" to type.toString(),
+                    "rpid" to rpid.toString(),
+                    "csrf" to csrf,
+                ),
+            )
+            if (response.code != 0) {
+                val msg = when (response.code) {
+                    -101 -> "请先登录"
+                    12022 -> "评论不存在或已删除"
+                    else -> response.message.ifBlank { "删除评论失败(${response.code})" }
+                }
+                error(msg)
+            }
+        }
+    }
+
     private suspend fun legacyFirstPage(oid: Long, type: Int, sort: CommentSort): CommentPage {
         val response = api.legacyComments(
             mapOf(

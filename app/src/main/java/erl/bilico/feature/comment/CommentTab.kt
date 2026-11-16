@@ -82,6 +82,8 @@ fun CommentTab(
         CommentViewModel(container.comments, oid, type, targetRootId, targetReplyId)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val account by container.session.account.collectAsStateWithLifecycle()
+    val currentMid = account?.mid ?: container.session.mid()
     var dialogRoot by remember { mutableStateOf<Comment?>(null) }
     var dialogTargetReplyId by remember { mutableStateOf(0L) }
     var composeTarget by remember { mutableStateOf<ComposeTarget?>(null) }
@@ -218,6 +220,8 @@ fun CommentTab(
                                 },
                                 onOpenUser = onOpenUser,
                                 onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
+                                currentMid = currentMid,
+                                onDelete = { viewModel.deleteComment(comment) },
                             )
                         }
                     }
@@ -342,6 +346,8 @@ fun CommentTab(
             type = type,
             initialTargetReplyId = dialogTargetReplyId,
             onSubReplyAdded = { created -> viewModel.onSubReplyAdded(root.id, created) },
+            onSubReplyDeleted = { replyId -> viewModel.onSubReplyDeleted(root.id, replyId) },
+            onRootDeleted = { viewModel.removeCommentLocally(root.id) },
             onOpenUser = { mid ->
                 dialogRoot = null
                 dialogTargetReplyId = 0L

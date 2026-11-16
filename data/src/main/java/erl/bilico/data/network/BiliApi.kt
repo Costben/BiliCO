@@ -123,6 +123,10 @@ interface BiliApi {
     suspend fun hateComment(@FieldMap fields: Map<String, String>): BaseResponse
 
     @FormUrlEncoded
+    @POST("x/v2/reply/del")
+    suspend fun deleteComment(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
     @POST("x/click-interface/web/heartbeat")
     suspend fun heartbeat(@FieldMap fields: Map<String, String>): BaseResponse
 
@@ -144,6 +148,12 @@ interface BiliApi {
         @Query("csrf") csrf: String,
         @retrofit2.http.Body body: kotlinx.serialization.json.JsonObject,
     ): CreateDynamicResponse
+
+    @POST("x/dynamic/feed/operate/remove")
+    suspend fun removeDynamic(
+        @Query("csrf") csrf: String,
+        @retrofit2.http.Body body: kotlinx.serialization.json.JsonObject,
+    ): BaseResponse
 
     // ---------- 专栏 / 图文 ----------
 
