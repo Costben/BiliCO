@@ -59,6 +59,7 @@ import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.components.LocalOpenBvid
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.layerBackdropIf
+import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
@@ -66,8 +67,10 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
+import io.github.suqi8.coui.kmp.layout.BottomSheetDefaults
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import io.github.suqi8.coui.kmp.squircle.isSquircleEnabled
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -168,97 +171,37 @@ internal fun ReplyDialog(
         }
     }
 
-    fun toggleRootLike() {
+    fun toggleVote(target: Comment, isLike: Boolean, update: (Comment) -> Unit) {
         if (!container.session.isLoggedIn()) {
             showToast("请先登录")
             return
         }
-        val nextLiked = !rootComment.liked
-        val nextDisliked = if (nextLiked) false else rootComment.disliked
-        val nextLike = (rootComment.like + if (nextLiked) 1 else -1).coerceAtLeast(0)
-        rootComment = rootComment.copy(liked = nextLiked, disliked = nextDisliked, like = nextLike)
-        scope.launch {
-            container.comments.likeComment(oid = oid, rpid = rootComment.id, liked = nextLiked, type = type)
-                .onFailure { err ->
-                    rootComment = comment
-                    showToast(err.message ?: "点赞失败")
-                }
-        }
-    }
-
-    fun toggleRootDislike() {
-        if (!container.session.isLoggedIn()) {
-            showToast("请先登录")
-            return
-        }
-        val nextDisliked = !rootComment.disliked
-        val nextLiked = if (nextDisliked) false else rootComment.liked
-        val nextLike = if (nextDisliked && rootComment.liked) {
-            (rootComment.like - 1).coerceAtLeast(0)
+        val next = if (isLike) {
+            val liked = !target.liked
+            target.copy(liked = liked, disliked = if (liked) false else target.disliked, like = (target.like + if (liked) 1 else -1).coerceAtLeast(0))
         } else {
-            rootComment.like
+            val disliked = !target.disliked
+            val like = if (disliked && target.liked) (target.like - 1).coerceAtLeast(0) else target.like
+            target.copy(disliked = disliked, liked = if (disliked) false else target.liked, like = like)
         }
-        rootComment = rootComment.copy(disliked = nextDisliked, liked = nextLiked, like = nextLike)
+        update(next)
         scope.launch {
-            container.comments.hateComment(oid = oid, rpid = rootComment.id, hated = nextDisliked, type = type)
-                .onFailure { err ->
-                    rootComment = comment
-                    showToast(err.message ?: "操作失败")
-                }
-        }
-    }
-
-    fun toggleLike(target: Comment) {
-        if (!container.session.isLoggedIn()) {
-            showToast("请先登录")
-            return
-        }
-        val nextLiked = !target.liked
-        val nextDisliked = if (nextLiked) false else target.disliked
-        val nextLike = (target.like + if (nextLiked) 1 else -1).coerceAtLeast(0)
-        items = items.map {
-            if (it.id == target.id) {
-                it.copy(liked = nextLiked, disliked = nextDisliked, like = nextLike)
+            val req = if (isLike) {
+                container.comments.likeComment(oid = oid, rpid = target.id, liked = next.liked, type = type)
             } else {
-                it
+                container.comments.hateComment(oid = oid, rpid = target.id, hated = next.disliked, type = type)
+            }
+            req.onFailure { err ->
+                update(target)
+                showToast(err.message ?: if (isLike) "点赞失败" else "操作失败")
             }
         }
-        scope.launch {
-            container.comments.likeComment(oid = oid, rpid = target.id, liked = nextLiked, type = type)
-                .onFailure { err ->
-                    items = items.map { if (it.id == target.id) target else it }
-                    showToast(err.message ?: "点赞失败")
-                }
-        }
     }
 
-    fun toggleDislike(target: Comment) {
-        if (!container.session.isLoggedIn()) {
-            showToast("请先登录")
-            return
-        }
-        val nextDisliked = !target.disliked
-        val nextLiked = if (nextDisliked) false else target.liked
-        val nextLike = if (nextDisliked && target.liked) {
-            (target.like - 1).coerceAtLeast(0)
-        } else {
-            target.like
-        }
-        items = items.map {
-            if (it.id == target.id) {
-                it.copy(disliked = nextDisliked, liked = nextLiked, like = nextLike)
-            } else {
-                it
-            }
-        }
-        scope.launch {
-            container.comments.hateComment(oid = oid, rpid = target.id, hated = nextDisliked, type = type)
-                .onFailure { err ->
-                    items = items.map { if (it.id == target.id) target else it }
-                    showToast(err.message ?: "操作失败")
-                }
-        }
-    }
+    fun toggleRootLike() = toggleVote(rootComment, isLike = true) { rootComment = it }
+    fun toggleRootDislike() = toggleVote(rootComment, isLike = false) { rootComment = it }
+    fun toggleLike(target: Comment) = toggleVote(target, isLike = true) { u -> items = items.map { if (it.id == target.id) u else it } }
+    fun toggleDislike(target: Comment) = toggleVote(target, isLike = false) { u -> items = items.map { if (it.id == target.id) u else it } }
 
     fun sendReply() {
         if (!container.session.isLoggedIn()) {
@@ -354,11 +297,26 @@ internal fun ReplyDialog(
         }
     }
 
+    val sheetBgColor = if (isDark) Color(0xFF1B1B1B) else pageContainerColor()
+    val squircleEnabled = isSquircleEnabled()
+    val sheetShape = remember(squircleEnabled) {
+        SquircleShape(
+            topStart = BottomSheetDefaults.cornerRadius,
+            topEnd = BottomSheetDefaults.cornerRadius,
+            bottomStart = 0.dp,
+            bottomEnd = 0.dp,
+            squircleEnabled = squircleEnabled,
+            weight = BottomSheetDefaults.CornerWeight,
+        )
+    }
+    val totalSheetPx = with(density) { (sheetMaxHeight + topStripOffset).roundToPx() }
+
     OverlayBottomSheet(
         show = show,
         title = null,
         startAction = null,
         endAction = null,
+        backgroundColor = sheetBgColor,
         showDragHandle = false,
         insideMargin = DpSize(0.dp, 0.dp),
         panelPaddingBottom = 0.dp,
@@ -371,31 +329,30 @@ internal fun ReplyDialog(
     ) {
         val sheetBackdrop = rememberLayerBackdrop()
         val sheetOverlayBackdrop = if (BlurEffectsEnabled) sheetBackdrop else null
-        val topBarColor = if (isDark) Color(0xFF1B1B1B) else AppBarBlurOverlayDefaults.containerColor()
         CompositionLocalProvider(
             LocalOpenBvid provides parentOpenBvid?.let { open -> { bvid -> show = false; open(bvid) } },
             LocalCommentSeek provides parentSeek?.let { seek -> { ms -> show = false; seek(ms) } },
             LocalEdgeToEdge provides true,
         ) {
-            // OverlayBottomSheet 无拖拽条时仍会在内容上方保留 10dp 空白拖动手柄带；把内容上移这段高度，
-            // 让顶栏渐进模糊与列表滚动直接贴齐面板圆角顶部，消除顶部未模糊黑带。
+            // OverlayBottomSheet 无拖拽条时仍会在内容上方保留 10dp 空白拖动手柄带；直接在 layout 内按总高测量并上移，
+            // 避免外层 height() 居中造成顶部露出灰条，同时裁剪到同款大圆角使顶栏与列表完全贴齐面板顶部。
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(sheetMaxHeight + topStripOffset)
                     .layout { measurable, constraints ->
-                        val placeable = measurable.measure(constraints)
+                        val targetH = totalSheetPx.coerceAtMost(constraints.maxHeight + topStripPx)
+                        val placeable = measurable.measure(constraints.copy(minHeight = targetH, maxHeight = targetH))
                         layout(placeable.width, (placeable.height - topStripPx).coerceAtLeast(0)) {
                             placeable.placeRelative(0, -topStripPx)
                         }
-                    },
+                    }
+                    .clip(sheetShape),
             ) {
-                val sheetBackdropTint = if (isDark) Color(0xF21B1B1B) else Color(0xF2F4F5F6)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .layerBackdropIf(BlurEffectsEnabled, sheetBackdrop)
-                        .background(sheetBackdropTint)
+                        .background(sheetBgColor)
                         .imePadding(),
                 ) {
                     LazyColumn(
@@ -403,7 +360,7 @@ internal fun ReplyDialog(
                         modifier = Modifier.fillMaxSize().scrollEndHaptic(),
                         contentPadding = PaddingValues(
                             start = 16.dp,
-                            top = 60.dp + topStripOffset,
+                            top = 60.dp,
                             end = 16.dp,
                             bottom = listBottomPadding,
                         ),
@@ -546,7 +503,7 @@ internal fun ReplyDialog(
                         else listState.firstVisibleItemScrollOffset.toFloat()
                         AppBarBlurOverlayDefaults.scrollAlpha(rawScroll, density)
                     },
-                    containerColor = topBarColor,
+                    containerColor = sheetBgColor,
                     backdrop = sheetOverlayBackdrop,
                     onClose = { show = false },
                     modifier = Modifier.align(Alignment.TopCenter),

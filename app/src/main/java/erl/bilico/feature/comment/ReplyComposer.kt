@@ -230,8 +230,8 @@ internal fun ReplyDetailTopBar(
                     modifier = Modifier
                         .layoutId("content")
                         .fillMaxWidth()
-                        .padding(start = 20.dp, top = topInset + 4.dp, end = 16.dp)
-                        .height(52.dp),
+                        .padding(start = 20.dp, top = topInset, end = 16.dp)
+                        .height(48.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
