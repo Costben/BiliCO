@@ -407,8 +407,7 @@ fun PgcScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        .padding(bottom = navBarBottom),
+                        .fillMaxWidth(),
                 ) {
                     when (tab) {
                         0 -> PgcInfoTab(
@@ -424,6 +423,7 @@ fun PgcScreen(
                                 viewModel.selectEpisode(index)
                             },
                             onSelectSeason = { id -> nav.push(Route.Pgc(id, 0L)) },
+                            bottomInset = navBarBottom,
                             modifier = Modifier.fillMaxSize(),
                         )
 
@@ -437,6 +437,7 @@ fun PgcScreen(
                                         container = container,
                                         oid = aid,
                                         onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                                        bottomInset = navBarBottom,
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 }

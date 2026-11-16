@@ -582,7 +582,7 @@ private fun ArticleCommentSheet(
                     targetRootId = commentRootId,
                     targetReplyId = commentTargetId,
                     onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
-                    modifier = Modifier.weight(1f).fillMaxWidth().navigationBarsPadding(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
         }

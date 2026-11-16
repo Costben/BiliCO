@@ -47,6 +47,7 @@ import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.navBottomPadding
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
@@ -73,6 +74,7 @@ fun CommentTab(
     type: Int = 1,
     listState: LazyListState = rememberLazyListState(),
     topInset: Dp = 0.dp,
+    bottomInset: Dp = navBottomPadding(),
     targetRootId: Long = 0L,
     targetReplyId: Long = 0L,
 ) {
@@ -141,7 +143,7 @@ fun CommentTab(
                         start = 16.dp,
                         top = 12.dp + topInset,
                         end = 16.dp,
-                        bottom = 88.dp,
+                        bottom = 88.dp + bottomInset,
                     ),
                 ) {
                     item(key = "header") {
@@ -257,7 +259,7 @@ fun CommentTab(
                     text = toast,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = 16.dp + bottomInset)
                         .clip(SquircleShape(8.dp))
                         .background(Color(0xCC000000))
                         .padding(horizontal = 14.dp, vertical = 8.dp),
@@ -291,7 +293,7 @@ fun CommentTab(
                 interactionSource = ballInteraction,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp)
+                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + bottomInset)
                     .graphicsLayer {
                         scaleX = ballScale.value
                         scaleY = ballScale.value

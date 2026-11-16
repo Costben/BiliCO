@@ -92,7 +92,6 @@ internal fun VideoDetailSection(
             state = detailPager,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = navBarBottom)
                 .layerBackdropIf(BlurEffectsEnabled, detailLayerBackdrop)
                 .background(pageBg),
             beyondViewportPageCount = 0,
@@ -127,6 +126,7 @@ internal fun VideoDetailSection(
                         onShare = onShare,
                         listState = infoListState,
                         topInset = contentTop,
+                        bottomInset = navBarBottom,
                         chapters = chapters,
                         positionMs = positionMs,
                         onSelectChapter = onSelectChapter,
@@ -138,7 +138,7 @@ internal fun VideoDetailSection(
                             onClick = onOpenQueue,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(16.dp)
+                                .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + navBarBottom)
                                 .semantics { contentDescription = "播放队列" },
                         ) {
                             Icon(
@@ -163,6 +163,7 @@ internal fun VideoDetailSection(
                                 onOpenUser = onOpenUser,
                                 listState = commentListState,
                                 topInset = contentTop,
+                                bottomInset = navBarBottom,
                                 targetRootId = commentRootId,
                                 targetReplyId = commentTargetId,
                                 modifier = Modifier.fillMaxSize(),

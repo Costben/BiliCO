@@ -92,6 +92,7 @@ internal fun VideoInfoTab(
     onShare: () -> Unit,
     listState: LazyListState = rememberLazyListState(),
     topInset: Dp = 0.dp,
+    bottomInset: Dp = 0.dp,
     chapters: List<VideoChapter> = emptyList(),
     positionMs: Long = 0L,
     onSelectChapter: (VideoChapter) -> Unit = {},
@@ -99,11 +100,11 @@ internal fun VideoInfoTab(
     modifier: Modifier = Modifier,
 ) {
     when {
-        detail == null && isLoading -> LoadingState(modifier.padding(top = topInset))
+        detail == null && isLoading -> LoadingState(modifier.padding(top = topInset, bottom = bottomInset))
 
         detail == null -> ErrorState(
             message = error ?: "视频加载失败",
-            modifier = modifier.padding(top = topInset),
+            modifier = modifier.padding(top = topInset, bottom = bottomInset),
             onRetry = onRetry,
         )
 
@@ -131,6 +132,7 @@ internal fun VideoInfoTab(
             onShare = onShare,
             listState = listState,
             topInset = topInset,
+            bottomInset = bottomInset,
             chapters = chapters,
             positionMs = positionMs,
             onSelectChapter = onSelectChapter,
@@ -165,6 +167,7 @@ private fun InfoContent(
     onShare: () -> Unit,
     listState: LazyListState,
     topInset: Dp = 0.dp,
+    bottomInset: Dp = 0.dp,
     chapters: List<VideoChapter> = emptyList(),
     positionMs: Long = 0L,
     onSelectChapter: (VideoChapter) -> Unit = {},
@@ -192,7 +195,7 @@ private fun InfoContent(
             start = 16.dp,
             top = 12.dp + topInset,
             end = 16.dp,
-            bottom = 12.dp,
+            bottom = 12.dp + bottomInset,
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {

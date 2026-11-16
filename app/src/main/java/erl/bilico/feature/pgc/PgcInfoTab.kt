@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.BangumiDetail
@@ -50,14 +51,15 @@ internal fun PgcInfoTab(
     onRetry: () -> Unit,
     onSelectEpisode: (Int) -> Unit,
     onSelectSeason: (Long) -> Unit,
+    bottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     when {
-        detail == null && isLoading -> LoadingState(modifier)
+        detail == null && isLoading -> LoadingState(modifier.padding(bottom = bottomInset))
 
         detail == null -> ErrorState(
             message = error ?: "番剧加载失败",
-            modifier = modifier,
+            modifier = modifier.padding(bottom = bottomInset),
             onRetry = onRetry,
         )
 
@@ -68,6 +70,7 @@ internal fun PgcInfoTab(
             onToggleFollow = onToggleFollow,
             onSelectEpisode = onSelectEpisode,
             onSelectSeason = onSelectSeason,
+            bottomInset = bottomInset,
             modifier = modifier,
         )
     }
@@ -81,13 +84,19 @@ private fun PgcInfoContent(
     onToggleFollow: () -> Unit,
     onSelectEpisode: (Int) -> Unit,
     onSelectSeason: (Long) -> Unit,
+    bottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     var descExpanded by rememberSaveable(detail.seasonId) { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier.scrollEndHaptic(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 12.dp,
+            end = 16.dp,
+            bottom = 12.dp + bottomInset,
+        ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "title") {
