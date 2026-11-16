@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -96,10 +97,30 @@ internal fun PlaybackOrbContent(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.28f)),
             )
-            PlayingWaveIndicator(
-                playing = isPlaying,
-                modifier = Modifier.align(Alignment.Center),
-            )
+            if (isPlaying) {
+                PlayingWaveIndicator(
+                    playing = true,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            } else {
+                Icon(
+                    imageVector = COUIIcons.Demibold.Pause,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = 0.6.dp)
+                        .size(16.dp),
+                    tint = Color.Black.copy(alpha = 0.32f),
+                )
+                Icon(
+                    imageVector = COUIIcons.Demibold.Pause,
+                    contentDescription = "已暂停",
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(16.dp),
+                    tint = Color.White,
+                )
+            }
         }
     }
 }
@@ -267,7 +288,7 @@ internal fun SecondaryPlaybackOrbOverlay(
     PinnedBarDensity {
         Box(
             modifier = modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .navigationBarsPadding(),
             contentAlignment = Alignment.BottomEnd,
         ) {
@@ -281,9 +302,7 @@ internal fun SecondaryPlaybackOrbOverlay(
                 BottomFloatingAccessoryBall(
                     onClick = { nav.restoreMinimized() },
                     contentDescription = "恢复播放页面",
-                    modifier = Modifier
-                        .expandOrigin(orbOrigin)
-                        .testTag("playback_fusion_orb"),
+                    modifier = Modifier.testTag("playback_fusion_orb"),
                     menu = {
                         PlaybackOrbMenu(
                             expanded = menuExpanded,
@@ -303,7 +322,8 @@ internal fun SecondaryPlaybackOrbOverlay(
                                 role = Role.Button,
                                 onLongClick = { menuExpanded = true },
                                 onClick = { nav.restoreMinimized() },
-                            ),
+                            )
+                            .expandOrigin(orbOrigin),
                     ) {
                         PlaybackOrbContent(
                             artworkUrl = artworkUrl,

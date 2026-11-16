@@ -173,6 +173,16 @@ sealed interface Route {
 
 fun Route.isPlayback(): Boolean = this is Route.Video || this is Route.Pgc || this is Route.LiveRoom
 
+/** 该页面上允许展示或退回右下角播放融合球（排除其他播放页及登录/聊天等独立模态页）。 */
+fun Route.supportsOrbOverlay(): Boolean =
+    this == Route.Main || (
+        !isPlayback() &&
+            this !is Route.Chat &&
+            this !is Route.Login &&
+            this !is Route.WebLogin &&
+            this !is Route.EmoteManager
+        )
+
 class NavEntry(
     route: Route,
     val origin: ExpandOrigin? = null,
@@ -220,6 +230,7 @@ class NavState {
         private set
 
     var orbOrigin: ExpandOrigin? = null
+    var secondaryOrbOrigin: ExpandOrigin? = null
     var inAppBackgroundPlay: () -> Boolean = { true }
 
     private var host: CoroutineScope? = null
@@ -244,11 +255,21 @@ class NavState {
     private fun canMinimizeSession(entry: NavEntry): Boolean =
         entry.route.isPlayback() && inAppBackgroundPlay() && PlaybackBridge.canMinimizeSession()
 
-    /** 只有下一层直接就是一级页（推荐/动态等 [Route.Main]）时，返回才缩进右下角融合球。 */
+    /** 只要下一层不是另一个播放页（如设置、关注、首页等支持悬浮球的页面），返回时缩进右下角融合球。 */
     fun shouldMinimizeOnPop(entry: NavEntry): Boolean {
         if (!canMinimizeSession(entry)) return false
         val index = stack.indexOf(entry)
-        return index > 0 && stack[index - 1].route == Route.Main
+        return index > 0 && stack[index - 1].route.supportsOrbOverlay()
+    }
+
+    private fun minimizeTargetOrigin(entry: NavEntry): ExpandOrigin? {
+        val index = stack.indexOf(entry)
+        val prevRoute = if (index > 0) stack[index - 1].route else null
+        return if (prevRoute == Route.Main) {
+            orbOrigin
+        } else {
+            secondaryOrbOrigin?.takeIf { it.bounds != null } ?: orbOrigin
+        }
     }
 
     fun push(route: Route, origin: ExpandOrigin? = null) {
@@ -306,10 +327,11 @@ class NavState {
         if (stack.size <= 1) return
         val entry = stack.last()
         if (entry.exiting) return
-        val minimize = shouldMinimizeOnPop(entry) && orbOrigin?.bounds != null
+        val targetOrb = if (shouldMinimizeOnPop(entry)) minimizeTargetOrigin(entry) else null
+        val minimize = targetOrb?.bounds != null
         if (minimize) {
-            orbOrigin?.let { it.refreshKey++ }
-            entry.orbOverrideOrigin = orbOrigin
+            targetOrb.refreshKey++
+            entry.orbOverrideOrigin = targetOrb
             entry.minimizingToOrb = true
         } else {
             if (entry.route.isPlayback()) {
@@ -363,9 +385,10 @@ class NavState {
     }
 
     fun preparePredictivePop(entry: NavEntry) {
-        if (shouldMinimizeOnPop(entry) && orbOrigin?.bounds != null) {
-            orbOrigin?.let { it.refreshKey++ }
-            entry.orbOverrideOrigin = orbOrigin
+        val targetOrb = if (shouldMinimizeOnPop(entry)) minimizeTargetOrigin(entry) else null
+        if (targetOrb?.bounds != null) {
+            targetOrb.refreshKey++
+            entry.orbOverrideOrigin = targetOrb
             entry.minimizingToOrb = true
         } else if (entry.expand) {
             entry.origin?.let { it.refreshKey++ }
@@ -381,7 +404,11 @@ class NavState {
     fun restoreMinimized() {
         val entry = minimizedEntry ?: return
         if (entry.exiting || stack.lastOrNull() === entry) return
-        val origin = orbOrigin
+        val origin = if (stack.lastOrNull()?.route == Route.Main) {
+            orbOrigin
+        } else {
+            secondaryOrbOrigin ?: orbOrigin
+        }
         origin?.let { it.refreshKey++ }
         minimizedEntry = null
         entry.orbOverrideOrigin = origin

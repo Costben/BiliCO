@@ -88,12 +88,14 @@ fun BiliCoRoot(container: AppContainer) {
     val origins = remember { ImageOrigins() }
     val viewerHost = remember { ImageViewerHost() }
     val orbOrigin = rememberExpandOrigin(cornerRadius = 28.dp)
+    val secondaryOrbOrigin = rememberExpandOrigin(cornerRadius = 28.dp)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val inAppBackgroundPlay by container.settings.inAppBackgroundPlay.collectAsStateWithLifecycle()
     SideEffect {
         nav.attach(scope, context)
         nav.orbOrigin = orbOrigin
+        nav.secondaryOrbOrigin = secondaryOrbOrigin
         nav.inAppBackgroundPlay = { inAppBackgroundPlay }
         viewerHost.attach(scope)
     }
@@ -187,24 +189,20 @@ fun BiliCoRoot(container: AppContainer) {
 
         val topEntry = nav.stack.lastOrNull()
         val topRoute = topEntry?.route
-        val mainBarShowing = topEntry == null ||
-            topRoute == Route.Main ||
-            (nav.stack.size == 2 && (topEntry.progress.value < 1f || topEntry.exiting || topEntry.previewing))
         val showSecondaryOrb = !LocalInPipMode.current &&
             nav.minimizedEntry != null &&
-            !mainBarShowing &&
             topRoute != null &&
-            !topRoute.isPlayback() &&
-            topRoute !is Route.Chat &&
-            topRoute !is Route.Login &&
-            topRoute !is Route.WebLogin &&
-            topRoute !is Route.EmoteManager
+            topRoute != Route.Main &&
+            topRoute.supportsOrbOverlay()
         if (showSecondaryOrb) {
-            Box(Modifier.fillMaxSize().zIndex(4f)) {
+            Box(
+                modifier = Modifier.fillMaxSize().zIndex(4f),
+                contentAlignment = androidx.compose.ui.Alignment.BottomEnd,
+            ) {
                 CompositionLocalProvider(
                     LocalBackdrop provides if (BlurEffectsEnabled) rootBackdrop else null,
                 ) {
-                    SecondaryPlaybackOrbOverlay(nav = nav, orbOrigin = orbOrigin)
+                    SecondaryPlaybackOrbOverlay(nav = nav, orbOrigin = secondaryOrbOrigin)
                 }
             }
         }
