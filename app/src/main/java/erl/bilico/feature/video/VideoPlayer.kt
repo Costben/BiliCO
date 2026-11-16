@@ -56,6 +56,7 @@ import erl.bilico.ui.LocalRouteMinimized
 import erl.bilico.ui.components.CouiStagePopupMenu
 import erl.bilico.ui.components.FullscreenExitIcon
 import erl.bilico.ui.components.FullscreenIcon
+import erl.bilico.ui.components.NavHomeOutlineIcon
 import erl.bilico.ui.components.PiliGlyph
 import erl.bilico.ui.components.PipIcon
 import erl.bilico.ui.components.PlayerScrim
@@ -66,7 +67,6 @@ import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Back
-import io.github.suqi8.coui.kmp.icon.extended.Home
 import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
@@ -263,13 +263,13 @@ internal fun VideoPlayer(
                     )
                 }
                 if (!fullscreen && onHome != null) {
-                    PlayerIconButton(COUIIcons.Home, "首页", onHome)
+                    PlayerIconButton(NavHomeOutlineIcon, "首页", onHome)
                 }
                 if (onEnterPip != null) {
                     PlayerIconButton(PipIcon, "小窗", onEnterPip)
                 }
                 if (fullscreen && onHome != null) {
-                    PlayerIconButton(COUIIcons.Home, "首页", onHome)
+                    PlayerIconButton(NavHomeOutlineIcon, "首页", onHome)
                 }
                 if (onWatchLater != null || onShare != null || onDanmakuSettingsClick != null || onSelectPlaybackEndMode != null) {
                     if (fullscreen) {

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.CouiPopupMenu
+import erl.bilico.ui.components.NavHomeOutlineIcon
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
@@ -27,7 +28,6 @@ import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Back
-import io.github.suqi8.coui.kmp.icon.extended.Home
 import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
@@ -92,7 +92,7 @@ internal fun CollapsedVideoBar(
                 )
             }
             HighlightedIconButton(onClick = onHome, backdrop = effectiveBackdrop) {
-                Icon(COUIIcons.Home, "首页", Modifier.size(IconSize))
+                Icon(NavHomeOutlineIcon, "首页", Modifier.size(IconSize))
             }
             Box {
                 HighlightedIconButton(onClick = { moreOpen = true }, backdrop = effectiveBackdrop) {
