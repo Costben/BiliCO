@@ -128,7 +128,7 @@ internal fun VideoPlayer(
     subtitleOverlay: @Composable (controlsVisible: Boolean) -> Unit = {},
     overlay: @Composable () -> Unit = {},
 ) {
-    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsVisible by remember { mutableStateOf(false) }
     var fullscreenMoreOpen by remember { mutableStateOf(false) }
     var prevFullscreen by remember { mutableStateOf(fullscreen) }
 
