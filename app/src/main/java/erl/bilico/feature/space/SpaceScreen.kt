@@ -249,6 +249,11 @@ fun SpaceScreen(
                                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             }
                         },
+                        onLike = { target ->
+                            viewModel.toggleLike(target) { _, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         rowScrollState = rowScrollState,
                         rowKey = "d-${dyn.dynamicId}",
                     )

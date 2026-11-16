@@ -53,6 +53,13 @@ private val BiliVideoUrlRegex = Regex(
     "(?:https?://)?(?:www\\.|m\\.)?bilibili\\.com/video/(BV[0-9A-Za-z]+)(?:[/?#][^\\s\\u4e00-\\u9fa5\\]\\[]*)?",
     RegexOption.IGNORE_CASE,
 )
+/** 短链：b23.tv、bili2233.cn，以及 bilibili.com 下的 /s/、/BV 短地址。 */
+private val BiliShortUrlRegex = Regex(
+    "https?://(?:b23\\.tv|bili2233\\.cn|(?:www\\.|m\\.)?bilibili\\.com/(?:s|BV))/[0-9A-Za-z]+(?:[/?#][^\\s\\u4e00-\\u9fa5\\]\\[]*)?",
+    RegexOption.IGNORE_CASE,
+)
+/** 单独写下的 BV 号，前后不能再粘着字母或数字。 */
+private val BareBvidRegex = Regex("(?<![0-9A-Za-z])BV[0-9A-Za-z]{10}(?![0-9A-Za-z])")
 private val GenericUrlRegex = Regex("https?://[^\\s\\u4e00-\\u9fa5\\]\\[]+", RegexOption.IGNORE_CASE)
 private val TimestampRegex = Regex("(?<![0-9A-Za-z_\\:/.-])(?:(\\d{1,2})\\s*(?::|：)\\s*)?(\\d{1,3})\\s*(?::|：)\\s*([0-5]\\d)(?![0-9A-Za-z\\:])")
 private val InlineHighlightRegex = Regex("(@[\\w\\u4e00-\\u9fa5\\-]+|#[^#\\n]{1,40}#)")
@@ -261,7 +268,7 @@ fun RichCommentText(
     }
 }
 
-private enum class RichTokenKind { BiliVideo, GenericUrl, Timestamp, Mention }
+private enum class RichTokenKind { BiliVideo, BiliShort, BareBvid, GenericUrl, Timestamp, Mention }
 
 private data class MatchedToken(
     val kind: RichTokenKind,
@@ -374,6 +381,35 @@ private fun AnnotatedString.Builder.appendRichSegment(
                 cursor = consumedEnd
             }
 
+            RichTokenKind.BiliShort -> {
+                val consumedEnd = trimmedUrlEnd(segment, range)
+                val url = segment.substring(range.first, consumedEnd)
+                withLink(
+                    LinkAnnotation.Clickable(
+                        tag = "short:$url",
+                        styles = urlStyles,
+                        linkInteractionListener = { onOpenBvid(url) },
+                    ),
+                ) {
+                    append(url)
+                }
+                cursor = consumedEnd
+            }
+
+            RichTokenKind.BareBvid -> {
+                val bvid = segment.substring(range)
+                withLink(
+                    LinkAnnotation.Clickable(
+                        tag = "bvid:$bvid",
+                        styles = urlStyles,
+                        linkInteractionListener = { onOpenBvid(bvid) },
+                    ),
+                ) {
+                    append(bvid)
+                }
+                cursor = range.last + 1
+            }
+
             RichTokenKind.GenericUrl -> {
                 val consumedEnd = trimmedUrlEnd(segment, range)
                 val url = segment.substring(range.first, consumedEnd)
@@ -425,6 +461,8 @@ private fun earliestToken(
 ): MatchedToken? {
     val candidates = buildList {
         BiliVideoUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.BiliVideo, it.range, it)) }
+        BiliShortUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.BiliShort, it.range, it)) }
+        BareBvidRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.BareBvid, it.range, it)) }
         GenericUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.GenericUrl, it.range, it)) }
         if (includeTimestamp) {
             TimestampRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.Timestamp, it.range, it)) }

@@ -44,6 +44,8 @@ class DynamicViewModel(
     private val enriched = mutableSetOf<String>()
     /** 已经补过锁定面板的动态编号。 */
     private val lockedEnriched = mutableSetOf<String>()
+    /** 这次会话里点过赞的动态。刷新回来的列表还是旧状态时，用这里盖回去。 */
+    private val likedOverrides = mutableMapOf<String, Boolean>()
 
     init {
         viewModelScope.launch {
@@ -65,6 +67,41 @@ class DynamicViewModel(
             repository.deleteDynamic(item.dynamicId)
                 .onSuccess { onResult(true, "已删除动态") }
                 .onFailure { err -> onResult(false, err.message ?: "删除动态失败") }
+        }
+    }
+
+    /**
+     * 点赞或取消点赞。先把列表上的数字和状态改掉，失败再退回去。
+     * 刷新时新数据会盖住旧的，这里不额外记一份，避免和接口状态对不上。
+     */
+    fun toggleLike(
+        item: DynamicItemUi,
+        onResult: (ok: Boolean, message: String) -> Unit = { _, _ -> },
+    ) {
+        val id = item.dynamicId
+        if (id.isBlank()) {
+            onResult(false, "这条动态暂不支持点赞")
+            return
+        }
+        if (!session.isLoggedIn()) {
+            onResult(false, "登录后可用")
+            return
+        }
+        val liked = !item.liked
+        likedOverrides[id] = liked
+        _state.update { state ->
+            state.copy(items = state.items.map { current -> current.withLike(id, liked) })
+        }
+        viewModelScope.launch {
+            repository.thumbDynamic(id, liked)
+                .onSuccess { onResult(true, if (liked) "已点赞" else "已取消点赞") }
+                .onFailure { err ->
+                    if (likedOverrides[id] == liked) likedOverrides.remove(id)
+                    _state.update { state ->
+                        state.copy(items = state.items.map { current -> current.withLike(id, !liked) })
+                    }
+                    onResult(false, err.message ?: "点赞失败")
+                }
         }
     }
 
@@ -136,12 +173,13 @@ class DynamicViewModel(
                     }
                     _state.update { current ->
                         val oldItems = current.items
+                        val pageItems = applyLikeOverrides(page.items)
                         if (firstPage) {
                             if (oldItems.isEmpty()) {
                                 offset = page.offset
                                 baseline = page.baseline
                                 current.copy(
-                                    items = page.items,
+                                    items = pageItems,
                                     refreshInsertedCount = 0,
                                     refreshSerial = current.refreshSerial + 1,
                                     isInitialLoading = false,
@@ -153,7 +191,7 @@ class DynamicViewModel(
                                 // 刷新不清空列表：只把这次真正新增的动态叠到最前面，
                                 // 拼接边界留给列表画「回到顶部」的占位。
                                 val knownIds = oldItems.mapTo(HashSet()) { it.id }
-                                val fresh = page.items
+                                val fresh = pageItems
                                     .filterNot { it.id in knownIds }
                                     .distinctBy { it.id }
                                 if (offset.isEmpty()) {
@@ -185,7 +223,7 @@ class DynamicViewModel(
                             offset = page.offset
                             baseline = page.baseline
                             current.copy(
-                                items = (current.items + page.items).distinctBy { item -> item.id },
+                                items = (current.items + pageItems).distinctBy { item -> item.id },
                                 isInitialLoading = false,
                                 isRefreshing = false,
                                 isLoadingMore = false,
@@ -292,8 +330,24 @@ class DynamicViewModel(
         }
     }
 
+    /** 刷新回来的卡片还带着接口旧状态时，用这次会话里点过的结果盖回去。 */
+    private fun applyLikeOverrides(items: List<DynamicItemUi>): List<DynamicItemUi> {
+        if (likedOverrides.isEmpty()) return items
+        return items.map { item ->
+            val liked = likedOverrides[item.dynamicId] ?: return@map item
+            if (item.liked == liked) item else item.withLike(item.dynamicId, liked)
+        }
+    }
+
     private companion object {
         /** feed 卡片里长文图片的占位写法。 */
         const val IMAGE_PLACEHOLDER = "[图片]"
     }
+}
+
+/** 只改目标动态自己的点赞态，转发里嵌着的原动态不动。 */
+private fun DynamicItemUi.withLike(dynamicId: String, liked: Boolean): DynamicItemUi {
+    if (this.dynamicId != dynamicId || this.liked == liked) return this
+    val delta = if (liked) 1 else -1
+    return copy(liked = liked, likeCount = (likeCount + delta).coerceAtLeast(0))
 }

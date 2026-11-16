@@ -96,6 +96,39 @@ class DynamicRepository(
         }
     }
 
+    /**
+     * 给动态点赞或取消。`up` 为 1 是点赞，2 是取消。
+     * 成功后把缓存里的点赞态一起改掉，详情页再打开时不会退回旧状态。
+     */
+    suspend fun thumbDynamic(dynamicId: String, liked: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val id = dynamicId.trim()
+            require(id.isNotEmpty()) { "动态编号无效" }
+            buvid.ensure()
+            val csrf = session?.csrf().orEmpty()
+            require(csrf.isNotBlank()) { "登录后可用" }
+            val body = buildJsonObject {
+                put("dyn_id_str", id)
+                put("up", if (liked) 1 else 2)
+            }
+            val response = api.thumbDynamic(csrf = csrf, body = body)
+            if (response.code != 0) {
+                val msg = when (response.code) {
+                    -101 -> "请先登录"
+                    else -> response.message.ifBlank { "点赞失败(${response.code})" }
+                }
+                error(msg)
+            }
+            detailSeedCache[id]?.let { cached ->
+                detailSeedCache[id] = cached.copy(
+                    liked = liked,
+                    likeCount = (cached.likeCount + if (liked) 1 else -1).coerceAtLeast(0),
+                )
+            }
+            Unit
+        }
+    }
+
     fun rememberSeed(item: DynamicItemUi) {
         if (item.dynamicId.isNotBlank()) {
             detailSeedCache[item.dynamicId] = item
@@ -408,6 +441,7 @@ class DynamicRepository(
             forwardCount = stat?.forward?.count ?: 0,
             commentCount = stat?.comment?.count ?: 0,
             likeCount = stat?.like?.count ?: 0,
+            liked = stat?.like?.status == true,
             commentOid = resolvedCommentOid,
             commentType = resolvedCommentType,
             authorBadge = author?.iconBadge?.text.orEmpty(),

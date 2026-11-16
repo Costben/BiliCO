@@ -264,6 +264,8 @@ data class DynamicItemUi(
     val forwardCount: Int = 0,
     val commentCount: Int = 0,
     val likeCount: Int = 0,
+    /** 我是否已经给这条动态点过赞。 */
+    val liked: Boolean = false,
     val commentOid: Long = 0L,
     val commentType: Int = 17,
     /** 长文型动态的正文图还在取：此时 content 里只剩「[图片]」占位，界面先用灰块顶上。 */

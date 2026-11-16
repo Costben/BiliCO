@@ -175,6 +175,11 @@ fun DynamicScreen(
                                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                             }
                         },
+                        onLike = { target ->
+                            viewModel.toggleLike(target) { ok, message ->
+                                if (!ok) Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            }
+                        },
                     )
                 }
             }
@@ -220,6 +225,7 @@ private fun DynamicContent(
     onOpenLive: (Long) -> Unit,
     currentMid: Long,
     onDelete: (DynamicItemUi) -> Unit,
+    onLike: (DynamicItemUi) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -336,6 +342,7 @@ private fun DynamicContent(
                         onOpenLive = onOpenLive,
                         currentMid = currentMid,
                         onDelete = onDelete,
+                        onLike = onLike,
                         rowScrollState = rowScrollState,
                         rowKey = item.id,
                     )

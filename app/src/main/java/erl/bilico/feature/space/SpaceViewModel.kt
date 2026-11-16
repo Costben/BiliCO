@@ -63,6 +63,12 @@ class SpaceViewModel(
     private val _state = MutableStateFlow(SpaceUiState())
     val state: StateFlow<SpaceUiState> = _state.asStateFlow()
 
+    private fun DynamicItemUi.withLike(dynamicId: String, liked: Boolean): DynamicItemUi {
+        if (this.dynamicId != dynamicId || this.liked == liked) return this
+        val delta = if (liked) 1 else -1
+        return copy(liked = liked, likeCount = (likeCount + delta).coerceAtLeast(0))
+    }
+
     private var nextVideoPage = 1
     private var inFlightVideos = false
     private var inFlightDynamics = false
@@ -88,6 +94,31 @@ class SpaceViewModel(
             dynamicRepository.deleteDynamic(dynamicId)
                 .onSuccess { onResult(true, "已删除动态") }
                 .onFailure { err -> onResult(false, err.message ?: "删除动态失败") }
+        }
+    }
+
+    /** 点赞或取消。先改列表上的数字，失败再退回去。 */
+    fun toggleLike(
+        item: DynamicItemUi,
+        onResult: (ok: Boolean, message: String) -> Unit = { _, _ -> },
+    ) {
+        val id = item.dynamicId
+        if (id.isBlank()) {
+            onResult(false, "这条动态暂不支持点赞")
+            return
+        }
+        val liked = !item.liked
+        _state.update { state ->
+            state.copy(dynamics = state.dynamics.map { current -> current.withLike(id, liked) })
+        }
+        viewModelScope.launch {
+            dynamicRepository.thumbDynamic(id, liked)
+                .onFailure { err ->
+                    _state.update { state ->
+                        state.copy(dynamics = state.dynamics.map { current -> current.withLike(id, !liked) })
+                    }
+                    onResult(false, err.message ?: "点赞失败")
+                }
         }
     }
 

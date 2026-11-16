@@ -318,4 +318,6 @@ data class DynamicStatModule(
 data class DynamicStatItem(
     @Serializable(with = FlexibleIntSerializer::class)
     val count: Int = 0,
+    /** 点赞才有：true 表示我已经点过。转发和评论没有这个字段。 */
+    val status: Boolean = false,
 )

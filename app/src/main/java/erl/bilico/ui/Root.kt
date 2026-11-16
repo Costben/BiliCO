@@ -1,6 +1,9 @@
 package erl.bilico.ui
 
+import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -13,13 +16,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
@@ -33,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -81,6 +89,36 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private val BareBvid = Regex("BV[0-9A-Za-z]{10}")
+
+/**
+ * 正文里点到的视频目标：BV 号直接进播放页，短链先解析出 BV 号再进。
+ * 解析不到就交给浏览器打开原链接。
+ */
+private fun openVideoTarget(
+    target: String,
+    nav: NavState,
+    container: AppContainer,
+    context: Context,
+    scope: CoroutineScope,
+) {
+    val value = target.trim()
+    if (BareBvid.matches(value)) {
+        nav.push(Route.Video(value))
+        return
+    }
+    scope.launch {
+        val bvid = container.video.resolveShortLink(value)
+        if (bvid != null) {
+            nav.push(Route.Video(bvid))
+        } else {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(value)))
+            }
+        }
+    }
+}
 
 @Composable
 fun BiliCoRoot(container: AppContainer) {
@@ -134,7 +172,7 @@ fun BiliCoRoot(container: AppContainer) {
         LocalNavState provides nav,
         LocalImageOrigins provides origins,
         LocalImageViewerHost provides viewerHost,
-        LocalOpenBvid provides { bvid -> nav.push(Route.Video(bvid)) },
+        LocalOpenBvid provides { target -> openVideoTarget(target, nav, container, context, scope) },
         LocalLiveRepository provides container.live,
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -171,17 +209,34 @@ fun BiliCoRoot(container: AppContainer) {
                 }
             }
         }
-        // 窗口缩小时四角会露出窗口底色，补一层页面底色，只画在超级椭圆外侧。
+        // 滑动退场/进场且窗口缩小时四角会露出窗口底色，补一层页面底色，只画在超级椭圆外侧。
+        val cornerMaskCache = remember(cornerShape) {
+            object {
+                var size = Size.Zero
+                var layoutDirection: LayoutDirection? = null
+                var path: Path? = null
+            }
+        }
+        val showCornerMask by remember(nav) {
+            derivedStateOf { nav.stack.any { !it.expand && it.progress.value < 1f } }
+        }
         Box(
             Modifier
                 .fillMaxSize()
                 .zIndex(3f)
                 .drawBehind {
-                    if (nav.stack.all { it.progress.value >= 1f }) return@drawBehind
-                    val cut = when (val outline = cornerShape.createOutline(size, layoutDirection, this)) {
+                    if (!showCornerMask) return@drawBehind
+                    val cached = cornerMaskCache.path?.takeIf {
+                        cornerMaskCache.size == size && cornerMaskCache.layoutDirection == layoutDirection
+                    }
+                    val cut = cached ?: when (val outline = cornerShape.createOutline(size, layoutDirection, this)) {
                         is Outline.Generic -> outline.path
                         is Outline.Rounded -> Path().apply { addRoundRect(outline.roundRect) }
                         else -> return@drawBehind
+                    }.also {
+                        cornerMaskCache.size = size
+                        cornerMaskCache.layoutDirection = layoutDirection
+                        cornerMaskCache.path = it
                     }
                     clipPath(cut, ClipOp.Difference) { drawRect(pageSurface) }
                 },
@@ -327,6 +382,18 @@ private fun RouteLayer(
     val slide = !isMinimized && top != null && !top.expand
     val cornerShape = remember(screenCorner) { SquircleShape(screenCorner) }
 
+    val covered by remember(isMinimized, isTop, belowTop, top) {
+        derivedStateOf {
+            isMinimized || (!isTop && (
+                !belowTop || (
+                    topProgress() >= 1f &&
+                        top?.exiting != true &&
+                        top?.previewing != true
+                    )
+                ))
+        }
+    }
+
     val layer = Modifier
         .fillMaxSize()
         .zIndex(when {
@@ -366,13 +433,6 @@ private fun RouteLayer(
             }
         }
         .drawWithContent {
-            val covered = isMinimized || (!isTop && (
-                !belowTop || (
-                    topProgress() >= 1f &&
-                        top?.exiting != true &&
-                        top?.previewing != true
-                    )
-                ))
             if (!covered) {
                 drawContent()
             }

@@ -1,8 +1,12 @@
 package erl.bilico.feature.dynamic
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
@@ -44,6 +49,7 @@ import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.util.Formatters
+import erl.bilico.feature.comment.LikeFilledIcon
 import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.ui.ExpandOrigin
 import erl.bilico.ui.LocalTopBarBounds
@@ -55,6 +61,7 @@ import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.RichCommentText
 import erl.bilico.ui.expandOrigin
 import erl.bilico.ui.rememberExpandOrigin
+import io.github.suqi8.coui.kmp.basic.CapsuleOutlineShape
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -78,6 +85,7 @@ internal fun DynamicCard(
     onOpenLive: (Long) -> Unit = {},
     currentMid: Long = 0L,
     onDelete: ((DynamicItemUi) -> Unit)? = null,
+    onLike: ((DynamicItemUi) -> Unit)? = null,
     rowScrollState: RowScrollState? = null,
     rowKey: Any? = null,
 ) {
@@ -242,8 +250,9 @@ internal fun DynamicCard(
             )
         }
 
-        // 转评赞三个按钮：左右各贴到正文边，中间那组真正居中。时间已经挪到昵称下面，这里不再重复。
+        // 点赞、评论、转发：左右各贴到正文边，中间那组真正居中。时间已经挪到昵称下面，这里不再重复。
         val context = LocalContext.current
+        val likedColor = COUITheme.colorScheme.primary
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -252,10 +261,11 @@ internal fun DynamicCard(
         ) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 DynamicStatAction(
-                    icon = COUIIcons.Share,
-                    label = "转发",
-                    count = item.forwardCount,
-                    onClick = { shareDynamic(context, item) },
+                    icon = if (item.liked) LikeFilledIcon else LikeOutlineIcon,
+                    label = if (item.liked) "已赞" else "赞",
+                    count = item.likeCount,
+                    tint = if (item.liked) likedColor else null,
+                    onClick = { onLike?.invoke(item) },
                 )
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -268,10 +278,10 @@ internal fun DynamicCard(
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                 DynamicStatAction(
-                    icon = LikeOutlineIcon,
-                    label = "赞",
-                    count = item.likeCount,
-                    onClick = { onOpenDynamic(item, cardOrigin) },
+                    icon = COUIIcons.Share,
+                    label = "转发",
+                    count = item.forwardCount,
+                    onClick = { shareDynamic(context, item) },
                 )
             }
         }
@@ -301,19 +311,36 @@ internal fun DynamicCard(
     }
 }
 
-/** 卡片底部的单个统计按钮：图标 22dp、计数 15sp，整块可点。 */
+/** 卡片底部的单个统计按钮：图标 22dp、计数 15sp，整块可点，按下是一颗胶囊。 */
 @Composable
 private fun DynamicStatAction(
     icon: ImageVector,
     label: String,
     count: Int,
     onClick: () -> Unit,
+    tint: Color? = null,
 ) {
-    val tint = COUITheme.colorScheme.onSurfaceSecondary
+    val resolvedTint = tint ?: COUITheme.colorScheme.onSurfaceSecondary
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressAlpha by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = spring(dampingRatio = 1f, stiffness = 438.65f),
+        label = "statPress",
+    )
+    // 浅色压一层黑，深色压一层白，和 COUI 按钮按下的浓度一致。
+    val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
+    val pressColor = if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.12f)
+    val capsule = remember { CapsuleOutlineShape() }
     Row(
         modifier = Modifier
-            .clip(SquircleShape(8.dp))
-            .clickable(onClick = onClick)
+            .clip(capsule)
+            .drawBehind {
+                if (pressAlpha > 0f) {
+                    drawRect(color = pressColor, alpha = pressAlpha)
+                }
+            }
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             // 横向不留内边距：左边那组的图标正好压在正文左边缘上，右边那组贴到右边缘。
             .padding(vertical = 8.dp)
             .semantics { contentDescription = label },
@@ -323,13 +350,13 @@ private fun DynamicStatAction(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(22.dp),
-            tint = tint,
+            tint = resolvedTint,
         )
         Spacer(Modifier.width(6.dp))
         Text(
             text = Formatters.formatStat(count.toLong()),
             fontSize = 15.sp,
-            color = tint,
+            color = resolvedTint,
             maxLines = 1,
         )
     }

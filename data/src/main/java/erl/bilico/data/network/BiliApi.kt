@@ -155,6 +155,13 @@ interface BiliApi {
         @retrofit2.http.Body body: kotlinx.serialization.json.JsonObject,
     ): BaseResponse
 
+    /** 动态点赞。body 里 `up`：1 点赞，2 取消。 */
+    @POST("x/dynamic/feed/dyn/thumb")
+    suspend fun thumbDynamic(
+        @Query("csrf") csrf: String,
+        @retrofit2.http.Body body: kotlinx.serialization.json.JsonObject,
+    ): BaseResponse
+
     // ---------- 专栏 / 图文 ----------
 
     @GET("x/article/view")

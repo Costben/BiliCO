@@ -11,16 +11,37 @@ import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.network.WbiKeyManager
 import erl.bilico.data.network.WbiUtils
 import erl.bilico.data.session.SessionRepository
+import okhttp3.OkHttpClient
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Request
 
 class VideoRepository(
     private val api: BiliApi,
     private val wbi: WbiKeyManager,
     private val buvid: BuvidManager,
     private val session: SessionRepository,
+    private val okHttp: OkHttpClient,
 ) {
+    /**
+     * 短链点开后先跟着跳转走，从最终地址里取出 BV 号。
+     * 取不到就返回 null，调用方再交给浏览器。
+     */
+    suspend fun resolveShortLink(url: String): String? = withContext(Dispatchers.IO) {
+        val target = url.trim()
+        if (!target.startsWith("http", ignoreCase = true)) return@withContext null
+        runCatching {
+            buvid.ensure()
+            val client = okHttp.newBuilder().followRedirects(true).build()
+            val request = Request.Builder().url(target).get().build()
+            client.newCall(request).execute().use { response ->
+                val landed = response.request.url.toString()
+                BvidInUrl.find(landed)?.value
+            }
+        }.getOrNull()
+    }
+
     suspend fun detail(bvid: String): Result<VideoDetail> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -162,5 +183,9 @@ class VideoRepository(
                     )
                 }
         }
+    }
+
+    private companion object {
+        val BvidInUrl = Regex("BV[0-9A-Za-z]{10}")
     }
 }

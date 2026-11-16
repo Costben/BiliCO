@@ -54,7 +54,7 @@ class AppContainer(context: Context) {
 
     val feed = FeedRepository(client.api, client.wbi, client.buvid)
 
-    val video = VideoRepository(client.api, client.wbi, client.buvid, session)
+    val video = VideoRepository(client.api, client.wbi, client.buvid, session, client.okHttp)
 
     val comments = CommentRepository(client.api, client.wbi, client.buvid, session)
 
