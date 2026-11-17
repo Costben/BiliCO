@@ -1,10 +1,13 @@
 package erl.bilico.feature.video
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -277,6 +280,10 @@ private fun InfoContent(
             }
         }
 
+        if (detail.tags.isNotEmpty()) {
+            item(key = "tags") { VideoTagChips(detail.tags) }
+        }
+
         item(key = "actions") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -412,3 +419,26 @@ private fun InfoContent(
     }
 }
 
+/** 简介下面的标签：只做展示，按接口给的顺序铺开。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun VideoTagChips(tags: List<String>) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        tags.forEach { tag ->
+            Text(
+                text = tag,
+                modifier = Modifier
+                    .clip(SquircleShape(6.dp))
+                    .background(COUITheme.colorScheme.surfaceContainer)
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                style = COUITheme.textStyles.footnote2,
+                color = COUITheme.colorScheme.onSurfaceSecondary,
+                maxLines = 1,
+            )
+        }
+    }
+}

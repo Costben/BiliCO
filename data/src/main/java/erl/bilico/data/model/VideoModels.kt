@@ -10,6 +10,20 @@ data class VideoInfoResponse(
     val data: ViewInfo? = null,
 )
 
+/** 单个视频的标签；`x/tag/archive/tags` 只下发这些字段里用得上的两个。 */
+@Serializable
+data class ArchiveTagsResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: List<ArchiveTag>? = null,
+)
+
+@Serializable
+data class ArchiveTag(
+    @SerialName("tag_id") val id: Long = 0,
+    @SerialName("tag_name") val name: String = "",
+)
+
 /** 单条视频的统计数据，比 `x/web-interface/view` 轻得多，列表逐条补数据时用它。 */
 @Serializable
 data class ArchiveStatResponse(

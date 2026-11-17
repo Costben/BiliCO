@@ -2,6 +2,7 @@ package erl.bilico.data.network
 
 import erl.bilico.data.model.AddReplyResponse
 import erl.bilico.data.model.ArchiveStatResponse
+import erl.bilico.data.model.ArchiveTagsResponse
 import erl.bilico.data.model.ArticleViewResponse
 import erl.bilico.data.model.BangumiFollowResponse
 import erl.bilico.data.model.BaseResponse
@@ -74,6 +75,9 @@ interface BiliApi {
 
     @GET("x/web-interface/view")
     suspend fun videoInfoByAid(@Query("aid") aid: Long): VideoInfoResponse
+
+    @GET("x/tag/archive/tags")
+    suspend fun archiveTags(@Query("bvid") bvid: String): ArchiveTagsResponse
 
     @GET("x/player/wbi/playurl")
     suspend fun playUrl(@QueryMap params: Map<String, String>): PlayUrlResponse

@@ -14,6 +14,8 @@ import erl.bilico.data.session.SessionRepository
 import okhttp3.OkHttpClient
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 
@@ -45,7 +47,15 @@ class VideoRepository(
     suspend fun detail(bvid: String): Result<VideoDetail> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
-            val response = api.videoInfo(bvid)
+            // 标签是另一个接口：和视频信息并发要，别让详情白白多等一个来回。
+            val (response, tags) = coroutineScope {
+                val tags = async {
+                    runCatching { api.archiveTags(bvid) }.getOrNull()?.data.orEmpty()
+                        .map { it.name.trim() }
+                        .filter { it.isNotEmpty() }
+                }
+                api.videoInfo(bvid) to tags.await()
+            }
             val data = response.data
                 ?: error(response.message.ifBlank { "视频信息为空(${response.code})" })
             val pages = data.pages.map { page ->
@@ -95,6 +105,7 @@ class VideoRepository(
                 favorite = data.stat.favorite,
                 pages = pages,
                 collection = collection,
+                tags = tags,
                 aspect = data.dimension?.aspectRatio()
                     ?.takeIf { it > 0f }
                     ?: pages.firstOrNull { it.aspect > 0f }?.aspect

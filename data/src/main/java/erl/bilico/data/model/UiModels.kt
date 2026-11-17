@@ -59,6 +59,8 @@ data class VideoDetail(
     val favorite: Long,
     val pages: List<VideoPart>,
     val collection: VideoCollection? = null,
+    /** 投稿时给视频打的标签，简介下面按原顺序展示。 */
+    val tags: List<String> = emptyList(),
     val aspect: Float = 0f,
 ) {
     fun aspectFor(targetCid: Long): Float =
