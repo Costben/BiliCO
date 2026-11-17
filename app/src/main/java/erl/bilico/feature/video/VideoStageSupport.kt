@@ -134,6 +134,14 @@ internal fun LandscapeFlipEffect(
             activity?.requestedOrientation = degreesToOrientation(target)
             return@LaunchedEffect
         }
+        if (!SystemRotationAnimation.appDriven) {
+            // 回落：不自绘这半圈补转，直接把朝向摆过去申请对侧横屏，
+            // 让系统转屏动画把这次掉头演完，免得又和自绘的那半圈叠在一起。
+            reorient.snapTo(0f)
+            angle.snapTo(target)
+            activity?.requestedOrientation = degreesToOrientation(target)
+            return@LaunchedEffect
+        }
         if (surfaceViewPlayer) {
             if (!frameHolder.freeze()) {
                 // 抓不到画面就退回原来的硬切。
@@ -245,6 +253,13 @@ internal fun StageOrientationTransitionEffect(
                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             } else if (!windowLandscape()) {
                 angle.snapTo(sideDegrees())
+                if (!SystemRotationAnimation.appDriven) {
+                    // 回落：不自绘「旋转 + 放大」，直接把画面摆成横屏全屏再申请朝向，
+                    // 让系统自己的转屏动画完成这次转身，屏幕上只留一个动画。
+                    progress.snapTo(1f)
+                    activity?.requestedOrientation = degreesToOrientation(angle.value)
+                    return@LaunchedEffect
+                }
                 if (surfaceViewPlayer() && progress.value <= 0.001f && frameHolder.freeze()) {
                     // SurfaceView 转不动：让替身帧把这段旋转走完，等窗口真转过去再交回实时画面。
                     frameHolder.animateFrozen(
@@ -333,6 +348,9 @@ private const val SYSTEM_BARS_REVEAL_PROGRESS = 0.5f
 /**
  * 全屏舞台需要的窗口属性：系统转屏动画设成 `SEAMLESS`（新方向直接接着合成当前画面，
  * 不先截一张静止图盖住屏幕），横屏窗口与竖屏整屏严格对调（刘海那一侧不被系统让出去）。
+ *
+ * `SEAMLESS` 只在应用自绘转屏时才有意义（见 [SystemRotationAnimation]）：别的 ROM 不认这个属性，
+ * 设了也压不住系统转屏，反而和应用自己那一套叠成两个动画，所以那边干脆不碰它，留给系统演。
  */
 @Composable
 internal fun StageWindowAttributesEffect(activity: Activity?) {
@@ -341,7 +359,9 @@ internal fun StageWindowAttributesEffect(activity: Activity?) {
         val oldRotation = window?.attributes?.rotationAnimation
         val oldCutout = window?.attributes?.layoutInDisplayCutoutMode
         window?.attributes = window.attributes.apply {
-            rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
+            if (SystemRotationAnimation.appDriven) {
+                rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
+            }
             layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             } else {

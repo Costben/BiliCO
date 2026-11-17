@@ -84,6 +84,10 @@ internal fun isPortraitVideoStage(videoAspect: Float, inLandscapeFullscreen: Boo
  * [videoAspect] 是视频本身的宽高比（宽 / 高）。小于 1 的竖屏视频不转窗口：
  * 全屏时窗口保持竖屏，播放器从 16:9 槽位等比放大到整屏，退出时倒着缩回去。
  *
+ * 这套自绘转场依赖系统不播自己的转屏动画，只有 ColorOS 系成立；其余 ROM 走
+ * [SystemRotationAnimation] 的回落路径：画面直接摆到横屏全屏，转身交给系统动画。
+ * 竖屏视频那条路径不转窗口，不受影响。
+ *
  * 播放器始终在同一个组合槽位里，PlayerView 不会被重建。
  */
 @Composable
