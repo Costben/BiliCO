@@ -83,7 +83,14 @@ data class PlaybackSource(
     val lastPlayTimeMs: Long = 0L,
     val lastPlayCid: Long = 0L,
     val aspect: Float = 0f,
+    /** dash 轨自带的帧率；播放器容器里读不到时用它兜底。 */
+    val frameRate: Float = 0f,
 )
+
+/** HDR 相关档位：HDR 真彩 / 杜比视界 / HDR Vivid。 */
+private val HDR_QUALITY_IDS = setOf(125, 126, 129)
+
+val PlaybackSource.isHdr: Boolean get() = quality in HDR_QUALITY_IDS
 
 data class EmoteImage(
     val url: String,
@@ -182,6 +189,8 @@ data class Account(
     val mid: Long,
     val name: String,
     val face: String,
+    /** 大会员在有效期内。取流时用它决定清晰度菜单要不要列出会员档位。 */
+    val vip: Boolean = false,
 )
 
 enum class DynamicKind {

@@ -23,6 +23,8 @@ data class NavData(
     val uname: String = "",
     val face: String = "",
     val mid: Long = 0,
+    /** 1 = 大会员在有效期内。清晰度菜单按它决定要不要列出只有会员才能拿到的档位。 */
+    @SerialName("vipStatus") val vipStatus: Int = 0,
     @SerialName("wbi_img") val wbiImg: WbiImg? = null,
 )
 

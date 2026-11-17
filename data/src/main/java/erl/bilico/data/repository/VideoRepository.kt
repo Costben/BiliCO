@@ -132,7 +132,7 @@ class VideoRepository(
                 val signed = WbiUtils.sign(params, keys.first, keys.second)
                 val response = runCatching { api.playUrl(signed) }.getOrNull()
                 if (response != null && response.code == 0 && response.data != null) {
-                    return@runCatching response.data.toPlaybackSource(qn, cdn)
+                    return@runCatching response.data.toPlaybackSource(qn, cdn, vipAccount = session.isVip())
                 }
 
                 val legacyParams = mapOf(
@@ -150,7 +150,7 @@ class VideoRepository(
                 if (legacy.code != 0 || data == null) {
                     error(legacy.message.ifBlank { "播放地址获取失败(${legacy.code})" })
                 }
-                data.toPlaybackSource(qn, cdn)
+                data.toPlaybackSource(qn, cdn, vipAccount = session.isVip())
             }
         }
 

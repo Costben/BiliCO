@@ -51,6 +51,9 @@ class SessionRepository(
 
     fun isLoggedIn(): Boolean = !cookies.get("SESSDATA").isNullOrBlank()
 
+    /** 当前账号是不是大会员。清晰度菜单只对大会员展开会员档位。 */
+    fun isVip(): Boolean = _account.value?.vip == true
+
     fun csrf(): String = cookies.get("bili_jct").orEmpty()
 
     fun mid(): Long = cookies.get("DedeUserID")?.toLongOrNull() ?: 0L
@@ -102,7 +105,12 @@ class SessionRepository(
             val response = api.nav()
             val data = response.data
             if (response.code == 0 && data != null && data.isLogin && data.mid > 0L) {
-                val account = Account(mid = data.mid, name = data.uname, face = data.face)
+                val account = Account(
+                    mid = data.mid,
+                    name = data.uname,
+                    face = data.face,
+                    vip = data.vipStatus == 1,
+                )
                 _account.value = account
                 runCatching { persistAccount(account) }
                 account

@@ -1,13 +1,9 @@
 package erl.bilico.feature.video
 
 import android.app.Activity
-import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.os.Build
-import android.view.WindowManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -24,8 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -49,8 +43,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.isDarkTheme
 import erl.bilico.ui.pageContainerColor
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -63,7 +55,7 @@ internal const val COLOROS_VIDEO_ROTATE_DURATION_MS = 450
 internal val ColorOSMoveEase = CubicBezierEasing(0.3f, 0.0f, 0.1f, 1.0f)
 
 /** 等系统真正转完屏的上限，超时就按当前窗口方向直接收尾。 */
-private const val ORIENTATION_SETTLE_TIMEOUT_MS = 1500L
+internal const val ORIENTATION_SETTLE_TIMEOUT_MS = 1500L
 
 /** 退出全屏时缩回到这个进度就让系统栏开始滑入，不等动画完全结束。 */
 private const val SYSTEM_BARS_REVEAL_PROGRESS = 0.5f
@@ -115,6 +107,13 @@ internal fun VideoFullscreenStage(
      */
     canExpand: () -> Boolean = { true },
     videoAspect: Float = 0f,
+    /**
+     * 播放器用的是 SurfaceView（HDR 档位）。
+     *
+     * SurfaceView 的画面由系统单独合成，不经过 Compose 的绘制层，缩放、旋转、透明度
+     * 都作用不到它。这类播放器不做自绘转场：转场期间保持槽位尺寸，等窗口真转过去再铺满。
+     */
+    surfaceViewPlayer: Boolean = false,
 ) {
     val dark = isDarkTheme(darkMode)
     val windowLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -125,6 +124,7 @@ internal fun VideoFullscreenStage(
     val portraitStage = isPortraitVideoStage(videoAspect, fullscreen && windowLandscape)
     val currentPortraitStage by rememberUpdatedState(portraitStage)
     val currentAspect by rememberUpdatedState(aspect)
+    val currentSurfaceViewPlayer by rememberUpdatedState(surfaceViewPlayer)
 
     // 详情页里视频槽位的状态：[0] 完整高度、[1] 当前高度（都在 measure 里写，composition 不订阅）。
     // slotHeight 直接存当前高度（px），0 表示「还没量过 = 完整高度」。
@@ -169,34 +169,16 @@ internal fun VideoFullscreenStage(
     // 手动全屏时手机可能还竖着拿，沿用最近一次的横屏方向，默认听筒朝左。
     var preferredSide by remember { mutableIntStateOf(1) }
     if (landscapeSide != 0) preferredSide = landscapeSide
-    val currentSide by rememberUpdatedState(preferredSide)
 
     val progress = remember { Animatable(if (fullscreen) 1f else 0f) }
     val angle = remember { Animatable(sideToDegrees(preferredSide)) }
+    // 横屏里掉头 180°：窗口是整屏铺满的，先在当前窗口里把画面转过去（物理上正好跟上手机），
+    // 转完再申请对侧横屏，等显示真的翻过去再把旋转量归零，两边画面在这一帧重合。
+    val reorient = remember { Animatable(0f) }
+    // 转场用的替身帧：SurfaceView（HDR）的画面 Compose 转不动，只能抓一帧顶上去。
+    val frameHolder = rememberStageFrameHolder()
 
-    DisposableEffect(activity) {
-        val window = activity?.window
-        val oldRotation = window?.attributes?.rotationAnimation
-        val oldCutout = window?.attributes?.layoutInDisplayCutoutMode
-        window?.attributes = window.attributes.apply {
-            rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
-            // 横屏窗口要和竖屏整屏严格对调，刘海那一侧不能被系统让出去，否则转屏那一帧对不齐。
-            layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-            } else {
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-        }
-        onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            if (window != null && oldRotation != null && oldCutout != null) {
-                window.attributes = window.attributes.apply {
-                    rotationAnimation = oldRotation
-                    layoutInDisplayCutoutMode = oldCutout
-                }
-            }
-        }
-    }
+    StageWindowAttributesEffect(activity)
 
     // 页面栈里的页面都常驻，状态栏图标颜色只由栈顶这一页接管：
     // 从上一个播放页返回时，它退场会把颜色还给主题，这一页重新成为栈顶要再定回白色。
@@ -218,95 +200,32 @@ internal fun VideoFullscreenStage(
         }
     }
 
-    LaunchedEffect(fullscreen, portraitStage, activity) {
-        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        if (fullscreen) {
-            // 和 ColorOS 白名单转屏一样：开转前先收起状态栏和导航条，旋转途中画面上只剩视频。
-            // 舞台用的是固定的系统栏高度，收起系统栏不会让播放器和详情页重排。
-            controller?.hide(WindowInsetsCompat.Type.systemBars())
-            // 起跳点就是当前槽位高度（用户拖到哪就从哪长起来），这里不改高度：
-            // 改回去会让竖屏视频先跳一下再放大。转场本身按 slotMetrics[1] 换算缩放。
-            if (portraitStage) {
-                // 竖屏视频：不转窗口，播放器从当前槽位等比放大到整屏。
-                angle.snapTo(0f)
-                if (currentWindowLandscape) {
-                    // 上一个视频还是横屏全屏时切到竖屏视频：先转回竖屏，直接落位。
-                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                    progress.snapTo(1f)
-                    withTimeoutOrNull(ORIENTATION_SETTLE_TIMEOUT_MS) {
-                        snapshotFlow { currentWindowLandscape }.first { !it }
-                    }
-                    repeat(2) { withFrameNanos { } }
-                } else {
-                    if (progress.value <= 0.001f) {
-                        // 头一帧播放器要按整屏尺寸重排一次，画完再起动画。
-                        repeat(2) { withFrameNanos { } }
-                    }
-                    progress.animateTo(
-                        1f,
-                        tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase),
-                    )
-                }
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            } else if (!currentWindowLandscape) {
-                if (progress.value <= 0.001f) {
-                    angle.snapTo(sideToDegrees(currentSide))
-                    // 头一帧播放器要按横屏尺寸重排一次，画完再起动画。
-                    repeat(2) { withFrameNanos { } }
-                    progress.animateTo(
-                        1f,
-                        tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase),
-                    )
-                } else {
-                    // 从竖屏全屏直接换成横屏视频：画面已经在整屏，直接把朝向摆正再转窗口。
-                    angle.snapTo(sideToDegrees(currentSide))
-                    progress.snapTo(1f)
-                }
-                activity?.requestedOrientation = degreesToOrientation(angle.value)
-            } else {
-                progress.snapTo(1f)
-                activity?.requestedOrientation = degreesToOrientation(angle.value)
-            }
-        } else {
-            if (currentWindowLandscape) {
-                // 从系统真横屏退出：若当前是横屏视频则先记下朝向并从「旋转铺满」倒着缩回；
-                // 若已切到竖屏视频仍先等窗口彻底转回竖屏，避免竖屏动画在横屏尺寸里走偏。
-                angle.snapTo(if (portraitStage) 0f else displayRotationDegrees(activity) ?: angle.value)
-                progress.snapTo(1f)
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                withTimeoutOrNull(ORIENTATION_SETTLE_TIMEOUT_MS) {
-                    snapshotFlow { currentWindowLandscape }.first { !it }
-                }
-                // 转回竖屏后的头一帧要整页重排，等它画完再起动画，否则前半段会被这一帧吞掉。
-                repeat(2) { withFrameNanos { } }
-            } else {
-                if (portraitStage) angle.snapTo(0f)
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            }
-            // 缩回途中就放出系统栏：转过一半（约 140ms）开始滑入，和画面落位大致同时结束。
-            var barsShown = false
-            progress.animateTo(0f, tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase)) {
-                if (!barsShown && value <= SYSTEM_BARS_REVEAL_PROGRESS) {
-                    barsShown = true
-                    controller?.show(WindowInsetsCompat.Type.systemBars())
-                }
-            }
-            if (!barsShown) controller?.show(WindowInsetsCompat.Type.systemBars())
-            // 转屏时窗口属性会被系统重新下发一遍，状态栏图标颜色可能被打回成跟随主题的深色，
-            // 在纯黑的播放页顶部就看不见了。落回竖屏后再按「视频有没有收到底」定一次。
-            controller?.isAppearanceLightStatusBars = barVisible && !dark
-        }
-    }
+    StageOrientationTransitionEffect(
+        fullscreen = fullscreen,
+        portraitStage = portraitStage,
+        progress = progress,
+        angle = angle,
+        frameHolder = frameHolder,
+        activity = activity,
+        windowLandscape = { currentWindowLandscape },
+        sideDegrees = { sideToDegrees(preferredSide) },
+        surfaceViewPlayer = { currentSurfaceViewPlayer },
+        darkStatusIcons = { barVisible && !dark },
+    )
 
-    // 横屏里把手机掉个头：直接申请对侧横屏，系统硬切即可，画面本来就铺满。
-    LaunchedEffect(landscapeSide, fullscreen, windowLandscape, portraitStage) {
-        if (!portraitStage && fullscreen && windowLandscape &&
-            landscapeSide != 0 && progress.value >= 0.999f
-        ) {
-            angle.snapTo(sideToDegrees(landscapeSide))
-            activity?.requestedOrientation = degreesToOrientation(angle.value)
-        }
-    }
+    // 横屏里把手机掉个头：整屏铺满，画面自己转 180° 就能跟上手机，转完再让系统翻窗口。
+    LandscapeFlipEffect(
+        landscapeSide = landscapeSide,
+        fullscreen = fullscreen,
+        windowLandscape = windowLandscape,
+        portraitStage = portraitStage,
+        surfaceViewPlayer = surfaceViewPlayer,
+        progress = progress,
+        angle = angle,
+        reorient = reorient,
+        activity = activity,
+        frameHolder = frameHolder,
+    )
 
     // 转屏让窗口重新量 inset，横屏落定后再收一遍系统栏，防止被顶出来。
     LaunchedEffect(fullscreen, windowLandscape, activity) {
@@ -375,6 +294,9 @@ internal fun VideoFullscreenStage(
                 size.width.roundToInt() == stageW &&
                 size.height.roundToInt() == stageH
             when {
+                // SurfaceView 不受 Compose 变换影响，套了只会让画面和容器对不上。
+                // 正在用替身帧顶替时例外：那一帧是普通位图，照样要跟着转。
+                currentSurfaceViewPlayer && !frameHolder.frozen -> null
                 !measured || currentLandscapeForLayer -> null
                 currentPortraitStage -> {
                     // 竖屏全屏：FIT 后的画面在两个尺寸里比例相同，等比缩放就能严丝合缝地对上。
@@ -441,7 +363,14 @@ internal fun VideoFullscreenStage(
                         translationY = if (windowLandscape) 0f else statusBarPx
                         scaleX = 1f
                         scaleY = 1f
-                        rotationZ = 0f
+                        // 横屏掉头时画面先自己转过去；SurfaceView 转不动，除非正用替身帧顶着。
+                        rotationZ = if (windowLandscape &&
+                            (!currentSurfaceViewPlayer || frameHolder.frozen)
+                        ) {
+                            reorient.value
+                        } else {
+                            0f
+                        }
                         alpha = if (!windowLandscape && portraitResizable) (1f - collapseAlpha()).coerceIn(0f, 1f) else 1f
                         clip = !windowLandscape
                     } else if (currentPortraitStage) {
@@ -477,7 +406,12 @@ internal fun VideoFullscreenStage(
                         LocalStageScale provides stageScale,
                         // 竖屏全屏是等比放大，黑底会跟着缩放露在画面外；横屏旋转仍需要它撑满窗口。
                         LocalStageOpaquePlayer provides !portraitStage,
-                    ) { playerContent() }
+                        LocalStageFrozenVideo provides frameHolder.frozen,
+                        LocalStageFrameSource provides frameHolder.source,
+                    ) {
+                        playerContent()
+                        StageFrozenFrame(frameHolder)
+                    }
                 },
             )
 
@@ -562,6 +496,19 @@ internal fun VideoFullscreenStage(
         val backdrop = measurables[1].measure(Constraints.fixed(winW, winH))
         val playerConstraints = when {
             windowLandscape -> Constraints.fixed(winW, winH)
+            // SurfaceView 不参与自绘转场：没抓到替身帧时保持槽位尺寸，别让裸画面先跳大；
+            // 抓到之后就按舞台尺寸布局，替身帧跟着做旋转缩放。
+            // 竖屏视频的「整屏」只是同一窗口内的放大，仍按整屏布局。
+            surfaceViewPlayer && !frameHolder.frozen && !(inStage && portraitStage) ->
+                Constraints.fixed(portW, videoH.roundToInt().coerceAtLeast(1))
+            // 正在用替身帧顶替、还没转屏：按舞台尺寸布局，让 SurfaceView 的缓冲区跟着放大。
+            // 替身帧只是位图，套缩放矩阵就回到槽位原位；Surface 不放大就永远只能抓到槽位分辨率，
+            // 铺到整屏会明显发糊。
+            surfaceViewPlayer && frameHolder.frozen && !windowLandscape && !portraitStage -> {
+                stageBox[0] = portH
+                stageBox[1] = portW
+                Constraints.fixed(portH, portW)
+            }
             inStage -> {
                 if (portraitStage) {
                     // 竖屏全屏：播放器按整屏尺寸布局，交给 GPU 等比缩回槽位。

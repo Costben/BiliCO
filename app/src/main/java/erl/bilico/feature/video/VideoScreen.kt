@@ -339,6 +339,9 @@ fun VideoScreen(
 
     val barBackdrops = rememberVideoBarBackdrops(pageContainerColor())
 
+    // HDR 档位必须走 SurfaceView：TextureView 由 GPU 合成，HDR 画面会被当成 SDR 铺到屏幕上（发暗）。
+    val hdrSurface = state.source?.isHdr == true
+
     VideoFullscreenStage(
         fullscreen = fullscreen,
         landscapeSide = deviceSide,
@@ -348,6 +351,7 @@ fun VideoScreen(
         videoAspect = effectiveVideoAspect,
         portraitResizable = true,
         playing = isPlaying,
+        surfaceViewPlayer = hdrSurface,
         canExpand = {
             val list = if (detailPager.currentPage == 0) infoListState else commentListState
             list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0
@@ -370,6 +374,8 @@ fun VideoScreen(
                     isBuffering = state.isPlaybackLoading || isBuffering,
                     errorMessage = state.playbackError ?: playerError,
                     qualityLabel = state.qualityLabel(),
+                    source = state.source,
+                    hdrVideo = hdrSurface,
                     speed = speed,
                     fullscreen = fullscreen,
                     portraitFullscreen = fullscreen && fsController.portraitStage,

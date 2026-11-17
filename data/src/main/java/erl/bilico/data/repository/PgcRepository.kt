@@ -149,10 +149,10 @@ class PgcRepository(
             val body = runCatching { api.pgcPlayUrl(signed).string() }.getOrNull()
             if (body != null) {
                 val data = runCatching { parsePlayUrl(body) }.getOrNull()
-                if (data != null) return@runCatching data.toPlaybackSource(qn, cdn)
+                if (data != null) return@runCatching data.toPlaybackSource(qn, cdn, vipAccount = session.isVip())
             }
             val legacy = api.pgcPlayUrlLegacy(signed).string()
-            parsePlayUrl(legacy).toPlaybackSource(qn, cdn)
+            parsePlayUrl(legacy).toPlaybackSource(qn, cdn, vipAccount = session.isVip())
         }
     }
 

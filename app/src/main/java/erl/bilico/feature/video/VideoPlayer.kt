@@ -25,8 +25,10 @@ import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,6 +49,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import erl.bilico.R
 import erl.bilico.data.model.PlaybackEndMode
+import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.QualityOption
 import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.model.VideoChapter
@@ -89,6 +92,8 @@ internal fun VideoPlayer(
     isBuffering: Boolean,
     errorMessage: String?,
     qualityLabel: String?,
+    source: PlaybackSource? = null,
+    hdrVideo: Boolean = false,
     speed: Float,
     fullscreen: Boolean,
     portraitFullscreen: Boolean = false,
@@ -166,33 +171,62 @@ internal fun VideoPlayer(
     // 画面一律按原始比例 FIT：槽位多高画面就多高，宽度跟着缩，整幅画面始终完整可见。
     val resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
     val menuBackdrop = rememberLayerBackdrop()
-    val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && fullscreenMoreOpen
+    // SurfaceView 的画面不进 Compose 的绘制层，抓出来的背景只有一块黑，不如直接退成不模糊。
+    val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && fullscreenMoreOpen && !hdrVideo
     val minimized = LocalRouteMinimized.current
+    // 舞台转场用一张静止帧顶替实时画面（SurfaceView 转不动）：在这里交出抓帧入口。
+    val frozenVideo = LocalStageFrozenVideo.current
+    val frameSource = LocalStageFrameSource.current
+    val surfaceHost = remember { mutableStateOf<PlayerView?>(null) }
+    // Surface 的缓冲区不一定等于控件尺寸：解码器按视频原始分辨率出图时缓冲区更大，
+    // 这时按控件尺寸取只能拿到左上角一块，替身帧铺满整屏就会变成「放大的一个角」。
+    val videoSizedBuffer = remember { mutableStateOf<Boolean?>(null) }
+    DisposableEffect(frameSource) {
+        frameSource.capture = { onResult ->
+            capturePlayerFrame(
+                playerView = surfaceHost.value,
+                videoSize = player.videoSize,
+                bufferIsVideoSized = videoSizedBuffer,
+                onResult = onResult,
+            )
+        }
+        onDispose { frameSource.capture = null }
+    }
+
     Box(if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .layerBackdropIf(captureMenuBackdrop, menuBackdrop),
         ) {
-        AndroidView(
-            factory = { context ->
-                (LayoutInflater.from(context)
-                    .inflate(R.layout.view_exo_texture_player, null, false) as PlayerView).apply {
-                    useController = false
-                    this.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                        requestedFrameRate = 120f
-                        videoSurfaceView?.requestedFrameRate = 120f
+        key(hdrVideo) {
+            AndroidView(
+                factory = { context ->
+                    val layout = if (hdrVideo) {
+                        R.layout.view_exo_surface_player
+                    } else {
+                        R.layout.view_exo_texture_player
                     }
-                }
-            },
-            update = { view ->
-                view.player = player
-                view.resizeMode = resizeMode
-                view.visibility = if (minimized) View.INVISIBLE else View.VISIBLE
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
+                    (LayoutInflater.from(context)
+                        .inflate(layout, null, false) as PlayerView).apply {
+                        useController = false
+                        this.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                            requestedFrameRate = 120f
+                            videoSurfaceView?.requestedFrameRate = 120f
+                        }
+                    }
+                },
+                update = { view ->
+                    surfaceHost.value = view
+                    view.player = player
+                    view.resizeMode = resizeMode
+                    // 舞台用替身帧顶替期间要把实时画面藏起来，否则它会从替身帧底下露出来。
+                    view.visibility = if (minimized || frozenVideo) View.INVISIBLE else View.VISIBLE
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         overlay()
 
@@ -470,7 +504,7 @@ internal fun VideoPlayer(
 
         if (fullscreen) {
             CompositionLocalProvider(
-                LocalBackdrop provides if (BlurEffectsEnabled) menuBackdrop else null,
+                LocalBackdrop provides if (BlurEffectsEnabled && !hdrVideo) menuBackdrop else null,
             ) {
                 val stageMoreItems = rememberPlayerMoreMenuItems(
                     onDanmakuSettings = onDanmakuSettingsClick?.let { openDm ->
