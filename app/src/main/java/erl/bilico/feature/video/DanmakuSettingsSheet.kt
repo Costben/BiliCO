@@ -41,7 +41,6 @@ import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import java.util.Locale
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
-import kotlin.math.roundToInt
 
 /**
  * 竖屏下的弹幕设置：COUI 底部面板，开关、下拉菜单和滑条都用设置页同一套组件。
@@ -103,19 +102,19 @@ internal fun DanmakuSettingsSheet(
                     insideMargin = PaddingValues(0.dp),
                     weight = CardDefaults.GroupWeight,
                 ) {
-                    SliderPreference(
-                        value = settings.opacity.toFloat(),
-                        onValueChange = { repository.setDanmakuOpacity(it.roundToInt()) },
+                    DraftSliderPreference(
+                        persistedValue = settings.opacity,
+                        onCommit = repository::setDanmakuOpacity,
                         title = "不透明度",
-                        valueText = "${settings.opacity}%",
+                        formatValueText = { "$it%" },
                         valueRange = 10f..100f,
                         cardListPosition = CardListPosition.Head,
                     )
-                    SliderPreference(
-                        value = settings.fontScale.toFloat(),
-                        onValueChange = { repository.setDanmakuFontScale(it.roundToInt()) },
+                    DraftSliderPreference(
+                        persistedValue = settings.fontScale,
+                        onCommit = repository::setDanmakuFontScale,
                         title = "字号",
-                        valueText = "${settings.fontScale}%",
+                        formatValueText = { "$it%" },
                         valueRange = 50f..200f,
                         cardListPosition = CardListPosition.Middle,
                     )
@@ -201,37 +200,43 @@ internal fun DanmakuSettingsSheet(
                     insideMargin = PaddingValues(0.dp),
                     weight = CardDefaults.GroupWeight,
                 ) {
-                    SliderPreference(
-                        value = settings.speed.toFloat(),
-                        onValueChange = { repository.setDanmakuSpeed(it.roundToInt()) },
+                    DraftSliderPreference(
+                        persistedValue = settings.speed,
+                        onCommit = repository::setDanmakuSpeed,
                         title = "弹幕速度",
-                        valueText = "${settings.speed}% (" +
-                            String.format(Locale.US, "%.1fs", settings.scrollDurationMs / 1000f) + ")",
+                        formatValueText = { v ->
+                            val sec = settings.copy(speed = v).scrollDurationMs / 1000f
+                            "$v% (${String.format(Locale.US, "%.1fs", sec)})"
+                        },
                         valueRange = 50f..200f,
                         cardListPosition = CardListPosition.Head,
                     )
-                    SliderPreference(
-                        value = settings.strokeWidth.toFloat(),
-                        onValueChange = { repository.setDanmakuStrokeWidth(it.roundToInt()) },
+                    DraftSliderPreference(
+                        persistedValue = settings.strokeWidth,
+                        onCommit = repository::setDanmakuStrokeWidth,
                         title = "描边粗细",
-                        valueText = String.format(Locale.US, "%.1f dp", settings.strokeWidthDp),
+                        formatValueText = { v ->
+                            String.format(Locale.US, "%.1f dp", settings.copy(strokeWidth = v).strokeWidthDp)
+                        },
                         valueRange = 0f..30f,
                         cardListPosition = CardListPosition.Middle,
                     )
-                    SliderPreference(
-                        value = settings.fontWeight.toFloat(),
-                        onValueChange = { repository.setDanmakuFontWeight(it.roundToInt()) },
+                    DraftSliderPreference(
+                        persistedValue = settings.fontWeight,
+                        onCommit = repository::setDanmakuFontWeight,
                         title = "字体粗细",
-                        valueText = "W${settings.fontWeight * 100}",
+                        formatValueText = { "W${it * 100}" },
                         valueRange = 1f..9f,
                         steps = 7,
                         cardListPosition = CardListPosition.Middle,
                     )
-                    SliderPreference(
-                        value = settings.lineHeight.toFloat(),
-                        onValueChange = { repository.setDanmakuLineHeight(it.roundToInt()) },
+                    DraftSliderPreference(
+                        persistedValue = settings.lineHeight,
+                        onCommit = repository::setDanmakuLineHeight,
                         title = "行高间距",
-                        valueText = String.format(Locale.US, "%.2fx", settings.lineHeightRatio),
+                        formatValueText = { v ->
+                            String.format(Locale.US, "%.2fx", settings.copy(lineHeight = v).lineHeightRatio)
+                        },
                         valueRange = 100f..200f,
                         cardListPosition = CardListPosition.Tail,
                     )
@@ -254,4 +259,27 @@ internal fun DanmakuSettingsSheet(
             },
         )
     }
+}
+
+@Composable
+private fun DraftSliderPreference(
+    persistedValue: Int,
+    onCommit: (Int) -> Unit,
+    title: String,
+    formatValueText: (Int) -> String,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int = 0,
+    cardListPosition: CardListPosition,
+) {
+    val state = rememberDraftIntSliderState(persistedValue)
+    SliderPreference(
+        value = state.draftValue,
+        onValueChange = { state.draftValue = it },
+        onValueChangeFinished = { state.commit(onCommit) },
+        title = title,
+        valueText = formatValueText(state.roundedInt),
+        valueRange = valueRange,
+        steps = steps,
+        cardListPosition = cardListPosition,
+    )
 }

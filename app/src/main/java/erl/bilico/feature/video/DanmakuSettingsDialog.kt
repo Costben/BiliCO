@@ -19,7 +19,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -172,51 +174,58 @@ internal fun DanmakuSettingsDialog(
 
                 SliderSettingRow(
                     label = "不透明度",
-                    valueText = "${settings.opacity}%",
-                    value = settings.opacity.toFloat(),
+                    persistedValue = settings.opacity,
+                    formatValueText = { "$it%" },
                     valueRange = 10f..100f,
-                    onValueChange = { repository.setDanmakuOpacity(it.roundToInt()) },
+                    onCommit = repository::setDanmakuOpacity,
                 )
 
                 SliderSettingRow(
                     label = "字体大小",
-                    valueText = "${settings.fontScale}%",
-                    value = settings.fontScale.toFloat(),
+                    persistedValue = settings.fontScale,
+                    formatValueText = { "$it%" },
                     valueRange = 50f..200f,
-                    onValueChange = { repository.setDanmakuFontScale(it.roundToInt()) },
+                    onCommit = repository::setDanmakuFontScale,
                 )
 
                 SliderSettingRow(
                     label = "弹幕速度",
-                    valueText = "${settings.speed}% (${String.format(Locale.US, "%.1fs", settings.scrollDurationMs / 1000f)})",
-                    value = settings.speed.toFloat(),
+                    persistedValue = settings.speed,
+                    formatValueText = { v ->
+                        val sec = settings.copy(speed = v).scrollDurationMs / 1000f
+                        "$v% (${String.format(Locale.US, "%.1fs", sec)})"
+                    },
                     valueRange = 50f..200f,
-                    onValueChange = { repository.setDanmakuSpeed(it.roundToInt()) },
+                    onCommit = repository::setDanmakuSpeed,
                 )
 
                 SliderSettingRow(
                     label = "描边粗细",
-                    valueText = String.format(Locale.US, "%.1f dp", settings.strokeWidthDp),
-                    value = settings.strokeWidth.toFloat(),
+                    persistedValue = settings.strokeWidth,
+                    formatValueText = { v ->
+                        String.format(Locale.US, "%.1f dp", settings.copy(strokeWidth = v).strokeWidthDp)
+                    },
                     valueRange = 0f..30f,
-                    onValueChange = { repository.setDanmakuStrokeWidth(it.roundToInt()) },
+                    onCommit = repository::setDanmakuStrokeWidth,
                 )
 
                 SliderSettingRow(
                     label = "字体粗细",
-                    valueText = "W${settings.fontWeight * 100}",
-                    value = settings.fontWeight.toFloat(),
+                    persistedValue = settings.fontWeight,
+                    formatValueText = { "W${it * 100}" },
                     valueRange = 1f..9f,
                     steps = 7,
-                    onValueChange = { repository.setDanmakuFontWeight(it.roundToInt()) },
+                    onCommit = repository::setDanmakuFontWeight,
                 )
 
                 SliderSettingRow(
                     label = "行高间距",
-                    valueText = String.format(Locale.US, "%.2fx", settings.lineHeightRatio),
-                    value = settings.lineHeight.toFloat(),
+                    persistedValue = settings.lineHeight,
+                    formatValueText = { v ->
+                        String.format(Locale.US, "%.2fx", settings.copy(lineHeight = v).lineHeightRatio)
+                    },
                     valueRange = 100f..200f,
-                    onValueChange = { repository.setDanmakuLineHeight(it.roundToInt()) },
+                    onCommit = repository::setDanmakuLineHeight,
                 )
             }
         }
@@ -272,16 +281,37 @@ private fun FilterChip(
     }
 }
 
+/**
+ * 拖动期间仅保存原始浮点草稿值，避免四舍五入后触发 COUI 滑块的外部同步取消手势，
+ * 也避免拖动每一帧都触发弹幕重排与磁盘写入；仅在松手结束时提交整数配置。
+ */
+@Stable
+internal class DraftIntSliderState(initialValue: Int) {
+    var draftValue by mutableFloatStateOf(initialValue.toFloat())
+    val roundedInt: Int get() = draftValue.roundToInt()
+
+    fun commit(onCommit: (Int) -> Unit) {
+        val committed = roundedInt
+        draftValue = committed.toFloat()
+        onCommit(committed)
+    }
+}
+
+@Composable
+internal fun rememberDraftIntSliderState(persistedValue: Int): DraftIntSliderState =
+    remember(persistedValue) { DraftIntSliderState(persistedValue) }
+
 @Composable
 private fun SliderSettingRow(
     label: String,
-    valueText: String,
-    value: Float,
+    persistedValue: Int,
+    formatValueText: (Int) -> String,
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int = 0,
-    onValueChange: (Float) -> Unit,
+    onCommit: (Int) -> Unit,
 ) {
     val scheme = COUITheme.colorScheme
+    val state = rememberDraftIntSliderState(persistedValue)
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -295,15 +325,16 @@ private fun SliderSettingRow(
             Spacer(Modifier.width(8.dp))
             Spacer(Modifier.weight(1f))
             Text(
-                text = valueText,
+                text = formatValueText(state.roundedInt),
                 style = COUITheme.textStyles.footnote1,
                 color = scheme.primary,
             )
         }
         Spacer(Modifier.height(2.dp))
         Slider(
-            value = value,
-            onValueChange = onValueChange,
+            value = state.draftValue,
+            onValueChange = { state.draftValue = it },
+            onValueChangeFinished = { state.commit(onCommit) },
             valueRange = valueRange,
             steps = steps,
             modifier = Modifier.fillMaxWidth(),
