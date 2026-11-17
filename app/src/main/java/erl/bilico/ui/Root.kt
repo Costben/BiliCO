@@ -67,6 +67,7 @@ import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.message.MessageScreen
 import erl.bilico.feature.pgc.BangumiFollowScreen
 import erl.bilico.feature.pgc.PgcScreen
+import erl.bilico.feature.search.SearchScreen
 import erl.bilico.feature.settings.AboutScreen
 import erl.bilico.feature.settings.SettingsScreen
 import erl.bilico.feature.space.SpaceScreen
@@ -530,5 +531,6 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
             commentTargetId = route.commentTargetId,
         )
         is Route.Chat -> ChatScreen(container, nav, route.talkerId, route.talkerName, route.talkerFace)
+        is Route.Search -> SearchScreen(container, nav, route.query)
     }
 }

@@ -100,6 +100,7 @@ internal fun VideoInfoTab(
     positionMs: Long = 0L,
     onSelectChapter: (VideoChapter) -> Unit = {},
     onOpenChapters: () -> Unit = {},
+    onTagClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     when {
@@ -140,6 +141,7 @@ internal fun VideoInfoTab(
             positionMs = positionMs,
             onSelectChapter = onSelectChapter,
             onOpenChapters = onOpenChapters,
+            onTagClick = onTagClick,
             modifier = modifier,
         )
     }
@@ -175,6 +177,7 @@ private fun InfoContent(
     positionMs: Long = 0L,
     onSelectChapter: (VideoChapter) -> Unit = {},
     onOpenChapters: () -> Unit = {},
+    onTagClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // 标题与简介共用一次展开：点一下标题，标题放开的同时简介也跟着放开。
@@ -281,7 +284,7 @@ private fun InfoContent(
         }
 
         if (detail.tags.isNotEmpty()) {
-            item(key = "tags") { VideoTagChips(detail.tags) }
+            item(key = "tags") { VideoTagChips(detail.tags, onTagClick = onTagClick) }
         }
 
         item(key = "actions") {
@@ -419,10 +422,13 @@ private fun InfoContent(
     }
 }
 
-/** 简介下面的标签：只做展示，按接口给的顺序铺开。 */
+/** 简介下面的标签：按接口给的顺序铺开，点击后以该标签为关键词进入搜索。 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun VideoTagChips(tags: List<String>) {
+private fun VideoTagChips(
+    tags: List<String>,
+    onTagClick: (String) -> Unit,
+) {
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -434,10 +440,12 @@ private fun VideoTagChips(tags: List<String>) {
                 modifier = Modifier
                     .clip(SquircleShape(6.dp))
                     .background(COUITheme.colorScheme.surfaceContainer)
+                    .clickable(enabled = tag.isNotBlank()) { onTagClick(tag) }
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 style = COUITheme.textStyles.footnote2,
                 color = COUITheme.colorScheme.onSurfaceSecondary,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

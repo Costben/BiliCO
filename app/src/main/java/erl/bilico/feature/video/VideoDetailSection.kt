@@ -24,6 +24,7 @@ import erl.bilico.feature.comment.CommentTab
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
+import erl.bilico.ui.Route
 import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
@@ -135,6 +136,10 @@ internal fun VideoDetailSection(
                         positionMs = positionMs,
                         onSelectChapter = onSelectChapter,
                         onOpenChapters = onOpenChapters,
+                        onTagClick = { tag ->
+                            val keyword = tag.trim()
+                            if (keyword.isNotEmpty()) nav.push(Route.Search(keyword))
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (nav.playQueue.items.isNotEmpty()) {

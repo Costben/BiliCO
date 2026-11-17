@@ -37,6 +37,7 @@ data class SearchUiState(
 
 class SearchViewModel(
     private val repository: SearchRepository,
+    initialQuery: String = "",
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
@@ -54,6 +55,10 @@ class SearchViewModel(
 
     init {
         loadHot()
+        val initial = initialQuery.trim()
+        if (initial.isNotEmpty()) {
+            submit(initial)
+        }
     }
 
     fun loadHot() {

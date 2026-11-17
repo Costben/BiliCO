@@ -118,11 +118,57 @@ internal fun HomeSearchOverlay(
     onSelectKeyword: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val density = LocalDensity.current
+    val topBarHeightPx = with(density) { topBarHeight.toPx() }
+    Box(modifier) {
+        SearchPanelBody(
+            topBarHeight = topBarHeight,
+            searchBackdrop = searchBackdrop,
+            searchExpanded = searchExpanded,
+            state = state,
+            transitionState = transitionState,
+            history = history,
+            viewModel = viewModel,
+            container = container,
+            nav = nav,
+            barBounds = barBounds,
+            onSelectKeyword = onSelectKeyword,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val p = panelProgress()
+                    alpha = panelAlpha().coerceIn(0f, 1f)
+                    if (p < 0.999f) {
+                        clip = true
+                        shape = SearchPanelClipShape(p, topBarHeightPx)
+                    } else {
+                        clip = false
+                    }
+                }
+                .then(if (searchExpanded) Modifier.testTag("home_search_panel") else Modifier),
+        )
+    }
+}
+
+/** 搜索面板主体内容（发现/建议/结果），供首页搜索浮层与独立搜索页复用。 */
+@Composable
+internal fun SearchPanelBody(
+    topBarHeight: Dp,
+    searchBackdrop: LayerBackdrop,
+    searchExpanded: Boolean,
+    state: SearchUiState,
+    transitionState: SearchResultsTransitionState,
+    history: List<String>,
+    viewModel: SearchViewModel,
+    container: AppContainer,
+    nav: NavState,
+    barBounds: TopBarBounds,
+    onSelectKeyword: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val surfaceColor = pageContainerColor()
     val listState = rememberLazyListState()
     val rowScrollState = remember(listState) { listState.asRowScrollState() }
-    val density = LocalDensity.current
-    val topBarHeightPx = with(density) { topBarHeight.toPx() }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -169,74 +215,61 @@ internal fun HomeSearchOverlay(
         if (searchExpanded) onSelectKeyword(keyword)
     }
 
-    Box(modifier) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    val p = panelProgress()
-                    alpha = panelAlpha().coerceIn(0f, 1f)
-                    if (p < 0.999f) {
-                        clip = true
-                        shape = SearchPanelClipShape(p, topBarHeightPx)
-                    } else {
-                        clip = false
-                    }
-                }
-                .layerBackdropIf(BlurEffectsEnabled, searchBackdrop)
-                .background(surfaceColor)
-                .pointerInput(Unit) {}
-                .then(if (searchExpanded) Modifier.testTag("home_search_panel") else Modifier),
-        ) {
-            CompositionLocalProvider(LocalBackdrop provides if (BlurEffectsEnabled) searchBackdrop else null) {
-                val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-                val bottomPadding = maxOf(16.dp + navBottomPadding(), imeBottom + 16.dp)
-                SearchResultContainer(
-                    state = transitionState,
-                    modifier = Modifier.fillMaxSize(),
-                    loadingTopPadding = resultsBarHeight + 6.dp,
-                    loadingContent = {
-                        Box(Modifier.padding(horizontal = 16.dp)) { LoadingState() }
-                    },
+    Box(
+        modifier
+            .fillMaxSize()
+            .layerBackdropIf(BlurEffectsEnabled, searchBackdrop)
+            .background(surfaceColor)
+            .pointerInput(Unit) {},
+    ) {
+        CompositionLocalProvider(LocalBackdrop provides if (BlurEffectsEnabled) searchBackdrop else null) {
+            val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+            val bottomPadding = maxOf(16.dp + navBottomPadding(), imeBottom + 16.dp)
+            SearchResultContainer(
+                state = transitionState,
+                modifier = Modifier.fillMaxSize(),
+                loadingTopPadding = resultsBarHeight + 6.dp,
+                loadingContent = {
+                    Box(Modifier.padding(horizontal = 16.dp)) { LoadingState() }
+                },
+            ) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize().scrollEndHaptic(),
+                    contentPadding = PaddingValues(
+                        start = 0.dp,
+                        top = contentTop,
+                        end = 0.dp,
+                        bottom = bottomPadding,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize().scrollEndHaptic(),
-                        contentPadding = PaddingValues(
-                            start = 0.dp,
-                            top = contentTop,
-                            end = 0.dp,
-                            bottom = bottomPadding,
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        if (!shownResults) {
-                            if (suggesting) {
-                                searchSuggestSection(
-                                    query = state.query,
-                                    suggestions = state.suggestions,
-                                    suggestionsLoading = state.suggestionsLoading,
-                                    onPick = activeSelectKeyword,
-                                )
-                            } else {
-                                searchHomeSection(
-                                    hot = state.hot,
-                                    hotLoading = state.hotLoading,
-                                    history = history,
-                                    onPick = activeSelectKeyword,
-                                    onDeleteHistory = { container.settings.removeSearchHistory(it) },
-                                    onClearHistory = { container.settings.clearSearchHistory() },
-                                )
-                            }
-                        } else if (resultsVisible) {
-                            searchResultItems(
-                                state = state,
-                                nav = nav,
-                                rowScrollState = rowScrollState,
-                                topBarBounds = barBounds,
-                                onRetry = viewModel::retry,
+                    if (!shownResults) {
+                        if (suggesting) {
+                            searchSuggestSection(
+                                query = state.query,
+                                suggestions = state.suggestions,
+                                suggestionsLoading = state.suggestionsLoading,
+                                onPick = activeSelectKeyword,
+                            )
+                        } else {
+                            searchHomeSection(
+                                hot = state.hot,
+                                hotLoading = state.hotLoading,
+                                history = history,
+                                onPick = activeSelectKeyword,
+                                onDeleteHistory = { container.settings.removeSearchHistory(it) },
+                                onClearHistory = { container.settings.clearSearchHistory() },
                             )
                         }
+                    } else if (resultsVisible) {
+                        searchResultItems(
+                            state = state,
+                            nav = nav,
+                            rowScrollState = rowScrollState,
+                            topBarBounds = barBounds,
+                            onRetry = viewModel::retry,
+                        )
                     }
                 }
             }

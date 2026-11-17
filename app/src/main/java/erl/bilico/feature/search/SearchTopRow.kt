@@ -1,6 +1,7 @@
 package erl.bilico.feature.search
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -66,6 +67,72 @@ internal fun FeedTitleRow(
     modifier: Modifier = Modifier,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
+    SearchTopAppBar(
+        searchState = searchState,
+        onQueryChange = onQueryChange,
+        searchExpanded = searchExpanded,
+        onSearchOpen = onSearchOpen,
+        onSearchCancel = onSearchCancel,
+        onSearchSubmit = onSearchSubmit,
+        showingResults = showingResults,
+        onTabChange = onTabChange,
+        onSortMenuOpen = onSortMenuOpen,
+        panelAlpha = panelAlpha,
+        collapsed = collapsed,
+        titleContent = {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(TitleRowHeight)
+                    .clipToBounds(),
+            ) {
+                FeedAvatar(
+                    url = avatarUrl,
+                    onClick = onAvatarClick,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .graphicsLayer {
+                            translationY = -collapsed() * titleHeightPx / 2f
+                        },
+                )
+            }
+        },
+        extraActions = {
+            HighlightedIconButton(
+                onClick = { nav.push(Route.Messages) },
+                enabled = !searchExpanded,
+                modifier = Modifier.couiTopAppBarActionItem(),
+            ) {
+                Icon(
+                    imageVector = COUIIcons.Email,
+                    contentDescription = "消息",
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        },
+        modifier = modifier,
+    )
+}
+
+/** 通用搜索双行玻璃顶栏，供首页展开搜索与独立搜索页复用。 */
+@Composable
+internal fun SearchTopAppBar(
+    searchState: SearchUiState,
+    onQueryChange: (String) -> Unit,
+    searchExpanded: Boolean,
+    onSearchOpen: () -> Unit,
+    onSearchCancel: () -> Unit,
+    onSearchSubmit: (String) -> Unit,
+    showingResults: Boolean,
+    onTabChange: (Int) -> Unit,
+    onSortMenuOpen: () -> Unit,
+    panelAlpha: () -> Float,
+    modifier: Modifier = Modifier,
+    collapsed: () -> Float = { 0f },
+    titleContent: (@Composable () -> Unit)? = null,
+    extraActions: (@Composable RowScope.() -> Unit)? = null,
+) {
+    val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
     SearchFilterTopAppBar(
         filters = if (showingResults) SearchResultTabs else null,
         selectedFilter = searchState.tab,
@@ -116,37 +183,8 @@ internal fun FeedTitleRow(
                     enabled = searchExpanded || collapsed() < 0.95f,
                     searchButtonContentDescription = "搜索",
                     gradientColor = Color.Transparent,
-                    titleContent = {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(TitleRowHeight)
-                                .clipToBounds(),
-                        ) {
-                            FeedAvatar(
-                                url = avatarUrl,
-                                onClick = onAvatarClick,
-                                modifier = Modifier
-                                    .align(Alignment.CenterStart)
-                                    .graphicsLayer {
-                                        translationY = -collapsed() * titleHeightPx / 2f
-                                    },
-                            )
-                        }
-                    },
-                    extraActions = {
-                        HighlightedIconButton(
-                            onClick = { nav.push(Route.Messages) },
-                            enabled = !searchExpanded,
-                            modifier = Modifier.couiTopAppBarActionItem(),
-                        ) {
-                            Icon(
-                                imageVector = COUIIcons.Email,
-                                contentDescription = "消息",
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
-                    },
+                    titleContent = titleContent,
+                    extraActions = extraActions,
                     trailingIcon = {
                         if (searchState.query.isNotEmpty()) {
                             SearchClearButton(

@@ -169,6 +169,7 @@ sealed interface Route {
         val commentTargetId: Long = 0L,
     ) : Route
     data class Chat(val talkerId: Long, val talkerName: String = "", val talkerFace: String = "") : Route
+    data class Search(val query: String = "") : Route
 }
 
 fun Route.isPlayback(): Boolean = this is Route.Video || this is Route.Pgc || this is Route.LiveRoom
