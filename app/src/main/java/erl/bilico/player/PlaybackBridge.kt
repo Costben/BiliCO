@@ -50,6 +50,9 @@ object PlaybackBridge {
         private set
 
     @Volatile
+    private var activeOwner: Any? = null
+
+    @Volatile
     var activeTitle: String = ""
         private set
 
@@ -87,7 +90,9 @@ object PlaybackBridge {
         artworkUrl: String,
         isPlaying: Boolean,
         autoPip: Boolean,
+        owner: Any? = null,
     ) {
+        activeOwner = owner
         activePlayer = player
         activeTitle = title
         activeSubtitle = subtitle
@@ -99,16 +104,20 @@ object PlaybackBridge {
         currentIsPlaying = isPlaying
     }
 
-    fun unbind(player: Player, context: Context) {
-        if (activePlayer === player) {
-            detach(player)
+    fun isOwner(owner: Any): Boolean = activeOwner === owner
+
+    fun unbind(player: Player, context: Context, owner: Any? = null) {
+        if (activePlayer === player && (owner == null || activeOwner === owner)) {
+            detach(player, owner)
             PlaybackService.stop(context)
         }
     }
 
     /** 播放器要被释放了：先把它从桥上下掉，免得媒体条还指着一台已经销毁的播放器。 */
-    internal fun detach(player: Player) {
+    internal fun detach(player: Player, owner: Any? = null) {
         if (activePlayer !== player) return
+        if (owner != null && activeOwner !== owner) return
+        activeOwner = null
         activePlayer = null
         activeTitle = ""
         activeSubtitle = ""
@@ -294,11 +303,22 @@ fun BindPlaybackSession(
     val activeSession = isTop || isMinimized
     val effectiveAutoPip = autoPip && isTop
 
+    val sessionOwner = remember { Any() }
+    val routeEntry = erl.bilico.ui.LocalNavEntry.current
+    val navState = erl.bilico.ui.LocalNavState.current
     val currentBackgroundPlay = rememberUpdatedState(backgroundPlay)
 
     LaunchedEffect(activeSession, player, title, subtitle, artworkUrl, isPlaying, effectiveAutoPip) {
         if (!activeSession) return@LaunchedEffect
-        PlaybackBridge.bind(player, title, subtitle, artworkUrl, isPlaying, effectiveAutoPip)
+        PlaybackBridge.bind(
+            player = player,
+            title = title,
+            subtitle = subtitle,
+            artworkUrl = artworkUrl,
+            isPlaying = isPlaying,
+            autoPip = effectiveAutoPip,
+            owner = sessionOwner,
+        )
         PlaybackService.start(context)
         if (activity != null && PlaybackBridge.canEnterPip(activity)) {
             runCatching {
@@ -313,6 +333,7 @@ fun BindPlaybackSession(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
+                    if (!PlaybackBridge.isOwner(sessionOwner)) return@LifecycleEventObserver
                     val inPip = activity?.isInPictureInPictureMode == true
                     if (!inPip) {
                         if (currentBackgroundPlay.value && player.isPlaying) {
@@ -332,6 +353,16 @@ fun BindPlaybackSession(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            // 收进融合球的那一页动画期间会被拆掉重建，重建出来的一版 stageReady 归零、播放器槽位消失，
+            // 于是这一次解绑发生在「球已经接手」之后。此时清掉桥，球就会变成无封面 + 暂停图标，
+            // 菜单里的「继续播放」也因为拿不到播放器点不动。收进球里的页面仍在，绑定交给它新的一版。
+            val entry = routeEntry
+            if (entry != null && (entry.minimizingToOrb || navState?.minimizedEntry === entry)) {
+                return@onDispose
+            }
+            // 多层播放页共享同一台 ExoPlayer：只有当前会话真正拥有者被销毁时才解绑并清画中画参数，
+            // 否则中间历史播放页出栈时会把正在最小化播放的栈顶视频封面与播放器句柄一起抹掉。
+            if (!PlaybackBridge.isOwner(sessionOwner)) return@onDispose
             if (activity != null && PlaybackBridge.canEnterPip(activity) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 runCatching {
                     activity.setPictureInPictureParams(
@@ -339,7 +370,7 @@ fun BindPlaybackSession(
                     )
                 }
             }
-            PlaybackBridge.unbind(player, context)
+            PlaybackBridge.unbind(player, context, owner = sessionOwner)
         }
     }
 }

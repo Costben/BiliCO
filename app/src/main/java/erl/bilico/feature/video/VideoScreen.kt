@@ -38,6 +38,8 @@ import erl.bilico.player.releasePlaybackPlayer
 import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalNavEntry
+import erl.bilico.ui.LocalRouteIsTop
+import erl.bilico.ui.LocalRouteMinimized
 import erl.bilico.ui.LocalRouteTransition
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
@@ -73,9 +75,6 @@ fun VideoScreen(
             startPositionMs = startPositionMs,
             initialCid = initialCid,
         )
-    }
-    LaunchedEffect(bvid, startPositionMs, initialCid) {
-        viewModel.switchTo(bvid, startPositionMs, initialCid)
     }
     val currentState by viewModel.state.collectAsStateWithLifecycle()
     // 换片那一帧 ViewModel 里还是上一条的内容，先按空状态画骨架，避免闪出上一条的标题和封面。
@@ -126,12 +125,34 @@ fun VideoScreen(
     // 点媒体条封面会重建 Activity。播放器跟着页面记住，重建时还是同一个，媒体条不会拿到已释放的实例。
     // 进场过渡期间先保留黑底播放器槽位与详情内容，落位后再挂载 ExoPlayer 与 PlayerView。
     // key 固定成 "video"：连播换下一条时接着用同一台播放器，换源由下面 setMediaSource 那一步做。
-    val player = if (stageReady) rememberPlaybackPlayer("video") { buildConfiguredExoPlayer(context) } else null
+    val isTop = LocalRouteIsTop.current
+    val isMinimized = LocalRouteMinimized.current
+    val isActiveRoute = isTop || isMinimized
+    // 缩进融合球时进度恒为 0、等不到「落位」，但球上的封面和播放状态要靠这一页的会话维持，
+    // 所以最小化期间照旧保留播放器槽位与事件监听。
+    val player = if (stageReady || isMinimized) rememberPlaybackPlayer("video") { buildConfiguredExoPlayer(context) } else null
     // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
     val playbackEntry = LocalNavEntry.current
     DisposableEffect(playbackEntry) {
-        playbackEntry?.onDiscard = { releasePlaybackPlayer("video") }
+        playbackEntry?.onDiscard = {
+            val hasOtherVideo = nav.stack.any { it !== playbackEntry && it.route is Route.Video } ||
+                (nav.minimizedEntry != null && nav.minimizedEntry !== playbackEntry && nav.minimizedEntry?.route is Route.Video)
+            if (!hasOtherVideo) {
+                releasePlaybackPlayer("video")
+            }
+        }
         onDispose { }
+    }
+    LaunchedEffect(isTop, bvid, startPositionMs, initialCid) {
+        if (!isTop) return@LaunchedEffect
+        if (nav.minimizedEntry?.route is Route.Video) {
+            nav.dismissMinimized(pausePlayback = false)
+        }
+        if (viewModel.currentBvid != bvid) {
+            player?.stop()
+            player?.clearMediaItems()
+        }
+        viewModel.switchTo(bvid, startPositionMs, initialCid)
     }
 
     // 播放器解码上报的首帧宽高比（换视频或切分 P 时重置），再回退到接口预设的 dimension / dash 尺寸；0 表示仍未知。
@@ -215,28 +236,30 @@ fun VideoScreen(
             autoPip = autoPip,
         )
 
-        BindPlayerEvents(
-            player = player,
-            viewModel = viewModel,
-            container = container,
-            onPlayingChanged = { isPlaying = it },
-            onBufferingChanged = { isBuffering = it },
-            onError = { error ->
-                Log.w("BiliPlayer", describePlaybackError(error), error)
-                // 线路坏了先换一条，候选表走完才把错误抛给界面。
-                if (playbackAttempts?.next() != true) playerError = describePlaybackError(error)
-            },
-            onVideoAspectChanged = { playerVideoAspect = it },
-            onPlaybackEnded = {
-                handleVideoPlaybackEnded(
-                    mode = playbackEndMode,
-                    player = player,
-                    viewModel = viewModel,
-                    nav = nav,
-                    state = state,
-                )
-            },
-        )
+        if (isActiveRoute) {
+            BindPlayerEvents(
+                player = player,
+                viewModel = viewModel,
+                container = container,
+                onPlayingChanged = { isPlaying = it },
+                onBufferingChanged = { isBuffering = it },
+                onError = { error ->
+                    Log.w("BiliPlayer", describePlaybackError(error), error)
+                    // 线路坏了先换一条，候选表走完才把错误抛给界面。
+                    if (playbackAttempts?.next() != true) playerError = describePlaybackError(error)
+                },
+                onVideoAspectChanged = { playerVideoAspect = it },
+                onPlaybackEnded = {
+                    handleVideoPlaybackEnded(
+                        mode = playbackEndMode,
+                        player = player,
+                        viewModel = viewModel,
+                        nav = nav,
+                        state = state,
+                    )
+                },
+            )
+        }
     }
 
     var routeInitialized by remember { mutableStateOf(false) }
@@ -274,8 +297,8 @@ fun VideoScreen(
         commentListState.scrollToItem(0)
     }
 
-    LaunchedEffect(player, bvid, state.selectedCid, sponsorBlockEnabled) {
-        if (player != null) {
+    LaunchedEffect(player, bvid, state.selectedCid, sponsorBlockEnabled, isActiveRoute) {
+        if (player != null && isActiveRoute) {
             sponsorController.attach(bvid, state.selectedCid, sponsorBlockEnabled, player)
         }
     }
@@ -304,16 +327,28 @@ fun VideoScreen(
         }
     }
 
-    LaunchedEffect(player, bvid, state.source) {
+    LaunchedEffect(player, bvid, state.source, isTop) {
+        // 只让栈顶这一页往共享播放器里装片源：压在下面的播放页还留在组合里，
+        // 一旦它们也跟着状态变化重新装载，就会把正在播的那条顶掉、从头再来一遍。
+        if (!isTop) return@LaunchedEffect
         val currentPlayer = player ?: return@LaunchedEffect
         val attempts = playbackAttempts ?: return@LaunchedEffect
         val source = state.source ?: return@LaunchedEffect
+        val mediaId = playbackMediaId(bvid, state.selectedCid, source.videoUrl)
+        // 缩进融合球、再从球里回来时这一页会被重建一次，播放器本身没换；
+        // 此时再 setMediaSource 一次就会从 0 重新播。片源没变且播放器还装着它，就只登记候选表。
+        if (currentPlayer.playbackState != Player.STATE_IDLE &&
+            currentPlayer.currentMediaItem?.mediaId == mediaId
+        ) {
+            attempts.adopt(source, dataSourceFactory, mediaId)
+            return@LaunchedEffect
+        }
         playerError = null
         if (state.resumePositionMs <= 0L && source.lastPlayTimeMs >= 3_000L) {
             viewModel.applyServerResumeHint(source.lastPlayCid, source.lastPlayTimeMs)
         }
         val resumeAt = viewModel.state.value.resumePositionMs
-        attempts.start(source, dataSourceFactory, resumeAt)
+        attempts.start(source, dataSourceFactory, resumeAt, mediaId)
         if (resumeAt > 0L) viewModel.consumeResumePosition()
     }
 
@@ -332,11 +367,12 @@ fun VideoScreen(
         player?.setPlaybackSpeed(effectiveSpeed)
     }
 
-    LaunchedEffect(player) {
-        val currentPlayer = player ?: return@LaunchedEffect
+    LaunchedEffect(player, isActiveRoute) {
+        val currentPlayer = player?.takeIf { isActiveRoute } ?: return@LaunchedEffect
         while (true) {
             positionMs = currentPlayer.currentPosition.coerceAtLeast(0L)
             durationMs = currentPlayer.duration.coerceAtLeast(0L)
+            playbackAttempts?.rememberPosition(positionMs)
             viewModel.reportHeartbeat(positionMs / 1000, currentPlayer.isPlaying)
             danmakuController.onPosition(positionMs)
             sponsorController.onPosition(

@@ -60,6 +60,7 @@ import erl.bilico.feature.video.VideoMessageToast
 import erl.bilico.feature.video.VideoPlayer
 import erl.bilico.feature.video.describePlaybackError
 import erl.bilico.feature.video.findActivity
+import erl.bilico.feature.video.playbackMediaId
 import erl.bilico.feature.video.rememberPlayerFullscreenController
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.player.BindPlaybackSession
@@ -232,7 +233,6 @@ fun PgcScreen(
 
     LaunchedEffect(state.source) {
         val source = state.source ?: return@LaunchedEffect
-        playerError = null
         val currentEp = viewModel.currentEpisode
         val referer = if (currentEp != null && currentEp.epId > 0L) {
             "https://www.bilibili.com/bangumi/play/ep${currentEp.epId}"
@@ -245,7 +245,16 @@ fun PgcScreen(
         val dataSourceFactory = OkHttpDataSource.Factory(container.client.mediaClient())
             .setDefaultRequestProperties(headers)
         val resumeAt = viewModel.state.value.resumePositionMs
-        playbackAttempts.start(source, dataSourceFactory, resumeAt)
+        val mediaId = playbackMediaId(currentEp?.bvid.orEmpty(), currentEp?.cid ?: 0L, source.videoUrl)
+        // 页面被重建（最小化进融合球/复原）时播放器没换，重复装载会让番剧从 0 重新播。
+        if (player.playbackState != Player.STATE_IDLE &&
+            player.currentMediaItem?.mediaId == mediaId
+        ) {
+            playbackAttempts.adopt(source, dataSourceFactory, mediaId)
+            return@LaunchedEffect
+        }
+        playerError = null
+        playbackAttempts.start(source, dataSourceFactory, resumeAt, mediaId)
         if (resumeAt > 0L) viewModel.consumeResumePosition()
     }
 
@@ -268,6 +277,7 @@ fun PgcScreen(
         while (true) {
             positionMs = player.currentPosition.coerceAtLeast(0L)
             durationMs = player.duration.coerceAtLeast(0L)
+            playbackAttempts.rememberPosition(positionMs)
             viewModel.reportHeartbeat(positionMs / 1000, player.isPlaying)
             danmakuController.onPosition(positionMs)
             delay(500)

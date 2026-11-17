@@ -55,6 +55,7 @@ import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.LocalRouteMinimized
 import erl.bilico.ui.components.CouiStagePopupMenu
 import erl.bilico.ui.components.FullscreenExitIcon
@@ -175,6 +176,7 @@ internal fun VideoPlayer(
     val menuBackdrop = rememberLayerBackdrop()
     // SurfaceView 的画面不进 Compose 的绘制层，抓出来的背景只有一块黑，不如直接退成不模糊。
     val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && fullscreenMoreOpen && !hdrVideo
+    val isTop = LocalRouteIsTop.current
     val minimized = LocalRouteMinimized.current
     // 舞台转场用一张静止帧顶替实时画面（SurfaceView 转不动）：在这里交出抓帧入口。
     val frozenVideo = LocalStageFrozenVideo.current
@@ -221,7 +223,7 @@ internal fun VideoPlayer(
                 },
                 update = { view ->
                     surfaceHost.value = view
-                    view.player = player
+                    view.player = if (isTop) player else null
                     view.resizeMode = resizeMode
                     // 舞台用替身帧顶替期间要把实时画面藏起来，否则它会从替身帧底下露出来。
                     view.visibility = if (minimized || frozenVideo) View.INVISIBLE else View.VISIBLE
