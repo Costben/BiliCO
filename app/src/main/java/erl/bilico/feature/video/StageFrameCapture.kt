@@ -13,6 +13,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -170,6 +172,21 @@ private fun Bitmap.isBlankFrame(): Boolean {
     return true
 }
 
+/**
+ * 替身帧的亮度补偿。
+ *
+ * 冻结只发生在 HDR 档位上，拷出来的却是 SDR 位图：HDR→SDR 的映射为了不让高光溢出，
+ * 会把整个亮度范围往下压，替身帧就比实时画面暗一档。转场只有几百毫秒，
+ * 按这个增益把中间调补回去，接回实时画面时不会看成「一亮一暗」。
+ */
+private const val FROZEN_FRAME_GAIN = 1.12f
+
+private val frozenFrameFilter = ColorFilter.colorMatrix(
+    ColorMatrix().apply {
+        setToScale(FROZEN_FRAME_GAIN, FROZEN_FRAME_GAIN, FROZEN_FRAME_GAIN, 1f)
+    },
+)
+
 /** 替身帧画在播放器图层最上面：播放器自己的黑底和控件都在它下面。 */
 @Composable
 internal fun StageFrozenFrame(holder: StageFrameHolder) {
@@ -178,6 +195,7 @@ internal fun StageFrozenFrame(holder: StageFrameHolder) {
         bitmap = bitmap,
         contentDescription = null,
         contentScale = ContentScale.Fit,
+        colorFilter = frozenFrameFilter,
         modifier = Modifier.fillMaxSize(),
     )
 }
