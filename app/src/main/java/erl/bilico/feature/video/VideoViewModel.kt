@@ -47,25 +47,54 @@ class VideoViewModel(
     private val interactions: InteractionRepository,
     private val session: SessionRepository,
     private val settings: SettingsRepository,
-    private val bvid: String,
+    bvid: String,
     startPositionMs: Long = 0L,
-    private val initialCid: Long = 0L,
+    initialCid: Long = 0L,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(VideoUiState(resumePositionMs = startPositionMs.coerceAtLeast(0L)))
+    // 一个播放页只留一份 ViewModel，连播换下一条时原地换参数，不再按 bvid 新建。
+    private var bvid: String = bvid
+    private var initialCid: Long = initialCid
+    private var startPositionMs: Long = startPositionMs.coerceAtLeast(0L)
+
+    private val _state = MutableStateFlow(VideoUiState(resumePositionMs = this.startPositionMs))
     val state: StateFlow<VideoUiState> = _state.asStateFlow()
 
+    /** 当前这份状态属于哪一条视频，界面据此判断是不是还没切过来。 */
+    val currentBvid: String get() = bvid
+
+    private var loadJob: Job? = null
     private var playbackJob: Job? = null
     private var startTs = 0L
     private var lastHeartbeatAt = 0L
-    private var initialResumeSettled = startPositionMs > 0L
+    private var initialResumeSettled = this.startPositionMs > 0L
 
     init {
         load()
     }
 
+    /**
+     * 同一页里换下一条视频：清掉上一条的状态和还在飞的请求，再按新参数重新加载。
+     * 参数没变时直接返回，界面每次重组调用也不会重复拉接口。
+     */
+    fun switchTo(bvid: String, startPositionMs: Long = 0L, initialCid: Long = 0L) {
+        val start = startPositionMs.coerceAtLeast(0L)
+        if (bvid == this.bvid && initialCid == this.initialCid && start == this.startPositionMs) return
+        this.bvid = bvid
+        this.initialCid = initialCid
+        this.startPositionMs = start
+        loadJob?.cancel()
+        playbackJob?.cancel()
+        startTs = 0L
+        lastHeartbeatAt = 0L
+        initialResumeSettled = start > 0L
+        _state.value = VideoUiState(resumePositionMs = start)
+        load()
+    }
+
     fun load() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             repository.detail(bvid)
                 .onSuccess { detail ->
@@ -225,10 +254,12 @@ class VideoViewModel(
         val detail = _state.value.detail ?: return
         val cid = _state.value.selectedCid
         val ts = startTs
+        // 连播时这条在上一条的收尾里才发出去，bvid 必须当场取，不能等协程跑起来再读。
+        val targetBvid = bvid
         if (cid <= 0L || ts <= 0L || playedSec <= 0L) return
         externalScope.launch {
             heartbeat.report(
-                bvid = bvid,
+                bvid = targetBvid,
                 aid = detail.aid,
                 cid = cid,
                 playedTimeSec = playedSec,

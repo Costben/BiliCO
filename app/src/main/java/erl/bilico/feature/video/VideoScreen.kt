@@ -59,7 +59,10 @@ fun VideoScreen(
     commentRootId: Long = 0L,
     commentTargetId: Long = 0L,
 ) {
-    val viewModel: VideoViewModel = viewModel(key = "video-$bvid-$startPositionMs-$initialCid") {
+    // 一个播放页只建一份 ViewModel：连播换下一条、甚至退出再点进来，都复用同一份。
+    // 以前把 bvid 拼进 key，每看一条就多留一份 ViewModel 和一条播放地址，全挂在 Activity 的
+    // ViewModelStore 上永不释放，切十几条就把 Java 堆吃满闪退。
+    val viewModel: VideoViewModel = viewModel(key = "video") {
         VideoViewModel(
             repository = container.video,
             heartbeat = container.heartbeat,
@@ -71,7 +74,16 @@ fun VideoScreen(
             initialCid = initialCid,
         )
     }
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(bvid, startPositionMs, initialCid) {
+        viewModel.switchTo(bvid, startPositionMs, initialCid)
+    }
+    val currentState by viewModel.state.collectAsStateWithLifecycle()
+    // 换片那一帧 ViewModel 里还是上一条的内容，先按空状态画骨架，避免闪出上一条的标题和封面。
+    val state = if (viewModel.currentBvid == bvid) {
+        currentState
+    } else {
+        VideoUiState(resumePositionMs = startPositionMs)
+    }
 
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
@@ -113,11 +125,12 @@ fun VideoScreen(
     val activity = remember(context) { context.findActivity() }
     // 点媒体条封面会重建 Activity。播放器跟着页面记住，重建时还是同一个，媒体条不会拿到已释放的实例。
     // 进场过渡期间先保留黑底播放器槽位与详情内容，落位后再挂载 ExoPlayer 与 PlayerView。
-    val player = if (stageReady) rememberPlaybackPlayer(bvid) { buildConfiguredExoPlayer(context) } else null
+    // key 固定成 "video"：连播换下一条时接着用同一台播放器，换源由下面 setMediaSource 那一步做。
+    val player = if (stageReady) rememberPlaybackPlayer("video") { buildConfiguredExoPlayer(context) } else null
     // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
     val playbackEntry = LocalNavEntry.current
-    DisposableEffect(playbackEntry, bvid) {
-        playbackEntry?.onDiscard = { releasePlaybackPlayer(bvid) }
+    DisposableEffect(playbackEntry) {
+        playbackEntry?.onDiscard = { releasePlaybackPlayer("video") }
         onDispose { }
     }
 
