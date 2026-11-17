@@ -368,6 +368,18 @@ fun MainShell(nav: NavState, container: AppContainer) {
             )
         }
 
+        // Layer 4.5: 搜索面板之上的融合球。面板铺满整屏，会盖住底栏上的那颗，
+        // 从搜索结果的视频返回时球就被面板吞掉。这里补一颗，面板收起后交还底栏那颗。
+        if (feedPanelCovering && (nav.minimizedEntry != null || nav.isMinimizingToOrb)) {
+            nav.orbOrigin?.let { origin ->
+                CompositionLocalProvider(
+                    LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
+                ) {
+                    SecondaryPlaybackOrbOverlay(nav = nav, orbOrigin = origin)
+                }
+            }
+        }
+
         // Layer 5: 标题行与展开后的 TopAppBarSearchBar（在最顶层，确保搜索胶囊和“取消”按钮不被面板遮挡）
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) {
