@@ -1,5 +1,6 @@
 package erl.bilico.feature.me
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -56,6 +60,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Replace
 import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.icon.extended.Unlock
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
@@ -279,12 +284,18 @@ private fun ProfileCard(account: Account) {
             Avatar(url = avatarUrl, size = 56.dp)
             Spacer(Modifier.width(14.dp))
             Column {
-                Text(
-                    text = account.name,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = COUITheme.colorScheme.onSurface,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = account.name,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = COUITheme.colorScheme.onSurface,
+                    )
+                    if (account.vip) {
+                        Spacer(Modifier.width(6.dp))
+                        VipBadge()
+                    }
+                }
                 Spacer(Modifier.height(3.dp))
                 Text(
                     text = "UID ${account.mid}",
@@ -294,4 +305,19 @@ private fun ProfileCard(account: Account) {
             }
         }
     }
+}
+
+/** 官方那枚粉色的「大会员」标识。接口只给 vipStatus，拿不到会员等级和到期时间。 */
+@Composable
+private fun VipBadge() {
+    Text(
+        text = "大会员",
+        modifier = Modifier
+            .clip(SquircleShape(4.dp))
+            .background(Brush.horizontalGradient(listOf(Color(0xFFFB7299), Color(0xFFFF9DBA))))
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+        fontSize = 10.sp,
+        lineHeight = 12.sp,
+        color = Color.White,
+    )
 }
