@@ -51,6 +51,10 @@ data class DashTrack(
     val codecs: String = "",
     val width: Int = 0,
     val height: Int = 0,
+    // 帧率 B 站有时给 "30.000" 字符串、有时给数字，两种都要能吃下。
+    @JsonNames("frameRate", "frame_rate")
+    @Serializable(with = FlexibleFloatSerializer::class)
+    val frameRate: Float = 0f,
     @SerialName("mime_type") val mimeType: String = "",
 )
 

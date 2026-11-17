@@ -41,6 +41,16 @@ object FlexibleIntSerializer : KSerializer<Int> {
     }
 }
 
+object FlexibleFloatSerializer : KSerializer<Float> {
+    override val descriptor = PrimitiveSerialDescriptor("FlexibleFloat", PrimitiveKind.FLOAT)
+    override fun serialize(encoder: Encoder, value: Float) = encoder.encodeFloat(value)
+    override fun deserialize(decoder: Decoder): Float {
+        if (decoder !is JsonDecoder) return decoder.decodeFloat()
+        val element = decoder.decodeJsonElement()
+        return (element as? JsonPrimitive)?.contentOrNull?.toFloatOrNull() ?: 0f
+    }
+}
+
 /** 评论正文里的 HTML 实体在解析阶段统一反转义。 */
 object UnescapedStringSerializer : KSerializer<String> {
     override val descriptor = PrimitiveSerialDescriptor("UnescapedString", PrimitiveKind.STRING)

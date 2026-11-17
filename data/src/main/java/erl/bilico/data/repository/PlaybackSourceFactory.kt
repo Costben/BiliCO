@@ -74,6 +74,7 @@ internal fun PlayUrlData.toPlaybackSource(
             } else {
                 0f
             },
+            frameRate = video.frameRate,
         )
     }
 

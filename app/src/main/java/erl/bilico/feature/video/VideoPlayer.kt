@@ -135,6 +135,7 @@ internal fun VideoPlayer(
 ) {
     var controlsVisible by remember { mutableStateOf(false) }
     var fullscreenMoreOpen by remember { mutableStateOf(false) }
+    var statsVisible by remember { mutableStateOf(false) }
     var prevFullscreen by remember { mutableStateOf(fullscreen) }
 
     LaunchedEffect(fullscreen) {
@@ -142,6 +143,7 @@ internal fun VideoPlayer(
             prevFullscreen = fullscreen
             controlsVisible = false
             fullscreenMoreOpen = false
+            statsVisible = false
         }
     }
 
@@ -305,18 +307,18 @@ internal fun VideoPlayer(
                 if (fullscreen && onHome != null) {
                     PlayerIconButton(NavHomeOutlineIcon, "首页", onHome)
                 }
-                if (onWatchLater != null || onShare != null || onDanmakuSettingsClick != null || onSelectPlaybackEndMode != null) {
-                    if (fullscreen) {
-                        PlayerIconButton(COUIIcons.More, "更多", onClick = { fullscreenMoreOpen = !fullscreenMoreOpen })
-                    } else {
-                        PlayerMoreMenu(
-                            onDanmakuSettings = onDanmakuSettingsClick,
-                            onWatchLater = onWatchLater,
-                            onShare = onShare,
-                            playbackEndMode = playbackEndMode,
-                            onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-                        )
-                    }
+                // 「视频信息统计」在任何视频页都能用，菜单因此恒定存在。
+                if (fullscreen) {
+                    PlayerIconButton(COUIIcons.More, "更多", onClick = { fullscreenMoreOpen = !fullscreenMoreOpen })
+                } else {
+                    PlayerMoreMenu(
+                        onDanmakuSettings = onDanmakuSettingsClick,
+                        onWatchLater = onWatchLater,
+                        onShare = onShare,
+                        playbackEndMode = playbackEndMode,
+                        onSelectPlaybackEndMode = onSelectPlaybackEndMode,
+                        onShowStats = { statsVisible = true },
+                    )
                 }
             }
             Box(
@@ -517,6 +519,10 @@ internal fun VideoPlayer(
                     onSelectPlaybackEndMode = onSelectPlaybackEndMode,
                     onWatchLater = onWatchLater,
                     onShare = onShare,
+                    onShowStats = {
+                        fullscreenMoreOpen = false
+                        statsVisible = true
+                    },
                 )
                 CouiStagePopupMenu(
                     show = fullscreenMoreOpen,
@@ -526,6 +532,15 @@ internal fun VideoPlayer(
                     items = stageMoreItems,
                 )
             }
+        }
+
+        if (statsVisible) {
+            PlayerStatsDialog(
+                player = player,
+                source = source,
+                inlineInStage = fullscreen,
+                onDismiss = { statsVisible = false },
+            )
         }
     }
 }

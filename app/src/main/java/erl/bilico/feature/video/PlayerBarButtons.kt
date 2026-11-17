@@ -79,16 +79,19 @@ internal fun rememberPlayerMoreMenuItems(
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
     onWatchLater: (() -> Unit)?,
     onShare: (() -> Unit)?,
+    onShowStats: (() -> Unit)? = null,
 ): List<CouiMenuItem> {
     val danmakuState by rememberUpdatedState(onDanmakuSettings)
     val selectModeState by rememberUpdatedState(onSelectPlaybackEndMode)
     val watchLaterState by rememberUpdatedState(onWatchLater)
     val shareState by rememberUpdatedState(onShare)
+    val statsState by rememberUpdatedState(onShowStats)
     val hasDanmaku = onDanmakuSettings != null
     val hasPlaybackEnd = onSelectPlaybackEndMode != null
     val hasWatchLater = onWatchLater != null
     val hasShare = onShare != null
-    return remember(playbackEndMode, hasDanmaku, hasPlaybackEnd, hasWatchLater, hasShare) {
+    val hasStats = onShowStats != null
+    return remember(playbackEndMode, hasDanmaku, hasPlaybackEnd, hasWatchLater, hasShare, hasStats) {
         buildList {
             if (hasPlaybackEnd) {
                 add(
@@ -116,6 +119,9 @@ internal fun rememberPlayerMoreMenuItems(
             if (hasShare) {
                 add(CouiMenuItem(label = "分享", onClick = { shareState?.invoke() }, group = 1))
             }
+            if (hasStats) {
+                add(CouiMenuItem(label = "视频信息统计", onClick = { statsState?.invoke() }, group = 2))
+            }
         }
     }
 }
@@ -128,6 +134,7 @@ internal fun PlayerMoreMenu(
     onShare: (() -> Unit)?,
     playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
+    onShowStats: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val items = rememberPlayerMoreMenuItems(
@@ -136,6 +143,7 @@ internal fun PlayerMoreMenu(
         onSelectPlaybackEndMode = onSelectPlaybackEndMode,
         onWatchLater = onWatchLater,
         onShare = onShare,
+        onShowStats = onShowStats,
     )
 
     Box {
