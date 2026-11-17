@@ -121,10 +121,21 @@ class SessionRepository(
         }.getOrNull()
     }
 
-    /** 退出登录：先把当前会话留档（下次还能切回来），再清掉当前 Cookie。 */
+    /**
+     * 退出当前账号。
+     *
+     * 先给当前账号留档（下次还能切回来），再清掉当前 Cookie。
+     * 名册里还有别的号就直接换过去：只退出一个号不该把用户丢回扫码页，剩下的号还要能继续用；
+     * 一个别的号都没有才算真的退出。
+     */
     suspend fun logout() {
+        val currentMid = _account.value?.mid ?: mid()
         upsertCurrentSession()
         clearSession()
+        val next = _sessions.value.firstOrNull {
+            it.mid != currentMid && it.cookies.isNotEmpty()
+        } ?: return
+        switchAccount(next.mid)
     }
 
     /**

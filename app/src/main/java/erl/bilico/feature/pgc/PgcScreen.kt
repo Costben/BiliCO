@@ -249,6 +249,17 @@ fun PgcScreen(
         if (resumeAt > 0L) viewModel.consumeResumePosition()
     }
 
+    // 切号 / 登录态变了：按当前清晰度重新取流，让刚生效的大会员档位回到清晰度菜单里。
+    // 首帧拿到的登录态不重取，免得一进页面就白闪一下。
+    val playbackAccount by container.session.account.collectAsStateWithLifecycle()
+    var playbackAccountKey by remember { mutableStateOf<Pair<Long, Boolean>?>(null) }
+    LaunchedEffect(playbackAccount) {
+        val key = playbackAccount?.let { it.mid to it.vip }
+        val previous = playbackAccountKey
+        playbackAccountKey = key
+        if (previous != null && previous != key) viewModel.refreshPlayback(positionMs)
+    }
+
     LaunchedEffect(effectiveSpeed) {
         player.setPlaybackSpeed(effectiveSpeed)
     }

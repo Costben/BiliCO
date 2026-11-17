@@ -33,6 +33,7 @@ import erl.bilico.data.model.SponsorCategory
 import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.settings.DefaultQuality
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.me.AccountSwitchDialog
 import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.feature.video.speedLabel
 import erl.bilico.ui.NavState
@@ -84,11 +85,13 @@ fun SettingsScreen(
     val acceptPrerelease by container.settings.acceptPrerelease.collectAsStateWithLifecycle()
     val inAppUpdate by container.settings.inAppUpdate.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
+    val sessions by container.session.sessions.collectAsStateWithLifecycle()
 
     var pickCdn by remember { mutableStateOf(false) }
     var showDanmakuSettings by remember { mutableStateOf(false) }
     var showSponsorCategories by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var switchAccounts by remember { mutableStateOf(false) }
     var cacheCleared by remember { mutableIntStateOf(0) }
 
     SecondaryPage(title = "设置", onBack = nav::pop) {
@@ -366,7 +369,7 @@ fun SettingsScreen(
             }
         }
 
-        if (account != null) {
+        if (account != null || sessions.isNotEmpty()) {
             item(key = "account-title") { SectionTitle("账号") }
 
             item(key = "account") {
@@ -376,13 +379,37 @@ fun SettingsScreen(
                     insideMargin = PaddingValues(0.dp),
                     weight = CardDefaults.GroupWeight,
                 ) {
-                    ArrowPreference(
-                        title = "退出登录",
-                        modifier = Modifier.testTag("settings_logout"),
-                        summary = account?.name,
-                        cardListPosition = CardListPosition.None,
-                        onClick = { confirmLogout = true },
-                    )
+                    // 名册里还有账号时留一个切换入口：设置页也能直接换号，不必绕回「我的」。
+                    if (sessions.isNotEmpty()) {
+                        ArrowPreference(
+                            title = "切换账号",
+                            modifier = Modifier.testTag("settings_switch_account"),
+                            summary = "已保存 ${sessions.size} 个账号",
+                            cardListPosition = CardListPosition.Head,
+                            onClick = { switchAccounts = true },
+                        )
+                    }
+                    if (account != null) {
+                        ArrowPreference(
+                            title = "退出登录",
+                            modifier = Modifier.testTag("settings_logout"),
+                            summary = account?.name,
+                            cardListPosition = if (sessions.isNotEmpty()) {
+                                CardListPosition.Tail
+                            } else {
+                                CardListPosition.None
+                            },
+                            onClick = { confirmLogout = true },
+                        )
+                    } else {
+                        ArrowPreference(
+                            title = "切换账号",
+                            modifier = Modifier.testTag("settings_switch_account"),
+                            summary = "已保存 ${sessions.size} 个账号",
+                            cardListPosition = CardListPosition.None,
+                            onClick = { switchAccounts = true },
+                        )
+                    }
                 }
             }
         }
@@ -418,10 +445,29 @@ fun SettingsScreen(
         )
     }
 
+    if (switchAccounts) {
+        AccountSwitchDialog(
+            sessions = sessions,
+            activeMid = account?.mid,
+            onDismiss = { switchAccounts = false },
+            onSwitch = { mid ->
+                switchAccounts = false
+                container.scope.launch { container.session.switchAccount(mid) }
+            },
+            onRemove = { mid ->
+                container.scope.launch { container.session.removeAccount(mid) }
+            },
+            onAdd = {
+                switchAccounts = false
+                nav.push(Route.Login)
+            },
+        )
+    }
+
     if (confirmLogout) {
         ConfirmDialog(
             title = "退出登录",
-            message = "会清除本地保存的 Cookie，下次需要重新扫码登录。",
+            message = "只退出当前账号。还有别的已保存账号时会自动换过去，没有的话需要重新扫码登录。",
             confirmText = "退出",
             onDismiss = { confirmLogout = false },
             onConfirm = {

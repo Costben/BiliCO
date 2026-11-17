@@ -178,6 +178,24 @@ class VideoViewModel(
         )
     }
 
+    /**
+     * 账号变了（切号 / 登录 / 退出）之后按当前清晰度重新取一次流。
+     *
+     * 大会员档位能不能用，取决于 playurl 返回的 dash 列表；已经拿在手里的那条流不会自己升级。
+     * 这里只按用户当前选的清晰度重取（不自动跳到 4K），顺带把清晰度菜单里的档位刷新一遍，
+     * 位置沿用播放器当前进度。
+     */
+    fun refreshPlayback(positionMs: Long) {
+        val current = _state.value
+        if (current.selectedCid <= 0L || current.source == null) return
+        loadPlayback(
+            qn = current.requestedQuality,
+            cid = current.selectedCid,
+            notifyDowngrade = false,
+            positionMs = positionMs.coerceAtLeast(0L),
+        )
+    }
+
     fun markPlaybackStarted() {
         startTs = System.currentTimeMillis() / 1000
         lastHeartbeatAt = 0L

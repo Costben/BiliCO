@@ -176,6 +176,18 @@ class PgcViewModel(
         loadPlayback(episode, qn, notifyDowngrade = true, positionMs.coerceAtLeast(0L))
     }
 
+    /** 账号变了以后按当前清晰度重新取流：大会员档位由 playurl 决定，已取到的流不会自己升级。 */
+    fun refreshPlayback(positionMs: Long) {
+        val episode = currentEpisode ?: return
+        if (_state.value.source == null) return
+        loadPlayback(
+            episode = episode,
+            qn = _state.value.requestedQuality,
+            notifyDowngrade = false,
+            positionMs = positionMs.coerceAtLeast(0L),
+        )
+    }
+
     fun retryPlayback() {
         val episode = currentEpisode ?: return
         loadPlayback(episode, _state.value.requestedQuality, notifyDowngrade = false, 0L)
