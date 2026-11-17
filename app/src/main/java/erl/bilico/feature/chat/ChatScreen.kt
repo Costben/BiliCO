@@ -1,7 +1,14 @@
 package erl.bilico.feature.chat
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +18,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
@@ -30,144 +37,75 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil3.compose.AsyncImage
+import erl.bilico.data.model.CommentEmote
+import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.ImMessageUi
-import erl.bilico.data.repository.ImRepository
-import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.comment.ComposerEmoteTextField
+import erl.bilico.feature.comment.ComposerToolButton
+import erl.bilico.feature.comment.EmoteGrid
+import erl.bilico.feature.dynamic.DynamicImageViewer
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.COUISmoothCapsuleShape
 import erl.bilico.ui.components.CompactSendButton
+import erl.bilico.ui.components.EmojiIcon
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.RichCommentText
 import erl.bilico.ui.components.SecondaryPage
-import erl.bilico.ui.components.capsuleMaterial
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import erl.bilico.ui.components.inputCapsuleGlass
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.basic.TextField
-import io.github.suqi8.coui.kmp.basic.TextFieldMode
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Contacts
+import io.github.suqi8.coui.kmp.icon.extended.Photos
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import io.github.suqi8.coui.kmp.blur.Backdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
-data class ChatUiState(
-    val messages: List<ImMessageUi> = emptyList(),
-    val isLoading: Boolean = true,
-    val isSending: Boolean = false,
-    val error: String? = null,
-    val hasMore: Boolean = false,
-)
+private const val MAX_CHAT_IMAGE_PICK = 9
+internal val CHAT_COMPOSER_HEIGHT = 36.dp
+internal val CHAT_COMPOSER_MAX_HEIGHT = 108.dp
+internal val CHAT_COMPOSER_SHAPE = COUISmoothCapsuleShape(18.dp)
 
-class ChatViewModel(
-    private val imRepository: ImRepository,
-    private val session: SessionRepository,
-    private val talkerId: Long,
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(ChatUiState())
-    val state: StateFlow<ChatUiState> = _state.asStateFlow()
-
-    init {
-        loadMessages()
-    }
-
-    fun loadMessages() {
-        _state.update { it.copy(isLoading = true, error = null) }
-        viewModelScope.launch {
-            imRepository.messages(talkerId)
-                .onSuccess { (msgs, hasMore) ->
-                    _state.update {
-                        it.copy(
-                            messages = msgs,
-                            isLoading = false,
-                            hasMore = hasMore,
-                            error = null,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            error = error.message ?: "获取私信记录失败",
-                        )
-                    }
-                }
-        }
-    }
-
-    fun send(text: String, onFinished: () -> Unit) {
-        val content = text.trim()
-        if (content.isBlank() || _state.value.isSending) return
-
-        // 乐观追加一条本端消息
-        val nowSec = System.currentTimeMillis() / 1000
-        val tempKey = System.currentTimeMillis()
-        val optimisticMsg = ImMessageUi(
-            msgKey = tempKey,
-            senderUid = session.mid(),
-            isMe = true,
-            content = content,
-            timeText = "刚刚",
-            timestamp = nowSec,
-        )
-        _state.update {
-            it.copy(
-                messages = it.messages + optimisticMsg,
-                isSending = true,
-            )
-        }
-        onFinished()
-
-        viewModelScope.launch {
-            imRepository.sendMessage(talkerId, content)
-                .onSuccess { msgKey ->
-                    _state.update { cur ->
-                        cur.copy(
-                            isSending = false,
-                            messages = cur.messages.map { msg ->
-                                if (msg.msgKey == tempKey) msg.copy(msgKey = msgKey) else msg
-                            },
-                        )
-                    }
-                }
-                .onFailure {
-                    _state.update { cur ->
-                        cur.copy(isSending = false)
-                    }
-                }
-        }
-    }
-}
 
 @Composable
 fun ChatScreen(
@@ -178,83 +116,286 @@ fun ChatScreen(
     talkerFace: String,
 ) {
     val viewModel: ChatViewModel = viewModel(key = "chat-$talkerId") {
-        ChatViewModel(container.im, container.session, talkerId)
+        ChatViewModel(container.im, container.comments, container.session, talkerId)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val pageColor = pageContainerColor()
-    var inputText by remember { mutableStateOf("") }
-    val keyboard = LocalSoftwareKeyboardController.current
+    // 消息列表录进这个图层，底栏的胶囊和发送按钮拿它做磨砂。
+    val backdrop = rememberLayerBackdrop()
+    // 底栏浮在列表上，列表底部要按它实测的高度让位，草稿换行把底栏顶高时消息才跟着上移。
+    var bottomStackPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val listBottomPadding = with(density) {
+        val measured = bottomStackPx.toDp()
+        if (measured > 0.dp) measured + 8.dp else CHAT_COMPOSER_HEIGHT + 32.dp
+    }
+    var inputField by remember { mutableStateOf(TextFieldValue("")) }
+    var emotePanelOpen by remember { mutableStateOf(false) }
+    var openedEmoteManager by remember { mutableStateOf(false) }
+    var viewerImage by remember { mutableStateOf<DynamicImage?>(null) }
 
-    // 当收到新消息或者发送新消息时，自动滚动到最底部
-    LaunchedEffect(state.messages.size) {
+    val context = LocalContext.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
+    val editorInteractionSource = remember { MutableInteractionSource() }
+    val editorFocused by editorInteractionSource.collectIsFocusedAsState()
+    var wasEditorFocused by remember { mutableStateOf(false) }
+
+    val managingEmotes = nav.stack.any { it.route is Route.EmoteManager }
+    LaunchedEffect(managingEmotes) {
+        if (!managingEmotes && openedEmoteManager) {
+            openedEmoteManager = false
+            viewModel.loadEmotes(force = true)
+        }
+    }
+
+    LaunchedEffect(editorFocused) {
+        if (editorFocused && !wasEditorFocused && emotePanelOpen) {
+            emotePanelOpen = false
+        }
+        wasEditorFocused = editorFocused
+    }
+
+    val emoteLookup: Map<String, CommentEmote> = remember(state.emotePackages) {
+        buildMap {
+            state.emotePackages.forEach { pkg ->
+                if (pkg.type != 4) {
+                    pkg.emotes.forEach { emote ->
+                        if (emote.url.isNotBlank() && emote.insert.isNotBlank()) {
+                            putIfAbsent(emote.insert, emote)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val pickImages = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_CHAT_IMAGE_PICK),
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        if (!container.session.isLoggedIn()) {
+            viewModel.showNotice("请先登录发送图片")
+            return@rememberLauncherForActivityResult
+        }
+        val items = uris.mapIndexed { index, uri ->
+            ChatImagePayload(
+                previewUri = uri.toString(),
+                readBytes = {
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                ?: return@runCatching null
+                            val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                            val ext = mime.substringAfterLast('/', "jpg")
+                            val name = "chat_${System.currentTimeMillis()}_$index.$ext"
+                            Triple(bytes, name, mime)
+                        }.getOrNull()
+                    }
+                },
+            )
+        }
+        viewModel.sendImages(items)
+    }
+
+    // 当收到新消息、发送消息或展开表情面板时，自动滚动到最底部
+    LaunchedEffect(state.messages.size, emotePanelOpen) {
         if (state.messages.isNotEmpty()) {
             listState.animateScrollToItem(state.messages.size - 1)
         }
     }
 
-    Column(
+    // 草稿换行或表情面板把底栏顶高时，列表底部让位的空间跟着变大；最后一条消息还露在屏上的话就把它重新
+    // 钉到新的底部，免得被胶囊压住。逐帧累加滚动会被最大滚动位置夹断，所以每帧直接钉到最底。
+    var prevBottomPx by remember { mutableIntStateOf(0) }
+    LaunchedEffect(bottomStackPx) {
+        val delta = bottomStackPx - prevBottomPx
+        prevBottomPx = bottomStackPx
+        if (delta == 0) return@LaunchedEffect
+        val info = listState.layoutInfo
+        val last = info.visibleItemsInfo.lastOrNull() ?: return@LaunchedEffect
+        if (last.index < info.totalItemsCount - 1) return@LaunchedEffect
+        runCatching { listState.scrollToItem(last.index, 100_000) }
+    }
+
+    val notice = state.notice
+    if (notice != null) {
+        LaunchedEffect(notice) {
+            delay(2400)
+            viewModel.consumeNotice()
+        }
+    }
+
+    BackHandler(enabled = emotePanelOpen) {
+        emotePanelOpen = false
+    }
+
+    fun insertEmote(token: String) {
+        val current = inputField
+        val start = current.selection.min.coerceIn(0, current.text.length)
+        val end = current.selection.max.coerceIn(start, current.text.length)
+        val merged = current.text.replaceRange(start, end, token)
+        inputField = TextFieldValue(merged, TextRange(start + token.length))
+    }
+
+    fun toggleEmotePanel() {
+        if (emotePanelOpen) {
+            emotePanelOpen = false
+            runCatching { focusRequester.requestFocus() }
+            keyboard?.show()
+        } else {
+            focusManager.clearFocus()
+            keyboard?.hide()
+            emotePanelOpen = true
+            viewModel.loadEmotes(force = false)
+        }
+    }
+
+    fun submitText() {
+        keyboard?.hide()
+        viewModel.send(inputField.text, emoteLookup) {
+            inputField = TextFieldValue("")
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(pageColor)
-            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))),
+            .background(pageColor),
     ) {
-        SecondaryPage(
-            title = talkerName.ifBlank { "UID: $talkerId" },
-            onBack = nav::pop,
-            listState = listState,
-            actions = {
-                HighlightedIconButton(
-                    onClick = { nav.push(Route.Space(talkerId)) },
-                    modifier = Modifier.couiTopAppBarActionItem(),
-                ) {
-                    Icon(
-                        imageVector = COUIIcons.Contacts,
-                        contentDescription = "个人空间",
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            },
-            modifier = Modifier.weight(1f),
-            // 私信对话页的弹层（表情、发送失败重试、个人空间）一开一关就会让 backdrop 停止录制，
-            // 窗口级材质随即丢几帧模糊。改走 COUI 引擎，采样本页列表的 layerBackdrop。
-            platformBarMaterial = false,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))),
         ) {
-            if (state.isLoading) {
-                item(key = "loading") { LoadingState() }
-            } else if (state.error != null && state.messages.isEmpty()) {
-                item(key = "error") {
-                    ErrorState(message = state.error.orEmpty(), onRetry = viewModel::loadMessages)
+            SecondaryPage(
+                title = talkerName.ifBlank { "UID: $talkerId" },
+                onBack = nav::pop,
+                listState = listState,
+                backdrop = backdrop,
+                actions = {
+                    HighlightedIconButton(
+                        onClick = { nav.push(Route.Space(talkerId)) },
+                        modifier = Modifier.couiTopAppBarActionItem(),
+                    ) {
+                        Icon(
+                            imageVector = COUIIcons.Contacts,
+                            contentDescription = "个人空间",
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                contentBottomPadding = listBottomPadding,
+                // 私信对话页的弹层（表情、发送失败重试、个人空间）一开一关就会让 backdrop 停止录制，
+                // 窗口级材质随即丢几帧模糊。改走 COUI 引擎，采样本页列表的 layerBackdrop。
+                platformBarMaterial = false,
+            ) {
+                if (state.isLoading) {
+                    item(key = "loading") { LoadingState() }
+                } else if (state.error != null && state.messages.isEmpty()) {
+                    item(key = "error") {
+                        ErrorState(message = state.error.orEmpty(), onRetry = viewModel::loadMessages)
+                    }
+                } else if (state.messages.isEmpty()) {
+                    item(key = "empty") {
+                        EmptyState(text = "暂无聊天记录，发条私信打个招呼吧")
+                    }
+                } else {
+                    items(
+                        items = state.messages,
+                        key = { "${it.msgKey}_${it.timestamp}_${it.imageUrl}" },
+                    ) { msg ->
+                        ChatBubbleRow(
+                            message = msg,
+                            talkerFace = talkerFace,
+                            onAvatarClick = { nav.push(Route.Space(talkerId)) },
+                            onImageClick = {
+                                if (msg.imageUrl.isNotBlank()) {
+                                    viewerImage = DynamicImage(
+                                        url = msg.imageUrl,
+                                        width = msg.imageWidth,
+                                        height = msg.imageHeight,
+                                    )
+                                }
+                            },
+                        )
+                    }
                 }
-            } else if (state.messages.isEmpty()) {
-                item(key = "empty") {
-                    EmptyState(text = "暂无聊天记录，发条私信打个招呼吧")
-                }
-            } else {
-                items(
-                    items = state.messages,
-                    key = { it.msgKey.toString() + "_" + it.timestamp },
-                ) { msg ->
-                    ChatBubbleRow(
-                        message = msg,
-                        talkerFace = talkerFace,
-                        onAvatarClick = { nav.push(Route.Space(talkerId)) },
-                    )
+            }
+
+            // 底部输入栏浮在列表上：胶囊采到的是从它背后滚过去的消息。
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .onSizeChanged { bottomStackPx = it.height },
+            ) {
+                ChatBottomBar(
+                    value = inputField,
+                    onValueChange = { inputField = it },
+                    emotes = emoteLookup,
+                    onSend = ::submitText,
+                    isSending = state.isSending,
+                    emotePanelOpen = emotePanelOpen,
+                    onToggleEmote = ::toggleEmotePanel,
+                    onPickImage = {
+                        if (emotePanelOpen) emotePanelOpen = false
+                        keyboard?.hide()
+                        pickImages.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
+                    },
+                    focusRequester = focusRequester,
+                    interactionSource = editorInteractionSource,
+                    backdrop = if (BlurEffectsEnabled) backdrop else null,
+                )
+
+                AnimatedVisibility(visible = emotePanelOpen) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 8.dp),
+                    ) {
+                        EmoteGrid(
+                            packages = state.emotePackages,
+                            failed = state.emotesFailed,
+                            manageUrl = state.emoteManageUrl,
+                            onOpenManage = { url ->
+                                keyboard?.hide()
+                                openedEmoteManager = true
+                                nav.push(Route.EmoteManager(url))
+                            },
+                            onPick = ::insertEmote,
+                        )
+                    }
                 }
             }
         }
 
-        // 底部输入栏
-        ChatBottomBar(
-            text = inputText,
-            onTextChange = { inputText = it },
-            onSend = {
-                keyboard?.hide()
-                viewModel.send(inputText) {
-                    inputText = ""
-                }
-            },
-            isSending = state.isSending,
+        notice?.let { msg ->
+            Text(
+                text = msg,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 84.dp)
+                    .clip(SquircleShape(8.dp))
+                    .background(Color(0xCC000000))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                style = COUITheme.textStyles.footnote1,
+                color = Color.White,
+            )
+        }
+    }
+
+    viewerImage?.let { img ->
+        DynamicImageViewer(
+            images = listOf(img),
+            initialIndex = 0,
+            onDismiss = { viewerImage = null },
         )
     }
 }
@@ -264,10 +405,19 @@ private fun ChatBubbleRow(
     message: ImMessageUi,
     talkerFace: String,
     onAvatarClick: () -> Unit,
+    onImageClick: () -> Unit,
 ) {
     val isMe = message.isMe
     val scheme = COUITheme.colorScheme
     val avatarUrl = remember(talkerFace) { Formatters.sizedImageUrl(talkerFace, 108, 108) }
+    val bubbleShape = remember(isMe) {
+        SquircleShape(
+            topStart = 16.dp,
+            topEnd = 16.dp,
+            bottomStart = if (isMe) 16.dp else 4.dp,
+            bottomEnd = if (isMe) 4.dp else 16.dp,
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -291,27 +441,44 @@ private fun ChatBubbleRow(
                 Spacer(Modifier.width(8.dp))
             }
 
-            // 气泡主体
-            Box(
-                modifier = Modifier
-                    .widthIn(max = 260.dp)
-                    .clip(
-                        SquircleShape(
-                            topStart = 16.dp,
-                            topEnd = 16.dp,
-                            bottomStart = if (isMe) 16.dp else 4.dp,
-                            bottomEnd = if (isMe) 4.dp else 16.dp,
-                        )
+            if (message.imageUrl.isNotBlank()) {
+                val rawW = if (message.imageWidth > 0) message.imageWidth.toFloat() else 4f
+                val rawH = if (message.imageHeight > 0) message.imageHeight.toFloat() else 3f
+                val ratio = (rawW / rawH).coerceIn(0.5f, 2.2f)
+                val targetW = if (ratio >= 1f) 210.dp else (240.dp * ratio).coerceIn(110.dp, 210.dp)
+                val targetH = (targetW / ratio).coerceIn(96.dp, 240.dp)
+                Box(
+                    modifier = Modifier
+                        .size(width = targetW, height = targetH)
+                        .clip(bubbleShape)
+                        .background(scheme.surfaceContainer)
+                        .clickable(onClick = onImageClick),
+                ) {
+                    AsyncImage(
+                        model = message.imageUrl,
+                        contentDescription = "图片消息",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
                     )
-                    .background(if (isMe) scheme.primary else scheme.surfaceContainer)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-            ) {
-                Text(
-                    text = message.content,
-                    fontSize = 15.sp,
-                    color = if (isMe) Color.White else scheme.onSurface,
-                    lineHeight = 20.sp,
-                )
+                }
+            } else {
+                // 气泡主体
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 260.dp)
+                        .clip(bubbleShape)
+                        .background(if (isMe) scheme.primary else scheme.surfaceContainer)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    RichCommentText(
+                        content = message.content,
+                        emotes = message.emotes,
+                        compactEmotes = true,
+                        style = TextStyle(fontSize = 15.sp, lineHeight = 20.sp),
+                        color = if (isMe) Color.White else scheme.onSurface,
+                        prefixColor = if (isMe) Color.White else scheme.primary,
+                    )
+                }
             }
 
             if (isMe) {
@@ -327,61 +494,5 @@ private fun ChatBubbleRow(
                 modifier = Modifier.padding(top = 4.dp, start = if (!isMe) 44.dp else 0.dp, end = if (isMe) 8.dp else 0.dp),
             )
         }
-    }
-}
-
-private val CHAT_COMPOSER_HEIGHT = 36.dp
-
-@Composable
-private fun ChatBottomBar(
-    text: String,
-    onTextChange: (String) -> Unit,
-    onSend: () -> Unit,
-    isSending: Boolean,
-) {
-    val scheme = COUITheme.colorScheme
-    val isDark = scheme.background.luminance() < 0.5f
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(CHAT_COMPOSER_HEIGHT)
-                .capsuleMaterial(isDark)
-                .background(
-                    color = scheme.surfaceContainer,
-                    shape = COUISmoothCapsuleShape,
-                )
-                .clip(COUISmoothCapsuleShape),
-        ) {
-            TextField(
-                value = text,
-                onValueChange = onTextChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(CHAT_COMPOSER_HEIGHT),
-                label = "发送私信...",
-                backgroundMode = TextFieldMode.None,
-                insideMargin = DpSize(14.dp, 4.dp),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() }),
-            )
-        }
-
-        Spacer(Modifier.width(8.dp))
-
-        CompactSendButton(
-            text = if (isSending) "发送中" else "发送",
-            onClick = onSend,
-            enabled = text.isNotBlank() && !isSending,
-            height = CHAT_COMPOSER_HEIGHT,
-            containerColor = scheme.surfaceContainer,
-            isDark = isDark,
-        )
     }
 }

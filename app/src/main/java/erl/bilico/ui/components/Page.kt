@@ -48,6 +48,7 @@ import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
@@ -73,10 +74,14 @@ fun SecondaryPage(
     platformBarMaterial: Boolean = true,
     refreshing: Boolean? = null,
     onRefresh: (() -> Unit)? = null,
+    // 调用方要把底栏之类的浮层也磨砂时，传自己的 backdrop 进来，让它们采到的是同一份列表。
+    backdrop: LayerBackdrop = rememberLayerBackdrop(),
+    // 底栏浮在列表上时，列表要多留出它那一份高度，末条消息才不会被压住。
+    contentBottomPadding: Dp? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val pageColor = pageContainerColor()
-    val backdrop = rememberLayerBackdrop()
+    val defaultBottomPadding = 24.dp + navBottomPadding()
     val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
     val contentTop = glassBarContentTop(topBarHeight, 10.dp)
 
@@ -95,7 +100,7 @@ fun SecondaryPage(
                         start = 12.dp,
                         top = contentTop,
                         end = 12.dp,
-                        bottom = 24.dp + navBottomPadding(),
+                        bottom = contentBottomPadding ?: defaultBottomPadding,
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     content = content,

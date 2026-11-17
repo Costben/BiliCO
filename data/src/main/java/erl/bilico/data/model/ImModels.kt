@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -73,6 +74,13 @@ data class ImFetchMsgsResponse(
 )
 
 @Serializable
+data class ImEmoteInfo(
+    val text: String = "",
+    val uri: String = "",
+    val size: Int = 1,
+)
+
+@Serializable
 data class ImFetchMsgsData(
     val messages: List<ImMessageItem> = emptyList(),
     @SerialName("has_more")
@@ -81,6 +89,8 @@ data class ImFetchMsgsData(
     val minSeqno: Long = 0,
     @SerialName("max_seqno")
     val maxSeqno: Long = 0,
+    @SerialName("e_infos")
+    val eInfos: List<ImEmoteInfo> = emptyList(),
 )
 
 @Serializable
@@ -132,10 +142,37 @@ data class ImMessageUi(
     val content: String,
     val timeText: String,
     val timestamp: Long,
+    val imageUrl: String = "",
+    val imageWidth: Int = 0,
+    val imageHeight: Int = 0,
+    val emotes: Map<String, EmoteImage> = emptyMap(),
+)
+
+data class ImParsedImage(
+    val url: String,
+    val width: Int = 0,
+    val height: Int = 0,
 )
 
 object ImContentParser {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+
+    fun parseImage(content: String, msgType: Int): ImParsedImage? {
+        if (content.isBlank() || (msgType != 2 && msgType != 6)) return null
+        return runCatching {
+            val obj = json.parseToJsonElement(content).jsonObject
+            val rawUrl = obj["url"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+            if (rawUrl.isBlank()) return@runCatching null
+            val url = when {
+                rawUrl.startsWith("//") -> "https:$rawUrl"
+                rawUrl.startsWith("http://") -> "https://" + rawUrl.removePrefix("http://")
+                else -> rawUrl
+            }
+            val width = obj["width"]?.jsonPrimitive?.intOrNull ?: 0
+            val height = obj["height"]?.jsonPrimitive?.intOrNull ?: 0
+            ImParsedImage(url = url, width = width, height = height)
+        }.getOrNull()
+    }
 
     /**
      * 把私信 content 转成可读文本。

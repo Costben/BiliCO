@@ -51,6 +51,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -318,6 +319,8 @@ internal fun ActionCapsule(
 @Composable
 internal fun ComposerToolButton(
     active: Boolean = false,
+    size: Dp = 36.dp,
+    cornerRadius: Dp = 8.dp,
     onClick: () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
@@ -334,14 +337,14 @@ internal fun ComposerToolButton(
     )
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(size)
             .graphicsLayer {
                 scaleX = pressScale
                 scaleY = pressScale
             }
             .squircleSurface(
                 color = if (active) COUITheme.colorScheme.secondaryContainer else Color.Unspecified,
-                cornerRadius = 8.dp,
+                cornerRadius = cornerRadius,
             )
             .clickable(
                 role = Role.Button,

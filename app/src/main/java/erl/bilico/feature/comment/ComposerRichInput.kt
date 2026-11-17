@@ -2,13 +2,15 @@ package erl.bilico.feature.comment
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,10 +19,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -32,6 +36,7 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
@@ -41,14 +46,16 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import erl.bilico.data.model.CommentEmote
 import erl.bilico.data.util.Formatters
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextField
 import io.github.suqi8.coui.kmp.basic.TextFieldDefaults
 import io.github.suqi8.coui.kmp.basic.TextFieldMode
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.roundToInt
 
 private val EmoteTokenRegex = Regex("\\[[^\\[\\]\\n]{1,64}\\]")
-private const val EMOTE_SLOT_CHAR = '\u3000'
-private val EDITOR_PADDING = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+// 用非空白全角字符占位，避免连续表情被排版器当作行尾空白挂在行外而不换行。
+private const val EMOTE_SLOT_CHAR = '\u3007'
 private val EDITOR_INSIDE_MARGIN = DpSize(12.dp, 10.dp)
 
 internal data class ParsedEmoteSpan(
@@ -182,10 +189,19 @@ internal fun ComposerEmoteTextField(
     focusRequester: FocusRequester,
     interactionSource: MutableInteractionSource,
     modifier: Modifier = Modifier,
+    label: String = "说点什么…",
+    minLines: Int = 3,
+    insideMargin: DpSize = EDITOR_INSIDE_MARGIN,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    compact: Boolean = false,
 ) {
     val density = LocalDensity.current
+    val scheme = COUITheme.colorScheme
     val baseStyle = TextFieldDefaults.textStyle(TextFieldMode.None)
-    val inputStyle = remember(baseStyle) { baseStyle.copy(lineHeight = 24.sp) }
+    val inputStyle = remember(baseStyle, scheme.onSurface) {
+        baseStyle.copy(color = scheme.onSurface, lineHeight = 24.sp)
+    }
     val slotFontSize = 21.sp
     val parsed = remember(value.text, emotes, slotFontSize) {
         parseEmoteTransform(value.text, emotes, slotFontSize)
@@ -208,7 +224,7 @@ internal fun ComposerEmoteTextField(
         val transCursor = parsed.offsetMapping.originalToTransformed(value.selection.end)
             .coerceIn(0, transLen)
         val cursorRect = layout.getCursorRect(transCursor)
-        val topPadPx = with(density) { 10.dp.roundToPx() }
+        val topPadPx = with(density) { insideMargin.height.roundToPx() }
         val bottomPadPx = topPadPx
         val visibleTop = scrollState.value
         val visibleBottom = visibleTop + viewportHeightPx
@@ -227,24 +243,66 @@ internal fun ComposerEmoteTextField(
             .onSizeChanged { viewportHeightPx = it.height }
             .verticalScroll(scrollState),
     ) {
-        TextField(
-            value = value,
-            onValueChange = { next ->
-                onValueChange(deleteWholeEmoteOnBackspace(value, next, emotes))
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester),
-            label = "说点什么…",
-            backgroundMode = TextFieldMode.None,
-            insideMargin = EDITOR_INSIDE_MARGIN,
-            textStyle = inputStyle,
-            minLines = 3,
-            maxLines = Int.MAX_VALUE,
-            visualTransformation = visualTransformation,
-            onTextLayout = { textLayout = it },
-            interactionSource = interactionSource,
-        )
+        if (compact) {
+            BasicTextField(
+                value = value,
+                onValueChange = { next ->
+                    onValueChange(deleteWholeEmoteOnBackspace(value, next, emotes))
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+                textStyle = inputStyle,
+                cursorBrush = SolidColor(scheme.primary),
+                minLines = minLines,
+                maxLines = Int.MAX_VALUE,
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                visualTransformation = visualTransformation,
+                onTextLayout = { textLayout = it },
+                interactionSource = interactionSource,
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = insideMargin.width, vertical = insideMargin.height),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (value.text.isEmpty() && label.isNotEmpty()) {
+                            Text(
+                                text = label,
+                                style = inputStyle,
+                                color = scheme.onSurfaceSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+        } else {
+            TextField(
+                value = value,
+                onValueChange = { next ->
+                    onValueChange(deleteWholeEmoteOnBackspace(value, next, emotes))
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+                label = label,
+                backgroundMode = TextFieldMode.None,
+                insideMargin = insideMargin,
+                textStyle = inputStyle,
+                minLines = minLines,
+                maxLines = Int.MAX_VALUE,
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                visualTransformation = visualTransformation,
+                onTextLayout = { textLayout = it },
+                interactionSource = interactionSource,
+            )
+        }
 
         val layout = textLayout
         if (parsed.spans.isNotEmpty() &&
@@ -254,7 +312,7 @@ internal fun ComposerEmoteTextField(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .padding(EDITOR_PADDING),
+                    .padding(horizontal = insideMargin.width, vertical = insideMargin.height),
             ) {
                 parsed.spans.forEach { span ->
                     if (span.transOffset in 0 until layout.layoutInput.text.length) {

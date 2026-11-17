@@ -3,7 +3,6 @@ package erl.bilico.ui.components
 import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -205,15 +204,6 @@ private fun DrawScope.drawChipTabCheckedRim(silhouette: Path, isDark: Boolean) {
     }
 }
 
-/**
- * 胶囊材质描边（用于无 backdrop 的纯平面输入容器兜底）。
- */
-internal fun Modifier.capsuleMaterial(isDark: Boolean): Modifier = border(
-    width = 0.5.dp,
-    color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.45f),
-    shape = COUISmoothCapsuleShape,
-)
-
 private val ChipTabCausticDark = Color(0x33FFFFFF)
 private val ChipTabCausticBottomOffset = 4.299988.dp
 private val ChipTabCausticSdfWidth = 9.22998.dp
@@ -295,11 +285,13 @@ private fun Modifier.chipTabCausticLight(): Modifier {
 internal fun Modifier.inputCapsuleGlass(
     backdrop: Backdrop?,
     isDark: Boolean,
+    // 单行高度的一半。只长高不放大圆角：草稿换行后是圆角矩形，不再是半径跟着高度变的药丸。
+    cornerRadius: Dp = 18.dp,
     fallbackColor: Color = COUITheme.colorScheme.surfaceContainer,
 ): Modifier {
     val squircleEnabled = isSquircleEnabled()
-    val pillShape = remember(squircleEnabled) {
-        CapsuleOutlineShape(squircleEnabled = squircleEnabled)
+    val pillShape = remember(squircleEnabled, cornerRadius) {
+        CapsuleOutlineShape(cornerRadius = cornerRadius, squircleEnabled = squircleEnabled)
     }
     val density = LocalDensity.current
     val blurActive = BlurEffectsEnabled && isBlurEnabled() && backdrop != null
@@ -384,7 +376,12 @@ internal fun CompactSendButton(
                 scaleX = scale
                 scaleY = scale
             }
-            .inputCapsuleGlass(backdrop = backdrop, isDark = isDark, fallbackColor = containerColor)
+            .inputCapsuleGlass(
+                backdrop = backdrop,
+                isDark = isDark,
+                cornerRadius = height / 2,
+                fallbackColor = containerColor,
+            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

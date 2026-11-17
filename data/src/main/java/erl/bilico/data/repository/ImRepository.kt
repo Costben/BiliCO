@@ -1,8 +1,10 @@
 package erl.bilico.data.repository
 
+import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.ImContentParser
 import erl.bilico.data.model.ImMessageUi
 import erl.bilico.data.model.ImSessionUi
+import erl.bilico.data.model.UploadedPicture
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.util.Formatters
@@ -11,6 +13,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -106,15 +109,36 @@ class ImRepository(
                 }
                 val data = resp.data ?: error("聊天消息为空")
                 val myUid = session.mid()
+                val sessionEmotes = data.eInfos.mapNotNull { info ->
+                    val key = info.text.trim()
+                    val url = Formatters.normalizeImageUrl(info.uri)
+                    if (key.isBlank() || url.isBlank()) null
+                    else key to EmoteImage(url = url, large = info.size >= 2)
+                }.toMap()
 
                 val list = data.messages.map { msg ->
+                    val parsedImage = ImContentParser.parseImage(msg.content, msg.msgType)
+                    val parsedText = if (parsedImage != null) {
+                        if (msg.msgType == 6) "[表情]" else "[图片]"
+                    } else {
+                        ImContentParser.parse(msg.content, msg.msgType)
+                    }
+                    val msgEmotes = if (parsedImage == null && sessionEmotes.isNotEmpty() && '[' in parsedText) {
+                        sessionEmotes.filterKeys { it in parsedText }
+                    } else {
+                        emptyMap()
+                    }
                     ImMessageUi(
                         msgKey = msg.msgKey,
                         senderUid = msg.senderUid,
                         isMe = msg.senderUid == myUid,
-                        content = ImContentParser.parse(msg.content, msg.msgType),
+                        content = parsedText,
                         timeText = Formatters.formatTimeAgo(msg.timestamp),
                         timestamp = msg.timestamp,
+                        imageUrl = parsedImage?.url.orEmpty(),
+                        imageWidth = parsedImage?.width ?: 0,
+                        imageHeight = parsedImage?.height ?: 0,
+                        emotes = msgEmotes,
                     )
                 }.sortedBy { it.timestamp } // 按时间正序排列以便对话流展示
 
@@ -126,39 +150,64 @@ class ImRepository(
         withContext(Dispatchers.IO) {
             runCatching {
                 require(text.isNotBlank()) { "消息内容不能为空" }
-                if (!session.isLoggedIn()) error("请先登录发送私信")
-                val myUid = session.mid()
-                require(myUid > 0L) { "未获取到当前登录 UID" }
-                val csrf = session.csrf()
-                require(csrf.isNotBlank()) { "CSRF Token 无效，请重新登录" }
-
-                val nowSec = System.currentTimeMillis() / 1000
-                val devId = UUID.randomUUID().toString().replace("-", "")
-
-                // B 站文本私信 content 为 json 包装：{"content":"..."}
-                val escapedContent = text.replace("\\", "\\\\").replace("\"", "\\\"")
-                val contentJson = "{\"content\":\"$escapedContent\"}"
-
-                val form = mapOf(
-                    "msg[sender_uid]" to myUid.toString(),
-                    "msg[receiver_id]" to talkerId.toString(),
-                    "msg[receiver_type]" to "1",
-                    "msg[msg_type]" to "1",
-                    "msg[msg_status]" to "0",
-                    "msg[content]" to contentJson,
-                    "msg[new_face_version]" to "0",
-                    "msg[dev_id]" to devId,
-                    "msg[timestamp]" to nowSec.toString(),
-                    "csrf" to csrf,
-                    "csrf_token" to csrf,
-                )
-                val resp = api.imSendMsg(form)
-                if (resp.code != 0) {
-                    error(resp.message.ifBlank { resp.msg.ifBlank { "发送失败(${resp.code})" } })
-                }
-                resp.data?.msgKey ?: 0L
+                val contentJson = JSONObject().put("content", text).toString()
+                sendRawMessage(talkerId = talkerId, msgType = 1, contentJson = contentJson)
             }
         }
+
+    suspend fun sendImageMessage(
+        talkerId: Long,
+        picture: UploadedPicture,
+        imageType: String = "jpeg",
+    ): Result<Long> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(picture.url.isNotBlank()) { "图片地址无效" }
+                val contentJson = JSONObject()
+                    .put("url", picture.url)
+                    .put("height", picture.height.coerceAtLeast(1))
+                    .put("width", picture.width.coerceAtLeast(1))
+                    .put("imageType", imageType.ifBlank { "jpeg" })
+                    .put("original", 1)
+                    .put("size", picture.sizeKb)
+                    .toString()
+                sendRawMessage(talkerId = talkerId, msgType = 2, contentJson = contentJson)
+            }
+        }
+
+    private suspend fun sendRawMessage(
+        talkerId: Long,
+        msgType: Int,
+        contentJson: String,
+    ): Long {
+        if (!session.isLoggedIn()) error("请先登录发送私信")
+        val myUid = session.mid()
+        require(myUid > 0L) { "未获取到当前登录 UID" }
+        val csrf = session.csrf()
+        require(csrf.isNotBlank()) { "CSRF Token 无效，请重新登录" }
+
+        val nowSec = System.currentTimeMillis() / 1000
+        val devId = UUID.randomUUID().toString().replace("-", "").uppercase()
+
+        val form = mapOf(
+            "msg[sender_uid]" to myUid.toString(),
+            "msg[receiver_id]" to talkerId.toString(),
+            "msg[receiver_type]" to "1",
+            "msg[msg_type]" to msgType.toString(),
+            "msg[msg_status]" to "0",
+            "msg[content]" to contentJson,
+            "msg[new_face_version]" to "1",
+            "msg[dev_id]" to devId,
+            "msg[timestamp]" to nowSec.toString(),
+            "csrf" to csrf,
+            "csrf_token" to csrf,
+        )
+        val resp = api.imSendMsg(form)
+        if (resp.code != 0) {
+            error(resp.message.ifBlank { resp.msg.ifBlank { "发送失败(${resp.code})" } })
+        }
+        return resp.data?.msgKey ?: 0L
+    }
 
     private suspend fun ensureTalkerProfile(talkerId: Long) {
         if (profileCache.containsKey(talkerId)) return
