@@ -203,6 +203,18 @@ class NavEntry(
     var orbOverrideOrigin by mutableStateOf<ExpandOrigin?>(null)
     var minimizingToOrb by mutableStateOf(false)
 
+    /**
+     * 这一页从栈里彻底丢掉时执行（最小化不算，收进球的页面还在）。
+     * 播放页用它释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲，不释放就得等 Activity 销毁。
+     */
+    var onDiscard: (() -> Unit)? = null
+
+    fun discard() {
+        val callback = onDiscard
+        onDiscard = null
+        callback?.invoke()
+    }
+
     val activeOrigin: ExpandOrigin? get() = orbOverrideOrigin ?: origin
 
     /** 是否最初挂载在展开容器中；切集后保持槽位不变以免重建播放器舞台。 */
@@ -219,6 +231,9 @@ class NavEntry(
 }
 
 val LocalNavState = staticCompositionLocalOf<NavState?> { null }
+
+/** 当前正在组合的这一页；播放页拿它登记「页面被丢掉时释放播放器」。 */
+val LocalNavEntry = compositionLocalOf<NavEntry?> { null }
 
 @Stable
 class NavState {
@@ -275,8 +290,9 @@ class NavState {
     fun push(route: Route, origin: ExpandOrigin? = null) {
         val hadMinimized = route.isPlayback() && minimizedEntry != null
         if (hadMinimized) {
+            // 新开的播放页接管会话：缩在球里的那一条到此为止，播放器一起放掉，不留两台同时活着。
             appContext?.let(PlaybackBridge::pauseAndStopSession)
-            if (host == null) dismissMinimized(pausePlayback = false)
+            dismissMinimized(pausePlayback = false)
         }
         val entry = NavEntry(route, origin, initialProgress = 0f, initialFade = 0f)
         stack.add(entry)
@@ -354,6 +370,7 @@ class NavState {
                 minimizedEntry = entry
             }
             stack.remove(entry)
+            if (!minimize) entry.discard()
             return
         }
         scope.launch {
@@ -385,6 +402,7 @@ class NavState {
                 finalizeMinimize(entry)
             } else {
                 stack.remove(entry)
+                entry.discard()
             }
         }
     }
@@ -450,11 +468,12 @@ class NavState {
     }
 
     fun dismissMinimized(pausePlayback: Boolean = true) {
-        if (minimizedEntry == null) return
+        val entry = minimizedEntry ?: return
         if (pausePlayback) {
             appContext?.let(PlaybackBridge::pauseAndStopSession)
         }
         minimizedEntry = null
+        entry.discard()
     }
 
     private suspend fun finalizeMinimize(entry: NavEntry) {
@@ -476,6 +495,7 @@ class NavState {
             if (removed.route.isPlayback() && minimizedEntry == null) {
                 appContext?.let(PlaybackBridge::pauseAndStopSession)
             }
+            removed.discard()
         }
     }
 
@@ -485,7 +505,7 @@ class NavState {
         val top = stack.lastOrNull()
         if (stack.size >= 2 && top != null && canMinimizeSession(top) && orbOrigin?.bounds != null) {
             while (stack.size > 2) {
-                stack.removeAt(1)
+                stack.removeAt(1).discard()
             }
             pop()
             return
@@ -507,11 +527,13 @@ class NavState {
             if (removed.route.isPlayback() && minimizedEntry == null) {
                 appContext?.let(PlaybackBridge::pauseAndStopSession)
             }
+            removed.discard()
         }
     }
 
     fun reset(route: Route) {
         dismissMinimized(pausePlayback = true)
+        stack.forEach { it.discard() }
         stack.clear()
         stack.add(NavEntry(route))
     }
@@ -536,6 +558,7 @@ class NavState {
                     appContext?.let(PlaybackBridge::pauseAndStopSession)
                 }
                 stack.remove(entry)
+                entry.discard()
             }
         }
     }

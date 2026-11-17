@@ -65,8 +65,10 @@ import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.player.releasePlaybackPlayer
 import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalNavEntry
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.LocalCommentSeek
@@ -118,6 +120,12 @@ fun PgcScreen(
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val player = rememberPlaybackPlayer("pgc-$seasonId") { buildConfiguredExoPlayer(context) }
+    // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
+    val playbackEntry = LocalNavEntry.current
+    DisposableEffect(playbackEntry, seasonId) {
+        playbackEntry?.onDiscard = { releasePlaybackPlayer("pgc-$seasonId") }
+        onDispose { }
+    }
 
     // 播放器解码上报的首帧宽高比（换集时同步重置），再回退到 dash 视频轨预设比例；0 表示仍未知。
     val episode = viewModel.currentEpisode

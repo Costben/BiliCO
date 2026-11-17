@@ -469,6 +469,7 @@ private fun RouteLayer(
         LocalRouteTransition provides transition,
         LocalRouteIsTop provides isTop,
         LocalRouteMinimized provides isMinimized,
+        LocalNavEntry provides entry,
         LocalConfiguration provides layerConfiguration,
         LocalNavigationEventDispatcherOwner provides routeDispatcherOwner,
     ) {

@@ -28,13 +28,16 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import erl.bilico.data.model.FavoriteFolder
+import erl.bilico.data.model.isHdr
 import erl.bilico.di.AppContainer
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.player.releasePlaybackPlayer
 import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalNavEntry
 import erl.bilico.ui.LocalRouteTransition
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
@@ -111,6 +114,12 @@ fun VideoScreen(
     // 点媒体条封面会重建 Activity。播放器跟着页面记住，重建时还是同一个，媒体条不会拿到已释放的实例。
     // 进场过渡期间先保留黑底播放器槽位与详情内容，落位后再挂载 ExoPlayer 与 PlayerView。
     val player = if (stageReady) rememberPlaybackPlayer(bvid) { buildConfiguredExoPlayer(context) } else null
+    // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
+    val playbackEntry = LocalNavEntry.current
+    DisposableEffect(playbackEntry, bvid) {
+        playbackEntry?.onDiscard = { releasePlaybackPlayer(bvid) }
+        onDispose { }
+    }
 
     // 播放器解码上报的首帧宽高比（换视频或切分 P 时重置），再回退到接口预设的 dimension / dash 尺寸；0 表示仍未知。
     var playerVideoAspect by remember(bvid, state.selectedCid) { mutableFloatStateOf(0f) }

@@ -69,8 +69,10 @@ import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
+import erl.bilico.player.releasePlaybackPlayer
 import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalNavEntry
 import erl.bilico.ui.NavState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
@@ -107,6 +109,12 @@ fun LiveRoomScreen(
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val player = rememberPlaybackPlayer("live-$roomId") { buildConfiguredExoPlayer(context) }
+    // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
+    val playbackEntry = LocalNavEntry.current
+    DisposableEffect(playbackEntry, roomId) {
+        playbackEntry?.onDiscard = { releasePlaybackPlayer("live-$roomId") }
+        onDispose { }
+    }
 
     // 视频本身的宽高比（宽 / 高），来自解码器上报的首帧尺寸；0 表示还没拿到。
     var videoAspect by remember(roomId) { mutableFloatStateOf(0f) }

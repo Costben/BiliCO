@@ -14,10 +14,12 @@ import android.util.Rational
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -99,16 +101,22 @@ object PlaybackBridge {
 
     fun unbind(player: Player, context: Context) {
         if (activePlayer === player) {
-            activePlayer = null
-            activeTitle = ""
-            activeSubtitle = ""
-            activeArtworkUrl = ""
-            currentTitle = ""
-            currentSubtitle = ""
-            currentArtworkUrl = ""
-            currentIsPlaying = false
+            detach(player)
             PlaybackService.stop(context)
         }
+    }
+
+    /** 播放器要被释放了：先把它从桥上下掉，免得媒体条还指着一台已经销毁的播放器。 */
+    internal fun detach(player: Player) {
+        if (activePlayer !== player) return
+        activePlayer = null
+        activeTitle = ""
+        activeSubtitle = ""
+        activeArtworkUrl = ""
+        currentTitle = ""
+        currentSubtitle = ""
+        currentArtworkUrl = ""
+        currentIsPlaying = false
     }
 
     fun canMinimizeSession(): Boolean {
@@ -189,24 +197,70 @@ object PlaybackBridge {
  * 播放器跟着页面走，不跟某一次组合走。
  * 点媒体条封面会让系统重建 Activity，组合里的 remember 会重新建一个播放器并把旧的释放掉，
  * 媒体条还指着旧的，一点就崩。同一个页面的 key 不变，重建后还是原来那个播放器。
+ *
+ * 释放由页面自己负责（`NavEntry.onDiscard` → [releasePlaybackPlayer]）：一台准备好的播放器
+ * 会在堆上占住几十 MB 的加载缓冲，只看不释放的话，每看一个视频就留下一台，几分钟就把堆吃满。
  */
 @Composable
 fun rememberPlaybackPlayer(key: Any, factory: () -> ExoPlayer): ExoPlayer {
+    val registryKey = key.toString()
     val holder: PlaybackPlayerHolder = viewModel(
-        key = "playback-player-$key",
+        key = "playback-player-$registryKey",
         factory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
-                return PlaybackPlayerHolder(factory()) as T
+                return PlaybackPlayerHolder(registryKey, factory) as T
             }
         },
     )
-    return holder.player
+    // 连播下一条时同一页换了 key：上一台播放器不会再被用到，立刻放掉。
+    val lastKey = remember { arrayOfNulls<String>(1) }
+    SideEffect {
+        val previous = lastKey[0]
+        if (previous != null && previous != registryKey) releasePlaybackPlayer(previous)
+        lastKey[0] = registryKey
+    }
+    DisposableEffect(holder, registryKey) {
+        playerRegistry[registryKey] = holder
+        onDispose { }
+    }
+    // 只有真正进入这一页（首次组合或换 key）才去取播放器：退场那几帧的重组不复活已经释放的那台。
+    return remember(holder, registryKey) { holder.obtain() }
 }
 
-private class PlaybackPlayerHolder(val player: ExoPlayer) : ViewModel() {
+/** 页面从栈里被丢掉（不是最小化）时调用：释放播放器，下次点进同一页再建一台。 */
+fun releasePlaybackPlayer(key: Any) {
+    playerRegistry.remove(key.toString())?.release()
+}
+
+private val playerRegistry = HashMap<String, PlaybackPlayerHolder>()
+
+private class PlaybackPlayerHolder(
+    private val registryKey: String,
+    private val factory: () -> ExoPlayer,
+) : ViewModel() {
+    private var active: ExoPlayer = factory()
+    private var released = false
+
+    /** 取当前这台；被释放过就换一台新的。 */
+    fun obtain(): ExoPlayer {
+        if (released) {
+            released = false
+            active = factory()
+        }
+        return active
+    }
+
+    fun release() {
+        if (released) return
+        released = true
+        PlaybackBridge.detach(active)
+        active.release()
+    }
+
     override fun onCleared() {
-        player.release()
+        release()
+        playerRegistry.remove(registryKey)
     }
 }
 
