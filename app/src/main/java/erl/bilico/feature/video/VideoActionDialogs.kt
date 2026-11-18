@@ -1,22 +1,30 @@
 package erl.bilico.feature.video
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.data.model.QualityOption
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Lock
+import io.github.suqi8.coui.kmp.icon.extended.Unlock
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
@@ -196,6 +204,8 @@ internal val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 @Composable
 internal fun SpeedDialog(
     active: Float,
+    locked: Boolean = false,
+    onToggleLock: (() -> Unit)? = null,
     onSelect: (Float) -> Unit,
     onDismiss: () -> Unit,
     inlineInStage: Boolean = false,
@@ -203,18 +213,48 @@ internal fun SpeedDialog(
     PlayerModalHost(
         inlineInStage = inlineInStage,
         onDismiss = onDismiss,
+        cornerRadius = 24.dp,
+        maxWidth = 184.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 10.dp),
+                .padding(vertical = 8.dp),
         ) {
-            Text(
-                text = "播放倍速",
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, end = 10.dp, top = 2.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "播放倍速",
+                    modifier = Modifier.weight(1f),
+                    style = COUITheme.textStyles.footnote1,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                    maxLines = 1,
+                )
+                if (onToggleLock != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onToggleLock),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = if (locked) COUIIcons.Lock else COUIIcons.Unlock,
+                            contentDescription = if (locked) "解锁倍速" else "锁定倍速",
+                            modifier = Modifier.size(16.dp),
+                            tint = if (locked) {
+                                COUITheme.colorScheme.primary
+                            } else {
+                                COUITheme.colorScheme.onSurfaceSecondary
+                            },
+                        )
+                    }
+                }
+            }
             Column(
                 modifier = Modifier
                     .heightIn(max = 280.dp)
@@ -227,7 +267,7 @@ internal fun SpeedDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onSelect(option) }
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                            .padding(horizontal = 18.dp, vertical = 11.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(

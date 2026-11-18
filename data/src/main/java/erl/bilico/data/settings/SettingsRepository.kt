@@ -3,6 +3,7 @@ package erl.bilico.data.settings
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -87,6 +88,13 @@ class SettingsRepository(
     private val _adjustableLongPressSpeed = MutableStateFlow(false)
     val adjustableLongPressSpeed: StateFlow<Boolean> = _adjustableLongPressSpeed.asStateFlow()
 
+    /** 是否锁定播放倍速：开启后切视频、切分 P 或切集时自动维持锁定的倍速。 */
+    private val _speedLocked = MutableStateFlow(false)
+    val speedLocked: StateFlow<Boolean> = _speedLocked.asStateFlow()
+
+    private val _lockedSpeed = MutableStateFlow(1f)
+    val lockedSpeed: StateFlow<Float> = _lockedSpeed.asStateFlow()
+
     private val _autoRotateMode = MutableStateFlow(1)
     val autoRotateMode: StateFlow<Int> = _autoRotateMode.asStateFlow()
 
@@ -164,6 +172,8 @@ class SettingsRepository(
             _longPressSpeed.value = (prefs[KEY_LONG_PRESS_SPEED] ?: DEFAULT_LONG_PRESS_SPEED)
                 .coerceIn(125, 400)
             _adjustableLongPressSpeed.value = prefs[KEY_ADJUSTABLE_LONG_PRESS_SPEED] ?: false
+            _speedLocked.value = prefs[KEY_SPEED_LOCKED] ?: false
+            _lockedSpeed.value = (prefs[KEY_LOCKED_SPEED] ?: 1f).coerceIn(0.25f, 4f)
             _autoRotateMode.value = prefs[KEY_AUTO_ROTATE_MODE] ?: 1
             _gestureVolumeBrightness.value = prefs[KEY_GESTURE_VOL_BRIGHT] ?: true
             _fullscreenGestureHint.value = prefs[KEY_FS_GESTURE_HINT] ?: true
@@ -304,6 +314,24 @@ class SettingsRepository(
     fun setAdvancedPlusOne(enabled: Boolean) {
         _advancedPlusOne.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_ADVANCED_PLUS_ONE] = enabled } }
+    }
+
+    fun setSpeedLock(locked: Boolean, currentSpeed: Float) {
+        val clamped = currentSpeed.coerceIn(0.25f, 4f)
+        _speedLocked.value = locked
+        if (locked) _lockedSpeed.value = clamped
+        scope.launch {
+            context.biliDataStore.edit { prefs ->
+                prefs[KEY_SPEED_LOCKED] = locked
+                if (locked) prefs[KEY_LOCKED_SPEED] = clamped
+            }
+        }
+    }
+
+    fun setLockedSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.25f, 4f)
+        _lockedSpeed.value = clamped
+        scope.launch { context.biliDataStore.edit { it[KEY_LOCKED_SPEED] = clamped } }
     }
 
     fun setDanmakuAllowScroll(allow: Boolean) {
@@ -477,6 +505,8 @@ class SettingsRepository(
         val KEY_AUTO_ROTATE_MODE = intPreferencesKey("auto_rotate_mode")
         val KEY_LONG_PRESS_SPEED = intPreferencesKey("long_press_speed")
         val KEY_ADJUSTABLE_LONG_PRESS_SPEED = booleanPreferencesKey("adjustable_long_press_speed")
+        val KEY_SPEED_LOCKED = booleanPreferencesKey("playback_speed_locked")
+        val KEY_LOCKED_SPEED = floatPreferencesKey("playback_locked_speed")
         const val DEFAULT_LONG_PRESS_SPEED = 200
         val KEY_GESTURE_VOL_BRIGHT = booleanPreferencesKey("gesture_vol_bright")
         val KEY_FS_GESTURE_HINT = booleanPreferencesKey("fullscreen_gesture_hint")

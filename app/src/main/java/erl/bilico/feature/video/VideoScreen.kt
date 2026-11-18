@@ -99,6 +99,8 @@ fun VideoScreen(
     val sponsorBlockEnabled by container.settings.sponsorBlockEnabled.collectAsStateWithLifecycle()
     val sponsorSkipMode by container.settings.sponsorSkipMode.collectAsStateWithLifecycle()
     val sponsorCategories by container.settings.sponsorCategories.collectAsStateWithLifecycle()
+    val speedLocked by container.settings.speedLocked.collectAsStateWithLifecycle()
+    val lockedSpeed by container.settings.lockedSpeed.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
@@ -186,7 +188,17 @@ fun VideoScreen(
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var coinDialogVisible by remember { mutableStateOf(false) }
     var favoriteFolders by remember { mutableStateOf<List<FavoriteFolder>?>(null) }
-    var speed by rememberSaveable { mutableFloatStateOf(1f) }
+    var speed by rememberSaveable {
+        mutableFloatStateOf(if (speedLocked) lockedSpeed else 1f)
+    }
+    val onSelectSpeed: (Float) -> Unit = { value ->
+        speed = value
+        if (speedLocked) container.settings.setLockedSpeed(value)
+        speedDialogVisible = false
+    }
+    val onToggleSpeedLock: () -> Unit = {
+        container.settings.setSpeedLock(!speedLocked, speed)
+    }
     val longPressSpeed = rememberLongPressSpeedController(
         baseSpeed = speed,
         boostPercent = longPressSpeedPercent,
@@ -283,7 +295,11 @@ fun VideoScreen(
         isBuffering = false
         playerError = null
         longPressSpeed.onActiveChange(false)
-        speed = 1f
+        speed = if (container.settings.speedLocked.value) {
+            container.settings.lockedSpeed.value
+        } else {
+            1f
+        }
         danmakuComposing = false
         danmakuDraft = ""
         qualityDialogVisible = false
@@ -559,7 +575,9 @@ fun VideoScreen(
                         VideoScreenDialogs(
                             speedDialogVisible = speedDialogVisible,
                             speed = speed,
-                            onSpeedChange = { speed = it; speedDialogVisible = false },
+                            speedLocked = speedLocked,
+                            onToggleSpeedLock = onToggleSpeedLock,
+                            onSpeedChange = onSelectSpeed,
                             onDismissSpeed = { speedDialogVisible = false },
                             subtitleDialogVisible = subtitleDialogVisible,
                             subtitleController = subtitleController,
@@ -693,7 +711,9 @@ fun VideoScreen(
         VideoScreenDialogs(
             speedDialogVisible = speedDialogVisible,
             speed = speed,
-            onSpeedChange = { speed = it; speedDialogVisible = false },
+            speedLocked = speedLocked,
+            onToggleSpeedLock = onToggleSpeedLock,
+            onSpeedChange = onSelectSpeed,
             onDismissSpeed = { speedDialogVisible = false },
             subtitleDialogVisible = subtitleDialogVisible,
             subtitleController = subtitleController,

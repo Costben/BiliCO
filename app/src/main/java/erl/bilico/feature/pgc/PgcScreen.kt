@@ -116,6 +116,8 @@ fun PgcScreen(
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
+    val speedLocked by container.settings.speedLocked.collectAsStateWithLifecycle()
+    val lockedSpeed by container.settings.lockedSpeed.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
@@ -151,7 +153,9 @@ fun PgcScreen(
     var speedDialogVisible by remember { mutableStateOf(false) }
     var subtitleDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
-    var speed by rememberSaveable { mutableFloatStateOf(1f) }
+    var speed by rememberSaveable {
+        mutableFloatStateOf(if (speedLocked) lockedSpeed else 1f)
+    }
     val longPressSpeed = rememberLongPressSpeedController(
         baseSpeed = speed,
         boostPercent = longPressSpeedPercent,
@@ -310,8 +314,11 @@ fun PgcScreen(
         if (speedDialogVisible) {
             SpeedDialog(
                 active = speed,
+                locked = speedLocked,
+                onToggleLock = { container.settings.setSpeedLock(!speedLocked, speed) },
                 onSelect = { value ->
                     speed = value
+                    if (speedLocked) container.settings.setLockedSpeed(value)
                     speedDialogVisible = false
                 },
                 onDismiss = { speedDialogVisible = false },

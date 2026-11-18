@@ -92,6 +92,7 @@ fun LiveRoomScreen(
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
     val advancedPlusOne by container.settings.advancedPlusOne.collectAsStateWithLifecycle()
+    val speedLocked by container.settings.speedLocked.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
@@ -329,8 +330,11 @@ fun LiveRoomScreen(
         if (speedDialogVisible) {
             SpeedDialog(
                 active = speed,
+                locked = speedLocked,
+                onToggleLock = { container.settings.setSpeedLock(!speedLocked, speed) },
                 onSelect = { value ->
                     speed = value
+                    if (speedLocked) container.settings.setLockedSpeed(value)
                     speedDialogVisible = false
                 },
                 onDismiss = { speedDialogVisible = false },

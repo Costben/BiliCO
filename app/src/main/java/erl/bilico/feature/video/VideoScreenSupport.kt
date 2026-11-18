@@ -247,6 +247,8 @@ internal fun shareVideo(context: Context, title: String, bvid: String) {
 internal fun VideoScreenDialogs(
     speedDialogVisible: Boolean,
     speed: Float,
+    speedLocked: Boolean = false,
+    onToggleSpeedLock: () -> Unit = {},
     onSpeedChange: (Float) -> Unit,
     onDismissSpeed: () -> Unit,
     subtitleDialogVisible: Boolean,
@@ -277,6 +279,8 @@ internal fun VideoScreenDialogs(
     if (speedDialogVisible) {
         SpeedDialog(
             active = speed,
+            locked = speedLocked,
+            onToggleLock = onToggleSpeedLock,
             onSelect = onSpeedChange,
             onDismiss = onDismissSpeed,
             inlineInStage = inlineInStage,

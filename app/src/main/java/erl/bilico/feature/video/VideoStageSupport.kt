@@ -491,6 +491,7 @@ internal fun PlayerModalHost(
     onDismiss: () -> Unit,
     horizontalPadding: Dp = 24.dp,
     cornerRadius: Dp = 28.dp,
+    maxWidth: Dp = 420.dp,
     content: @Composable () -> Unit,
 ) {
     if (!inlineInStage) {
@@ -502,6 +503,7 @@ internal fun PlayerModalHost(
         OverlayDialog(
             show = show,
             outsideMargin = DpSize(16.dp, 8.dp),
+            maxWidth = maxWidth + 32.dp,
             cornerRadius = cornerRadius,
             onDismissRequest = onDismiss,
         ) {
@@ -528,7 +530,7 @@ internal fun PlayerModalHost(
             ) {
                 Box(
                     modifier = Modifier
-                        .widthIn(max = 420.dp)
+                        .widthIn(max = maxWidth)
                         .fillMaxWidth()
                         .pointerInput(Unit) { detectTapGestures { } }
                         .couiGlassSurface(
