@@ -85,7 +85,7 @@ internal fun LongPressSpeedBadge(
     modifier: Modifier = Modifier,
 ) {
     val label = when {
-        locked -> "已锁定 ${speedLabel(speed)} · 点击恢复"
+        locked -> "已锁定 ${speedLabel(speed)} · 长按解锁"
         mode == LongPressSpeedMode.SWIPE_DOWN_LOCK -> "倍速播放中 ${speedLabel(speed)} · 下滑锁定"
         else -> "倍速播放中 ${speedLabel(speed)}"
     }
@@ -94,7 +94,7 @@ internal fun LongPressSpeedBadge(
         modifier = modifier
             .padding(top = 14.dp)
             .clip(COUISmoothCapsuleShape)
-            .background(Color(0xCC000000))
+            .background(Color(0x55000000))
             .then(if (locked) Modifier.clickable(onClick = onUnlock) else Modifier)
             .padding(horizontal = 14.dp, vertical = 6.dp),
         style = COUITheme.textStyles.footnote1,

@@ -152,10 +152,15 @@ internal fun PlayerGestureLayer(
                     onTap = { offset -> currentOnTap(offset) },
                     onDoubleTap = { currentOnDoubleTap() },
                     onLongPress = {
-                        longPressed = true
-                        longPressHeldRef[0] = true
-                        if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
-                        currentOnLongPress(true)
+                        if (currentLongPressLocked) {
+                            if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
+                            currentOnLongPress(false)
+                        } else {
+                            longPressed = true
+                            longPressHeldRef[0] = true
+                            if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
+                            currentOnLongPress(true)
+                        }
                     },
                 )
             }
