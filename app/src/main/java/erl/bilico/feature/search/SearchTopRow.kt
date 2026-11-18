@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -133,8 +134,11 @@ internal fun SearchTopAppBar(
     extraActions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
+    val filterTabs = remember(searchState.tabCounts) {
+        buildSearchResultTabs(searchState.tabCounts)
+    }
     SearchFilterTopAppBar(
-        filters = if (showingResults) SearchResultTabs else null,
+        filters = if (showingResults) filterTabs else null,
         selectedFilter = searchState.tab,
         onFilterSelected = onTabChange,
         modifier = modifier,
@@ -176,7 +180,7 @@ internal fun SearchTopAppBar(
                                 false
                             }
                         },
-                    placeholder = "搜索视频 / 用户 / 专栏",
+                    placeholder = "搜索视频 / 番剧 / 直播 / 用户 / 专栏",
                     cancelText = "取消",
                     onSearch = onSearchSubmit,
                     onCancel = onSearchCancel,

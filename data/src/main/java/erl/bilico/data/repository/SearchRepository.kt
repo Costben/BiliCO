@@ -1,7 +1,11 @@
 package erl.bilico.data.repository
 
+import erl.bilico.data.model.SearchAllBundle
 import erl.bilico.data.model.SearchArticle
 import erl.bilico.data.model.SearchItem
+import erl.bilico.data.model.SearchLive
+import erl.bilico.data.model.SearchPageResult
+import erl.bilico.data.model.SearchPgc
 import erl.bilico.data.model.SearchSuggestResult
 import erl.bilico.data.model.SearchSuggestion
 import erl.bilico.data.model.SearchUser
@@ -16,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import java.util.Locale
 
 class SearchRepository(
     private val api: BiliApi,
@@ -69,113 +74,215 @@ class SearchRepository(
         }
     }
 
+    /** 综合搜索第一页（无筛选时）：同时返回匹配的用户、番剧/影视与视频。 */
+    suspend fun searchAll(keyword: String): Result<SearchAllBundle> = withContext(Dispatchers.IO) {
+        runCatching {
+            val response = api.searchAll(
+                signedParams(
+                    keyword = keyword,
+                    searchType = "all",
+                    page = 1,
+                    extra = mapOf(
+                        "platform" to "pc",
+                        "web_location" to "1430654",
+                    ),
+                ),
+            )
+            if (response.code != 0) error(response.message.ifBlank { "搜索失败(${response.code})" })
+            val data = response.data
+            if (data?.vVoucher != null) error("触发风控验证，请稍后再试")
+            val users = mutableListOf<SearchUser>()
+            val pgc = mutableListOf<SearchPgc>()
+            val videos = mutableListOf<SearchVideo>()
+            data?.result.orEmpty().forEach { section ->
+                val items = section.data.orEmpty().mapNotNull { obj ->
+                    runCatching { BiliClient.json.decodeFromJsonElement<SearchItem>(obj) }.getOrNull()
+                }
+                when (section.resultType) {
+                    "bili_user" -> users += items.filter { it.mid > 0L }.map { it.toUser() }
+                    "media_bangumi", "media_ft" -> pgc += items.mapNotNull { it.toPgc() }
+                    "video" -> videos += items.mapNotNull { it.toVideo() }
+                }
+            }
+            SearchAllBundle(
+                users = users.distinctBy { it.mid },
+                pgc = pgc.distinctBy { it.seasonId },
+                videos = videos.distinctBy { it.bvid },
+                numResults = data?.numResults ?: 0,
+                typeCounts = data?.topTlist.orEmpty().mapNotNull { (k, v) -> v?.let { k to it } }.toMap(),
+            )
+        }
+    }
+
     suspend fun searchVideos(
         keyword: String,
         page: Int,
         order: String,
         tid: Int,
-    ): Result<List<SearchVideo>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val response = api.searchType(
-                    signedParams(
-                        keyword = keyword,
-                        searchType = "video",
-                        page = page,
-                    ) + buildMap {
-                        put("order", order)
-                        put("platform", "pc")
-                        put("web_location", "1430654")
-                        // tids 是分区 id，0 表示不限分区，不带这个参数。
-                        if (tid > 0) put("tids", tid.toString())
-                    },
-                )
-                if (response.code != 0) error(response.message.ifBlank { "搜索失败(${response.code})" })
-                response.data?.result.orEmpty().mapNotNull { it.toVideo() }
+        duration: Int = 0,
+        pubBeginSec: Long? = null,
+        pubEndSec: Long? = null,
+    ): Result<SearchPageResult<SearchVideo>> = fetchType(
+        keyword = keyword,
+        searchType = "video",
+        page = page,
+        extra = buildMap {
+            if (order.isNotBlank()) put("order", order)
+            if (duration > 0) put("duration", duration.toString())
+            if (tid > 0) put("tids", tid.toString())
+            if (pubBeginSec != null && pubEndSec != null) {
+                put("pubtime_begin_s", pubBeginSec.toString())
+                put("pubtime_end_s", pubEndSec.toString())
             }
-        }
+            put("platform", "pc")
+            put("web_location", "1430654")
+        },
+    ) { items -> items.mapNotNull { it.toVideo() } }
 
-    suspend fun searchUsers(keyword: String, page: Int): Result<List<SearchUser>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val response = api.searchType(
-                    signedParams(
-                        keyword = keyword,
-                        searchType = "bili_user",
-                        page = page,
-                    ) + mapOf("from_source" to "webtop", "web_location" to "1430654"),
-                )
-                if (response.code != 0) error(response.message.ifBlank { "搜索失败(${response.code})" })
-                response.data?.result.orEmpty()
-                    .filter { it.mid > 0L }
-                    .map { it.toUser() }
-            }
-        }
+    suspend fun searchPgc(
+        keyword: String,
+        page: Int,
+        searchType: String,
+    ): Result<SearchPageResult<SearchPgc>> = fetchType(
+        keyword = keyword,
+        searchType = searchType,
+        page = page,
+        extra = mapOf(
+            "platform" to "pc",
+            "web_location" to "1430654",
+        ),
+    ) { items -> items.mapNotNull { it.toPgc() } }
+
+    suspend fun searchLiveRooms(
+        keyword: String,
+        page: Int,
+    ): Result<SearchPageResult<SearchLive>> = fetchType(
+        keyword = keyword,
+        searchType = "live_room",
+        page = page,
+        extra = mapOf(
+            "platform" to "pc",
+            "web_location" to "1430654",
+        ),
+    ) { items -> items.mapNotNull { it.toLive() } }
+
+    suspend fun searchUsers(
+        keyword: String,
+        page: Int,
+        order: String = "",
+        orderSort: Int = 0,
+        userType: Int = 0,
+    ): Result<SearchPageResult<SearchUser>> = fetchType(
+        keyword = keyword,
+        searchType = "bili_user",
+        page = page,
+        extra = buildMap {
+            if (order.isNotBlank()) put("order", order)
+            put("order_sort", orderSort.toString())
+            put("user_type", userType.toString())
+            put("from_source", "webtop")
+            put("platform", "pc")
+            put("web_location", "1430654")
+        },
+    ) { items -> items.filter { it.mid > 0L }.map { it.toUser() } }
 
     /** 专栏搜索：`search_type=article`，结果是 cv 号，点开走阅读页。 */
     suspend fun searchArticles(
         keyword: String,
         page: Int,
         order: String,
-    ): Result<List<SearchArticle>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val response = api.searchType(
-                    signedParams(
-                        keyword = keyword,
-                        searchType = "article",
-                        page = page,
-                    ) + mapOf("order" to order, "web_location" to "1430654"),
-                )
-                if (response.code != 0) error(response.message.ifBlank { "搜索失败(${response.code})" })
-                response.data?.result.orEmpty()
-                    .filter { it.id > 0L }
-                    .map { it.toArticle() }
-            }
+        categoryId: Int = 0,
+    ): Result<SearchPageResult<SearchArticle>> = fetchType(
+        keyword = keyword,
+        searchType = "article",
+        page = page,
+        extra = buildMap {
+            put("order", order)
+            if (categoryId > 0) put("category_id", categoryId.toString())
+            put("platform", "pc")
+            put("web_location", "1430654")
+        },
+    ) { items -> items.filter { it.id > 0L }.map { it.toArticle() } }
+
+    private suspend fun <T> fetchType(
+        keyword: String,
+        searchType: String,
+        page: Int,
+        extra: Map<String, String>,
+        mapper: (List<SearchItem>) -> List<T>,
+    ): Result<SearchPageResult<T>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val response = api.searchType(
+                signedParams(
+                    keyword = keyword,
+                    searchType = searchType,
+                    page = page,
+                    extra = extra,
+                ),
+            )
+            if (response.code != 0) error(response.message.ifBlank { "搜索失败(${response.code})" })
+            if (response.data?.vVoucher != null) error("触发风控验证，请稍后再试")
+            val mapped = mapper(response.data?.result.orEmpty())
+            SearchPageResult(
+                items = mapped,
+                numResults = response.data?.numResults ?: mapped.size,
+            )
         }
+    }
 
     private suspend fun signedParams(
         keyword: String,
         searchType: String,
         page: Int,
+        extra: Map<String, String> = emptyMap(),
     ): Map<String, String> {
         buvid.ensure()
         val keys = wbi.getKeys()
         return WbiUtils.sign(
-            mapOf(
-                "keyword" to keyword,
-                "search_type" to searchType,
-                "page" to page.coerceAtLeast(1).toString(),
-                "page_size" to "30",
-            ),
+            buildMap {
+                put("keyword", keyword)
+                put("search_type", searchType)
+                put("page", page.coerceAtLeast(1).toString())
+                put("page_size", "30")
+                putAll(extra)
+            },
             keys.first,
             keys.second,
         )
     }
 
-    private fun SearchItem.toVideo(): SearchVideo? {
+    private fun SearchItem.toVideo(
+        fallbackAuthor: String = "",
+        fallbackMid: Long = 0L,
+    ): SearchVideo? {
         if (bvid.isBlank()) return null
         val seconds = Formatters.parseDurationText(duration)
         return SearchVideo(
             bvid = bvid,
             title = cleanTitle(title),
             cover = Formatters.normalizeImageUrl(pic),
-            author = author,
-            upMid = mid,
+            author = author.ifBlank { fallbackAuthor },
+            upMid = if (mid > 0L) mid else fallbackMid,
             playText = Formatters.formatStat(play.toLong()),
             durationText = if (seconds > 0) Formatters.formatDuration(seconds.toLong()) else "",
             pubdateText = Formatters.formatTimeAgo(pubdate),
         )
     }
 
-    private fun SearchItem.toUser(): SearchUser = SearchUser(
-        mid = mid,
-        name = cleanTitle(uname),
-        face = Formatters.normalizeImageUrl(upic),
-        sign = Formatters.decodeHtmlEntities(usign),
-        fansText = Formatters.formatStat(fans.toLong()) + "粉丝",
-        videoCountText = "${Formatters.formatStat(videos.toLong())}视频",
-    )
+    private fun SearchItem.toUser(): SearchUser {
+        val upName = cleanTitle(uname)
+        return SearchUser(
+            mid = mid,
+            name = upName,
+            face = Formatters.normalizeImageUrl(upic),
+            sign = Formatters.decodeHtmlEntities(usign),
+            fansText = Formatters.formatStat(fans.toLong()) + "粉丝",
+            videoCountText = "${Formatters.formatStat(videos.toLong())}视频",
+            level = level,
+            officialDesc = officialVerify?.desc.orEmpty(),
+            recentVideos = res.mapNotNull { it.toVideo(fallbackAuthor = upName, fallbackMid = mid) }.take(2),
+        )
+    }
 
     private fun SearchItem.toArticle(): SearchArticle = SearchArticle(
         id = id,
@@ -188,6 +295,38 @@ class SearchRepository(
         likeText = Formatters.formatStat(like.toLong()),
         desc = cleanTitle(desc),
     )
+
+    private fun SearchItem.toPgc(): SearchPgc? {
+        if (seasonId <= 0L) return null
+        val score = mediaScore?.score ?: 0f
+        return SearchPgc(
+            seasonId = seasonId,
+            mediaId = mediaId,
+            title = cleanTitle(title),
+            cover = Formatters.normalizeImageUrl(cover),
+            seasonTypeName = seasonTypeName,
+            scoreText = if (score > 0f) String.format(Locale.US, "%.1f分", score) else "",
+            areas = areas,
+            styles = styles,
+            pubdateText = Formatters.formatDate(pubtime),
+            indexShow = indexShow,
+            desc = cleanTitle(desc),
+        )
+    }
+
+    private fun SearchItem.toLive(): SearchLive? {
+        if (roomid <= 0L) return null
+        return SearchLive(
+            roomId = roomid,
+            uid = uid,
+            title = cleanTitle(title),
+            cover = Formatters.normalizeImageUrl(cover.ifBlank { userCover }),
+            anchor = uname,
+            face = Formatters.normalizeImageUrl(uface),
+            cateName = cleanTitle(cateName),
+            onlineText = if (online > 0L) "${Formatters.formatStat(online)}围观" else "",
+        )
+    }
 
     private fun cleanTitle(raw: String): String =
         Formatters.decodeHtmlEntities(raw.replace(HTML_TAG, "")).trim()

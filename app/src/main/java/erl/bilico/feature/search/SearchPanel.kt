@@ -51,19 +51,18 @@ import io.github.suqi8.coui.kmp.basic.SearchResultsTransitionState
 import io.github.suqi8.coui.kmp.basic.TwoRowTopAppBarDefaults
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Album
-import io.github.suqi8.coui.kmp.icon.extended.Contacts
-import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-/** 搜索结果的三个分类。 */
-internal val SearchResultTabs = listOf(
-    ChipTabData(label = "视频", icon = COUIIcons.Play),
-    ChipTabData(label = "用户", icon = COUIIcons.Contacts),
-    ChipTabData(label = "专栏", icon = COUIIcons.Album),
-)
+/** 按当前各分类结果数量构造胶囊标签；超过 99 显示 99+。 */
+internal fun buildSearchResultTabs(tabCounts: Map<SearchTab, Int>): List<ChipTabData> =
+    SearchTab.entries.map { tab ->
+        val countText = tabCounts[tab]?.let(::formatSearchCount)
+        ChipTabData(
+            label = if (countText != null) "${tab.label} $countText" else tab.label,
+            icon = tab.iconVector(),
+        )
+    }
 
 /**
  * 结果态：已提交过关键词，且输入框里仍是那个词。输入一变就退回建议态。
@@ -197,17 +196,17 @@ internal fun SearchPanelBody(
         listState.scrollToItem(0)
     }
 
-    val currentCount = when (state.tab) {
-        0 -> state.videos.size
-        1 -> state.users.size
-        else -> state.articles.size
-    }
+    val currentCount = state.currentTabItemCount()
     LaunchedEffect(listState, state.submitted, state.tab, currentCount) {
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            last to info.totalItemsCount
+        }
             .distinctUntilChanged()
-            .collect { last ->
-                if (state.submitted.isBlank() || currentCount == 0) return@collect
-                if (last >= currentCount - 1) viewModel.loadMore()
+            .collect { (last, total) ->
+                if (state.submitted.isBlank() || currentCount == 0 || total == 0) return@collect
+                if (last >= total - 2) viewModel.loadMore()
             }
     }
 

@@ -2,11 +2,9 @@ package erl.bilico.feature.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import erl.bilico.data.model.SearchArticle
-import erl.bilico.data.model.SearchSuggestion
-import erl.bilico.data.model.SearchUser
-import erl.bilico.data.model.SearchVideo
+import erl.bilico.data.model.SearchPageResult
 import erl.bilico.data.repository.SearchRepository
+import java.time.LocalDate
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,26 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-data class SearchUiState(
-    val query: String = "",
-    val submitted: String = "",
-    val tab: Int = 0,
-    /** B 站 `order` 参数：totalrank / pubdate / click / dm / stow。 */
-    val order: String = "totalrank",
-    /** 视频分区 id，0 表示不限。只对视频结果有效。 */
-    val tid: Int = 0,
-    val hot: List<String> = emptyList(),
-    val hotLoading: Boolean = false,
-    val suggestions: List<SearchSuggestion> = emptyList(),
-    val suggestionsLoading: Boolean = false,
-    val videos: List<SearchVideo> = emptyList(),
-    val users: List<SearchUser> = emptyList(),
-    val articles: List<SearchArticle> = emptyList(),
-    val isLoading: Boolean = false,
-    val isLoadingMore: Boolean = false,
-    val error: String? = null,
-)
 
 class SearchViewModel(
     private val repository: SearchRepository,
@@ -43,22 +21,16 @@ class SearchViewModel(
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
-    private var videoPage = 1
-    private var userPage = 1
-    private var articlePage = 1
-    private var inFlight = false
-
-    /** 已经翻到底的分类。按分类记，滑到别的一类再滑回来不会重复请求空页。 */
-    private val endedTabs = mutableSetOf<Int>()
+    private val tabPages = IntArray(SearchTab.entries.size) { 1 }
+    private val endedTabs = mutableSetOf<SearchTab>()
+    private val tabJobs = mutableMapOf<SearchTab, Job>()
     private var suggestJob: Job? = null
     private var lastSuggestTerm: String = ""
 
     init {
         loadHot()
         val initial = initialQuery.trim()
-        if (initial.isNotEmpty()) {
-            submit(initial)
-        }
+        if (initial.isNotEmpty()) submit(initial)
     }
 
     fun loadHot() {
@@ -73,35 +45,19 @@ class SearchViewModel(
     fun onQueryChange(query: String) {
         _state.update { it.copy(query = query) }
         val trimmed = query.trim()
-
         if (trimmed.isEmpty()) {
-            suggestJob?.cancel()
-            suggestJob = null
-            lastSuggestTerm = ""
-            _state.update {
-                it.copy(
-                    suggestions = emptyList(),
-                    suggestionsLoading = false,
-                    submitted = "",
-                )
-            }
+            cancelSuggest()
+            _state.update { it.copy(suggestions = emptyList(), suggestionsLoading = false, submitted = "") }
             return
         }
-
-        // 如果与当前已提交的关键词完全一致，说明用户正处于该关键词的结果页，不弹建议
         if (trimmed == _state.value.submitted) {
-            suggestJob?.cancel()
-            suggestJob = null
-            lastSuggestTerm = ""
+            cancelSuggest()
             _state.update { it.copy(suggestions = emptyList(), suggestionsLoading = false) }
             return
         }
-
         if (trimmed == lastSuggestTerm && (_state.value.suggestions.isNotEmpty() || suggestJob?.isActive == true)) {
             return
         }
-
-        // 正在输入且未提交：防抖 160ms 请求 B 站搜索建议，保留已有建议防止列表闪烁
         lastSuggestTerm = trimmed
         suggestJob?.cancel()
         _state.update { it.copy(suggestionsLoading = true) }
@@ -110,191 +66,315 @@ class SearchViewModel(
             val list = repository.suggest(trimmed).getOrDefault(emptyList())
             val current = _state.value
             if (current.query.trim() == trimmed && current.submitted != trimmed) {
-                _state.update {
-                    it.copy(
-                        suggestions = list,
-                        suggestionsLoading = false,
-                    )
-                }
+                _state.update { it.copy(suggestions = list, suggestionsLoading = false) }
             }
         }
     }
 
     /** 重新打开面板时回到搜索首页，不带着上次的结果；热搜缓存留着。 */
     fun reset() {
-        suggestJob?.cancel()
-        suggestJob = null
-        lastSuggestTerm = ""
-        videoPage = 1
-        userPage = 1
-        articlePage = 1
-        inFlight = false
+        cancelSuggest()
+        cancelAllLoads()
+        tabPages.fill(1)
         endedTabs.clear()
-        _state.update {
-            SearchUiState(hot = it.hot, hotLoading = it.hotLoading)
-        }
+        _state.update { SearchUiState(hot = it.hot, hotLoading = it.hotLoading) }
     }
 
     fun setTab(tab: Int) {
-        if (_state.value.tab == tab) return
-        _state.update { it.copy(tab = tab, error = null) }
-        if (_state.value.submitted.isNotBlank()) {
-            val hasItems = when (tab) {
-                0 -> _state.value.videos.isNotEmpty()
-                1 -> _state.value.users.isNotEmpty()
-                else -> _state.value.articles.isNotEmpty()
-            }
-            if (!hasItems) {
-                // 只补这一类，不重跑整次搜索。pager 左右滑动会反复经过空分类，
-                // 走 submit 每次都会把另外两类已经拿到的结果清掉。
-                _state.update { it.copy(isLoading = true) }
-                load(firstPage = true)
-            }
+        val target = SearchTab.fromIndex(tab)
+        if (_state.value.tab == target.ordinal) return
+        val inFlight = tabJobs[target]?.isActive == true
+        val needsLoad = _state.value.submitted.isNotBlank() &&
+            target !in _state.value.loadedTabs &&
+            !inFlight
+        _state.update {
+            it.copy(
+                tab = target.ordinal,
+                isLoading = inFlight || needsLoad,
+                isLoadingMore = false,
+                error = null,
+            )
         }
+        if (needsLoad) load(target, firstPage = true)
     }
 
     fun submit(keyword: String) {
         val trimmed = keyword.trim()
         if (trimmed.isEmpty()) return
-        suggestJob?.cancel()
-        suggestJob = null
-        lastSuggestTerm = ""
-        videoPage = 1
-        userPage = 1
-        articlePage = 1
+        cancelSuggest()
+        cancelAllLoads()
+        tabPages.fill(1)
         endedTabs.clear()
+        val currentTab = _state.value.currentTab
         _state.update {
             it.copy(
                 query = trimmed,
                 submitted = trimmed,
                 suggestions = emptyList(),
                 suggestionsLoading = false,
+                allUsers = emptyList(),
+                allPgc = emptyList(),
+                allVideos = emptyList(),
                 videos = emptyList(),
+                bangumis = emptyList(),
+                movies = emptyList(),
+                liveRooms = emptyList(),
                 users = emptyList(),
                 articles = emptyList(),
+                tabCounts = emptyMap(),
+                loadedTabs = emptySet(),
                 isLoading = true,
+                isLoadingMore = false,
                 error = null,
             )
         }
-        load(firstPage = true)
+        load(currentTab, firstPage = true)
     }
 
     fun loadMore() {
         val current = _state.value
-        if (inFlight || current.tab in endedTabs || current.submitted.isBlank()) return
-        if (current.query.trim() != current.submitted) return
-        if (current.isLoading) return
+        val target = current.currentTab
+        if (current.submitted.isBlank() || current.query.trim() != current.submitted) return
+        if (current.isLoading || target in endedTabs || tabJobs[target]?.isActive == true) return
         _state.update { it.copy(isLoadingMore = true) }
-        load(firstPage = false)
+        load(target, firstPage = false)
     }
 
     fun retry() {
-        if (_state.value.submitted.isBlank()) return
-        submit(_state.value.submitted)
+        val current = _state.value
+        if (current.submitted.isBlank()) return
+        reloadTabs(setOf(current.currentTab), current)
     }
 
-    /** 换排序方式：三类结果都作废，按新顺序从第一页重来。 */
-    fun setOrder(order: String) {
-        if (_state.value.order == order) return
-        reload(_state.value.copy(order = order))
+    internal fun setVideoOrder(order: VideoOrderOption) {
+        val current = _state.value
+        if (current.videoOrder == order) return
+        reloadVideoTabs(current.copy(videoOrder = order))
     }
 
-    /** 换视频分区，只影响视频这一类；目录里的另外两类不受牵连。 */
-    fun setTid(tid: Int) {
-        if (_state.value.tid == tid) return
-        reload(_state.value.copy(tid = tid))
+    internal fun setVideoDuration(duration: VideoDurationOption) {
+        val current = _state.value
+        if (current.videoDuration == duration) return
+        reloadVideoTabs(current.copy(videoDuration = duration))
     }
 
-    private fun reload(next: SearchUiState) {
-        videoPage = 1
-        userPage = 1
-        articlePage = 1
-        endedTabs.clear()
-        _state.update {
-            next.copy(
-                videos = emptyList(),
-                users = emptyList(),
-                articles = emptyList(),
-                isLoading = true,
-                error = null,
-            )
+    internal fun setVideoZone(zone: VideoZoneOption) {
+        val current = _state.value
+        if (current.videoZone == zone) return
+        reloadVideoTabs(current.copy(videoZone = zone))
+    }
+
+    internal fun setVideoPubTime(pubTime: VideoPubTimeOption) {
+        val current = _state.value
+        if (current.videoPubTime == pubTime && pubTime != VideoPubTimeOption.Custom) return
+        reloadVideoTabs(current.copy(videoPubTime = pubTime))
+    }
+
+    internal fun setVideoCustomPubRange(begin: LocalDate, end: LocalDate) {
+        val ordered = if (begin.isAfter(end)) end to begin else begin to end
+        reloadVideoTabs(
+            _state.value.copy(
+                videoPubTime = VideoPubTimeOption.Custom,
+                customPubBegin = ordered.first,
+                customPubEnd = ordered.second,
+            ),
+        )
+    }
+
+    internal fun setUserOrder(order: UserOrderOption) {
+        val current = _state.value
+        if (current.userOrder == order) return
+        reloadTabs(setOf(SearchTab.User), current.copy(userOrder = order))
+    }
+
+    internal fun setUserType(type: UserTypeOption) {
+        val current = _state.value
+        if (current.userType == type) return
+        reloadTabs(setOf(SearchTab.User), current.copy(userType = type))
+    }
+
+    internal fun setArticleOrder(order: ArticleOrderOption) {
+        val current = _state.value
+        if (current.articleOrder == order) return
+        reloadTabs(setOf(SearchTab.Article), current.copy(articleOrder = order))
+    }
+
+    internal fun setArticleZone(zone: ArticleZoneOption) {
+        val current = _state.value
+        if (current.articleZone == zone) return
+        reloadTabs(setOf(SearchTab.Article), current.copy(articleZone = zone))
+    }
+
+    private fun reloadVideoTabs(next: SearchUiState) {
+        reloadTabs(setOf(SearchTab.All, SearchTab.Video), next)
+    }
+
+    private fun reloadTabs(targets: Set<SearchTab>, next: SearchUiState) {
+        targets.forEach { target ->
+            tabJobs.remove(target)?.cancel()
+            tabPages[target.ordinal] = 1
+            endedTabs.remove(target)
         }
-        if (next.submitted.isNotBlank()) load(firstPage = true)
+        val current = next.currentTab
+        val resetState = next.copy(
+            allUsers = if (SearchTab.All in targets) emptyList() else next.allUsers,
+            allPgc = if (SearchTab.All in targets) emptyList() else next.allPgc,
+            allVideos = if (SearchTab.All in targets) emptyList() else next.allVideos,
+            videos = if (SearchTab.Video in targets) emptyList() else next.videos,
+            bangumis = if (SearchTab.Bangumi in targets) emptyList() else next.bangumis,
+            movies = if (SearchTab.Movie in targets) emptyList() else next.movies,
+            liveRooms = if (SearchTab.LiveRoom in targets) emptyList() else next.liveRooms,
+            users = if (SearchTab.User in targets) emptyList() else next.users,
+            articles = if (SearchTab.Article in targets) emptyList() else next.articles,
+            loadedTabs = next.loadedTabs - targets,
+            isLoading = current in targets && next.submitted.isNotBlank(),
+            isLoadingMore = false,
+            error = if (current in targets) null else next.error,
+        )
+        _state.value = resetState
+        if (current in targets && resetState.submitted.isNotBlank()) {
+            load(current, firstPage = true)
+        }
     }
 
-    private fun load(firstPage: Boolean) {
-        inFlight = true
-        val keyword = _state.value.submitted
-        val tab = _state.value.tab
-        val order = _state.value.order
-        val tid = _state.value.tid
-        val page = when (tab) {
-            0 -> videoPage
-            1 -> userPage
-            else -> articlePage
-        }
-        viewModelScope.launch {
-            when (tab) {
-                0 -> repository.searchVideos(keyword, page, order, tid)
-                    .onSuccess { list ->
-                        videoPage = page + 1
-                        if (list.isEmpty()) endedTabs.add(tab) else endedTabs.remove(tab)
-                        _state.update {
-                            val onTab = it.tab == tab
-                            it.copy(
-                                videos = if (firstPage) list.distinctBy { v -> v.bvid } else (it.videos + list).distinctBy { v -> v.bvid },
-                                isLoading = if (onTab) false else it.isLoading,
-                                isLoadingMore = if (onTab) false else it.isLoadingMore,
-                                error = if (onTab) null else it.error,
-                            )
+    private fun load(target: SearchTab, firstPage: Boolean) {
+        val snapshot = _state.value
+        val keyword = snapshot.submitted
+        if (keyword.isBlank()) return
+        val page = tabPages[target.ordinal]
+        val (pubBeginSec, pubEndSec) = computePubTimeSeconds(
+            snapshot.videoPubTime, snapshot.customPubBegin, snapshot.customPubEnd,
+        )
+        tabJobs[target]?.cancel()
+        tabJobs[target] = viewModelScope.launch {
+            when (target) {
+                SearchTab.All -> if (firstPage && !snapshot.hasVideoFilter) {
+                    repository.searchAll(keyword)
+                        .onSuccess { bundle ->
+                            tabPages[target.ordinal] = page + 1
+                            if (bundle.videos.isEmpty()) endedTabs.add(target) else endedTabs.remove(target)
+                            updateSuccess(target) {
+                                copy(
+                                    allUsers = bundle.users,
+                                    allPgc = bundle.pgc,
+                                    allVideos = bundle.videos,
+                                    tabCounts = tabCounts + bundle.typeCounts.toTabCountMap(bundle.numResults),
+                                )
+                            }
                         }
+                        .onFailure { fail(target, firstPage, it) }
+                } else {
+                    val res = repository.searchVideos(
+                        keyword, page, snapshot.videoOrder.param, snapshot.videoZone.tid,
+                        snapshot.videoDuration.param, pubBeginSec, pubEndSec,
+                    )
+                    handleTypePage(target, page, firstPage, res) {
+                        copy(allVideos = mergeDistinct(firstPage, allVideos, it) { v -> v.bvid })
                     }
-                    .onFailure { error -> fail(tab, firstPage, error) }
+                }
 
-                1 -> repository.searchUsers(keyword, page)
-                    .onSuccess { list ->
-                        userPage = page + 1
-                        if (list.isEmpty()) endedTabs.add(tab) else endedTabs.remove(tab)
-                        _state.update {
-                            val onTab = it.tab == tab
-                            it.copy(
-                                users = if (firstPage) list.distinctBy { u -> u.mid } else (it.users + list).distinctBy { u -> u.mid },
-                                isLoading = if (onTab) false else it.isLoading,
-                                isLoadingMore = if (onTab) false else it.isLoadingMore,
-                                error = if (onTab) null else it.error,
-                            )
-                        }
+                SearchTab.Video -> {
+                    val res = repository.searchVideos(
+                        keyword, page, snapshot.videoOrder.param, snapshot.videoZone.tid,
+                        snapshot.videoDuration.param, pubBeginSec, pubEndSec,
+                    )
+                    handleTypePage(target, page, firstPage, res) {
+                        copy(videos = mergeDistinct(firstPage, videos, it) { v -> v.bvid })
                     }
-                    .onFailure { error -> fail(tab, firstPage, error) }
+                }
 
-                else -> repository.searchArticles(keyword, page, order)
-                    .onSuccess { list ->
-                        articlePage = page + 1
-                        if (list.isEmpty()) endedTabs.add(tab) else endedTabs.remove(tab)
-                        _state.update {
-                            val onTab = it.tab == tab
-                            it.copy(
-                                articles = if (firstPage) list.distinctBy { a -> a.id } else (it.articles + list).distinctBy { a -> a.id },
-                                isLoading = if (onTab) false else it.isLoading,
-                                isLoadingMore = if (onTab) false else it.isLoadingMore,
-                                error = if (onTab) null else it.error,
-                            )
+                SearchTab.Bangumi, SearchTab.Movie -> {
+                    val searchType = if (target == SearchTab.Bangumi) "media_bangumi" else "media_ft"
+                    handleTypePage(target, page, firstPage, repository.searchPgc(keyword, page, searchType)) {
+                        if (target == SearchTab.Bangumi) {
+                            copy(bangumis = mergeDistinct(firstPage, bangumis, it) { p -> p.seasonId })
+                        } else {
+                            copy(movies = mergeDistinct(firstPage, movies, it) { p -> p.seasonId })
                         }
                     }
-                    .onFailure { error -> fail(tab, firstPage, error) }
+                }
+
+                SearchTab.LiveRoom -> handleTypePage(
+                    target, page, firstPage, repository.searchLiveRooms(keyword, page),
+                ) { copy(liveRooms = mergeDistinct(firstPage, liveRooms, it) { r -> r.roomId }) }
+
+                SearchTab.User -> {
+                    val res = repository.searchUsers(
+                        keyword, page, snapshot.userOrder.order, snapshot.userOrder.orderSort, snapshot.userType.param,
+                    )
+                    handleTypePage(target, page, firstPage, res) {
+                        copy(users = mergeDistinct(firstPage, users, it) { u -> u.mid })
+                    }
+                }
+
+                SearchTab.Article -> {
+                    val res = repository.searchArticles(
+                        keyword, page, snapshot.articleOrder.param, snapshot.articleZone.categoryId,
+                    )
+                    handleTypePage(target, page, firstPage, res) {
+                        copy(articles = mergeDistinct(firstPage, articles, it) { a -> a.id })
+                    }
+                }
             }
-            inFlight = false
         }
     }
 
-    private fun fail(tab: Int, firstPage: Boolean, error: Throwable) {
-        _state.update {
-            val onTab = it.tab == tab
-            it.copy(
-                isLoading = if (onTab) false else it.isLoading,
-                isLoadingMore = if (onTab) false else it.isLoadingMore,
-                error = if (onTab && firstPage) error.message ?: "搜索失败" else it.error,
+    private inline fun <T> handleTypePage(
+        target: SearchTab,
+        page: Int,
+        firstPage: Boolean,
+        result: Result<SearchPageResult<T>>,
+        apply: SearchUiState.(List<T>) -> SearchUiState,
+    ) {
+        result.onSuccess { pageRes ->
+            tabPages[target.ordinal] = page + 1
+            if (pageRes.items.isEmpty()) endedTabs.add(target) else endedTabs.remove(target)
+            updateSuccess(target) {
+                val nextCounts = if (firstPage) tabCounts + (target to pageRes.numResults) else tabCounts
+                apply(pageRes.items).copy(tabCounts = nextCounts)
+            }
+        }.onFailure { fail(target, firstPage, it) }
+    }
+
+    private inline fun updateSuccess(target: SearchTab, transform: SearchUiState.() -> SearchUiState) {
+        _state.update { state ->
+            val onTab = state.currentTab == target
+            state.transform().copy(
+                loadedTabs = state.loadedTabs + target,
+                isLoading = if (onTab) false else state.isLoading,
+                isLoadingMore = if (onTab) false else state.isLoadingMore,
+                error = if (onTab) null else state.error,
             )
         }
+    }
+
+    private fun fail(target: SearchTab, firstPage: Boolean, error: Throwable) {
+        _state.update { state ->
+            val onTab = state.currentTab == target
+            state.copy(
+                loadedTabs = if (firstPage) state.loadedTabs + target else state.loadedTabs,
+                isLoading = if (onTab) false else state.isLoading,
+                isLoadingMore = if (onTab) false else state.isLoadingMore,
+                error = if (onTab && firstPage) error.message ?: "搜索失败" else state.error,
+            )
+        }
+    }
+
+    private fun <T, K> mergeDistinct(
+        firstPage: Boolean,
+        existing: List<T>,
+        incoming: List<T>,
+        keySelector: (T) -> K,
+    ): List<T> = if (firstPage) incoming.distinctBy(keySelector) else (existing + incoming).distinctBy(keySelector)
+
+    private fun cancelSuggest() {
+        suggestJob?.cancel()
+        suggestJob = null
+        lastSuggestTerm = ""
+    }
+
+    private fun cancelAllLoads() {
+        tabJobs.values.forEach { it.cancel() }
+        tabJobs.clear()
     }
 }

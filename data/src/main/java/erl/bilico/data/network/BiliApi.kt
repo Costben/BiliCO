@@ -43,6 +43,7 @@ import erl.bilico.data.model.QrPollResponse
 import erl.bilico.data.model.RelationStatResponse
 import erl.bilico.data.model.RecommendResponse
 import erl.bilico.data.model.ReplyResponse
+import erl.bilico.data.model.SearchAllResponse
 import erl.bilico.data.model.SearchSquareResponse
 import erl.bilico.data.model.SearchSuggestResponse
 import erl.bilico.data.model.SearchTypeResponse
@@ -225,6 +226,13 @@ interface BiliApi {
 
     @GET("x/web-interface/suggest")
     suspend fun searchSuggest(@Query("term") term: String): SearchSuggestResponse
+
+    @Headers(
+        "Origin: https://search.bilibili.com",
+        "Referer: https://search.bilibili.com/",
+    )
+    @GET("x/web-interface/wbi/search/all/v2")
+    suspend fun searchAll(@QueryMap params: Map<String, String>): SearchAllResponse
 
     @Headers(
         "Origin: https://search.bilibili.com",

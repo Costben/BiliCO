@@ -120,7 +120,8 @@ internal fun AtUserPanel(
         searchPage = 1
         delay(280)
         container.search.searchUsers(trimmed, 1)
-            .onSuccess { list ->
+            .onSuccess { pageRes ->
+                val list = pageRes.items
                 searchResults = list.map { u ->
                     val sub = buildString {
                         if (u.fansText.isNotBlank()) append("${u.fansText}粉丝")
@@ -150,7 +151,8 @@ internal fun AtUserPanel(
         if (trimmed.isEmpty() || searchPage <= 1) return@LaunchedEffect
         searchLoading = true
         container.search.searchUsers(trimmed, searchPage)
-            .onSuccess { list ->
+            .onSuccess { pageRes ->
+                val list = pageRes.items
                 val appended = list.map { u ->
                     val sub = buildString {
                         if (u.fansText.isNotBlank()) append("${u.fansText}粉丝")

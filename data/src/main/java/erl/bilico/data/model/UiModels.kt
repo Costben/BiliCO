@@ -180,6 +180,11 @@ data class CommentPage(
     val total: Int,
 )
 
+data class SubReplyPage(
+    val replies: List<Comment>,
+    val total: Int,
+)
+
 /** 主楼评论排序：B 站 `mode=3` 按热度，`mode=2` 按时间。 */
 enum class CommentSort(val mode: Int) {
     Hot(3),
@@ -381,6 +386,9 @@ data class SearchUser(
     val sign: String,
     val fansText: String,
     val videoCountText: String,
+    val level: Int = 0,
+    val officialDesc: String = "",
+    val recentVideos: List<SearchVideo> = emptyList(),
 )
 
 data class SearchArticle(
@@ -393,6 +401,44 @@ data class SearchArticle(
     val viewText: String,
     val likeText: String,
     val desc: String,
+)
+
+data class SearchPgc(
+    val seasonId: Long,
+    val mediaId: Long,
+    val title: String,
+    val cover: String,
+    val seasonTypeName: String,
+    val scoreText: String,
+    val areas: String,
+    val styles: String,
+    val pubdateText: String,
+    val indexShow: String,
+    val desc: String,
+)
+
+data class SearchLive(
+    val roomId: Long,
+    val uid: Long,
+    val title: String,
+    val cover: String,
+    val anchor: String,
+    val face: String,
+    val cateName: String,
+    val onlineText: String,
+)
+
+data class SearchPageResult<T>(
+    val items: List<T>,
+    val numResults: Int,
+)
+
+data class SearchAllBundle(
+    val users: List<SearchUser> = emptyList(),
+    val pgc: List<SearchPgc> = emptyList(),
+    val videos: List<SearchVideo> = emptyList(),
+    val numResults: Int = 0,
+    val typeCounts: Map<String, Int> = emptyMap(),
 )
 
 data class SpaceProfile(

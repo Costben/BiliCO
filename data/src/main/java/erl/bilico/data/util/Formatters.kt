@@ -81,6 +81,13 @@ object Formatters {
         return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(published)
     }
 
+    /** 仅日期（yyyy-MM-dd），用于番剧/影视开播日期等。 */
+    fun formatDate(timestampSeconds: Long): String {
+        if (timestampSeconds <= 0L) return ""
+        val date = Instant.ofEpochSecond(timestampSeconds).atZone(ZoneId.systemDefault())
+        return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").format(date)
+    }
+
     /** 补全协议并去掉旧缩放后缀，显示尺寸由调用方按控件尺寸重新拼。 */
     fun normalizeImageUrl(url: String?): String {
         if (url.isNullOrBlank()) return ""
