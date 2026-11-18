@@ -38,13 +38,13 @@ class DanmakuRepository(
         items
     }
 
-    /** 发一条滚动弹幕。成功后丢掉当前段的缓存，让下次滚动进度时重新拉到它。 */
+    /** 发一条滚动弹幕。成功后丢掉当前段的缓存，并返回服务端生成的 dmid（若未下发则返回 0）。 */
     suspend fun send(
         aid: Long,
         cid: Long,
         message: String,
         progressMs: Long,
-    ): Result<Unit> = withContext(Dispatchers.IO) {
+    ): Result<Long> = withContext(Dispatchers.IO) {
         runCatching {
             require(aid > 0L && cid > 0L) { "还没有加载到视频信息" }
             buvid.ensure()
@@ -71,6 +71,33 @@ class DanmakuRepository(
             )
             if (response.code != 0) error(sendErrorText(response.code, response.message))
             dropSegment(cid, progressMs)
+            response.data?.dmid?.takeIf { it > 0L }
+                ?: response.data?.dmidStr?.toLongOrNull()?.takeIf { it > 0L }
+                ?: 0L
+        }
+    }
+
+    /** 举报单条弹幕。 */
+    suspend fun report(
+        cid: Long,
+        dmid: Long,
+        reason: Int,
+        content: String = "",
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(cid > 0L && dmid > 0L) { "该弹幕暂不支持举报" }
+            buvid.ensure()
+            val csrf = session.csrf()
+            require(csrf.isNotBlank()) { "登录后才能举报弹幕" }
+            val fields = buildMap {
+                put("cid", cid.toString())
+                put("dmid", dmid.toString())
+                put("reason", reason.toString())
+                if (content.isNotBlank()) put("content", content.trim())
+                put("csrf", csrf)
+            }
+            val response = api.reportDanmaku(fields)
+            if (response.code != 0) error(reportErrorText(response.code, response.message))
         }
     }
 
@@ -94,6 +121,15 @@ class DanmakuRepository(
         36711 -> "该视频禁止发送弹幕"
         36712 -> "当前账号等级限制，弹幕长度上限更低"
         else -> fallback.ifBlank { "发送弹幕失败（$code）" }
+    }
+
+    private fun reportErrorText(code: Int, fallback: String): String = when (code) {
+        -101 -> "请先登录"
+        -111 -> "鉴权失败，请重新登录"
+        36201 -> "该弹幕不存在"
+        36203 -> "举报类型错误"
+        36204 -> "已经举报过该弹幕"
+        else -> fallback.ifBlank { "举报弹幕失败（$code）" }
     }
 
     private companion object {

@@ -61,6 +61,8 @@ import erl.bilico.feature.video.VideoPlayer
 import erl.bilico.feature.video.describePlaybackError
 import erl.bilico.feature.video.findActivity
 import erl.bilico.feature.video.playbackMediaId
+import erl.bilico.feature.video.rememberDanmakuActions
+import erl.bilico.feature.video.rememberLongPressSpeedController
 import erl.bilico.feature.video.rememberPlayerFullscreenController
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.player.BindPlaybackSession
@@ -110,6 +112,7 @@ fun PgcScreen(
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
+    val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
@@ -149,10 +152,11 @@ fun PgcScreen(
     var subtitleDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
-    var longPressSpeed by remember { mutableStateOf(false) }
-
-    val boostSpeed = longPressSpeedPercent / 100f
-    val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
+    val longPressSpeed = rememberLongPressSpeedController(
+        baseSpeed = speed,
+        boostPercent = longPressSpeedPercent,
+    )
+    val effectiveSpeed = longPressSpeed.effectiveSpeed
 
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
@@ -286,9 +290,16 @@ fun PgcScreen(
 
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
 
-    val message = state.message
-    if (message != null) {
-        LaunchedEffect(message) {
+    var danmakuActionMessage by remember { mutableStateOf<String?>(null) }
+    val message = danmakuActionMessage ?: state.message
+    if (danmakuActionMessage != null) {
+        LaunchedEffect(danmakuActionMessage) {
+            delay(2600)
+            danmakuActionMessage = null
+        }
+    }
+    if (state.message != null) {
+        LaunchedEffect(state.message) {
             delay(2600)
             viewModel.consumeMessage()
         }
@@ -404,9 +415,11 @@ fun PgcScreen(
                 onHome = { nav.popToMain() },
                 playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
-                longPressSpeedActive = longPressSpeed,
-                longPressSpeedValue = boostSpeed,
-                onLongPressSpeedChange = { longPressSpeed = it },
+                longPressSpeedActive = longPressSpeed.active,
+                longPressSpeedValue = longPressSpeed.speed,
+                adjustableLongPressSpeed = adjustableLongPressSpeed,
+                onLongPressSpeedChange = longPressSpeed.onActiveChange,
+                onLongPressSpeedAdjust = longPressSpeed.onAdjust,
                 subtitleOverlay = { chromeVisible ->
                     SubtitleOverlay(
                         cues = subtitleController.cues,
@@ -425,6 +438,18 @@ fun PgcScreen(
                         settings = danmakuSettings,
                     )
                 },
+                danmakuActions = rememberDanmakuActions(
+                    aid = episode?.aid ?: 0L,
+                    cid = episode?.cid ?: 0L,
+                    fullscreen = fullscreen,
+                    positionMs = { player.currentPosition.coerceAtLeast(0L) },
+                    isLoggedIn = { container.session.isLoggedIn() },
+                    repository = container.danmaku,
+                    controller = danmakuController,
+                    scope = scope,
+                    onShowMessage = { danmakuActionMessage = it },
+                    onShowLoginHint = { danmakuActionMessage = "请先登录后再操作" },
+                ),
             )
             if (fullscreen) {
                 VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)

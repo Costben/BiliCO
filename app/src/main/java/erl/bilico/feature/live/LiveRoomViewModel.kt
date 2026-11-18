@@ -46,11 +46,14 @@ class LiveRoomViewModel(
 
     private val danmakuClient = LiveDanmakuClient(viewModelScope, okHttp)
     private var playbackJob: Job? = null
+    private val blockedMids = HashSet<Long>()
+    private val blockedTexts = HashSet<String>()
 
     init {
         load()
         viewModelScope.launch {
             danmakuClient.messages.collect { message ->
+                if (isBlocked(message.mid, message.text)) return@collect
                 _state.update {
                     it.copy(
                         danmaku = (it.danmaku + message).takeLast(MAX_MESSAGES),
@@ -116,6 +119,21 @@ class LiveRoomViewModel(
 
     fun retryPlayback() {
         if (_state.value.detail?.isLive == true) loadPlayback(_state.value.requestedQuality)
+    }
+
+    /** 仅在当前直播间临时屏蔽该发送者与该条弹幕全文。 */
+    fun blockTemporary(mid: Long, text: String) {
+        if (mid > 0L) blockedMids.add(mid)
+        val trimmed = text.trim()
+        if (trimmed.isNotEmpty()) blockedTexts.add(trimmed)
+        _state.update { state ->
+            state.copy(danmaku = state.danmaku.filterNot { isBlocked(it.mid, it.text) })
+        }
+    }
+
+    fun isBlocked(mid: Long, text: String): Boolean {
+        if (mid > 0L && mid in blockedMids) return true
+        return text.trim() in blockedTexts
     }
 
     /** 弹幕 token 与真实房号绑定，短号进房要先换成详情里的 roomId。 */

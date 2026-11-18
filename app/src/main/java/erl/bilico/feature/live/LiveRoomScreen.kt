@@ -4,15 +4,9 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -24,15 +18,12 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -46,13 +37,12 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
-import coil3.compose.AsyncImage
 import erl.bilico.data.model.DanmakuItem
 import erl.bilico.data.model.DanmakuType
+import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.LiveCandidate
-import erl.bilico.data.model.LiveRoomDetail
-import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.video.DanmakuActionCallbacks
 import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.feature.video.DanmakuTimeline
@@ -60,9 +50,12 @@ import erl.bilico.feature.video.FIXED_DURATION_MS
 import erl.bilico.feature.video.QualityDialog
 import erl.bilico.feature.video.SpeedDialog
 import erl.bilico.feature.video.VideoFullscreenStage
+import erl.bilico.feature.video.VideoMessageToast
 import erl.bilico.feature.video.VideoPlayer
+import erl.bilico.feature.video.copyDanmakuToClipboard
 import erl.bilico.feature.video.describePlaybackError
 import erl.bilico.feature.video.findActivity
+import erl.bilico.feature.video.rememberLongPressSpeedController
 import erl.bilico.feature.video.rememberPlayerFullscreenController
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.player.BindPlaybackSession
@@ -82,6 +75,8 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun LiveRoomScreen(
@@ -96,11 +91,13 @@ fun LiveRoomScreen(
 
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
+    val advancedPlusOne by container.settings.advancedPlusOne.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
+    val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
@@ -108,6 +105,7 @@ fun LiveRoomScreen(
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
+    val scope = rememberCoroutineScope()
     val player = rememberPlaybackPlayer("live-$roomId") { buildConfiguredExoPlayer(context) }
     // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
     val playbackEntry = LocalNavEntry.current
@@ -131,9 +129,11 @@ fun LiveRoomScreen(
     var speedDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
-    var longPressSpeed by remember { mutableStateOf(false) }
-    val boostSpeed = longPressSpeedPercent / 100f
-    val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
+    val longPressSpeed = rememberLongPressSpeedController(
+        baseSpeed = speed,
+        boostPercent = longPressSpeedPercent,
+    )
+    val effectiveSpeed = longPressSpeed.effectiveSpeed
 
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
@@ -145,6 +145,14 @@ fun LiveRoomScreen(
     val overlayItems = remember { mutableStateListOf<DanmakuItem>() }
     var consumedDanmakuSeq by remember { mutableLongStateOf(0L) }
     var lastOverlayStamp by remember { mutableLongStateOf(0L) }
+    var nextSelfDanmakuId by remember { mutableLongStateOf(-1L) }
+    var liveMessage by remember { mutableStateOf<String?>(null) }
+    if (liveMessage != null) {
+        LaunchedEffect(liveMessage) {
+            delay(2600)
+            liveMessage = null
+        }
+    }
     // 直播弹幕走自己的时间轴：播放器在 FLV 直播里 currentPosition 会来回跳，
     // 拿它当时间轴会让同一秒进来的弹幕挤在同一时刻、入轨互相顶掉。
     val overlayTimeline = remember {
@@ -285,14 +293,25 @@ fun LiveRoomScreen(
         lastOverlayStamp = nowMs.toLong()
         val firstId = state.danmakuSeq - count
         state.danmaku.takeLast(count).forEachIndexed { index, message ->
-            overlayItems += DanmakuItem(
-                id = firstId + index,
-                timeMs = nowMs,
-                type = DanmakuType.SCROLL,
-                content = message.text,
-                color = 0xFFFFFF,
-                fontSize = 25,
-            )
+            if (!viewModel.isBlocked(message.mid, message.text)) {
+                val medal = if (message.medalName.isNotBlank()) {
+                    "${message.medalName} ${message.medalLevel}"
+                } else {
+                    ""
+                }
+                overlayItems += DanmakuItem(
+                    id = firstId + index,
+                    timeMs = nowMs,
+                    type = DanmakuType.SCROLL,
+                    content = message.text,
+                    color = 0xFFFFFF,
+                    fontSize = 25,
+                    midHash = message.mid.takeIf { it > 0L }?.toString().orEmpty(),
+                    senderName = message.name,
+                    senderMedal = medal,
+                    emotes = message.emotes,
+                )
+            }
         }
         val retainWindowMs = danmakuSettings.scrollDurationMs.coerceAtLeast(FIXED_DURATION_MS) + 2_000L
         val pruneBeforeMs = (nowMs.toLong() - retainWindowMs).coerceAtLeast(0L)
@@ -395,9 +414,11 @@ fun LiveRoomScreen(
                     null
                 },
                 onHome = { nav.popToMain() },
-                longPressSpeedActive = longPressSpeed,
-                longPressSpeedValue = boostSpeed,
-                onLongPressSpeedChange = { longPressSpeed = it },
+                longPressSpeedActive = longPressSpeed.active,
+                longPressSpeedValue = longPressSpeed.speed,
+                adjustableLongPressSpeed = adjustableLongPressSpeed,
+                onLongPressSpeedChange = longPressSpeed.onActiveChange,
+                onLongPressSpeedAdjust = longPressSpeed.onAdjust,
                 overlay = {
                     // 弹幕视图按引用判断列表有没有换过：这里必须给一份新列表，
                     // 直接传可变的 SnapshotStateList 会让它永远认为「没变」，直播弹幕一条都画不出来。
@@ -409,14 +430,74 @@ fun LiveRoomScreen(
                         timeline = overlayTimeline,
                     )
                 },
+                danmakuActions = run {
+                    fun sendLivePlusOne(text: String, emotes: Map<String, EmoteImage>) {
+                        val realRoomId = state.detail?.roomId?.takeIf { it > 0L } ?: roomId
+                        if (!container.session.isLoggedIn()) {
+                            liveMessage = "请先登录后再操作"
+                            return
+                        }
+                        scope.launch {
+                            container.live.sendDanmaku(realRoomId, text, container.session.csrf())
+                                .onSuccess {
+                                    val stamp = overlayTimeline.nowMs.coerceAtLeast(lastOverlayStamp + 1L)
+                                    lastOverlayStamp = stamp
+                                    overlayItems += DanmakuItem(
+                                        id = nextSelfDanmakuId--,
+                                        timeMs = stamp.toInt(),
+                                        type = DanmakuType.SCROLL,
+                                        content = text,
+                                        color = 0xFFFFFF,
+                                        fontSize = 25,
+                                        isSelf = true,
+                                        emotes = emotes,
+                                    )
+                                    liveMessage = "弹幕已发送"
+                                }
+                                .onFailure { liveMessage = it.message ?: "发送弹幕失败" }
+                        }
+                    }
+                    DanmakuActionCallbacks(
+                        onCopy = { item ->
+                            copyDanmakuToClipboard(context, item.content)
+                            liveMessage = "已复制弹幕"
+                        },
+                        onPlusOne = { item -> sendLivePlusOne(item.content, item.emotes) },
+                        onAdvancedPlusOne = if (advancedPlusOne) {
+                            { item ->
+                                val prefix = buildString {
+                                    if (item.senderMedal.isNotBlank()) append("[${item.senderMedal}]")
+                                    if (item.senderName.isNotBlank()) {
+                                        if (isNotEmpty()) append(' ')
+                                        append("@${item.senderName}")
+                                    }
+                                    if (isNotEmpty()) append(": ")
+                                }
+                                sendLivePlusOne(prefix + item.content, item.emotes)
+                            }
+                        } else {
+                            null
+                        },
+                        onBlock = { item ->
+                            val mid = item.midHash.toLongOrNull() ?: 0L
+                            viewModel.blockTemporary(mid, item.content)
+                            overlayItems.removeAll { viewModel.isBlocked(it.midHash.toLongOrNull() ?: 0L, it.content) }
+                            liveMessage = "已临时屏蔽该弹幕及发送者"
+                        },
+                    )
+                },
             )
             if (fullscreen) {
+                VideoMessageToast(message = liveMessage, inPipMode = inPipMode, inFullscreen = true)
                 CompositionLocalProvider(
                     LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
                 ) {
                     RenderLiveDialogs(inlineInStage = true)
                 }
             }
+        },
+        portraitOverlay = {
+            VideoMessageToast(message = liveMessage, inPipMode = inPipMode, inFullscreen = false)
         },
         detailContent = {
             val navBarBottom = rememberStableNavBarBottomDp()
@@ -463,71 +544,6 @@ fun LiveRoomScreen(
 
     if (!fullscreen) {
         RenderLiveDialogs(inlineInStage = false)
-    }
-}
-
-@Composable
-private fun LiveRoomInfo(detail: LiveRoomDetail, modifier: Modifier = Modifier) {
-    val density = LocalDensity.current
-    val avatarPx = with(density) { 36.dp.roundToPx() }
-    val avatarUrl = remember(detail.anchorFace) {
-        Formatters.sizedImageUrl(detail.anchorFace, avatarPx, avatarPx)
-    }
-
-    Column(modifier) {
-        Text(
-            text = detail.title,
-            style = COUITheme.textStyles.title3,
-            maxLines = 2,
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (detail.anchorFace.isNotBlank()) {
-                AsyncImage(
-                    model = avatarUrl,
-                    contentDescription = null,
-                    modifier = Modifier.size(36.dp).clip(CircleShape),
-                    contentScale = ContentScale.Crop,
-                )
-                Spacer(Modifier.width(10.dp))
-            }
-            Column {
-                Text(
-                    text = detail.anchorName.ifBlank { "未知主播" },
-                    style = COUITheme.textStyles.body2,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = buildString {
-                        if (detail.areaName.isNotBlank()) append(detail.areaName).append(" · ")
-                        if (detail.isLive) {
-                            val count = detail.onlineCount
-                            if (count != null) {
-                                append("高能观众(").append(Formatters.formatStat(count)).append(")")
-                            } else {
-                                append("高能观众")
-                            }
-                        } else {
-                            append("未开播")
-                        }
-                    },
-                    style = COUITheme.textStyles.footnote2,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                )
-            }
-        }
-
-        if (detail.description.isNotBlank()) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = detail.description,
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-                maxLines = 2,
-            )
-        }
     }
 }
 

@@ -55,6 +55,10 @@ class SettingsRepository(
     private val _danmakuArea = MutableStateFlow(1)
     val danmakuArea: StateFlow<Int> = _danmakuArea.asStateFlow()
 
+    /** 直播间点击弹幕 +1 时是否附带发送者的粉丝牌。 */
+    private val _advancedPlusOne = MutableStateFlow(false)
+    val advancedPlusOne: StateFlow<Boolean> = _advancedPlusOne.asStateFlow()
+
     private val _inAppBackgroundPlay = MutableStateFlow(true)
     val inAppBackgroundPlay: StateFlow<Boolean> = _inAppBackgroundPlay.asStateFlow()
 
@@ -78,6 +82,10 @@ class SettingsRepository(
     /** 长按倍速的倍数，按百分比存：200 = 2x。 */
     private val _longPressSpeed = MutableStateFlow(DEFAULT_LONG_PRESS_SPEED)
     val longPressSpeed: StateFlow<Int> = _longPressSpeed.asStateFlow()
+
+    /** 长按倍速时是否允许上下滑动调节倍速（步进 0.25x）。 */
+    private val _adjustableLongPressSpeed = MutableStateFlow(false)
+    val adjustableLongPressSpeed: StateFlow<Boolean> = _adjustableLongPressSpeed.asStateFlow()
 
     private val _autoRotateMode = MutableStateFlow(1)
     val autoRotateMode: StateFlow<Int> = _autoRotateMode.asStateFlow()
@@ -142,6 +150,7 @@ class SettingsRepository(
                 lineHeight = (prefs[KEY_DM_LINE_HEIGHT] ?: 135).coerceIn(100, 200),
             )
             syncDanmakuState(dm)
+            _advancedPlusOne.value = prefs[KEY_ADVANCED_PLUS_ONE] ?: false
             _inAppBackgroundPlay.value = prefs[KEY_IN_APP_BACKGROUND_PLAY] ?: true
             _backgroundPlay.value = prefs[KEY_BACKGROUND_PLAY] ?: true
             val legacyAutoPlay = prefs[KEY_AUTO_PLAY_NEXT] ?: true
@@ -154,6 +163,7 @@ class SettingsRepository(
             _gestureHaptic.value = prefs[KEY_GESTURE_HAPTIC] ?: true
             _longPressSpeed.value = (prefs[KEY_LONG_PRESS_SPEED] ?: DEFAULT_LONG_PRESS_SPEED)
                 .coerceIn(125, 400)
+            _adjustableLongPressSpeed.value = prefs[KEY_ADJUSTABLE_LONG_PRESS_SPEED] ?: false
             _autoRotateMode.value = prefs[KEY_AUTO_ROTATE_MODE] ?: 1
             _gestureVolumeBrightness.value = prefs[KEY_GESTURE_VOL_BRIGHT] ?: true
             _fullscreenGestureHint.value = prefs[KEY_FS_GESTURE_HINT] ?: true
@@ -219,6 +229,13 @@ class SettingsRepository(
         scope.launch { context.biliDataStore.edit { it[KEY_LONG_PRESS_SPEED] = _longPressSpeed.value } }
     }
 
+    fun setAdjustableLongPressSpeed(enabled: Boolean) {
+        _adjustableLongPressSpeed.value = enabled
+        scope.launch {
+            context.biliDataStore.edit { it[KEY_ADJUSTABLE_LONG_PRESS_SPEED] = enabled }
+        }
+    }
+
     fun setGestureHaptic(enabled: Boolean) {
         _gestureHaptic.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_GESTURE_HAPTIC] = enabled } }
@@ -282,6 +299,11 @@ class SettingsRepository(
     fun setDanmakuEnabled(enabled: Boolean) {
         syncDanmakuState(_danmakuSettings.value.copy(enabled = enabled))
         scope.launch { context.biliDataStore.edit { it[KEY_DANMAKU_ENABLED] = enabled } }
+    }
+
+    fun setAdvancedPlusOne(enabled: Boolean) {
+        _advancedPlusOne.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_ADVANCED_PLUS_ONE] = enabled } }
     }
 
     fun setDanmakuAllowScroll(allow: Boolean) {
@@ -431,6 +453,7 @@ class SettingsRepository(
         val KEY_CDN = stringPreferencesKey("playback_cdn")
         val KEY_SEARCH_HISTORY = stringPreferencesKey("search_history")
         val KEY_DANMAKU_ENABLED = booleanPreferencesKey("danmaku_enabled")
+        val KEY_ADVANCED_PLUS_ONE = booleanPreferencesKey("danmaku_advanced_plus_one")
         val KEY_DANMAKU_OPACITY = intPreferencesKey("danmaku_opacity")
         val KEY_DANMAKU_FONT = intPreferencesKey("danmaku_font_scale")
         val KEY_DANMAKU_AREA = intPreferencesKey("danmaku_area")
@@ -453,6 +476,7 @@ class SettingsRepository(
         val KEY_GESTURE_HAPTIC = booleanPreferencesKey("gesture_haptic")
         val KEY_AUTO_ROTATE_MODE = intPreferencesKey("auto_rotate_mode")
         val KEY_LONG_PRESS_SPEED = intPreferencesKey("long_press_speed")
+        val KEY_ADJUSTABLE_LONG_PRESS_SPEED = booleanPreferencesKey("adjustable_long_press_speed")
         const val DEFAULT_LONG_PRESS_SPEED = 200
         val KEY_GESTURE_VOL_BRIGHT = booleanPreferencesKey("gesture_vol_bright")
         val KEY_FS_GESTURE_HINT = booleanPreferencesKey("fullscreen_gesture_hint")

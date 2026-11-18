@@ -73,11 +73,13 @@ fun SettingsScreen(
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeed by container.settings.longPressSpeed.collectAsStateWithLifecycle()
+    val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
+    val advancedPlusOne by container.settings.advancedPlusOne.collectAsStateWithLifecycle()
     val sponsorBlockEnabled by container.settings.sponsorBlockEnabled.collectAsStateWithLifecycle()
     val sponsorSkipMode by container.settings.sponsorSkipMode.collectAsStateWithLifecycle()
     val sponsorCategories by container.settings.sponsorCategories.collectAsStateWithLifecycle()
@@ -174,13 +176,14 @@ fun SettingsScreen(
                     cardListPosition = CardListPosition.Middle,
                     onSelectedIndexChange = container.settings::setAutoRotateMode,
                 )
-                OverlayDropdownPreference(
-                    items = LONG_PRESS_SPEED_LABELS,
-                    selectedIndex = LONG_PRESS_SPEED_OPTIONS.indexOf(longPressSpeed).coerceAtLeast(0),
-                    title = "长按倍速",
+                LongPressSpeedPreference(
+                    speedOptions = LONG_PRESS_SPEED_OPTIONS,
+                    selectedPercent = longPressSpeed,
+                    adjustableSpeed = adjustableLongPressSpeed,
+                    onSelectPercent = container.settings::setLongPressSpeed,
+                    onAdjustableChange = container.settings::setAdjustableLongPressSpeed,
                     modifier = Modifier.testTag("settings_long_press_speed"),
                     cardListPosition = CardListPosition.Middle,
-                    onSelectedIndexChange = { container.settings.setLongPressSpeed(LONG_PRESS_SPEED_OPTIONS[it]) },
                 )
                 SwitchPreference(
                     checked = gestureVolBright,
@@ -263,8 +266,16 @@ fun SettingsScreen(
                     title = "弹幕设置",
                     modifier = Modifier.testTag("settings_danmaku_detail"),
                     summary = "不透明度 · 字号 · 显示区域 · 类型屏蔽 · 速度",
-                    cardListPosition = CardListPosition.Tail,
+                    cardListPosition = CardListPosition.Middle,
                     onClick = { showDanmakuSettings = true },
+                )
+                SwitchPreference(
+                    checked = advancedPlusOne,
+                    onCheckedChange = container.settings::setAdvancedPlusOne,
+                    title = "高级+1",
+                    summary = "开启后，直播间点击弹幕时在 +1 右侧显示 @+1",
+                    modifier = Modifier.testTag("settings_danmaku_advanced_plus_one"),
+                    cardListPosition = CardListPosition.Tail,
                 )
             }
         }
@@ -478,122 +489,8 @@ fun SettingsScreen(
     }
 }
 
-/** 单选弹窗：和 Cobo 的设置项同一套组件，胶囊高亮由 ListPopupColumn 自己铺。 */@Composable
-private fun OptionPicker(
-    title: String,
-    options: List<String>,
-    selectedIndex: Int,
-    onPick: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var show by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<Int?>(null) }
-    var settled by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { show = true }
-
-    OverlayDialog(
-        show = show,
-        title = title,
-        outsideMargin = DpSize(16.dp, 8.dp),
-        onDismissRequest = { show = false },
-        onDismissFinished = {
-            if (!settled) {
-                settled = true
-                val picked = result
-                if (picked != null) onPick(picked) else onDismiss()
-            }
-        },
-    ) {
-        Column {
-            Box(Modifier.fillMaxWidth(), propagateMinConstraints = true) {
-                ListPopupColumn {
-                    options.forEachIndexed { index, label ->
-                        DropdownImpl(
-                            item = DropdownItem(text = label),
-                            optionSize = options.size,
-                            isSelected = index == selectedIndex,
-                            index = index,
-                            groupKey = "settings-option",
-                            onSelectedIndexChange = {
-                                result = index
-                                show = false
-                            },
-                        )
-                    }
-                }
-            }
-            DialogButtonBar(
-                negative = DialogButtonBarAction(text = "取消", onClick = { show = false }),
-                positive = null,
-            )
-        }
-    }
-}
-
 /** 下标即存储值：0 跟随系统，1 浅色，2 深色。 */
 private val DARK_MODE_OPTIONS = listOf("跟随系统", "浅色", "深色")
 private val AUTO_ROTATE_OPTIONS = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
 private val LONG_PRESS_SPEED_OPTIONS = listOf(150, 200, 250, 300, 400)
-private val LONG_PRESS_SPEED_LABELS = LONG_PRESS_SPEED_OPTIONS.map { speedLabel(it / 100f) }
 private val SPONSOR_SKIP_MODES = listOf("自动跳过", "手动提示", "仅标记片段")
-
-@Composable
-private fun SponsorCategoriesDialog(
-    enabledIds: Set<String>,
-    onToggle: (String, Boolean) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var show by remember { mutableStateOf(false) }
-    var dismissed by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { show = true }
-
-    OverlayDialog(
-        show = show,
-        title = "跳过片段类型",
-        outsideMargin = DpSize(16.dp, 8.dp),
-        onDismissRequest = { show = false },
-        onDismissFinished = {
-            if (!dismissed) {
-                dismissed = true
-                onDismiss()
-            }
-        },
-    ) {
-        Column {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 420.dp)
-                    .verticalScroll(rememberScrollState())
-                    .scrollEndHaptic(),
-            ) {
-                SponsorCategory.entries.forEachIndexed { index, category ->
-                    val pos = when (index) {
-                        0 -> CardListPosition.Head
-                        SponsorCategory.entries.lastIndex -> CardListPosition.Tail
-                        else -> CardListPosition.Middle
-                    }
-                    SwitchPreference(
-                        checked = category.id in enabledIds,
-                        onCheckedChange = { checked -> onToggle(category.id, checked) },
-                        title = category.label,
-                        startAction = {
-                            Box(
-                                modifier = Modifier
-                                    .padding(end = 10.dp)
-                                    .size(10.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(category.colorArgb)),
-                            )
-                        },
-                        cardListPosition = pos,
-                    )
-                }
-            }
-            DialogButtonBar(
-                negative = null,
-                positive = DialogButtonBarAction(text = "完成", onClick = { show = false }),
-            )
-        }
-    }
-}

@@ -17,6 +17,7 @@ import erl.bilico.data.model.PgcRankResponse
 import erl.bilico.data.model.PgcSeasonResponse
 import erl.bilico.data.model.RankingResponse
 import erl.bilico.data.model.RelatedResponse
+import erl.bilico.data.model.SendDanmakuResponse
 import erl.bilico.data.model.SystemNoticeResponse
 import erl.bilico.data.model.UserRelationResponse
 import erl.bilico.data.model.VideoRelationResponse
@@ -136,7 +137,11 @@ interface BiliApi {
 
     @FormUrlEncoded
     @POST("x/v2/dm/post")
-    suspend fun sendDanmaku(@FieldMap fields: Map<String, String>): BaseResponse
+    suspend fun sendDanmaku(@FieldMap fields: Map<String, String>): SendDanmakuResponse
+
+    @FormUrlEncoded
+    @POST("x/dm/report/add")
+    suspend fun reportDanmaku(@FieldMap fields: Map<String, String>): BaseResponse
 
     @POST("x/internal/gaia-gateway/ExClimbWuzhi")
     suspend fun activateBuvid(@retrofit2.http.Body payload: Map<String, String>): BaseResponse
@@ -203,6 +208,14 @@ interface BiliApi {
 
     @GET("https://api.live.bilibili.com/xlive/general-interface/v1/rank/queryContributionRank")
     suspend fun liveContributionRank(@QueryMap params: Map<String, String>): LiveContributionRankResponse
+
+    @Headers(
+        "Origin: https://live.bilibili.com",
+        "Referer: https://live.bilibili.com/",
+    )
+    @FormUrlEncoded
+    @POST("https://api.live.bilibili.com/msg/send")
+    suspend fun sendLiveDanmaku(@FieldMap fields: Map<String, String>): BaseResponse
 
     @GET("x/web-interface/wbi/search/square")
     suspend fun searchSquare(@QueryMap params: Map<String, String>): SearchSquareResponse

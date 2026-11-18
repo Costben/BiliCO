@@ -220,6 +220,7 @@ data class LiveDanmakuMessage(
     val mid: Long = 0,
     val medalName: String = "",
     val medalLevel: Int = 0,
+    val emotes: Map<String, EmoteImage> = emptyMap(),
 )
 
 @Serializable

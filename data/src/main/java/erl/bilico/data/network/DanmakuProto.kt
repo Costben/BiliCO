@@ -38,6 +38,7 @@ internal object DanmakuProto {
         var mode = 1
         var fontsize = 25
         var color = 0xFFFFFF
+        var midHash = ""
         var content: String? = null
         val reader = Reader(data, start, end)
         while (reader.pos < reader.end) {
@@ -50,6 +51,7 @@ internal object DanmakuProto {
                 3 -> mode = (reader.readVarint() ?: return null).toInt()
                 4 -> fontsize = (reader.readVarint() ?: return null).toInt()
                 5 -> color = (reader.readVarint() ?: return null).toInt()
+                6 -> midHash = reader.readString() ?: return null
                 7 -> content = reader.readString() ?: return null
                 else -> if (!reader.skip(wire)) return null
             }
@@ -69,6 +71,7 @@ internal object DanmakuProto {
             content = text,
             color = color and 0xFFFFFF,
             fontSize = fontsize,
+            midHash = midHash,
         )
     }
 

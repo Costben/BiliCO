@@ -2,7 +2,6 @@ package erl.bilico.feature.video
 
 import android.view.LayoutInflater
 import android.view.View
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,12 +14,9 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -50,7 +46,6 @@ import androidx.media3.ui.PlayerView
 import erl.bilico.R
 import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.PlaybackSource
-import erl.bilico.data.model.QualityOption
 import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.util.Formatters
@@ -124,7 +119,9 @@ internal fun VideoPlayer(
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
     longPressSpeedActive: Boolean = false,
     longPressSpeedValue: Float = 2f,
+    adjustableLongPressSpeed: Boolean = false,
     onLongPressSpeedChange: (Boolean) -> Unit = {},
+    onLongPressSpeedAdjust: (Float) -> Unit = {},
     liveMode: Boolean = false,
     statusText: String? = null,
     chapters: List<VideoChapter> = emptyList(),
@@ -133,10 +130,16 @@ internal fun VideoPlayer(
     sponsorOverlay: @Composable BoxScope.(bottomPad: Dp, startPad: Dp) -> Unit = { _, _ -> },
     subtitleOverlay: @Composable (controlsVisible: Boolean) -> Unit = {},
     overlay: @Composable () -> Unit = {},
+    danmakuComposer: (@Composable (onFocusChange: (Boolean) -> Unit) -> Unit)? = null,
+    danmakuActions: DanmakuActionCallbacks? = null,
 ) {
     var controlsVisible by remember { mutableStateOf(false) }
     var fullscreenMoreOpen by remember { mutableStateOf(false) }
     var statsVisible by remember { mutableStateOf(false) }
+    var selectedDanmaku by remember { mutableStateOf<DanmakuHit?>(null) }
+    val danmakuInteraction = remember { DanmakuInteractionHost() }
+    // 正在输入弹幕：这时不能让控件条按 4.5 秒自动收，否则键盘还在、框先没了。
+    var composerFocused by remember { mutableStateOf(false) }
     var prevFullscreen by remember { mutableStateOf(fullscreen) }
 
     LaunchedEffect(fullscreen) {
@@ -145,11 +148,19 @@ internal fun VideoPlayer(
             controlsVisible = false
             fullscreenMoreOpen = false
             statsVisible = false
+            selectedDanmaku = null
         }
     }
+    LaunchedEffect(inPipMode, danmakuActions == null) {
+        if (inPipMode || danmakuActions == null) selectedDanmaku = null
+    }
+    danmakuInteraction.selectedHit = selectedDanmaku
 
-    LaunchedEffect(controlsVisible, fullscreenMoreOpen, isPlaying, isBuffering, errorMessage) {
-        if (controlsVisible && !fullscreenMoreOpen && isPlaying && !isBuffering && errorMessage == null) {
+    LaunchedEffect(controlsVisible, fullscreenMoreOpen, composerFocused, isPlaying, isBuffering, errorMessage) {
+        if (
+            controlsVisible && !fullscreenMoreOpen && !composerFocused &&
+            isPlaying && !isBuffering && errorMessage == null
+        ) {
             delay(4500)
             controlsVisible = false
         }
@@ -162,6 +173,8 @@ internal fun VideoPlayer(
         if (!fullscreen || !showChrome) fullscreenMoreOpen = false
     }
     val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
+    // 只有横屏全屏才挂弹幕输入框：竖屏全屏画面本来就窄，页面下面还有那条固定的输入框。
+    val showStageComposer = fullscreen && !portraitFullscreen && !liveMode && danmakuComposer != null
     // 竖屏全屏时顶栏贴着屏幕顶端，得让开状态栏和挖孔，否则第一行会被挖孔吃进去。
     // 用固定高度而不是实时 inset：全屏收系统栏不会让这两行跟着上下跳。
     val portraitTopPad = if (portraitFullscreen) {
@@ -197,7 +210,8 @@ internal fun VideoPlayer(
         onDispose { frameSource.capture = null }
     }
 
-    Box(if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier) {
+    val stageModifier = if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier
+    Box(stageModifier) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -232,7 +246,9 @@ internal fun VideoPlayer(
             )
         }
 
-        overlay()
+        CompositionLocalProvider(LocalDanmakuInteraction provides danmakuInteraction) {
+            overlay()
+        }
 
         subtitleOverlay(showChrome)
 
@@ -243,17 +259,33 @@ internal fun VideoPlayer(
                 seekEnabled = !liveMode,
                 longPressSpeedActive = longPressSpeedActive,
                 longPressSpeedValue = longPressSpeedValue,
+                adjustableLongPressSpeed = adjustableLongPressSpeed,
                 fullscreen = fullscreen,
                 hapticEnabled = hapticEnabled,
                 volumeBrightnessEnabled = volumeBrightnessEnabled,
                 fullscreenHintEnabled = fullscreenHintEnabled,
-                onTap = { controlsVisible = !controlsVisible },
+                onTap = { offset ->
+                    val hit = if (selectedDanmaku == null && danmakuActions != null) {
+                        danmakuInteraction.hitTest?.invoke(offset)
+                    } else {
+                        null
+                    }
+                    when {
+                        selectedDanmaku != null -> selectedDanmaku = null
+                        hit != null -> {
+                            selectedDanmaku = hit
+                            controlsVisible = false
+                        }
+                        else -> controlsVisible = !controlsVisible
+                    }
+                },
                 onDoubleTap = {
                     // 双击是播放/暂停，结果必须看得见：暂停时把控件亮出来。
                     controlsVisible = true
                     onPlayPause()
                 },
                 onLongPressSpeedChange = onLongPressSpeedChange,
+                onLongPressSpeedAdjust = onLongPressSpeedAdjust,
                 onSeek = onSeek,
                 onFullscreenChange = onFullscreenChange,
                 modifier = Modifier.fillMaxSize(),
@@ -421,6 +453,8 @@ internal fun VideoPlayer(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    // 全屏发弹幕时软键盘会把底栏顶走，整条跟着键盘抬起来。
+                    .imePadding()
                     .background(
                         Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))),
                     )
@@ -475,7 +509,14 @@ internal fun VideoPlayer(
                             )
                         }
                     }
-                    Spacer(Modifier.weight(1f))
+                    if (showStageComposer) {
+                        Box(
+                            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { danmakuComposer { composerFocused = it } }
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
                     if (!liveMode && chapters.isNotEmpty() && onChapterClick != null) {
                         ControlLabel(text = "分段", onClick = onChapterClick)
                     }
@@ -536,6 +577,11 @@ internal fun VideoPlayer(
             }
         }
 
+        val activeHit = selectedDanmaku
+        if (activeHit != null && danmakuActions != null && !inPipMode) {
+            DanmakuActionToolbar(activeHit, danmakuActions, { selectedDanmaku = null }, Modifier.fillMaxSize())
+        }
+
         if (statsVisible) {
             PlayerStatsDialog(
                 player = player,
@@ -545,34 +591,4 @@ internal fun VideoPlayer(
             )
         }
     }
-}
-
-@Composable
-private fun ControlLabel(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Text(
-        text = text,
-        modifier = modifier
-            .clip(SquircleShape(6.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        style = COUITheme.textStyles.footnote1,
-        color = Color.White,
-    )
-}
-
-internal fun speedLabel(speed: Float): String = when (speed) {
-    0.5f -> "0.5x"
-    0.75f -> "0.75x"
-    1f -> "1.0x"
-    1.25f -> "1.25x"
-    1.5f -> "1.5x"
-    2f -> "2.0x"
-    2.5f -> "2.5x"
-    3f -> "3.0x"
-    4f -> "4.0x"
-    else -> "${speed}x"
 }

@@ -1,5 +1,8 @@
 package erl.bilico.data.model
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
 enum class DanmakuType {
     SCROLL,
     TOP,
@@ -14,4 +17,23 @@ data class DanmakuItem(
     val content: String,
     val color: Int,
     val fontSize: Int,
+    val midHash: String = "",
+    val senderName: String = "",
+    val senderMedal: String = "",
+    val emotes: Map<String, EmoteImage> = emptyMap(),
+    val isSelf: Boolean = false,
+)
+
+@Serializable
+data class SendDanmakuResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val ttl: Int = 1,
+    val data: SendDanmakuData? = null,
+)
+
+@Serializable
+data class SendDanmakuData(
+    val dmid: Long = 0L,
+    @SerialName("dmid_str") val dmidStr: String = "",
 )

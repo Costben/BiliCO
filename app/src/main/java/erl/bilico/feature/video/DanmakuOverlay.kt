@@ -24,6 +24,7 @@ internal fun DanmakuOverlay(
     timeline: DanmakuTimeline? = null,
 ) {
     val minimized = LocalRouteMinimized.current
+    val interaction = LocalDanmakuInteraction.current
     AndroidView(
         factory = { context ->
             DanmakuSurfaceView(context).apply {
@@ -31,8 +32,10 @@ internal fun DanmakuOverlay(
                 this.timeline = timeline
                 this.items = items
                 applySettings(settings)
+                selectedHit = interaction?.selectedHit
                 playing = isPlaying && !minimized
                 visibility = if (minimized) View.INVISIBLE else View.VISIBLE
+                interaction?.hitTest = { offset -> findDanmakuAt(offset.x, offset.y) }
             }
         },
         update = { view ->
@@ -40,8 +43,13 @@ internal fun DanmakuOverlay(
             view.timeline = timeline
             view.items = items
             view.applySettings(settings)
+            view.selectedHit = interaction?.selectedHit
             view.playing = isPlaying && !minimized
             view.visibility = if (minimized) View.INVISIBLE else View.VISIBLE
+            interaction?.hitTest = { offset -> view.findDanmakuAt(offset.x, offset.y) }
+        },
+        onRelease = {
+            interaction?.hitTest = null
         },
         modifier = modifier,
     )

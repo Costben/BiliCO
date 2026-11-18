@@ -92,6 +92,7 @@ fun VideoScreen(
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
+    val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
@@ -186,7 +187,10 @@ fun VideoScreen(
     var coinDialogVisible by remember { mutableStateOf(false) }
     var favoriteFolders by remember { mutableStateOf<List<FavoriteFolder>?>(null) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
-    var longPressSpeed by remember { mutableStateOf(false) }
+    val longPressSpeed = rememberLongPressSpeedController(
+        baseSpeed = speed,
+        boostPercent = longPressSpeedPercent,
+    )
     var danmakuComposing by rememberSaveable { mutableStateOf(false) }
     var danmakuDraft by rememberSaveable { mutableStateOf("") }
 
@@ -200,9 +204,11 @@ fun VideoScreen(
             else -> scope.launch {
                 val position = player?.currentPosition?.coerceAtLeast(0L) ?: 0L
                 container.danmaku.send(aid, cid, text, position)
-                    .onSuccess {
+                    .onSuccess { dmid ->
                         danmakuDraft = ""
                         danmakuComposing = false
+                        val showAtMs = maxOf(position, player?.currentPosition?.coerceAtLeast(0L) ?: position)
+                        danmakuController.appendSelf(content = text, timeMs = showAtMs, serverId = dmid)
                         danmakuController.reload(position)
                         viewModel.showMessage("弹幕已发送")
                     }
@@ -211,8 +217,7 @@ fun VideoScreen(
         }
     }
 
-    val boostSpeed = longPressSpeedPercent / 100f
-    val effectiveSpeed = if (longPressSpeed) boostSpeed else speed
+    val effectiveSpeed = longPressSpeed.effectiveSpeed
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -277,7 +282,7 @@ fun VideoScreen(
         isPlaying = false
         isBuffering = false
         playerError = null
-        longPressSpeed = false
+        longPressSpeed.onActiveChange(false)
         speed = 1f
         danmakuComposing = false
         danmakuDraft = ""
@@ -479,9 +484,11 @@ fun VideoScreen(
                             bvid = bvid,
                         )
                     },
-                    longPressSpeedActive = longPressSpeed,
-                    longPressSpeedValue = boostSpeed,
-                    onLongPressSpeedChange = { longPressSpeed = it },
+                    longPressSpeedActive = longPressSpeed.active,
+                    longPressSpeedValue = longPressSpeed.speed,
+                    adjustableLongPressSpeed = adjustableLongPressSpeed,
+                    onLongPressSpeedChange = longPressSpeed.onActiveChange,
+                    onLongPressSpeedAdjust = longPressSpeed.onAdjust,
                     chapters = subtitleController.chapters,
                     onChapterClick = { chapterDialogVisible = true },
                     sponsorSegments = if (sponsorBlockEnabled) {
@@ -515,6 +522,14 @@ fun VideoScreen(
                             modifier = Modifier.fillMaxSize(),
                         )
                     },
+                    danmakuComposer = { onFocusChange ->
+                        FullscreenDanmakuComposer(
+                            draft = danmakuDraft,
+                            onDraftChange = { danmakuDraft = it },
+                            onSend = sendDanmaku,
+                            onFocusChange = onFocusChange,
+                        )
+                    },
                     overlay = {
                         DanmakuOverlay(
                             player = player,
@@ -523,6 +538,18 @@ fun VideoScreen(
                             settings = danmakuSettings,
                         )
                     },
+                    danmakuActions = rememberDanmakuActions(
+                        aid = state.detail?.aid ?: 0L,
+                        cid = state.selectedCid,
+                        fullscreen = fullscreen,
+                        positionMs = { player.currentPosition.coerceAtLeast(0L) },
+                        isLoggedIn = { container.session.isLoggedIn() },
+                        repository = container.danmaku,
+                        controller = danmakuController,
+                        scope = scope,
+                        onShowMessage = viewModel::showMessage,
+                        onShowLoginHint = viewModel::showLoginHint,
+                    ),
                 )
                 if (fullscreen) {
                     VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)

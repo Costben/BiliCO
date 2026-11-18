@@ -41,6 +41,38 @@ class LiveRepository(
         }
     }
 
+    /** 发送直播间弹幕。 */
+    suspend fun sendDanmaku(
+        roomId: Long,
+        message: String,
+        csrf: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(roomId > 0L) { "还没有加载到直播间信息" }
+            require(csrf.isNotBlank()) { "登录后才能发弹幕" }
+            val text = message.trim()
+            require(text.isNotEmpty()) { "先写点什么" }
+            buvid.ensure()
+            val response = api.sendLiveDanmaku(
+                mapOf(
+                    "bubble" to "0",
+                    "msg" to text,
+                    "color" to "16777215",
+                    "mode" to "1",
+                    "room_type" to "0",
+                    "fontsize" to "25",
+                    "rnd" to (System.currentTimeMillis() / 1000L).toString(),
+                    "roomid" to roomId.toString(),
+                    "csrf" to csrf,
+                    "csrf_token" to csrf,
+                ),
+            )
+            if (response.code != 0) {
+                error(response.message.ifBlank { "发送弹幕失败（${response.code}）" })
+            }
+        }
+    }
+
     /**
      * PiliPlus `Api.liveContributionRank` 对应的高能观众数：
      * 用 `type=online_rank` 拉第 1 页第 1 条即可拿到 `data.count`。

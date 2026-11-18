@@ -1,9 +1,9 @@
 package erl.bilico.feature.video
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Build
 import android.util.LruCache
@@ -12,9 +12,13 @@ import android.view.View
 import androidx.media3.common.Player
 import erl.bilico.data.model.DanmakuItem
 import erl.bilico.data.model.DanmakuType
+import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.settings.DanmakuSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlin.math.abs
-import kotlin.math.ceil
 import kotlin.math.max
 
 /**
@@ -72,40 +76,41 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             syncLoopState()
         }
 
-    private val fillPaint = Paint(
-        Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG,
-    ).apply {
-        style = Paint.Style.FILL
-    }
+    var selectedHit: DanmakuHit? = null
+        set(value) {
+            if (field === value) return
+            field = value
+            invalidate()
+        }
 
-    private val strokePaint = Paint(
-        Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG,
-    ).apply {
-        style = Paint.Style.STROKE
-        strokeJoin = Paint.Join.ROUND
-        strokeCap = Paint.Cap.ROUND
-        color = STROKE_COLOR
-    }
-
+    private val fillPaint = textPaint(Paint.Style.FILL)
+    private val strokePaint = textPaint(Paint.Style.STROKE, STROKE_COLOR)
     // 合并数量那截「(N)」用的小一号字号，样式跟着正文走。
-    private val countFillPaint = Paint(
-        Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG,
-    ).apply {
-        style = Paint.Style.FILL
-    }
-
-    private val countStrokePaint = Paint(
-        Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG,
-    ).apply {
-        style = Paint.Style.STROKE
-        strokeJoin = Paint.Join.ROUND
-        strokeCap = Paint.Cap.ROUND
-        color = STROKE_COLOR
-    }
+    private val countFillPaint = textPaint(Paint.Style.FILL)
+    private val countStrokePaint = textPaint(Paint.Style.STROKE, STROKE_COLOR)
 
     private val bitmapPaint = Paint(
         Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.FILTER_BITMAP_FLAG,
     )
+    private val emotePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val emoteRect = RectF()
+    private val emoteLoader = DanmakuEmoteLoader(context) { invalidate() }
+    private var viewScope: CoroutineScope? = null
+
+    private val selfBoxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = SELF_BOX_COLOR
+    }
+
+    private val selectedFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = 0x552196F3
+    }
+
+    private val selectedStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = 0xCCFFFFFF.toInt()
+    }
 
     private val spriteCache = object : LruCache<SpriteKey, DanmakuSprite>(MAX_SPRITE_CACHE_BYTES) {
         override fun sizeOf(key: SpriteKey, value: DanmakuSprite): Int = value.bitmap.allocationByteCount
@@ -128,6 +133,7 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
     private var lastFrameNanos = 0L
     private var lastExternalMs = 0L
     private var renderTimeMs = -1.0
+    private val highlightRect = RectF()
 
     init {
         setWillNotDraw(false)
@@ -277,6 +283,10 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also {
+            viewScope = it
+            emoteLoader.attach(it)
+        }
         updateFrameRateVote()
         syncLoopState()
     }
@@ -386,15 +396,35 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
         invalidate()
     }
 
+    fun findDanmakuAt(xPx: Float, yPx: Float): DanmakuHit? {
+        if (!settings.enabled || placed.isEmpty() || width <= 0 || height <= 0) return null
+        val density = resources.displayMetrics.density
+        syncMeasureFontPx()
+        val textHeightPx = (-fillPaint.ascent() + fillPaint.descent()).coerceAtLeast(1f)
+        return findVisibleDanmakuAt(
+            placed = placed,
+            nowMs = resolveDisplayTimeMs(),
+            screenWidth = width.toFloat(),
+            scrollDurationMs = settings.scrollDurationMs,
+            textHeightPx = textHeightPx,
+            xPx = xPx,
+            yPx = yPx,
+            slopXPx = 8f * density,
+            slopYPx = 8f * density,
+        )
+    }
+
+    private fun resolveDisplayTimeMs(): Double = when {
+        timeline != null -> if (renderTimeMs >= 0.0) renderTimeMs else timeline?.nowMs?.toDouble() ?: 0.0
+        loopRunning && renderTimeMs >= 0.0 -> renderTimeMs
+        else -> (player?.currentPosition?.coerceAtLeast(0L)?.toDouble() ?: 0.0).also { renderTimeMs = it }
+    }
+
     override fun onDraw(canvas: Canvas) {
         if (!settings.enabled || placed.isEmpty()) return
         val p = player ?: return
-        val nowMs = when {
-            // 直播走的是一条自维护的时间轴，暂停时保持不动。
-            timeline != null -> if (renderTimeMs >= 0.0) renderTimeMs else 0.0
-            loopRunning && renderTimeMs >= 0.0 -> renderTimeMs
-            else -> p.currentPosition.coerceAtLeast(0L).toDouble().also { renderTimeMs = it }
-        }
+        val nowMs = resolveDisplayTimeMs()
+        val pinned = selectedHit
 
         val density = resources.displayMetrics.density
         val fontPx = BASE_FONT_DP * density * (settings.fontScale / 100f)
@@ -420,6 +450,7 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
         for (index in end - 1 downTo 0) {
             val entry = placed[index]
+            if (pinned != null && entry.item.id == pinned.item.id) continue
             val startTime = entry.item.timeMs
             if (startTime < minTime) break
             val duration = if (entry.type == DanmakuType.SCROLL) scrollDuration else fixedDuration
@@ -443,9 +474,43 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
                 measuredWidth = entry.width,
                 rgb = entry.item.color and 0xFFFFFF,
                 strokePx = strokePx,
+                isSelf = entry.item.isSelf,
+                emotes = entry.item.emotes,
             )
             bitmapPaint.alpha = alphaInt
-            canvas.drawBitmap(sprite.bitmap, x - sprite.pad, entry.y - sprite.pad, bitmapPaint)
+            canvas.drawBitmap(sprite.bitmap, x - sprite.padX, entry.y - sprite.padY, bitmapPaint)
+        }
+
+        // 只定格并高亮被选中的那一条，其余弹幕照常流动。
+        if (pinned != null) {
+            val padH = 6f * density
+            val padV = 2f * density
+            val r = 6f * density
+            selectedStrokePaint.strokeWidth = 1.2f * density
+            highlightRect.set(
+                pinned.boundsPx.left - padH,
+                pinned.boundsPx.top - padV,
+                pinned.boundsPx.right + padH,
+                pinned.boundsPx.bottom + padV,
+            )
+            canvas.drawRoundRect(highlightRect, r, r, selectedFillPaint)
+            canvas.drawRoundRect(highlightRect, r, r, selectedStrokePaint)
+            val sprite = obtainSprite(
+                text = pinned.displayText,
+                count = pinned.count,
+                measuredWidth = pinned.boundsPx.width(),
+                rgb = pinned.item.color and 0xFFFFFF,
+                strokePx = strokePx,
+                isSelf = pinned.item.isSelf,
+                emotes = pinned.item.emotes,
+            )
+            bitmapPaint.alpha = (baseOpacity * 255f).toInt().coerceIn(0, 255)
+            canvas.drawBitmap(
+                sprite.bitmap,
+                pinned.boundsPx.left - sprite.padX,
+                pinned.boundsPx.top - sprite.padY,
+                bitmapPaint,
+            )
         }
 
         if (p.isPlaying && playing && !loopRunning) {
@@ -459,65 +524,48 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
         measuredWidth: Float,
         rgb: Int,
         strokePx: Float,
+        isSelf: Boolean,
+        emotes: Map<String, EmoteImage>,
     ): DanmakuSprite {
-        val key = SpriteKey(text, count, rgb)
+        val emoteSig = if (emotes.isEmpty()) "" else emotes.entries.joinToString("|") { "${it.key}=${it.value.url}" }
+        val key = SpriteKey(text, count, rgb, isSelf, emoteSig)
         spriteCache.get(key)?.let { return it }
-
-        val pad = ceil(strokePx + 2f)
-        val ascent = -fillPaint.ascent()
-        val descent = fillPaint.descent()
-        val countText = if (count > 1) countLabel(count) else null
-        countFillPaint.textSize = fillPaint.textSize * COUNT_FONT_SCALE
-        countFillPaint.typeface = fillPaint.typeface
-        countStrokePaint.textSize = countFillPaint.textSize
-        countStrokePaint.typeface = fillPaint.typeface
-        val countWidth = if (countText != null) countFillPaint.measureText(countText) else 0f
-        val bmpW = ceil(measuredWidth + pad * 2f).toInt().coerceIn(1, 4096)
-        val bmpH = ceil(ascent + descent + pad * 2f).toInt().coerceIn(1, 512)
-        val bmp = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888)
-        val bmpCanvas = Canvas(bmp)
-        val baseline = pad + ascent
-        if (strokePx > 0.05f) {
-            strokePaint.strokeWidth = strokePx
-            strokePaint.alpha = 224
-            if (countText != null) {
-                countStrokePaint.strokeWidth = strokePx
-                countStrokePaint.alpha = 224
-                bmpCanvas.drawText(countText, pad, baseline, countStrokePaint)
-            }
-            bmpCanvas.drawText(text, pad + countWidth, baseline, strokePaint)
-        }
-        fillPaint.color = rgb or (0xFF shl 24)
-        if (countText != null) {
-            countFillPaint.color = rgb or (0xFF shl 24)
-            bmpCanvas.drawText(countText, pad, baseline, countFillPaint)
-        }
-        bmpCanvas.drawText(text, pad + countWidth, baseline, fillPaint)
-
-        return DanmakuSprite(bmp, pad).also { spriteCache.put(key, it) }
+        val (sprite, allLoaded) = buildDanmakuSprite(
+            text = text,
+            count = count,
+            measuredWidth = measuredWidth,
+            rgb = rgb,
+            strokePx = strokePx,
+            isSelf = isSelf,
+            emotes = emotes,
+            density = resources.displayMetrics.density,
+            fillPaint = fillPaint,
+            strokePaint = strokePaint,
+            countFillPaint = countFillPaint,
+            countStrokePaint = countStrokePaint,
+            selfBoxPaint = selfBoxPaint,
+            emoteLoader = emoteLoader,
+            emotePaint = emotePaint,
+            emoteRect = emoteRect,
+        )
+        if (allLoaded) spriteCache.put(key, sprite)
+        return sprite
     }
 
     override fun onDetachedFromWindow() {
         loopRunning = false
         lastFrameNanos = 0L
         Choreographer.getInstance().removeFrameCallback(this)
+        emoteLoader.detach()
+        viewScope?.cancel()
+        viewScope = null
         spriteCache.evictAll()
         super.onDetachedFromWindow()
     }
 
-    private data class SpriteKey(
-        val text: String,
-        val count: Int,
-        val rgb: Int,
-    )
-
-    private class DanmakuSprite(
-        val bitmap: Bitmap,
-        val pad: Float,
-    )
-
     private companion object {
         const val STROKE_COLOR = 0xE6000000.toInt()
+        const val SELF_BOX_COLOR = 0xFF2196F3.toInt()
 
         /** 单帧最多算这么长；再长就是主线程被别的事占住了，按真实值补上即可。 */
         const val MAX_FRAME_MS = 120.0
@@ -533,34 +581,4 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
         const val MAX_SPRITE_CACHE_BYTES = 48 * 1024 * 1024
     }
-}
-
-/**
- * 直播弹幕时间轴：墙钟只用来量帧间隔，弹幕时间按帧间隔累加，
- * 缓冲、后台、暂停这些空档不会计入，恢复时从暂停处接着走。
- */
-internal class DanmakuTimeline {
-    /** 单调时钟，毫秒。 */
-    var source: () -> Long = { 0L }
-
-    /** 弹幕时间轴上的「现在」，由渲染循环每帧写入；入队方按它打时间戳。 */
-    @Volatile
-    var nowMs: Long = 0L
-}
-
-private fun firstAfter(layout: List<PlacedDanmaku>, time: Long): Int {
-    var low = 0
-    var high = layout.size
-    while (low < high) {
-        val mid = (low + high) ushr 1
-        if (layout[mid].item.timeMs <= time) low = mid + 1 else high = mid
-    }
-    return low
-}
-
-private fun fadeAlpha(elapsed: Double, duration: Double): Float {
-    if (elapsed < FADE_MS) return (elapsed / FADE_MS).toFloat()
-    val remain = duration - elapsed
-    if (remain < FADE_MS) return (remain / FADE_MS).toFloat()
-    return 1f
 }

@@ -1,5 +1,6 @@
 package erl.bilico.feature.video
 
+import android.graphics.RectF
 import erl.bilico.data.model.DanmakuItem
 import erl.bilico.data.model.DanmakuType
 import erl.bilico.data.settings.DanmakuSettings
@@ -46,6 +47,10 @@ internal fun filterAndMergeDanmaku(
     val recentIdxByText = HashMap<String, Int>(256)
     val counts = IntArray(filtered.size) { 1 }
     for (item in filtered) {
+        if (item.isSelf) {
+            result.add(FilteredDanmaku(item, item.content))
+            continue
+        }
         val key = item.content.trim()
         val prevResultIdx = recentIdxByText[key]
         if (prevResultIdx != null) {
@@ -114,7 +119,20 @@ internal class DanmakuTrackPlanner(
         measure: (String, Float) -> Float,
     ): PlacedDanmaku? {
         val item = entry.item
-        val width = measure(entry.displayText, 1f) +
+        val segments = parseDanmakuSegments(entry.displayText, item.emotes)
+        val bodyWidth = if (segments.size == 1 && segments[0] is DanmakuSegment.TextSeg) {
+            measure(entry.displayText, 1f)
+        } else {
+            var sum = 0f
+            for (seg in segments) {
+                sum += when (seg) {
+                    is DanmakuSegment.TextSeg -> measure(seg.text, 1f)
+                    is DanmakuSegment.EmoteSeg -> emoteAdvancePx(fontPx, seg.large)
+                }
+            }
+            sum
+        }
+        val width = bodyWidth +
             if (entry.count > 1) measure(countLabel(entry.count), COUNT_FONT_SCALE) else 0f
         return when (item.type) {
             DanmakuType.SCROLL -> {
@@ -142,7 +160,7 @@ internal class DanmakuTrackPlanner(
                     }
                 }
                 if (lane < 0) {
-                    if (massiveMode) lane = earliestLane else return null
+                    if (massiveMode || item.isSelf) lane = earliestLane else return null
                 }
                 val occupancy = scrollDurationMs * (width + fontPx) / (widthPx + width)
                 scrollFree[lane] = item.timeMs + occupancy.toLong()
@@ -357,3 +375,85 @@ internal const val FIXED_DURATION_MS = 4_000L
 internal const val FADE_MS = 240.0
 internal const val BOTTOM_INSET_DP = 52f
 private const val MERGE_WINDOW_MS = 5_000
+
+/**
+ * 直播弹幕时间轴：墙钟只用来量帧间隔，弹幕时间按帧间隔累加，
+ * 缓冲、后台、暂停这些空档不会计入，恢复时从暂停处接着走。
+ */
+internal class DanmakuTimeline {
+    /** 单调时钟，毫秒。 */
+    var source: () -> Long = { 0L }
+
+    /** 弹幕时间轴上的「现在」，由渲染循环每帧写入；入队方按它打时间戳。 */
+    @Volatile
+    var nowMs: Long = 0L
+}
+
+internal fun firstAfter(layout: List<PlacedDanmaku>, time: Long): Int {
+    var low = 0
+    var high = layout.size
+    while (low < high) {
+        val mid = (low + high) ushr 1
+        if (layout[mid].item.timeMs <= time) low = mid + 1 else high = mid
+    }
+    return low
+}
+
+internal fun fadeAlpha(elapsed: Double, duration: Double): Float {
+    if (elapsed < FADE_MS) return (elapsed / FADE_MS).toFloat()
+    val remain = duration - elapsed
+    if (remain < FADE_MS) return (remain / FADE_MS).toFloat()
+    return 1f
+}
+
+/**
+ * 按与 `onDraw` 完全一致的时间与位置算法从最前层往后查找命中的在屏弹幕。
+ */
+internal fun findVisibleDanmakuAt(
+    placed: List<PlacedDanmaku>,
+    nowMs: Double,
+    screenWidth: Float,
+    scrollDurationMs: Long,
+    textHeightPx: Float,
+    xPx: Float,
+    yPx: Float,
+    slopXPx: Float,
+    slopYPx: Float,
+): DanmakuHit? {
+    if (placed.isEmpty() || screenWidth <= 0f) return null
+    val scrollDuration = scrollDurationMs.toDouble()
+    val fixedDuration = FIXED_DURATION_MS.toDouble()
+    val maxDuration = max(scrollDuration, fixedDuration)
+    val end = firstAfter(placed, nowMs.toLong() + 1L)
+    val minTime = (nowMs - maxDuration - FADE_MS).toLong()
+
+    for (index in end - 1 downTo 0) {
+        val entry = placed[index]
+        val startTime = entry.item.timeMs
+        if (startTime < minTime) break
+        val duration = if (entry.type == DanmakuType.SCROLL) scrollDuration else fixedDuration
+        val elapsed = nowMs - startTime.toDouble()
+        if (elapsed < 0.0 || elapsed > duration) continue
+        if (fadeAlpha(elapsed, duration) <= 0.01f) continue
+
+        val progress = (elapsed / duration).toFloat()
+        val x = if (entry.type == DanmakuType.SCROLL) {
+            screenWidth - progress * (screenWidth + entry.width)
+        } else {
+            (screenWidth - entry.width) * 0.5f
+        }
+        if (x + entry.width < 0f || x > screenWidth) continue
+        if (
+            xPx in (x - slopXPx)..(x + entry.width + slopXPx) &&
+            yPx in (entry.y - slopYPx)..(entry.y + textHeightPx + slopYPx)
+        ) {
+            return DanmakuHit(
+                item = entry.item,
+                displayText = entry.displayText,
+                count = entry.count,
+                boundsPx = RectF(x, entry.y, x + entry.width, entry.y + textHeightPx),
+            )
+        }
+    }
+    return null
+}

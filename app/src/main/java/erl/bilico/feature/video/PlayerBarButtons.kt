@@ -22,8 +22,11 @@ import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.PiliIcon
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.More
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 播放器顶栏的图标按钮：40dp 触摸区，字形四周留 9dp。 */
 @Composable
@@ -153,5 +156,32 @@ internal fun PlayerMoreMenu(
             onDismiss = { expanded = false },
             items = items,
         )
+    }
+}
+
+@Composable
+internal fun ControlLabel(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        modifier = modifier
+            .clip(SquircleShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        style = COUITheme.textStyles.footnote1,
+        color = Color.White,
+    )
+}
+
+internal fun speedLabel(speed: Float): String {
+    val quarter = kotlin.math.round(speed * 4f).toInt()
+    if (kotlin.math.abs(speed - quarter / 4f) >= 0.01f) return "${speed}x"
+    return when (quarter % 4) {
+        0 -> "${quarter / 4}.0x"
+        2 -> "${quarter / 4}.5x"
+        else -> "${quarter / 4}.${(quarter % 4) * 25}x"
     }
 }

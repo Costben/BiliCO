@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -68,6 +69,39 @@ private enum class DragMode {
 /** 滑动超过这个距离（dp）判定进入全屏意图。 */
 private val FullscreenThresholdDp = 32.dp
 
+/** 长按可调变速时每滑动这么多 dp 增减 0.25x。 */
+private val LongPressSpeedStepDp = 28.dp
+
+internal class LongPressSpeedController(
+    val active: Boolean,
+    val speed: Float,
+    val effectiveSpeed: Float,
+    val onActiveChange: (Boolean) -> Unit,
+    val onAdjust: (Float) -> Unit,
+)
+
+@Composable
+internal fun rememberLongPressSpeedController(
+    baseSpeed: Float,
+    boostPercent: Int,
+): LongPressSpeedController {
+    var active by remember { mutableStateOf(false) }
+    var adjustedSpeed by remember { mutableStateOf<Float?>(null) }
+    val defaultBoost = boostPercent / 100f
+    val activeBoost = if (active) (adjustedSpeed ?: defaultBoost) else defaultBoost
+    val effective = if (active) activeBoost else baseSpeed
+    return LongPressSpeedController(
+        active = active,
+        speed = activeBoost,
+        effectiveSpeed = effective,
+        onActiveChange = { next ->
+            active = next
+            if (!next) adjustedSpeed = null
+        },
+        onAdjust = { adjustedSpeed = it },
+    )
+}
+
 @Composable
 internal fun PlayerGestureLayer(
     positionMs: Long,
@@ -75,13 +109,15 @@ internal fun PlayerGestureLayer(
     seekEnabled: Boolean = true,
     longPressSpeedActive: Boolean,
     longPressSpeedValue: Float,
+    adjustableLongPressSpeed: Boolean = false,
     fullscreen: Boolean,
     hapticEnabled: Boolean,
     volumeBrightnessEnabled: Boolean,
     fullscreenHintEnabled: Boolean,
-    onTap: () -> Unit,
+    onTap: (Offset) -> Unit,
     onDoubleTap: () -> Unit,
     onLongPressSpeedChange: (Boolean) -> Unit,
+    onLongPressSpeedAdjust: (Float) -> Unit = {},
     onSeek: (Long) -> Unit,
     onFullscreenChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -99,6 +135,8 @@ internal fun PlayerGestureLayer(
     val currentDuration by rememberUpdatedState(durationMs)
     val currentSeekEnabled by rememberUpdatedState(seekEnabled)
     val currentLongPressActive by rememberUpdatedState(longPressSpeedActive)
+    val currentLongPressValue by rememberUpdatedState(longPressSpeedValue)
+    val currentAdjustableSpeed by rememberUpdatedState(adjustableLongPressSpeed)
     val currentFullscreen by rememberUpdatedState(fullscreen)
     val currentHapticEnabled by rememberUpdatedState(hapticEnabled)
     val currentVolBrightEnabled by rememberUpdatedState(volumeBrightnessEnabled)
@@ -106,8 +144,10 @@ internal fun PlayerGestureLayer(
     val currentOnTap by rememberUpdatedState(onTap)
     val currentOnDoubleTap by rememberUpdatedState(onDoubleTap)
     val currentOnLongPress by rememberUpdatedState(onLongPressSpeedChange)
+    val currentOnLongPressAdjust by rememberUpdatedState(onLongPressSpeedAdjust)
     val currentOnSeek by rememberUpdatedState(onSeek)
     val currentOnFullscreen by rememberUpdatedState(onFullscreenChange)
+    val adjustingSpeedRef = remember { booleanArrayOf(false) }
 
     var dragMode by remember { mutableStateOf(DragMode.NONE) }
     var seekPreviewMs by remember { mutableLongStateOf(0L) }
@@ -126,14 +166,14 @@ internal fun PlayerGestureLayer(
                 detectTapGestures(
                     onPress = {
                         longPressed = false
-                        tryAwaitRelease()
-                        if (longPressed) {
+                        val released = tryAwaitRelease()
+                        if (longPressed && (released || !adjustingSpeedRef[0])) {
                             longPressed = false
                             if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
                             currentOnLongPress(false)
                         }
                     },
-                    onTap = { currentOnTap() },
+                    onTap = { offset -> currentOnTap(offset) },
                     onDoubleTap = { currentOnDoubleTap() },
                     onLongPress = {
                         longPressed = true
@@ -172,7 +212,39 @@ internal fun PlayerGestureLayer(
                     while (true) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull { it.id == pointerId } ?: break
-                        if (!change.pressed || currentLongPressActive) break
+                        if (!change.pressed) break
+                        if (currentLongPressActive) {
+                            if (!currentAdjustableSpeed) break
+                            adjustingSpeedRef[0] = true
+                            val anchorY = change.position.y
+                            val baseBoost = currentLongPressValue
+                            var lastTarget = baseBoost
+                            val stepPx = with(density) { LongPressSpeedStepDp.toPx() }
+                            try {
+                                change.consume()
+                                while (true) {
+                                    val nextEvent = awaitPointerEvent()
+                                    val nextChange = nextEvent.changes.firstOrNull { it.id == pointerId } ?: break
+                                    if (!nextChange.pressed) break
+                                    nextChange.consume()
+                                    val steps = ((anchorY - nextChange.position.y) / stepPx).toInt()
+                                    val target = (((baseBoost + steps * 0.25f) * 4f).roundToInt() / 4f)
+                                        .coerceIn(0.25f, 4f)
+                                    if (target != lastTarget) {
+                                        lastTarget = target
+                                        currentOnLongPressAdjust(target)
+                                        if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
+                                    }
+                                }
+                            } finally {
+                                adjustingSpeedRef[0] = false
+                                if (currentLongPressActive) {
+                                    if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
+                                    currentOnLongPress(false)
+                                }
+                            }
+                            break
+                        }
                         if (event.changes.count { it.pressed } > 1) {
                             activeMode = DragMode.NONE
                             dragMode = DragMode.NONE
@@ -334,7 +406,7 @@ internal fun PlayerGestureLayer(
 
         if (longPressSpeedActive) {
             Text(
-                text = "倍速播放中 ${longPressSpeedValue}x",
+                text = "倍速播放中 ${speedLabel(longPressSpeedValue)}",
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 14.dp)
