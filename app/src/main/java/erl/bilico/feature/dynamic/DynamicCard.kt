@@ -32,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -94,7 +93,6 @@ internal fun DynamicCard(
     val video = item.video
     val live = item.live
     val cardCornerRadius = COUITheme.dimens.card.cornerRadius
-    val cardColor = COUITheme.colorScheme.surfaceContainer
     val topBar = LocalTopBarBounds.current
     val canExpandCard = !isDetail && live == null && (
         video != null || ((item.article?.articleId ?: 0L) <= 0L && item.dynamicId.isNotBlank())
@@ -163,14 +161,12 @@ internal fun DynamicCard(
             )
         }
 
-        // 充电专属：正文被锁，接口只给一段锁定说明，面板顶在正文位置。
-        if (item.chargeLocked) {
-            val locked = item.locked
-            if (locked != null) {
-                ChargeLockedPanel(locked = locked, modifier = Modifier.padding(top = 8.dp))
-            } else {
-                ChargeLockedPlaceholder(modifier = Modifier.padding(top = 8.dp))
-            }
+        // 充电专属：正文被锁时顶在正文位置；视频等自带主体的动态只有拿到真实锁定面板才展示，避免封面顶出空白占位。
+        val locked = item.locked
+        if (locked != null) {
+            ChargeLockedPanel(locked = locked, modifier = Modifier.padding(top = 8.dp))
+        } else if (item.pendingLocked && item.isEmptyLockedShell()) {
+            ChargeLockedPlaceholder(modifier = Modifier.padding(top = 8.dp))
         }
 
         // 正文图还在取的时候不画那串「[图片]」，直接把位置让给下面的占位块。
@@ -209,7 +205,6 @@ internal fun DynamicCard(
                 externalOrigin = cardOrigin,
                 rowScrollState = rowScrollState,
                 rowKey = rowKey,
-                containerBackground = cardColor,
             )
 
             forward != null -> ForwardBox(
@@ -217,7 +212,6 @@ internal fun DynamicCard(
                 isDark = isDark,
                 linkBlue = linkBlue,
                 isDetail = isDetail,
-                cardColor = cardColor,
                 onOpenUser = onOpenUser,
                 onOpenVideo = onOpenVideo,
                 onOpenImage = onOpenImage,
@@ -371,7 +365,6 @@ private fun DynamicVideoCardView(
     externalOrigin: ExpandOrigin? = null,
     rowScrollState: RowScrollState? = null,
     rowKey: Any? = null,
-    containerBackground: Color? = null,
 ) {
     val density = LocalDensity.current
     val contentWidth = cardContentWidthDp()
@@ -401,13 +394,6 @@ private fun DynamicVideoCardView(
             .fillMaxWidth()
             .then(if (ownOrigin != null) Modifier.expandOrigin(ownOrigin) else Modifier)
             .clip(SquircleShape(10.dp))
-            .then(
-                if (ownOrigin != null && containerBackground != null) {
-                    Modifier.background(containerBackground)
-                } else {
-                    Modifier
-                },
-            )
             .clickable(onClick = onClick),
     ) {
         Box(
@@ -455,7 +441,6 @@ private fun ForwardBox(
     isDark: Boolean,
     linkBlue: Color,
     isDetail: Boolean,
-    cardColor: Color,
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String, ExpandOrigin?) -> Unit,
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
@@ -465,8 +450,8 @@ private fun ForwardBox(
     modifier: Modifier = Modifier,
 ) {
     val shape = SquircleShape(10.dp)
-    val bgColor = (if (isDark) Color(0x22FFFFFF) else Color(0xFFF2F3F5)).compositeOver(cardColor)
-    val borderColor = if (isDark) Color(0x1FFFFFFF) else Color(0x14000000)
+    val bgColor = if (isDark) Color(0xFF2B2D31) else Color(0xFFF2F3F5)
+    val borderColor = if (isDark) Color(0xFF3A3D42) else Color(0x14000000)
     val topBar = LocalTopBarBounds.current
     val canExpandForward = item.video != null || ((item.article?.articleId ?: 0L) <= 0L && item.dynamicId.isNotBlank())
     val forwardOrigin = if (canExpandForward) {
@@ -548,7 +533,6 @@ private fun ForwardBox(
                     !isDuplicateVideoTitle(item.content, video.title),
                 rowScrollState = rowScrollState,
                 rowKey = rowKey,
-                containerBackground = bgColor.compositeOver(cardColor),
             )
 
             item.images.isNotEmpty() -> DynamicImageGrid(

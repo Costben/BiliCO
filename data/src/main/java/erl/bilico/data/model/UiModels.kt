@@ -292,6 +292,7 @@ data class DynamicItemUi(
     /** 充电专属：正文被锁。feed 只给标记，面板文案要等详情补上。 */
     val chargeLocked: Boolean = false,
     val locked: DynamicLockedUi? = null,
+    val pendingLocked: Boolean = false,
 )
 
 /** 充电专属动态的锁定面板，文案与按钮都来自接口的 `module_blocked`。 */

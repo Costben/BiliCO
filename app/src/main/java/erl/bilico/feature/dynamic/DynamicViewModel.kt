@@ -3,7 +3,6 @@ package erl.bilico.feature.dynamic
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.DynamicItemUi
-import erl.bilico.data.model.DynamicLockedUi
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.data.repository.DynamicRepository
 import erl.bilico.data.session.SessionRepository
@@ -40,10 +39,9 @@ class DynamicViewModel(
     private var baseline = ""
     private var inFlight = false
     private var generation = 0
-    /** 已经补过正文的动态编号，重新加载同一页时不重复请求。 */
-    private val enriched = mutableSetOf<String>()
-    /** 已经补过锁定面板的动态编号。 */
-    private val lockedEnriched = mutableSetOf<String>()
+    private val enricher = DynamicEnricher(repository, viewModelScope) { transform ->
+        _state.update { it.copy(items = transform(it.items)) }
+    }
     /** 这次会话里点过赞的动态。刷新回来的列表还是旧状态时，用这里盖回去。 */
     private val likedOverrides = mutableMapOf<String, Boolean>()
 
@@ -112,6 +110,7 @@ class DynamicViewModel(
     fun setFilter(filter: DynamicFeedType) {
         if (_state.value.filter == filter) return
         generation++
+        enricher.reset()
         inFlight = false
         offset = ""
         baseline = ""
@@ -168,8 +167,7 @@ class DynamicViewModel(
                     // 刷新会把整页换成没补过图的原始数据，「补过哪些」的记录要一起清掉，
                     // 否则同一批编号第二次就被当成已处理，图片又退回一张封面加占位。
                     if (firstPage) {
-                        enriched.clear()
-                        lockedEnriched.clear()
+                        enricher.clearHistory()
                     }
                     _state.update { current ->
                         val oldItems = current.items
@@ -231,8 +229,7 @@ class DynamicViewModel(
                             )
                         }
                     }
-                    enrichOpus(page.items)
-                    enrichLocked(page.items)
+                    enricher.enrich(page.items)
                 }
                 .onFailure { error ->
                     if (requestGeneration != generation) return@onFailure
@@ -249,87 +246,6 @@ class DynamicViewModel(
         }
     }
 
-    /**
-     * 长文型 opus 在 feed 里只有一张封面和「[图片]」占位，正文里真正的图要按动态编号再取一次。
-     * 只补这类卡片，取到就原地换掉文字和图片；失败就保持原样，不影响整页。
-     */
-    private fun enrichOpus(items: List<DynamicItemUi>) {
-        val requestGeneration = generation
-        val targets = items.filter { item ->
-            val id = item.dynamicId
-            id.isNotBlank() &&
-                item.video == null &&
-                item.content.contains(IMAGE_PLACEHOLDER) &&
-                enriched.add(id)
-        }
-        if (targets.isEmpty()) return
-        // 先把这几张卡片标成「图还在取」，和列表赋值落在同一帧里：
-        // 界面直接画占位块，不会先闪一帧「[图片]」再换成图片。
-        val pendingIds = targets.mapTo(HashSet()) { it.dynamicId }
-        _state.update { state ->
-            state.copy(
-                items = state.items.map { current ->
-                    if (current.dynamicId in pendingIds) current.copy(pendingImages = true) else current
-                },
-            )
-        }
-        targets.forEach { item ->
-            val id = item.dynamicId
-            viewModelScope.launch {
-                val filled = repository.withOpusContent(item)
-                if (requestGeneration != generation) return@launch
-                _state.update { state ->
-                    state.copy(
-                        items = state.items.map { current ->
-                            when {
-                                current.dynamicId != id -> current
-                                filled == item -> current.copy(pendingImages = false)
-                                else -> filled.copy(pendingImages = false)
-                            }
-                        },
-                    )
-                }
-            }
-        }
-    }
-
-    /**
-     * 充电专属的动态在 feed 里只有空壳，锁定面板的文案要按编号去详情里补。
-     * 补不到就用本地文案兜底，别让卡片留成一片空白。
-     */
-    private fun enrichLocked(items: List<DynamicItemUi>) {
-        val requestGeneration = generation
-        val targets = items.filter { item ->
-            val id = item.dynamicId
-            id.isNotBlank() && item.chargeLocked && item.locked == null && lockedEnriched.add(id)
-        }
-        if (targets.isEmpty()) return
-        targets.forEach { item ->
-            val id = item.dynamicId
-            viewModelScope.launch {
-                val fetched = repository.lockedInfo(id).getOrNull()
-                if (requestGeneration != generation) return@launch
-                val locked = fetched ?: DynamicLockedUi(
-                    title = "${item.authorName}专属动态",
-                    hint = "该动态为充电专属，给 UP 主充电后即可查看",
-                    buttonText = "去充电",
-                    jumpUrl = "https://space.bilibili.com/${item.authorMid}",
-                )
-                _state.update { state ->
-                    state.copy(
-                        items = state.items.map { current ->
-                            if (current.dynamicId == id) {
-                                current.copy(locked = current.locked ?: locked)
-                            } else {
-                                current
-                            }
-                        },
-                    )
-                }
-            }
-        }
-    }
-
     /** 刷新回来的卡片还带着接口旧状态时，用这次会话里点过的结果盖回去。 */
     private fun applyLikeOverrides(items: List<DynamicItemUi>): List<DynamicItemUi> {
         if (likedOverrides.isEmpty()) return items
@@ -337,11 +253,6 @@ class DynamicViewModel(
             val liked = likedOverrides[item.dynamicId] ?: return@map item
             if (item.liked == liked) item else item.withLike(item.dynamicId, liked)
         }
-    }
-
-    private companion object {
-        /** feed 卡片里长文图片的占位写法。 */
-        const val IMAGE_PLACEHOLDER = "[图片]"
     }
 }
 

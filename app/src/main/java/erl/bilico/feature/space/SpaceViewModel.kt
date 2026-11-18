@@ -7,6 +7,7 @@ import erl.bilico.data.model.LibraryVideo
 import erl.bilico.data.model.SpaceProfile
 import erl.bilico.data.repository.DynamicRepository
 import erl.bilico.data.repository.SpaceRepository
+import erl.bilico.feature.dynamic.DynamicEnricher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,6 +73,9 @@ class SpaceViewModel(
     private var nextVideoPage = 1
     private var inFlightVideos = false
     private var inFlightDynamics = false
+    private val enricher = DynamicEnricher(dynamicRepository, viewModelScope) { transform ->
+        _state.update { it.copy(dynamics = transform(it.dynamics)) }
+    }
 
     init {
         viewModelScope.launch {
@@ -243,6 +247,7 @@ class SpaceViewModel(
         viewModelScope.launch {
             dynamicRepository.spaceFeed(mid, offset)
                 .onSuccess { page ->
+                    if (firstPage) enricher.clearHistory()
                     _state.update {
                         it.copy(
                             dynamics = if (firstPage) page.items else it.dynamics + page.items,
@@ -253,6 +258,7 @@ class SpaceViewModel(
                             dynamicsError = null,
                         )
                     }
+                    enricher.enrich(page.items)
                 }
                 .onFailure { error ->
                     _state.update {
