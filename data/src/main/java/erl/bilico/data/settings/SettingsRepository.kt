@@ -84,9 +84,13 @@ class SettingsRepository(
     private val _longPressSpeed = MutableStateFlow(DEFAULT_LONG_PRESS_SPEED)
     val longPressSpeed: StateFlow<Int> = _longPressSpeed.asStateFlow()
 
-    /** 长按倍速时是否允许上下滑动调节倍速（步进 0.25x）。 */
+    /** 长按倍速时是否允许上下滑动调节倍速（步进 0.25x），与下滑锁定互斥。 */
     private val _adjustableLongPressSpeed = MutableStateFlow(false)
     val adjustableLongPressSpeed: StateFlow<Boolean> = _adjustableLongPressSpeed.asStateFlow()
+
+    /** 长按倍速时是否允许向下滑动锁定当前倍速，与可调变速互斥。 */
+    private val _swipeDownLockLongPressSpeed = MutableStateFlow(false)
+    val swipeDownLockLongPressSpeed: StateFlow<Boolean> = _swipeDownLockLongPressSpeed.asStateFlow()
 
     /** 是否锁定播放倍速：开启后切视频、切分 P 或切集时自动维持锁定的倍速。 */
     private val _speedLocked = MutableStateFlow(false)
@@ -171,7 +175,10 @@ class SettingsRepository(
             _gestureHaptic.value = prefs[KEY_GESTURE_HAPTIC] ?: true
             _longPressSpeed.value = (prefs[KEY_LONG_PRESS_SPEED] ?: DEFAULT_LONG_PRESS_SPEED)
                 .coerceIn(125, 400)
-            _adjustableLongPressSpeed.value = prefs[KEY_ADJUSTABLE_LONG_PRESS_SPEED] ?: false
+            val adjustable = prefs[KEY_ADJUSTABLE_LONG_PRESS_SPEED] ?: false
+            val swipeDownLock = if (adjustable) false else (prefs[KEY_SWIPE_DOWN_LOCK_LONG_PRESS_SPEED] ?: false)
+            _adjustableLongPressSpeed.value = adjustable
+            _swipeDownLockLongPressSpeed.value = swipeDownLock
             _speedLocked.value = prefs[KEY_SPEED_LOCKED] ?: false
             _lockedSpeed.value = (prefs[KEY_LOCKED_SPEED] ?: 1f).coerceIn(0.25f, 4f)
             _autoRotateMode.value = prefs[KEY_AUTO_ROTATE_MODE] ?: 1
@@ -241,8 +248,23 @@ class SettingsRepository(
 
     fun setAdjustableLongPressSpeed(enabled: Boolean) {
         _adjustableLongPressSpeed.value = enabled
+        if (enabled) _swipeDownLockLongPressSpeed.value = false
         scope.launch {
-            context.biliDataStore.edit { it[KEY_ADJUSTABLE_LONG_PRESS_SPEED] = enabled }
+            context.biliDataStore.edit {
+                it[KEY_ADJUSTABLE_LONG_PRESS_SPEED] = enabled
+                if (enabled) it[KEY_SWIPE_DOWN_LOCK_LONG_PRESS_SPEED] = false
+            }
+        }
+    }
+
+    fun setSwipeDownLockLongPressSpeed(enabled: Boolean) {
+        _swipeDownLockLongPressSpeed.value = enabled
+        if (enabled) _adjustableLongPressSpeed.value = false
+        scope.launch {
+            context.biliDataStore.edit {
+                it[KEY_SWIPE_DOWN_LOCK_LONG_PRESS_SPEED] = enabled
+                if (enabled) it[KEY_ADJUSTABLE_LONG_PRESS_SPEED] = false
+            }
         }
     }
 
@@ -505,6 +527,7 @@ class SettingsRepository(
         val KEY_AUTO_ROTATE_MODE = intPreferencesKey("auto_rotate_mode")
         val KEY_LONG_PRESS_SPEED = intPreferencesKey("long_press_speed")
         val KEY_ADJUSTABLE_LONG_PRESS_SPEED = booleanPreferencesKey("adjustable_long_press_speed")
+        val KEY_SWIPE_DOWN_LOCK_LONG_PRESS_SPEED = booleanPreferencesKey("swipe_down_lock_long_press_speed")
         val KEY_SPEED_LOCKED = booleanPreferencesKey("playback_speed_locked")
         val KEY_LOCKED_SPEED = floatPreferencesKey("playback_locked_speed")
         const val DEFAULT_LONG_PRESS_SPEED = 200

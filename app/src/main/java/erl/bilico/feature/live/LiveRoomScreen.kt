@@ -54,6 +54,7 @@ import erl.bilico.feature.video.copyDanmakuToClipboard
 import erl.bilico.feature.video.describePlaybackError
 import erl.bilico.feature.video.findActivity
 import erl.bilico.feature.video.rememberLongPressSpeedController
+import erl.bilico.feature.video.resolveLongPressSpeedMode
 import erl.bilico.feature.video.rememberPlayerFullscreenController
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.player.BindPlaybackSession
@@ -97,6 +98,7 @@ fun LiveRoomScreen(
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
     val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
+    val swipeDownLockLongPressSpeed by container.settings.swipeDownLockLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
@@ -370,6 +372,7 @@ fun LiveRoomScreen(
                 speedLocked = speedLocked,
                 onToggleSpeedLock = { container.settings.setSpeedLock(!speedLocked, speed) },
                 onSelectSpeed = { value ->
+                    longPressSpeed.onActiveChange(false)
                     speed = value
                     if (speedLocked) container.settings.setLockedSpeed(value)
                 },
@@ -392,11 +395,11 @@ fun LiveRoomScreen(
                     null
                 },
                 onHome = { nav.popToMain() },
-                longPressSpeedActive = longPressSpeed.active,
-                longPressSpeedValue = longPressSpeed.speed,
-                adjustableLongPressSpeed = adjustableLongPressSpeed,
-                onLongPressSpeedChange = longPressSpeed.onActiveChange,
-                onLongPressSpeedAdjust = longPressSpeed.onAdjust,
+                longPressSpeed = longPressSpeed,
+                longPressSpeedMode = resolveLongPressSpeedMode(
+                    adjustableLongPressSpeed,
+                    swipeDownLockLongPressSpeed,
+                ),
                 overlay = {
                     // 弹幕视图按引用判断列表有没有换过：这里必须给一份新列表，
                     // 直接传可变的 SnapshotStateList 会让它永远认为「没变」，直播弹幕一条都画不出来。

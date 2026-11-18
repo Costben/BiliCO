@@ -3,6 +3,7 @@ package erl.bilico.feature.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -45,15 +46,17 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 设置页「长按倍速」项：沿用 COUI 下拉菜单的外观与手势锚点，
- * 并在展开菜单顶部附带「可调变速」开关与分割线。
+ * 并在展开菜单顶部附带互斥的「可调变速」与「下滑锁定」开关与分割线。
  */
 @Composable
 internal fun LongPressSpeedPreference(
     speedOptions: List<Int>,
     selectedPercent: Int,
     adjustableSpeed: Boolean,
+    swipeDownLock: Boolean,
     onSelectPercent: (Int) -> Unit,
     onAdjustableChange: (Boolean) -> Unit,
+    onSwipeDownLockChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     cardListPosition: CardListPosition = CardListPosition.Middle,
 ) {
@@ -70,7 +73,11 @@ internal fun LongPressSpeedPreference(
         interactionSource = interactionSource,
         cardListPosition = cardListPosition,
         title = "长按倍速",
-        summary = if (adjustableSpeed) "可调变速：上下滑动调节，步进 0.25x" else null,
+        summary = when {
+            adjustableSpeed -> "可调变速：上下滑动调节，步进 0.25x"
+            swipeDownLock -> "下滑锁定：长按倍速时下滑锁定当前倍速"
+            else -> null
+        },
         endActions = {
             Text(
                 text = valueText,
@@ -93,63 +100,52 @@ internal fun LongPressSpeedPreference(
                 preciseClickState = preciseClickState,
             ) {
                 Column(modifier = Modifier.width(IntrinsicSize.Max)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-                                onAdjustableChange(!adjustableSpeed)
-                            }
-                            .heightIn(min = DropdownDefaults.PopupItemMinHeight)
-                            .padding(
-                                start = DropdownDefaults.InsideHorizontalPadding,
-                                end = DropdownDefaults.InsideHorizontalPadding,
-                                top = 16.dp,
-                                bottom = DropdownDefaults.MiddleVerticalPadding,
-                            ),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.widthIn(max = DropdownDefaults.MaxItemTextWidth)) {
-                            Text(
-                                text = "可调变速",
-                                style = COUITheme.textStyles.body1,
-                                fontSize = DropdownDefaults.PopupItemTitleFontSize,
-                                fontWeight = FontWeight.Normal,
-                                color = COUITheme.colorScheme.onSurfaceContainer,
-                            )
-                            Text(
-                                text = "上下滑动调节变速",
-                                style = COUITheme.textStyles.body2,
-                                color = COUITheme.colorScheme.onSurfaceSecondary,
-                            )
-                        }
-                        Spacer(Modifier.width(16.dp))
-                        Switch(
-                            checked = adjustableSpeed,
-                            onCheckedChange = onAdjustableChange,
-                        )
-                    }
+                    LongPressModeToggleRow(
+                        title = "可调变速",
+                        summary = "上下滑动调节变速",
+                        checked = adjustableSpeed,
+                        topPadding = 16.dp,
+                        bottomPadding = 10.dp,
+                        onToggle = {
+                            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                            onAdjustableChange(!adjustableSpeed)
+                        },
+                        onCheckedChange = onAdjustableChange,
+                    )
+                    LongPressModeToggleRow(
+                        title = "下滑锁定",
+                        summary = "向下滑动锁定倍速",
+                        checked = swipeDownLock,
+                        topPadding = 10.dp,
+                        bottomPadding = DropdownDefaults.MiddleVerticalPadding,
+                        onToggle = {
+                            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                            onSwipeDownLockChange(!swipeDownLock)
+                        },
+                        onCheckedChange = onSwipeDownLockChange,
+                    )
                     PopupListDivider()
-                    ListPopupColumn {
-                        speedOptions.forEachIndexed { index, percent ->
-                            DropdownImpl(
-                                item = DropdownItem(text = speedLabel(percent / 100f)),
-                                optionSize = speedOptions.size,
-                                isSelected = index == selectedIndex,
-                                index = index,
-                                isFirst = false,
-                                isLast = index == speedOptions.lastIndex,
-                                groupKey = "long_press_speed",
-                                onSelectedIndexChange = { picked ->
-                                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-                                    onSelectPercent(speedOptions[picked])
-                                    expanded = false
-                                },
-                            )
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        propagateMinConstraints = true,
+                    ) {
+                        ListPopupColumn {
+                            speedOptions.forEachIndexed { index, percent ->
+                                DropdownImpl(
+                                    item = DropdownItem(text = speedLabel(percent / 100f)),
+                                    optionSize = speedOptions.size,
+                                    isSelected = index == selectedIndex,
+                                    index = index,
+                                    isFirst = false,
+                                    isLast = index == speedOptions.lastIndex,
+                                    groupKey = "long_press_speed",
+                                    onSelectedIndexChange = { picked ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                                        onSelectPercent(speedOptions[picked])
+                                        expanded = false
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -165,4 +161,54 @@ internal fun LongPressSpeedPreference(
         role = Role.DropdownList,
         holdDownState = holdDown,
     )
+}
+
+@Composable
+private fun LongPressModeToggleRow(
+    title: String,
+    summary: String,
+    checked: Boolean,
+    topPadding: androidx.compose.ui.unit.Dp,
+    bottomPadding: androidx.compose.ui.unit.Dp,
+    onToggle: () -> Unit,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onToggle,
+            )
+            .heightIn(min = DropdownDefaults.PopupItemMinHeight)
+            .padding(
+                start = DropdownDefaults.InsideHorizontalPadding,
+                end = DropdownDefaults.InsideHorizontalPadding,
+                top = topPadding,
+                bottom = bottomPadding,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.widthIn(max = DropdownDefaults.MaxItemTextWidth)) {
+            Text(
+                text = title,
+                style = COUITheme.textStyles.body1,
+                fontSize = DropdownDefaults.PopupItemTitleFontSize,
+                fontWeight = FontWeight.Normal,
+                color = COUITheme.colorScheme.onSurfaceContainer,
+            )
+            Text(
+                text = summary,
+                style = COUITheme.textStyles.body2,
+                color = COUITheme.colorScheme.onSurfaceSecondary,
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+        )
+    }
 }

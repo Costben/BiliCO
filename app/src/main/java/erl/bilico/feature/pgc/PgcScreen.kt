@@ -60,6 +60,7 @@ import erl.bilico.feature.video.findActivity
 import erl.bilico.feature.video.playbackMediaId
 import erl.bilico.feature.video.rememberDanmakuActions
 import erl.bilico.feature.video.rememberLongPressSpeedController
+import erl.bilico.feature.video.resolveLongPressSpeedMode
 import erl.bilico.feature.video.rememberPlayerFullscreenController
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.player.BindPlaybackSession
@@ -110,6 +111,7 @@ fun PgcScreen(
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
     val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
+    val swipeDownLockLongPressSpeed by container.settings.swipeDownLockLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
@@ -358,6 +360,7 @@ fun PgcScreen(
                 speedLocked = speedLocked,
                 onToggleSpeedLock = { container.settings.setSpeedLock(!speedLocked, speed) },
                 onSelectSpeed = { value ->
+                    longPressSpeed.onActiveChange(false)
                     speed = value
                     if (speedLocked) container.settings.setLockedSpeed(value)
                 },
@@ -384,11 +387,11 @@ fun PgcScreen(
                 onHome = { nav.popToMain() },
                 playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
-                longPressSpeedActive = longPressSpeed.active,
-                longPressSpeedValue = longPressSpeed.speed,
-                adjustableLongPressSpeed = adjustableLongPressSpeed,
-                onLongPressSpeedChange = longPressSpeed.onActiveChange,
-                onLongPressSpeedAdjust = longPressSpeed.onAdjust,
+                longPressSpeed = longPressSpeed,
+                longPressSpeedMode = resolveLongPressSpeedMode(
+                    adjustableLongPressSpeed,
+                    swipeDownLockLongPressSpeed,
+                ),
                 subtitleOverlay = { chromeVisible ->
                     SubtitleOverlay(
                         cues = subtitleController.cues,

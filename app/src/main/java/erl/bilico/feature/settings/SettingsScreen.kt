@@ -74,6 +74,7 @@ fun SettingsScreen(
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeed by container.settings.longPressSpeed.collectAsStateWithLifecycle()
     val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
+    val swipeDownLockLongPressSpeed by container.settings.swipeDownLockLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
@@ -180,8 +181,10 @@ fun SettingsScreen(
                     speedOptions = LONG_PRESS_SPEED_OPTIONS,
                     selectedPercent = longPressSpeed,
                     adjustableSpeed = adjustableLongPressSpeed,
+                    swipeDownLock = swipeDownLockLongPressSpeed,
                     onSelectPercent = container.settings::setLongPressSpeed,
                     onAdjustableChange = container.settings::setAdjustableLongPressSpeed,
+                    onSwipeDownLockChange = container.settings::setSwipeDownLockLongPressSpeed,
                     modifier = Modifier.testTag("settings_long_press_speed"),
                     cardListPosition = CardListPosition.Middle,
                 )

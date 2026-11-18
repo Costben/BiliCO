@@ -93,6 +93,7 @@ fun VideoScreen(
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
     val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
+    val swipeDownLockLongPressSpeed by container.settings.swipeDownLockLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
@@ -188,17 +189,18 @@ fun VideoScreen(
     var speed by rememberSaveable {
         mutableFloatStateOf(if (speedLocked) lockedSpeed else 1f)
     }
+    val longPressSpeed = rememberLongPressSpeedController(
+        baseSpeed = speed,
+        boostPercent = longPressSpeedPercent,
+    )
     val onSelectSpeed: (Float) -> Unit = { value ->
+        longPressSpeed.onActiveChange(false)
         speed = value
         if (speedLocked) container.settings.setLockedSpeed(value)
     }
     val onToggleSpeedLock: () -> Unit = {
         container.settings.setSpeedLock(!speedLocked, speed)
     }
-    val longPressSpeed = rememberLongPressSpeedController(
-        baseSpeed = speed,
-        boostPercent = longPressSpeedPercent,
-    )
     var danmakuComposing by rememberSaveable { mutableStateOf(false) }
     var danmakuDraft by rememberSaveable { mutableStateOf("") }
 
@@ -496,11 +498,11 @@ fun VideoScreen(
                             bvid = bvid,
                         )
                     },
-                    longPressSpeedActive = longPressSpeed.active,
-                    longPressSpeedValue = longPressSpeed.speed,
-                    adjustableLongPressSpeed = adjustableLongPressSpeed,
-                    onLongPressSpeedChange = longPressSpeed.onActiveChange,
-                    onLongPressSpeedAdjust = longPressSpeed.onAdjust,
+                    longPressSpeed = longPressSpeed,
+                    longPressSpeedMode = resolveLongPressSpeedMode(
+                        adjustableLongPressSpeed,
+                        swipeDownLockLongPressSpeed,
+                    ),
                     chapters = subtitleController.chapters,
                     onChapterClick = { chapterDialogVisible = true },
                     sponsorSegments = if (sponsorBlockEnabled) {
