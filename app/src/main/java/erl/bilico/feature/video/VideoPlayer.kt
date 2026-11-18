@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -65,6 +66,28 @@ import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
+
+@Composable
+private fun rememberPlaybackScreenOn(player: Player): Boolean {
+    fun shouldKeepScreenOn(): Boolean =
+        player.isPlaying ||
+            (player.playbackState == Player.STATE_BUFFERING &&
+                player.playWhenReady &&
+                player.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE)
+
+    var keepScreenOn by remember(player) { mutableStateOf(shouldKeepScreenOn()) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                keepScreenOn = shouldKeepScreenOn()
+            }
+        }
+        player.addListener(listener)
+        keepScreenOn = shouldKeepScreenOn()
+        onDispose { player.removeListener(listener) }
+    }
+    return keepScreenOn
+}
 
 /**
  * 只用 PlayerView 做渲染，手势、字幕与控件全部由 Compose 叠加，保证与 COUI 主题一致。
@@ -194,6 +217,11 @@ internal fun VideoPlayer(
     val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && activeMenu != PlayerPopupMenu.NONE && !hdrVideo
     val isTop = LocalRouteIsTop.current
     val minimized = LocalRouteMinimized.current
+    val keepScreenOn = if (isTop && !inPipMode) {
+        rememberPlaybackScreenOn(player)
+    } else {
+        false
+    }
     // 舞台转场用一张静止帧顶替实时画面（SurfaceView 转不动）：在这里交出抓帧入口。
     val frozenVideo = LocalStageFrozenVideo.current
     val frameSource = LocalStageFrameSource.current
@@ -228,7 +256,8 @@ internal fun VideoPlayer(
         onSelectSubtitle = { onSelectSubtitle(it); activeMenu = PlayerPopupMenu.NONE },
     )
     val stageModifier = if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier
-    Box(stageModifier.onGloballyPositioned { stageCoords = it }) {
+    val screenModifier = if (keepScreenOn) Modifier.keepScreenOn() else Modifier
+    Box(stageModifier.then(screenModifier).onGloballyPositioned { stageCoords = it }) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
