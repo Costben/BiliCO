@@ -13,13 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -30,7 +30,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
@@ -42,11 +42,10 @@ import erl.bilico.ui.components.DanmakuToggle
 import erl.bilico.ui.components.inputCapsuleGlass
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.ChipTab
-import io.github.suqi8.coui.kmp.basic.ChipTabData
-import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.SearchBar
 import io.github.suqi8.coui.kmp.basic.SearchBarDefaults
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -55,11 +54,12 @@ import io.github.suqi8.coui.kmp.blur.isBlurEnabled
 import io.github.suqi8.coui.kmp.blur.layerBackdrop
 import io.github.suqi8.coui.kmp.blur.progressiveTextureBlur
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlin.math.roundToInt
 
 /**
  * 播放页标题栏下方的一条：左边「简介 / 评论」胶囊标签，右边弹幕输入胶囊。
  *
- * 标签直接用 COUI 的 [ChipTabGroup]（ColorOS 17 的 chip tab）：选中项是一块带高光与焦散光的胶囊，
+ * 标签直接用 COUI 的 [ChipTab]（ColorOS 17 的 chip tab）：选中项是一块带高光与焦散光的胶囊，
  * 未选中只有文字；弹幕胶囊就是 COUI 的搜索框，去掉材质描边与底部焦散光。
  * 点进去后标签收窄淡出、胶囊铺满整行，右端按搜索栏取消按钮的规格滑出「发送」。
  */
@@ -85,7 +85,7 @@ internal fun VideoDetailBar(
     val barBackdrop = if (BlurEffectsEnabled) backdrop else null
     val fieldColors = SearchBarDefaults.searchBarColors(backgroundColor = Color.Transparent)
 
-    // 「评论」后面带上评论数；数字没拿到之前维持原来的两段等宽。
+    // 「评论」后面带上评论数；数字没拿到之前维持原来的两段文案。
     val tabs = remember(commentCount) {
         if (commentCount > 0L) {
             listOf(DETAIL_TABS[0], "评论 ${Formatters.formatStat(commentCount)}")
@@ -94,58 +94,37 @@ internal fun VideoDetailBar(
         }
     }
     val density = LocalDensity.current
-    val chipStyle = ChipTabDefaults.textStyle()
-    val measurer = rememberTextMeasurer()
-    val tabsWidth = remember(tabs, density, chipStyle) {
-        tabs.map { label ->
-            val textWidth = measurer.measure(
-                text = label,
-                style = chipStyle,
-                maxLines = 1,
-                softWrap = false,
-            ).size.width
-            (with(density) { textWidth.toDp() } + 32.dp).coerceAtLeast(56.dp)
-        }.fold(0.dp) { sum, width -> sum + width } +
-            8.dp * (tabs.size - 1).coerceAtLeast(0)
-    }
+    val minCapsulePx = with(density) { MIN_DANMAKU_CAPSULE_WIDTH.roundToPx() }
+    val baseGapPx = with(density) { DETAIL_BAR_GAP.roundToPx() }
 
-    // 收起态靠这条间距把胶囊从标签后面拉开，展开时归零，跟着标签一起收。
-    val gap by animateDpAsState(
-        targetValue = if (composing) 0.dp else 8.dp,
-        animationSpec = tween(DETAIL_RESIZE_MILLIS, easing = MoveEase),
-    )
     // 标签收起的进度：宽度跟着收窄，同时整块淡出，收完后不留一条硬边。
     val collapse by animateFloatAsState(
         targetValue = if (composing) 1f else 0f,
         animationSpec = tween(DETAIL_RESIZE_MILLIS, easing = MoveEase),
     )
-    // 收起时标签同时向左退场，右缘始终咬住收窄后的边界，
-    // 否则内层还占着整条宽度，会在输入框下面透出半透明的重影。
     // 右端补偿跟着「发送」的展开走同一段节奏，整段动画里行尾都咬住不动。
     val actionSlack by animateDpAsState(
         targetValue = if (composing) ACTION_END_SLACK else 0.dp,
         animationSpec = tween(DETAIL_RESIZE_MILLIS, easing = MoveEase),
     )
-    Row(
+    Layout(
         modifier = modifier
             .fillMaxWidth()
             .height(DETAIL_BAR_HEIGHT)
             .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(modifier = Modifier.width(tabsWidth * (1f - collapse))) {
+        content = {
             Box(
                 modifier = Modifier
-                    .requiredWidth(tabsWidth)
-                    .graphicsLayer {
+                    .layoutId("tabs")
+                    .then(if (collapse > 0.001f) Modifier.clipToBounds() else Modifier),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.graphicsLayer {
                         alpha = 1f - collapse
                         translationX = -size.width * collapse
                     },
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     tabs.forEachIndexed { index, title ->
                         ChipTab(
@@ -157,70 +136,123 @@ internal fun VideoDetailBar(
                     }
                 }
             }
-        }
 
-        SearchBar(
-            inputField = {
-                InputField(
-                    query = draft,
-                    onQueryChange = onDraftChange,
-                    onSearch = {
-                        keyboard?.hide()
-                        onSend()
-                    },
-                    expanded = composing,
-                    onExpandedChange = onComposingChange,
-                    label = "发弹幕",
-                    colors = fieldColors,
-                    stroke = null,
-                    glowColor = null,
-                    backdrop = null,
-                    leadingIcon = { Spacer(Modifier.width(14.dp)) },
-                    trailingIcon = {
-                        DanmakuToggle(
-                            enabled = danmakuEnabled,
-                            onToggle = onToggleDanmaku,
-                            onOpenSettings = onOpenDanmakuSettings,
+            SearchBar(
+                inputField = {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        InputField(
+                            query = draft,
+                            onQueryChange = onDraftChange,
+                            onSearch = {
+                                keyboard?.hide()
+                                onSend()
+                            },
+                            expanded = composing,
+                            onExpandedChange = onComposingChange,
+                            label = "",
+                            textStyle = COUITheme.textStyles.body2,
+                            colors = fieldColors,
+                            stroke = null,
+                            glowColor = null,
+                            backdrop = null,
+                            leadingIcon = { Spacer(Modifier.width(12.dp)) },
+                            trailingIcon = {
+                                DanmakuToggle(
+                                    enabled = danmakuEnabled,
+                                    onToggle = onToggleDanmaku,
+                                    onOpenSettings = onOpenDanmakuSettings,
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(DETAIL_CAPSULE_HEIGHT)
+                                .inputCapsuleGlass(
+                                    backdrop = barBackdrop,
+                                    isDark = isDark,
+                                    fallbackColor = scheme.surfaceContainer,
+                                ),
                         )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(DETAIL_CAPSULE_HEIGHT)
-                        .inputCapsuleGlass(
-                            backdrop = barBackdrop,
-                            isDark = isDark,
-                            fallbackColor = scheme.surfaceContainer,
-                        ),
+                        if (draft.isEmpty()) {
+                            Text(
+                                text = "发弹幕",
+                                style = COUITheme.textStyles.body2,
+                                color = scheme.onSurfaceSecondary,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .align(Alignment.CenterStart)
+                                    .padding(
+                                        start = 12.dp,
+                                        end = if (onOpenDanmakuSettings != null) 66.dp else 32.dp,
+                                    ),
+                            )
+                        }
+                    }
+                },
+                onExpandedChange = onComposingChange,
+                modifier = Modifier
+                    .layoutId("search")
+                    // outsideEndAction 槽位按旧的纯文字「取消」留了 4dp 起始 + 16dp 结尾的外边距，
+                    // 展开后整行右端会多空出 16dp。这里只把搜索栏多量出这一段，让它自己吃回去。
+                    .actionEndSlack(actionSlack),
+                insideMargin = DpSize(0.dp, 2.dp),
+                expanded = composing,
+                outsideEndAction = {
+                    CompactSendButton(
+                        text = "发送",
+                        onClick = {
+                            keyboard?.hide()
+                            onSend()
+                        },
+                        enabled = draft.isNotBlank(),
+                        height = DETAIL_CAPSULE_HEIGHT,
+                        containerColor = scheme.surfaceContainer,
+                        isDark = isDark,
+                        backdrop = barBackdrop,
+                    )
+                },
+            ) { }
+        },
+    ) { measurables, constraints ->
+        val totalW = constraints.maxWidth
+        val maxTabsW = (totalW - baseGapPx - minCapsulePx).coerceAtLeast(0)
+        val tabsMeasurable = measurables.first { it.layoutId == "tabs" }
+        val searchMeasurable = measurables.first { it.layoutId == "search" }
+
+        val fullTabsPlaceable = tabsMeasurable.measure(
+            Constraints(minWidth = 0, maxWidth = maxTabsW, minHeight = 0, maxHeight = constraints.maxHeight),
+        )
+        val visibleTabsW = (fullTabsPlaceable.width * (1f - collapse)).roundToInt().coerceAtLeast(0)
+        val currentGapPx = (baseGapPx * (1f - collapse)).roundToInt().coerceAtLeast(0)
+        val searchW = (totalW - visibleTabsW - currentGapPx).coerceAtLeast(0)
+        val searchPlaceable = searchMeasurable.measure(
+            Constraints(
+                minWidth = searchW,
+                maxWidth = searchW,
+                minHeight = 0,
+                maxHeight = constraints.maxHeight,
+            ),
+        )
+        val rowH = constraints.maxHeight
+        layout(totalW, rowH) {
+            if (visibleTabsW > 0) {
+                fullTabsPlaceable.placeRelative(
+                    x = 0,
+                    y = (rowH - fullTabsPlaceable.height) / 2,
                 )
-            },
-            onExpandedChange = onComposingChange,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = gap)
-                // outsideEndAction 槽位按旧的纯文字「取消」留了 4dp 起始 + 16dp 结尾的外边距，
-                // 展开后整行右端会多空出 16dp。这里只把搜索栏多量出这一段，让它自己吃回去。
-                .actionEndSlack(actionSlack),
-            insideMargin = DpSize(0.dp, 2.dp),
-            expanded = composing,
-            outsideEndAction = {
-                CompactSendButton(
-                    text = "发送",
-                    onClick = {
-                        keyboard?.hide()
-                        onSend()
-                    },
-                    enabled = draft.isNotBlank(),
-                    height = DETAIL_CAPSULE_HEIGHT,
-                    containerColor = scheme.surfaceContainer,
-                    isDark = isDark,
-                    backdrop = barBackdrop,
-                )
-            },
-        ) { }
+            }
+            searchPlaceable.placeRelative(
+                x = visibleTabsW + currentGapPx,
+                y = (rowH - searchPlaceable.height) / 2,
+            )
+        }
     }
 }
 
 private val DETAIL_TABS = listOf("简介", "评论")
+private val DETAIL_BAR_GAP = 6.dp
+private val MIN_DANMAKU_CAPSULE_WIDTH = 124.dp
 
 /**
  * 按 [slack] 多量出右侧宽度，但仍按原本的宽度上报。

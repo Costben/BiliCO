@@ -109,6 +109,11 @@ class CommentViewModel(
     /** 热度 / 时间来回切：先清空列表再重新拉第一页，避免两种顺序的条目混在一起。 */
     fun toggleSort() {
         val next = if (_state.value.sort == CommentSort.Hot) CommentSort.New else CommentSort.Hot
+        selectSort(next)
+    }
+
+    fun selectSort(next: CommentSort) {
+        if (_state.value.sort == next) return
         _state.update {
             it.copy(
                 sort = next,

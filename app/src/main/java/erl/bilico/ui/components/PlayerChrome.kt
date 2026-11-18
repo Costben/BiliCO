@@ -43,14 +43,14 @@ internal fun DanmakuToggle(
         if (onOpenSettings != null) {
             Box(
                 modifier = Modifier
-                    .padding(start = 6.dp)
+                    .padding(start = 4.dp, end = 2.dp)
                     .width(1.dp)
                     .height(14.dp)
                     .background(scheme.dividerLine),
             )
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(28.dp)
                     .clip(CircleShape)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -72,7 +72,7 @@ internal fun DanmakuToggle(
         }
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size(30.dp)
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },

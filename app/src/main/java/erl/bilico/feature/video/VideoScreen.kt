@@ -30,6 +30,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.data.model.isHdr
 import erl.bilico.di.AppContainer
+import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
@@ -181,6 +182,8 @@ fun VideoScreen(
     )
     val infoListState = rememberLazyListState()
     val commentListState = rememberLazyListState()
+    val replyThread = remember(bvid) { ReplyThreadController() }
+    val replyListState = rememberLazyListState()
     var queueSheetVisible by remember { mutableStateOf(false) }
     var chapterDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
@@ -312,6 +315,7 @@ fun VideoScreen(
         detailPager.scrollToPage(0)
         infoListState.scrollToItem(0)
         commentListState.scrollToItem(0)
+        replyThread.close()
     }
 
     LaunchedEffect(player, bvid, state.selectedCid, sponsorBlockEnabled, isActiveRoute) {
@@ -452,7 +456,11 @@ fun VideoScreen(
         playing = isPlaying,
         surfaceViewPlayer = hdrSurface,
         canExpand = {
-            val list = if (detailPager.currentPage == 0) infoListState else commentListState
+            val list = when {
+                replyThread.root != null -> replyListState
+                detailPager.currentPage == 0 -> infoListState
+                else -> commentListState
+            }
             list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0
         },
         playerContent = {
@@ -635,6 +643,8 @@ fun VideoScreen(
                 detailPager = detailPager,
                 infoListState = infoListState,
                 commentListState = commentListState,
+                replyThread = replyThread,
+                replyListState = replyListState,
                 danmakuEnabled = danmakuEnabled,
                 danmakuComposing = danmakuComposing,
                 danmakuDraft = danmakuDraft,
@@ -695,6 +705,7 @@ fun VideoScreen(
                 onOpenChapters = { chapterDialogVisible = true },
                 barBackdrops = barBackdrops,
                 blurActive = stageReady,
+                backEnabled = !fullscreen,
                 commentRootId = commentRootId,
                 commentTargetId = commentTargetId,
             )
@@ -713,7 +724,6 @@ fun VideoScreen(
                     if (p.isPlaying) p.pause() else p.play()
                 },
                 onExpand = { slotHeight.floatValue = 0f },
-                onWatchLater = viewModel::addToWatchLater,
                 playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
                 onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },

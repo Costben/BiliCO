@@ -408,24 +408,3 @@ private fun commentVector(name: String, path: String): ImageVector =
         pathData = addPathNodes(path),
         fill = SolidColor(Color.Black),
     ).build()
-
-internal val SortTimeIcon: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "SortTime",
-        defaultWidth = 14.dp,
-        defaultHeight = 14.dp,
-        viewportWidth = 14f,
-        viewportHeight = 14f,
-    ).apply {
-        listOf(3.5f to 12f, 7f to 9.5f, 10.5f to 6.5f).forEach { (y, xEnd) ->
-            path(
-                stroke = SolidColor(Color(0xFF9499A0)),
-                strokeLineWidth = 1.6f,
-                strokeLineCap = StrokeCap.Round,
-            ) {
-                moveTo(2f, y)
-                lineTo(xEnd, y)
-            }
-        }
-    }.build()
-}

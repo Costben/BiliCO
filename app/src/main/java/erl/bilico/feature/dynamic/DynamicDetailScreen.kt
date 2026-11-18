@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -49,8 +53,10 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.BiliCommentItem
 import erl.bilico.feature.comment.CommentComposerSheet
+import erl.bilico.feature.comment.CommentSortTabRow
 import erl.bilico.feature.comment.CommentViewModel
-import erl.bilico.feature.comment.ReplyDialog
+import erl.bilico.feature.comment.ReplyDetailOverlay
+import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.ExpandEasing
 import erl.bilico.ui.LocalTopBarBounds
@@ -150,9 +156,16 @@ fun DynamicDetailScreen(
         null
     }
     val commentState = commentViewModel?.state?.collectAsStateWithLifecycle()?.value
-    var dialogRoot by remember { mutableStateOf<Comment?>(null) }
-    var dialogTargetReplyId by remember { mutableStateOf(0L) }
+    val replyThread = remember(cleanId) { ReplyThreadController() }
     var composeTarget by remember { mutableStateOf<DynComposeTarget?>(null) }
+
+    LaunchedEffect(commentViewModel, replyThread) {
+        if (commentViewModel != null) {
+            replyThread.onSubReplyAdded = commentViewModel::onSubReplyAdded
+            replyThread.onSubReplyDeleted = commentViewModel::onSubReplyDeleted
+            replyThread.onRootDeleted = commentViewModel::removeCommentLocally
+        }
+    }
 
     val listState = rememberLazyListState()
     LaunchedEffect(commentState?.focusRootId, commentState?.items?.size) {
@@ -165,8 +178,7 @@ fun DynamicDetailScreen(
 
     LaunchedEffect(commentState?.pendingReplyDialog) {
         val pending = commentState?.pendingReplyDialog ?: return@LaunchedEffect
-        dialogRoot = pending.first
-        dialogTargetReplyId = pending.second
+        replyThread.open(pending.first, pending.second)
         commentViewModel?.consumeReplyDialog()
     }
     LaunchedEffect(listState, commentViewModel) {
@@ -287,12 +299,23 @@ fun DynamicDetailScreen(
                                     insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                                 ) {
                                     val totalComments = maxOf(commentState.total, currentItem.commentCount)
-                                    Text(
-                                        text = "评论 ${Formatters.formatStat(totalComments.toLong())}",
-                                        style = COUITheme.textStyles.body1,
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(bottom = 4.dp),
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = "评论 ${Formatters.formatStat(totalComments.toLong())}",
+                                            style = COUITheme.textStyles.body1,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        CommentSortTabRow(
+                                            sort = commentState.sort,
+                                            onSelectSort = commentViewModel::selectSort,
+                                        )
+                                    }
 
                                     when {
                                         commentState.isLoading && commentState.items.isEmpty() ->
@@ -336,8 +359,7 @@ fun DynamicDetailScreen(
                                                         }
                                                     },
                                                     onOpenReplies = {
-                                                        dialogTargetReplyId = 0L
-                                                        dialogRoot = it
+                                                        replyThread.open(it)
                                                     },
                                                     onOpenUser = { mid -> nav.push(Route.Space(mid)) },
                                                     onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
@@ -506,28 +528,16 @@ fun DynamicDetailScreen(
             null -> Unit
         }
 
-        val root = dialogRoot
-        if (root != null) {
-            ReplyDialog(
-                container = container,
-                oid = commentOid,
-                comment = commentState?.items?.firstOrNull { it.id == root.id } ?: root,
-                type = commentType,
-                initialTargetReplyId = dialogTargetReplyId,
-                onSubReplyAdded = { created -> commentViewModel.onSubReplyAdded(root.id, created) },
-                onSubReplyDeleted = { replyId -> commentViewModel.onSubReplyDeleted(root.id, replyId) },
-                onRootDeleted = { commentViewModel.removeCommentLocally(root.id) },
-                onOpenUser = { mid ->
-                    dialogRoot = null
-                    dialogTargetReplyId = 0L
-                    nav.push(Route.Space(mid))
-                },
-                onDismiss = {
-                    dialogRoot = null
-                    dialogTargetReplyId = 0L
-                },
-            )
-        }
+        ReplyDetailOverlay(
+            controller = replyThread,
+            container = container,
+            oid = commentOid,
+            type = commentType,
+            latestItems = commentState?.items.orEmpty(),
+            topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+            onOpenUser = { mid -> nav.push(Route.Space(mid)) },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 
     imageViewer?.let { (images, index) ->

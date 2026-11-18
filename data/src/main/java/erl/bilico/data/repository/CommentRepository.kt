@@ -12,6 +12,7 @@ import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.ReplyData
 import erl.bilico.data.model.ReplyItem
+import erl.bilico.data.model.SubReplyPage
 import erl.bilico.data.model.UploadedPicture
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BiliClient
@@ -116,7 +117,7 @@ class CommentRepository(
         page: Int,
         pageSize: Int = 20,
         type: Int = 1,
-    ): Result<List<Comment>> = withContext(Dispatchers.IO) {
+    ): Result<SubReplyPage> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
             val response = api.subComments(
@@ -131,7 +132,11 @@ class CommentRepository(
             if (response.code != 0) {
                 error(response.message.ifBlank { "回复加载失败(${response.code})" })
             }
-            response.data?.replies.orEmpty().map { it.toComment() }
+            val data = response.data
+            val upMid = data?.upper?.mid ?: 0L
+            val list = data?.replies.orEmpty().map { it.toComment(upMid = upMid) }
+            val total = maxOf(data?.page?.count ?: 0, list.size)
+            SubReplyPage(replies = list, total = total)
         }
     }
 

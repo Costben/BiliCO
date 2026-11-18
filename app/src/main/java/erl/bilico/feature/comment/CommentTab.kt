@@ -3,20 +3,17 @@ package erl.bilico.feature.comment
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -58,7 +55,6 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Send
-import io.github.suqi8.coui.kmp.icon.extended.Sort
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -80,6 +76,7 @@ fun CommentTab(
     bottomInset: Dp = navBottomPadding(),
     targetRootId: Long = 0L,
     targetReplyId: Long = 0L,
+    replyThreadController: ReplyThreadController? = null,
 ) {
     val viewModel: CommentViewModel = viewModel(key = "comment-$type-$oid-$targetRootId-$targetReplyId") {
         CommentViewModel(container.comments, oid, type, targetRootId, targetReplyId)
@@ -87,10 +84,20 @@ fun CommentTab(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
     val currentMid = account?.mid ?: container.session.mid()
-    var dialogRoot by remember { mutableStateOf<Comment?>(null) }
-    var dialogTargetReplyId by remember { mutableStateOf(0L) }
+    val localThreadController = remember { ReplyThreadController() }
+    val threadController = replyThreadController ?: localThreadController
     var composeTarget by remember { mutableStateOf<ComposeTarget?>(null) }
     var imageViewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
+
+    LaunchedEffect(viewModel, threadController) {
+        threadController.onSubReplyAdded = viewModel::onSubReplyAdded
+        threadController.onSubReplyDeleted = viewModel::onSubReplyDeleted
+        threadController.onRootDeleted = viewModel::removeCommentLocally
+    }
+
+    LaunchedEffect(state.items, threadController) {
+        threadController.itemsSnapshot = state.items
+    }
 
     LaunchedEffect(state.focusRootId, state.items.size) {
         val focusId = state.focusRootId
@@ -105,8 +112,7 @@ fun CommentTab(
 
     LaunchedEffect(state.pendingReplyDialog) {
         val pending = state.pendingReplyDialog ?: return@LaunchedEffect
-        dialogRoot = pending.first
-        dialogTargetReplyId = pending.second
+        threadController.open(pending.first, pending.second)
         viewModel.consumeReplyDialog()
     }
 
@@ -121,7 +127,8 @@ fun CommentTab(
             }
     }
 
-    Column(modifier) {
+    Box(modifier) {
+    Column(Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -164,26 +171,10 @@ fun CommentTab(
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.weight(1f),
                             )
-                            Row(
-                                modifier = Modifier
-                                    .clip(SquircleShape(8.dp))
-                                    .clickable { viewModel.toggleSort() }
-                                    .padding(start = 8.dp, top = 4.dp, end = 2.dp, bottom = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    imageVector = COUIIcons.Sort,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = COUITheme.colorScheme.primary,
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    text = if (state.sort == CommentSort.New) "最新" else "最热",
-                                    style = COUITheme.textStyles.footnote1,
-                                    color = COUITheme.colorScheme.primary,
-                                )
-                            }
+                            CommentSortTabRow(
+                                sort = state.sort,
+                                onSelectSort = viewModel::selectSort,
+                            )
                         }
                     }
                     items(state.items, key = { it.id }) { comment ->
@@ -218,8 +209,7 @@ fun CommentTab(
                                     }
                                 },
                                 onOpenReplies = {
-                                    dialogTargetReplyId = 0L
-                                    dialogRoot = it
+                                    threadController.open(it)
                                 },
                                 onOpenUser = onOpenUser,
                                 onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
@@ -355,26 +345,17 @@ fun CommentTab(
         null -> Unit
     }
 
-    val root = dialogRoot
-    if (root != null) {
-        ReplyDialog(
+    if (replyThreadController == null) {
+        ReplyDetailOverlay(
+            controller = localThreadController,
             container = container,
             oid = oid,
-            comment = state.items.firstOrNull { it.id == root.id } ?: root,
             type = type,
-            initialTargetReplyId = dialogTargetReplyId,
-            onSubReplyAdded = { created -> viewModel.onSubReplyAdded(root.id, created) },
-            onSubReplyDeleted = { replyId -> viewModel.onSubReplyDeleted(root.id, replyId) },
-            onRootDeleted = { viewModel.removeCommentLocally(root.id) },
-            onOpenUser = { mid ->
-                dialogRoot = null
-                dialogTargetReplyId = 0L
-                onOpenUser(mid)
-            },
-            onDismiss = {
-                dialogRoot = null
-                dialogTargetReplyId = 0L
-            },
+            latestItems = state.items,
+            topInset = topInset,
+            bottomInset = bottomInset,
+            onOpenUser = onOpenUser,
+            modifier = Modifier.fillMaxSize(),
         )
     }
 
@@ -384,5 +365,6 @@ fun CommentTab(
             initialIndex = index,
             onDismiss = { imageViewer = null },
         )
+    }
     }
 }

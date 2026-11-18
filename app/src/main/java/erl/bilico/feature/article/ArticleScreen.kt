@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -50,6 +53,8 @@ import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
+import erl.bilico.feature.comment.ReplyDetailOverlay
+import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.imageOrigin
@@ -517,20 +522,12 @@ private fun ArticleFooter(article: ArticleDetail, onOpenComments: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (parts.isNotEmpty()) {
-            Text(
-                text = parts.joinToString(" · "),
-                fontSize = 12.sp,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-            )
+            Text(parts.joinToString(" · "), fontSize = 12.sp, color = COUITheme.colorScheme.onSurfaceSecondary)
         }
         HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
         if (article.commentOid > 0L) {
             Text(
-                text = if (replyCount > 0L) {
-                    "查看全部 ${Formatters.formatStat(replyCount)} 条评论"
-                } else {
-                    "查看评论"
-                },
+                text = if (replyCount > 0L) "查看全部 ${Formatters.formatStat(replyCount)} 条评论" else "查看评论",
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp)
@@ -558,33 +555,43 @@ private fun ArticleCommentSheet(
     onDismiss: () -> Unit,
 ) {
     val parentOpenBvid = LocalOpenBvid.current
+    val replyThread = remember(oid, type) { ReplyThreadController() }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Column(Modifier.fillMaxSize().background(pageContainerColor())) {
-            Row(
-                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BackIconButton(onClick = onDismiss)
-                Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                    Text("评论", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = COUITheme.colorScheme.onSurface)
-                    Text(title, fontSize = 11.sp, color = COUITheme.colorScheme.onSurfaceSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.fillMaxSize().background(pageContainerColor())) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BackIconButton(onClick = onDismiss)
+                    Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                        Text("评论", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = COUITheme.colorScheme.onSurface)
+                        Text(title, fontSize = 11.sp, color = COUITheme.colorScheme.onSurfaceSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (commentCount > 0L) {
+                        Text(Formatters.formatStat(commentCount), fontSize = 12.sp, color = COUITheme.colorScheme.onSurfaceSecondary, modifier = Modifier.padding(end = 12.dp))
+                    }
                 }
-                if (commentCount > 0L) {
-                    Text(Formatters.formatStat(commentCount), fontSize = 12.sp, color = COUITheme.colorScheme.onSurfaceSecondary, modifier = Modifier.padding(end = 12.dp))
+                HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
+                CompositionLocalProvider(LocalOpenBvid provides { bvid -> onDismiss(); parentOpenBvid?.invoke(bvid) }) {
+                    CommentTab(
+                        container = container,
+                        oid = oid,
+                        type = type,
+                        targetRootId = commentRootId,
+                        targetReplyId = commentTargetId,
+                        onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
+                        replyThreadController = replyThread,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
                 }
             }
-            HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
-            CompositionLocalProvider(LocalOpenBvid provides { bvid -> onDismiss(); parentOpenBvid?.invoke(bvid) }) {
-                CommentTab(
-                    container = container,
-                    oid = oid,
-                    type = type,
-                    targetRootId = commentRootId,
-                    targetReplyId = commentTargetId,
-                    onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                )
-            }
+            ReplyDetailOverlay(
+                controller = replyThread, container = container, oid = oid, type = type,
+                topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

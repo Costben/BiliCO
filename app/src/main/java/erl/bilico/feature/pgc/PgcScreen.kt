@@ -46,6 +46,8 @@ import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.isHdr
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
+import erl.bilico.feature.comment.ReplyDetailOverlay
+import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.feature.video.DanmakuController
 import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
@@ -434,48 +436,68 @@ fun PgcScreen(
         },
         detailContent = {
             val navBarBottom = rememberStableNavBarBottomDp()
-            Column(modifier = Modifier.fillMaxSize()) {
-                PgcTabRow(selected = tab, onSelect = { tab = it })
+            val replyThread = remember(seasonId) { ReplyThreadController() }
+            val aid = episode?.aid ?: 0L
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    PgcTabRow(selected = tab, onSelect = { tab = it })
 
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                ) {
-                    when (tab) {
-                        0 -> PgcInfoTab(
-                            detail = state.detail,
-                            isLoading = state.isLoading,
-                            error = state.error,
-                            selectedEpIndex = state.selectedEpIndex,
-                            followed = state.followed,
-                            onToggleFollow = viewModel::toggleFollow,
-                            onRetry = viewModel::load,
-                            onSelectEpisode = { index ->
-                                viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-                                viewModel.selectEpisode(index)
-                            },
-                            onSelectSeason = { id -> nav.push(Route.Pgc(id, 0L)) },
-                            bottomInset = navBarBottom,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    ) {
+                        when (tab) {
+                            0 -> PgcInfoTab(
+                                detail = state.detail,
+                                isLoading = state.isLoading,
+                                error = state.error,
+                                selectedEpIndex = state.selectedEpIndex,
+                                followed = state.followed,
+                                onToggleFollow = viewModel::toggleFollow,
+                                onRetry = viewModel::load,
+                                onSelectEpisode = { index ->
+                                    viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                                    viewModel.selectEpisode(index)
+                                },
+                                onSelectSeason = { id -> nav.push(Route.Pgc(id, 0L)) },
+                                bottomInset = navBarBottom,
+                                modifier = Modifier.fillMaxSize(),
+                            )
 
-                        else -> {
-                            val aid = episode?.aid ?: 0L
-                            if (aid > 0L) {
-                                CompositionLocalProvider(
-                                    LocalCommentSeek provides { ms -> player.seekTo(ms); if (!player.isPlaying) player.play() },
-                                ) {
-                                    CommentTab(
-                                        container = container,
-                                        oid = aid,
-                                        onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
-                                        bottomInset = navBarBottom,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
+                            else -> {
+                                if (aid > 0L) {
+                                    CompositionLocalProvider(
+                                        LocalCommentSeek provides { ms -> player.seekTo(ms); if (!player.isPlaying) player.play() },
+                                    ) {
+                                        CommentTab(
+                                            container = container,
+                                            oid = aid,
+                                            onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                                            bottomInset = navBarBottom,
+                                            replyThreadController = replyThread,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
                                 }
                             }
                         }
+                    }
+                }
+                if (aid > 0L) {
+                    CompositionLocalProvider(
+                        LocalCommentSeek provides { ms -> player.seekTo(ms); if (!player.isPlaying) player.play() },
+                    ) {
+                        ReplyDetailOverlay(
+                            controller = replyThread,
+                            container = container,
+                            oid = aid,
+                            topInset = 0.dp,
+                            bottomInset = navBarBottom,
+                            backEnabled = !fullscreen,
+                            onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }

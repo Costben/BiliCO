@@ -21,8 +21,6 @@ import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.NavHomeOutlineIcon
-import erl.bilico.ui.components.PiliGlyph
-import erl.bilico.ui.components.PiliIcon
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
@@ -33,7 +31,6 @@ import io.github.suqi8.coui.kmp.icon.extended.Back
 import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 竖屏视频在详情页里滑到底之后顶替视频槽位的那一条：
@@ -46,7 +43,6 @@ internal fun CollapsedVideoBar(
     onHome: () -> Unit,
     onPlayPause: () -> Unit,
     onExpand: () -> Unit,
-    onWatchLater: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
@@ -92,16 +88,6 @@ internal fun CollapsedVideoBar(
                     contentDescription = if (isPlaying) "暂停" else "继续播放",
                     modifier = Modifier.size(IconSize),
                 )
-            }
-            if (onWatchLater != null) {
-                HighlightedIconButton(onClick = onWatchLater, backdrop = effectiveBackdrop) {
-                    PiliIcon(
-                        glyph = PiliGlyph.WatchLater,
-                        contentDescription = "稍后再看",
-                        size = 20.dp,
-                        tint = COUITheme.colorScheme.onSurface,
-                    )
-                }
             }
             HighlightedIconButton(onClick = onHome, backdrop = effectiveBackdrop) {
                 Icon(NavHomeOutlineIcon, "首页", Modifier.size(IconSize))

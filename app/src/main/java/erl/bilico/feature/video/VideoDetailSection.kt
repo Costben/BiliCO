@@ -21,6 +21,8 @@ import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.model.VideoEpisode
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentTab
+import erl.bilico.feature.comment.ReplyDetailOverlay
+import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
@@ -48,6 +50,8 @@ internal fun VideoDetailSection(
     detailPager: PagerState,
     infoListState: LazyListState,
     commentListState: LazyListState,
+    replyThread: ReplyThreadController,
+    replyListState: LazyListState,
     danmakuEnabled: Boolean,
     danmakuComposing: Boolean,
     danmakuDraft: String,
@@ -76,6 +80,7 @@ internal fun VideoDetailSection(
     onOpenChapters: () -> Unit = {},
     barBackdrops: VideoBarBackdrops? = null,
     blurActive: Boolean = true,
+    backEnabled: Boolean = true,
     commentRootId: Long = 0L,
     commentTargetId: Long = 0L,
 ) {
@@ -191,6 +196,7 @@ internal fun VideoDetailSection(
                                 bottomInset = navBarBottom,
                                 targetRootId = commentRootId,
                                 targetReplyId = commentTargetId,
+                                replyThreadController = replyThread,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -222,6 +228,25 @@ internal fun VideoDetailSection(
                 onSend = onSendDanmaku,
                 backdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
             )
+        }
+
+        val aid = state.detail?.aid ?: 0L
+        if (aid > 0L) {
+            CompositionLocalProvider(
+                LocalCommentSeek provides onSeekCommentMs,
+            ) {
+                ReplyDetailOverlay(
+                    controller = replyThread,
+                    container = container,
+                    oid = aid,
+                    listState = replyListState,
+                    topInset = firstRowHeight,
+                    bottomInset = navBarBottom,
+                    backEnabled = backEnabled,
+                    onOpenUser = onOpenUser,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }
