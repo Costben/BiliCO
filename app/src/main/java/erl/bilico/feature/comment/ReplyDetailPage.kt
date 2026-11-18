@@ -1,6 +1,10 @@
 package erl.bilico.feature.comment
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -10,6 +14,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -39,19 +45,28 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import erl.bilico.data.model.Comment
+import erl.bilico.data.model.CommentEmotePackage
+import erl.bilico.data.model.DEFAULT_EMOTE_MANAGE_URL
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.ExpandEasing
+import erl.bilico.ui.LocalNavState
+import erl.bilico.ui.Route
 import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.components.LocalOpenBvid
 import erl.bilico.ui.components.navBottomPadding
@@ -67,6 +82,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 /** 评论详情底部展开覆盖层：带底部滑入/滑出动画，完整盖住下层简介、评论与发弹幕栏。 */
 @Composable
@@ -164,20 +180,82 @@ internal fun ReplyDetailPage(
     }
 
     var replyTarget by remember(comment.id) { mutableStateOf<Comment?>(null) }
-    var draft by remember(comment.id) { mutableStateOf("") }
+    var draft by remember(comment.id) { mutableStateOf(TextFieldValue("")) }
+    var pictures by remember(comment.id) { mutableStateOf<List<Uri>>(emptyList()) }
+    var emotePanelOpen by remember(comment.id) { mutableStateOf(false) }
+    var emotePackages by remember { mutableStateOf<List<CommentEmotePackage>>(emptyList()) }
+    var emoteManageUrl by remember { mutableStateOf(DEFAULT_EMOTE_MANAGE_URL) }
+    var emotesFailed by remember { mutableStateOf(false) }
+    var openedEmoteManager by remember { mutableStateOf(false) }
     var imageViewer by remember(comment.id) { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
     val density = LocalDensity.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val nav = LocalNavState.current
     val imeInsets = WindowInsets.ime
     val composerFocus = remember { FocusRequester() }
+    val editorInteractionSource = remember { MutableInteractionSource() }
+    val editorFocused by editorInteractionSource.collectIsFocusedAsState()
+    var wasEditorFocused by remember { mutableStateOf(false) }
     var focusTick by remember(comment.id) { mutableIntStateOf(0) }
     var alignRequest by remember(comment.id) { mutableStateOf<Int?>(null) }
     var targetReplyHandled by remember(comment.id, initialTargetReplyId) { mutableStateOf(false) }
+    var bottomStackPx by remember { mutableIntStateOf(0) }
 
-    BackHandler(enabled = backEnabled, onBack = onClose)
+    val emoteLookup = remember(emotePackages) { buildEmoteLookup(emotePackages) }
+
+    suspend fun loadEmotes(force: Boolean = false) {
+        if (!force && (emotePackages.isNotEmpty() || emotesFailed)) return
+        val result = container.comments.emotePanel().getOrElse {
+            emotesFailed = true
+            return
+        }
+        emotePackages = result.packages
+        emoteManageUrl = result.manageUrl
+        emotesFailed = result.packages.isEmpty()
+    }
+
+    val managingEmotes = nav?.stack?.any { it.route is Route.EmoteManager } == true
+    LaunchedEffect(managingEmotes) {
+        if (!managingEmotes && openedEmoteManager) {
+            openedEmoteManager = false
+            loadEmotes(force = true)
+        }
+    }
+
+    LaunchedEffect(editorFocused) {
+        if (editorFocused && !wasEditorFocused && emotePanelOpen) {
+            emotePanelOpen = false
+        }
+        wasEditorFocused = editorFocused
+    }
+
+    val pickImages = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_REPLY_PICTURES),
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val room = (MAX_REPLY_PICTURES - pictures.size).coerceAtLeast(0)
+        if (room == 0) {
+            detailState.showToast("最多 $MAX_REPLY_PICTURES 张图片")
+            return@rememberLauncherForActivityResult
+        }
+        pictures = pictures + uris.take(room)
+    }
+
+    BackHandler(enabled = backEnabled) {
+        if (emotePanelOpen) {
+            emotePanelOpen = false
+        } else {
+            onClose()
+        }
+    }
 
     LaunchedEffect(comment.id) {
         listState.scrollToItem(0)
         detailState.loadInitial()
+        launch { loadEmotes(force = false) }
     }
 
     LaunchedEffect(initialTargetReplyId, detailState.items.size) {
@@ -214,15 +292,41 @@ internal fun ReplyDetailPage(
 
     fun startReply(target: Comment, itemIndex: Int) {
         replyTarget = target
+        emotePanelOpen = false
         focusTick += 1
         alignRequest = itemIndex
+    }
+
+    fun insertEmote(token: String) {
+        val next = insertTokenInDraft(draft, token, MAX_REPLY_LENGTH)
+        if (next == null) {
+            detailState.showToast("最多 $MAX_REPLY_LENGTH 字")
+        } else {
+            draft = next
+        }
+    }
+
+    fun toggleEmotePanel() {
+        if (emotePanelOpen) {
+            emotePanelOpen = false
+            runCatching { composerFocus.requestFocus() }
+            keyboard?.show()
+        } else {
+            focusManager.clearFocus()
+            keyboard?.hide()
+            emotePanelOpen = true
+            scope.launch { loadEmotes(force = false) }
+        }
     }
 
     val imeBottom = with(density) { WindowInsets.ime.getBottom(density).toDp() }
     val keyboardGapProgress = (imeBottom / 80.dp).coerceIn(0f, 1f)
     val navBottom = bottomInset * (1f - keyboardGapProgress)
     val composerBottomPadding = 10.dp + navBottom
-    val listBottomPadding = 84.dp + navBottom
+    val listBottomPadding = with(density) {
+        val measured = bottomStackPx.toDp()
+        if (measured > 0.dp) measured + 8.dp else 84.dp + navBottom
+    }
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
     val pageBg = pageContainerColor()
     val parentOpenBvid = LocalOpenBvid.current
@@ -399,22 +503,69 @@ internal fun ReplyDetailPage(
 
             ReplyComposer(
                 draft = draft,
-                onDraftChange = { draft = it },
+                onDraftChange = { next ->
+                    draft = if (next.text.length <= MAX_REPLY_LENGTH) {
+                        next
+                    } else {
+                        next.copy(text = next.text.take(MAX_REPLY_LENGTH))
+                    }
+                },
+                emotes = emoteLookup,
+                pictures = pictures,
+                onRemovePicture = { idx ->
+                    pictures = pictures.filterIndexed { i, _ -> i != idx }
+                },
                 replyTarget = replyTarget,
                 onClearReplyTarget = { replyTarget = null },
                 isSending = detailState.isSending,
                 isDark = isDark,
                 focusRequester = composerFocus,
+                interactionSource = editorInteractionSource,
                 focusTick = focusTick,
-                onSend = {
-                    detailState.sendReply(draft, replyTarget) {
-                        draft = ""
-                        replyTarget = null
+                emotePanelOpen = emotePanelOpen,
+                onToggleEmote = ::toggleEmotePanel,
+                onPickImage = {
+                    if (pictures.size >= MAX_REPLY_PICTURES) {
+                        detailState.showToast("最多 $MAX_REPLY_PICTURES 张图片")
+                    } else {
+                        if (emotePanelOpen) emotePanelOpen = false
+                        keyboard?.hide()
+                        pickImages.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
                     }
                 },
+                emotePackages = emotePackages,
+                emotesFailed = emotesFailed,
+                emoteManageUrl = emoteManageUrl,
+                onOpenEmoteManage = { url ->
+                    if (nav == null) {
+                        detailState.showToast("当前页面暂不支持打开表情管理")
+                    } else {
+                        keyboard?.hide()
+                        openedEmoteManager = true
+                        nav.push(Route.EmoteManager(url))
+                    }
+                },
+                onPickEmote = ::insertEmote,
+                onSend = {
+                    detailState.sendReply(
+                        draft = draft.text,
+                        pictures = pictures,
+                        context = context,
+                        replyTarget = replyTarget,
+                    ) {
+                        draft = TextFieldValue("")
+                        pictures = emptyList()
+                        replyTarget = null
+                        emotePanelOpen = false
+                    }
+                },
+                panelBackground = pageBg,
+                bottomPadding = composerBottomPadding,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = composerBottomPadding),
+                    .onSizeChanged { bottomStackPx = it.height },
                 backdrop = overlayBackdrop,
             )
         }
@@ -430,6 +581,8 @@ internal fun ReplyDetailPage(
 }
 
 private val REPLY_TOP_BAR_HEIGHT = 48.dp
+private const val MAX_REPLY_LENGTH = 1000
+private const val MAX_REPLY_PICTURES = 9
 
 /** 列表最前面固定两项：根评论卡片、相关回复标题，子回复从下标 2 开始。 */
 private const val SUB_REPLY_ITEM_OFFSET = 2

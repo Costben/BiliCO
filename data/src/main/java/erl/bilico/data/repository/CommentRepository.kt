@@ -233,6 +233,7 @@ class CommentRepository(
                     liked = false,
                     replyCount = 0,
                     mid = account?.mid ?: session.mid(),
+                    pictures = pictures.map { DynamicImage(it.url, it.width, it.height) },
                     mentions = atMids
                         .mapKeys { (name, _) -> name.trim().removePrefix("@") }
                         .filter { (name, targetMid) -> name.isNotBlank() && targetMid > 0L },

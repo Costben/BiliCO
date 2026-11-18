@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -63,14 +62,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
-import erl.bilico.data.model.CommentEmote
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.ImMessageUi
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.ComposerEmoteTextField
 import erl.bilico.feature.comment.ComposerToolButton
-import erl.bilico.feature.comment.EmoteGrid
+import erl.bilico.feature.comment.CAPSULE_COMPOSER_HEIGHT
+import erl.bilico.feature.comment.InlineEmoteDrawer
+import erl.bilico.feature.comment.buildEmoteLookup
 import erl.bilico.feature.dynamic.DynamicImageViewer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
@@ -102,9 +102,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private const val MAX_CHAT_IMAGE_PICK = 9
-internal val CHAT_COMPOSER_HEIGHT = 36.dp
-internal val CHAT_COMPOSER_MAX_HEIGHT = 108.dp
-internal val CHAT_COMPOSER_SHAPE = COUISmoothCapsuleShape(18.dp)
 
 
 @Composable
@@ -128,7 +125,7 @@ fun ChatScreen(
     val density = LocalDensity.current
     val listBottomPadding = with(density) {
         val measured = bottomStackPx.toDp()
-        if (measured > 0.dp) measured + 8.dp else CHAT_COMPOSER_HEIGHT + 32.dp
+        if (measured > 0.dp) measured + 8.dp else CAPSULE_COMPOSER_HEIGHT + 32.dp
     }
     var inputField by remember { mutableStateOf(TextFieldValue("")) }
     var emotePanelOpen by remember { mutableStateOf(false) }
@@ -158,19 +155,7 @@ fun ChatScreen(
         wasEditorFocused = editorFocused
     }
 
-    val emoteLookup: Map<String, CommentEmote> = remember(state.emotePackages) {
-        buildMap {
-            state.emotePackages.forEach { pkg ->
-                if (pkg.type != 4) {
-                    pkg.emotes.forEach { emote ->
-                        if (emote.url.isNotBlank() && emote.insert.isNotBlank()) {
-                            putIfAbsent(emote.insert, emote)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    val emoteLookup = remember(state.emotePackages) { buildEmoteLookup(state.emotePackages) }
 
     val pickImages = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_CHAT_IMAGE_PICK),
@@ -353,26 +338,20 @@ fun ChatScreen(
                     backdrop = if (BlurEffectsEnabled) backdrop else null,
                 )
 
-                AnimatedVisibility(visible = emotePanelOpen) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
-                            .padding(bottom = 8.dp),
-                    ) {
-                        EmoteGrid(
-                            packages = state.emotePackages,
-                            failed = state.emotesFailed,
-                            manageUrl = state.emoteManageUrl,
-                            onOpenManage = { url ->
-                                keyboard?.hide()
-                                openedEmoteManager = true
-                                nav.push(Route.EmoteManager(url))
-                            },
-                            onPick = ::insertEmote,
-                        )
-                    }
-                }
+                InlineEmoteDrawer(
+                    visible = emotePanelOpen,
+                    panelBackground = pageColor,
+                    packages = state.emotePackages,
+                    failed = state.emotesFailed,
+                    manageUrl = state.emoteManageUrl,
+                    onOpenManage = { url ->
+                        keyboard?.hide()
+                        openedEmoteManager = true
+                        nav.push(Route.EmoteManager(url))
+                    },
+                    onPick = ::insertEmote,
+                    bottomPadding = 8.dp,
+                )
             }
         }
 

@@ -1,7 +1,9 @@
 package erl.bilico.feature.comment
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,15 +18,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -36,14 +34,16 @@ import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.Comment
+import erl.bilico.data.model.CommentEmote
+import erl.bilico.data.model.CommentEmotePackage
 import erl.bilico.ui.BlurEffectsEnabled
-import erl.bilico.ui.components.CompactSendButton
 import erl.bilico.ui.components.COUISmoothCapsuleShape
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
@@ -51,10 +51,7 @@ import erl.bilico.ui.components.inputCapsuleGlass
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.LocalToolbarBackdropBlurFraction
-import io.github.suqi8.coui.kmp.basic.SearchBarActionButtonDefaults
-import io.github.suqi8.coui.kmp.basic.SearchBarDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -65,43 +62,57 @@ import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.basic.Close
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 与 COUI 搜索框完全一致的高度（40dp）。 */
-private val COMPOSER_HEIGHT = SearchBarDefaults.InputFieldMinHeight
 private const val TOP_BAR_ENGINE_SIGMA_SCALE = 0.45f
 
-/** 评论详情底部的输入行：正在回复对象提示 + COUI 搜索框同款胶囊输入框 + 发送胶囊。 */
+/** 评论详情底部的输入区：回复提示 + 配图预览 + 与私信同款的长胶囊输入框 + 表情面板。 */
 @Composable
 internal fun ReplyComposer(
-    draft: String,
-    onDraftChange: (String) -> Unit,
+    draft: TextFieldValue,
+    onDraftChange: (TextFieldValue) -> Unit,
+    emotes: Map<String, CommentEmote>,
+    pictures: List<Uri>,
+    onRemovePicture: (Int) -> Unit,
     replyTarget: Comment?,
     onClearReplyTarget: () -> Unit,
     isSending: Boolean,
     isDark: Boolean,
     focusRequester: FocusRequester,
+    interactionSource: MutableInteractionSource,
     focusTick: Int,
+    emotePanelOpen: Boolean,
+    onToggleEmote: () -> Unit,
+    onPickImage: () -> Unit,
+    emotePackages: List<CommentEmotePackage>,
+    emotesFailed: Boolean,
+    emoteManageUrl: String,
+    onOpenEmoteManage: (String) -> Unit,
+    onPickEmote: (String) -> Unit,
     onSend: () -> Unit,
+    panelBackground: Color,
+    bottomPadding: Dp = 10.dp,
     modifier: Modifier = Modifier,
     backdrop: Backdrop? = LocalBackdrop.current,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
-    val fieldColors = SearchBarDefaults.searchBarColors(backgroundColor = Color.Transparent)
-    var inputExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(focusTick) {
         if (focusTick == 0) return@LaunchedEffect
-        inputExpanded = true
-        focusRequester.requestFocus()
+        runCatching { focusRequester.requestFocus() }
         keyboard?.show()
     }
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+    ) {
         replyTarget?.let { target ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .inputCapsuleGlass(backdrop = backdrop, isDark = isDark)
-                    .clip(COUISmoothCapsuleShape)
+                    .padding(horizontal = 12.dp)
+                    .inputCapsuleGlass(backdrop = backdrop, isDark = isDark, cornerRadius = null)
+                    .clip(COUISmoothCapsuleShape(null))
                     .padding(horizontal = 12.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -124,48 +135,55 @@ internal fun ReplyComposer(
             }
             Spacer(Modifier.height(6.dp))
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            InputField(
-                query = draft,
-                onQueryChange = onDraftChange,
-                onSearch = {
-                    keyboard?.hide()
-                    onSend()
-                },
-                expanded = inputExpanded,
-                onExpandedChange = { if (it) inputExpanded = true },
-                label = if (replyTarget != null) {
-                    "回复 @${replyTarget.userName} :"
-                } else {
-                    "发一条友善的评论"
-                },
-                colors = fieldColors,
-                stroke = null,
-                glowColor = null,
-                backdrop = null,
-                leadingIcon = { Spacer(Modifier.width(16.dp)) },
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequester)
-                    .inputCapsuleGlass(backdrop = backdrop, isDark = isDark),
-            )
-            Spacer(Modifier.width(SearchBarActionButtonDefaults.StartGap))
-            CompactSendButton(
-                text = if (isSending) "发送中" else "发送",
-                onClick = {
-                    keyboard?.hide()
-                    onSend()
-                },
-                enabled = draft.isNotBlank() && !isSending,
-                height = COMPOSER_HEIGHT,
-                containerColor = COUITheme.colorScheme.surfaceContainer,
-                isDark = isDark,
-                backdrop = backdrop,
+
+        if (pictures.isNotEmpty()) {
+            PickedPicturesRow(
+                uris = pictures,
+                onRemove = onRemovePicture,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
             )
         }
+
+        CapsuleComposerBar(
+            value = draft,
+            onValueChange = onDraftChange,
+            emotes = emotes,
+            placeholder = if (replyTarget != null) {
+                "回复 @${replyTarget.userName} :"
+            } else {
+                "发一条友善的评论"
+            },
+            onSend = {
+                keyboard?.hide()
+                onSend()
+            },
+            sendEnabled = draft.text.isNotBlank(),
+            isSending = isSending,
+            emotePanelOpen = emotePanelOpen,
+            onToggleEmote = onToggleEmote,
+            onPickImage = onPickImage,
+            focusRequester = focusRequester,
+            interactionSource = interactionSource,
+            backdrop = backdrop,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+
+        if (emotePanelOpen) {
+            Spacer(Modifier.height(8.dp))
+        } else {
+            Spacer(Modifier.height(bottomPadding))
+        }
+
+        InlineEmoteDrawer(
+            visible = emotePanelOpen,
+            panelBackground = panelBackground,
+            packages = emotePackages,
+            failed = emotesFailed,
+            manageUrl = emoteManageUrl,
+            onOpenManage = onOpenEmoteManage,
+            onPick = onPickEmote,
+            bottomPadding = bottomPadding,
+        )
     }
 }
 

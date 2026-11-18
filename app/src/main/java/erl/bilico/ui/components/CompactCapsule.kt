@@ -22,8 +22,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -32,7 +34,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.ui.BlurEffectsEnabled
@@ -278,6 +282,37 @@ private fun Modifier.chipTabCausticLight(): Modifier {
 }
 
 /**
+ * 单行高度内保持真胶囊（半高全圆角），换行长高后固定成 [multiLineRadius] 圆角矩形，
+ * 直接按尺寸计算轮廓，不依赖二次重组。
+ */
+internal class ComposerCapsuleShape(
+    private val maxCapsuleHeight: Dp = 44.dp,
+    private val multiLineRadius: Dp = 18.dp,
+    private val squircleEnabled: Boolean = true,
+) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val capsuleMaxPx = with(density) { maxCapsuleHeight.toPx() }
+        val effectiveRadius = if (size.height <= capsuleMaxPx) null else multiLineRadius
+        return CapsuleOutlineShape(
+            cornerRadius = effectiveRadius,
+            squircleEnabled = squircleEnabled,
+        ).createOutline(size, layoutDirection, density)
+    }
+
+    override fun equals(other: Any?): Boolean = other is ComposerCapsuleShape &&
+        other.maxCapsuleHeight == maxCapsuleHeight &&
+        other.multiLineRadius == multiLineRadius &&
+        other.squircleEnabled == squircleEnabled
+
+    override fun hashCode(): Int {
+        var result = maxCapsuleHeight.hashCode()
+        result = 31 * result + multiLineRadius.hashCode()
+        result = 31 * result + squircleEnabled.hashCode()
+        return result
+    }
+}
+
+/**
  * 与 COUI 选中态 `ChipTab` 完全一致的透明磨砂胶囊材质：
  * 复用 `GlassChipDefaults` 的混合模糊色、`ChipTabDefaults.CheckedShadow` 投影、深色底部焦散发光以及上下边缘高光描边。
  */
@@ -285,13 +320,14 @@ private fun Modifier.chipTabCausticLight(): Modifier {
 internal fun Modifier.inputCapsuleGlass(
     backdrop: Backdrop?,
     isDark: Boolean,
-    // 单行高度的一半。只长高不放大圆角：草稿换行后是圆角矩形，不再是半径跟着高度变的药丸。
-    cornerRadius: Dp = 18.dp,
+    // 单行传 null 保证真胶囊，多行换行后固定成 18dp 圆角矩形。
+    cornerRadius: Dp? = 18.dp,
     fallbackColor: Color = COUITheme.colorScheme.surfaceContainer,
+    shape: Shape? = null,
 ): Modifier {
     val squircleEnabled = isSquircleEnabled()
-    val pillShape = remember(squircleEnabled, cornerRadius) {
-        CapsuleOutlineShape(cornerRadius = cornerRadius, squircleEnabled = squircleEnabled)
+    val pillShape = remember(squircleEnabled, cornerRadius, shape) {
+        shape ?: CapsuleOutlineShape(cornerRadius = cornerRadius, squircleEnabled = squircleEnabled)
     }
     val density = LocalDensity.current
     val blurActive = BlurEffectsEnabled && isBlurEnabled() && backdrop != null
@@ -379,7 +415,7 @@ internal fun CompactSendButton(
             .inputCapsuleGlass(
                 backdrop = backdrop,
                 isDark = isDark,
-                cornerRadius = height / 2,
+                cornerRadius = null,
                 fallbackColor = containerColor,
             )
             .clickable(

@@ -23,8 +23,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,9 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -48,8 +44,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
-import erl.bilico.data.model.CommentEmote
 import erl.bilico.data.model.CommentEmotePackage
 import erl.bilico.data.model.DEFAULT_EMOTE_MANAGE_URL
 import erl.bilico.data.model.FollowingUser
@@ -61,17 +55,13 @@ import erl.bilico.ui.components.EmojiIcon
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Close
 import io.github.suqi8.coui.kmp.icon.extended.Photos
 import io.github.suqi8.coui.kmp.layout.SheetCloseCapsule
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.squircle.squircleSurface
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 private enum class ComposerPanel { None, Emote, At }
 
@@ -121,19 +111,7 @@ fun CommentComposerSheet(
     val editorFocused by editorInteractionSource.collectIsFocusedAsState()
     var wasEditorFocused by remember { mutableStateOf(false) }
 
-    val emoteLookup: Map<String, CommentEmote> = remember(packages) {
-        buildMap {
-            packages.forEach { pkg ->
-                if (pkg.type != 4) {
-                    pkg.emotes.forEach { emote ->
-                        if (emote.url.isNotBlank() && emote.insert.isNotBlank()) {
-                            putIfAbsent(emote.insert, emote)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    val emoteLookup = remember(packages) { buildEmoteLookup(packages) }
 
     LaunchedEffect(editorFocused) {
         if (editorFocused && !wasEditorFocused && panel == ComposerPanel.At) {
@@ -279,27 +257,14 @@ fun CommentComposerSheet(
         }
         uploading = true
         scope.launch {
-            val uploaded = ArrayList<UploadedPicture>(pictures.size)
-            for ((index, picture) in pictures.withIndex()) {
-                val bytes = withContext(Dispatchers.IO) {
-                    runCatching {
-                        context.contentResolver.openInputStream(picture.uri)?.use { it.readBytes() }
-                    }.getOrNull()
-                }
-                if (bytes == null) {
-                    uploading = false
-                    toast("读取第 ${index + 1} 张图片失败")
-                    return@launch
-                }
-                val mime = context.contentResolver.getType(picture.uri) ?: "image/jpeg"
-                val name = "comment_${System.currentTimeMillis()}_$index." + mime.substringAfterLast('/', "jpg")
-                val result = container.comments.uploadPicture(bytes, name, mime)
-                val pictureUrl = result.getOrElse {
-                    uploading = false
-                    toast(it.message ?: "图片上传失败")
-                    return@launch
-                }
-                uploaded += pictureUrl
+            val uploaded = uploadCommentPictures(
+                context = context,
+                comments = container.comments,
+                uris = pictures.map { it.uri },
+            ).getOrElse { err ->
+                uploading = false
+                toast(err.message ?: "图片上传失败")
+                return@launch
             }
             uploading = false
             onSubmit(text, uploaded, atMids)
@@ -412,44 +377,13 @@ fun CommentComposerSheet(
             }
 
             if (pictures.isNotEmpty()) {
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(pictures.size) { index ->
-                        Box {
-                            AsyncImage(
-                                model = pictures[index].uri,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(SquircleShape(10.dp)),
-                                contentScale = ContentScale.Crop,
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(4.dp)
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(COUITheme.colorScheme.surface.copy(alpha = 0.8f))
-                                    .clickable {
-                                        pictures = pictures.filterIndexed { i, _ -> i != index }
-                                    },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    imageVector = COUIIcons.Close,
-                                    contentDescription = "移除",
-                                    modifier = Modifier.size(14.dp),
-                                    tint = COUITheme.colorScheme.onSurface,
-                                )
-                            }
-                        }
-                    }
-                }
+                PickedPicturesRow(
+                    uris = pictures.map { it.uri },
+                    onRemove = { index ->
+                        pictures = pictures.filterIndexed { i, _ -> i != index }
+                    },
+                    modifier = Modifier.padding(top = 10.dp),
+                )
             }
 
             if (panel == ComposerPanel.Emote) {

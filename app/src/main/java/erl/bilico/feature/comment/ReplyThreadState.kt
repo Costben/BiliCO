@@ -1,5 +1,7 @@
 package erl.bilico.feature.comment
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -244,7 +246,13 @@ internal class ReplyDetailState(
         }
     }
 
-    fun sendReply(draft: String, replyTarget: Comment?, onSent: () -> Unit) {
+    fun sendReply(
+        draft: String,
+        pictures: List<Uri>,
+        context: Context,
+        replyTarget: Comment?,
+        onSent: () -> Unit,
+    ) {
         if (!container.session.isLoggedIn()) {
             showToast("请先登录")
             return
@@ -254,12 +262,23 @@ internal class ReplyDetailState(
         val parentTarget = replyTarget ?: rootComment
         isSending = true
         scope.launch {
+            val uploaded = if (pictures.isNotEmpty()) {
+                uploadCommentPictures(context = context, comments = container.comments, uris = pictures)
+                    .getOrElse { err ->
+                        isSending = false
+                        showToast(err.message ?: "图片上传失败")
+                        return@launch
+                    }
+            } else {
+                emptyList()
+            }
             container.comments.addComment(
                 oid = oid,
                 message = text,
                 root = rootComment.id,
                 parent = parentTarget.id,
                 type = type,
+                pictures = uploaded,
             )
                 .onSuccess { created ->
                     isSending = false
