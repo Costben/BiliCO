@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -111,7 +109,6 @@ private fun MenuPopupBody(
     items: List<CouiMenuItem>,
     groupKey: String,
     headerContent: (@Composable () -> Unit)?,
-    scrollable: Boolean = false,
     onItemSelected: (CouiMenuItem) -> Unit,
 ) {
     val content: @Composable () -> Unit = {
@@ -137,19 +134,13 @@ private fun MenuPopupBody(
         }
     }
     if (headerContent == null) {
-        if (scrollable) {
-            Box(modifier = Modifier.verticalScroll(rememberScrollState())) { content() }
-        } else {
-            content()
-        }
+        content()
     } else {
         Column(modifier = Modifier.width(IntrinsicSize.Max)) {
             headerContent()
             PopupListDivider()
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier),
+                modifier = Modifier.fillMaxWidth(),
                 propagateMinConstraints = true,
             ) {
                 content()
@@ -361,7 +352,6 @@ internal fun CouiStagePopupMenu(
                                     items = items,
                                     groupKey = "stage_menu",
                                     headerContent = headerContent,
-                                    scrollable = true,
                                     onItemSelected = { item ->
                                         val idx = items.indexOf(item)
                                         if (!item.children.isNullOrEmpty() && idx >= 0) {
@@ -404,7 +394,8 @@ internal fun CouiStagePopupMenu(
                         interactionEnabled = show && expandedSubmenuIndex != null,
                         modifier = Modifier
                             .padding(top = 12.dp)
-                            .widthIn(min = 212.dp),
+                            .widthIn(min = 212.dp)
+                            .heightIn(max = maxHeight),
                         content = {
                             ListPopupColumn {
                                 DropdownImpl(
