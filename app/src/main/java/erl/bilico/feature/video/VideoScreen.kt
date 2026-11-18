@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -78,11 +79,23 @@ fun VideoScreen(
         )
     }
     val currentState by viewModel.state.collectAsStateWithLifecycle()
-    // 换片那一帧 ViewModel 里还是上一条的内容，先按空状态画骨架，避免闪出上一条的标题和封面。
+    // 压在下层的历史播放页保留上次已加载好的简介、推荐与互动状态（不含播放源流），
+    // 返回手势与回退时无需全页白屏转圈重拉；出栈后随该层组合销毁自动释放。
+    var cachedUiState by remember(bvid) { mutableStateOf<VideoUiState?>(null) }
+    var savedPositionMs by remember(bvid) { mutableLongStateOf(startPositionMs) }
+    if (viewModel.currentBvid == bvid && currentState.detail != null) {
+        SideEffect {
+            cachedUiState = currentState.copy(
+                source = null,
+                isPlaybackLoading = false,
+                playbackError = null,
+            )
+        }
+    }
     val state = if (viewModel.currentBvid == bvid) {
         currentState
     } else {
-        VideoUiState(resumePositionMs = startPositionMs)
+        cachedUiState ?: VideoUiState(resumePositionMs = savedPositionMs)
     }
 
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
@@ -153,11 +166,19 @@ fun VideoScreen(
         if (nav.minimizedEntry?.route is Route.Video) {
             nav.dismissMinimized(pausePlayback = false)
         }
+        val cached = cachedUiState
         if (viewModel.currentBvid != bvid) {
             player?.stop()
             player?.clearMediaItems()
+            viewModel.switchTo(
+                bvid = bvid,
+                startPositionMs = if (cached != null) savedPositionMs else startPositionMs,
+                initialCid = initialCid,
+                cachedState = cached,
+            )
+        } else {
+            viewModel.switchTo(bvid, startPositionMs, initialCid)
         }
-        viewModel.switchTo(bvid, startPositionMs, initialCid)
     }
 
     // 播放器解码上报的首帧宽高比（换视频或切分 P 时重置），再回退到接口预设的 dimension / dash 尺寸；0 表示仍未知。
@@ -237,6 +258,15 @@ fun VideoScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(isTop) {
+        if (!isTop) {
+            if (positionMs > 0L) savedPositionMs = positionMs
+            isPlaying = false
+            isBuffering = false
+            longPressSpeed.onActiveChange(false)
+        }
+    }
 
     val headers = remember(bvid) { container.client.mediaRequestHeaders(bvid) }
     val dataSourceFactory = remember(headers) {
@@ -377,15 +407,15 @@ fun VideoScreen(
     // 首帧拿到的登录态不重取，免得一进页面就白闪一下。
     val playbackAccount by container.session.account.collectAsStateWithLifecycle()
     var playbackAccountKey by remember { mutableStateOf<Pair<Long, Boolean>?>(null) }
-    LaunchedEffect(playbackAccount) {
+    LaunchedEffect(playbackAccount, isTop) {
         val key = playbackAccount?.let { it.mid to it.vip }
         val previous = playbackAccountKey
         playbackAccountKey = key
-        if (previous != null && previous != key) viewModel.refreshPlayback(positionMs)
+        if (isTop && previous != null && previous != key) viewModel.refreshPlayback(positionMs)
     }
 
-    LaunchedEffect(player, effectiveSpeed) {
-        player?.setPlaybackSpeed(effectiveSpeed)
+    LaunchedEffect(player, effectiveSpeed, isTop) {
+        if (isTop) player?.setPlaybackSpeed(effectiveSpeed)
     }
 
     LaunchedEffect(player, isActiveRoute) {

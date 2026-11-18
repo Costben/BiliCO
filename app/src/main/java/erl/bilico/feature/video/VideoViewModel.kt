@@ -74,12 +74,20 @@ class VideoViewModel(
     }
 
     /**
-     * 同一页里换下一条视频：清掉上一条的状态和还在飞的请求，再按新参数重新加载。
-     * 参数没变时直接返回，界面每次重组调用也不会重复拉接口。
+     * 同一页里换下一条视频或从下级视频返回时恢复本页状态：
+     * 若带有上次加载好的静态详情快照，则直接恢复简介、推荐和互动态并仅重取播放流。
      */
-    fun switchTo(bvid: String, startPositionMs: Long = 0L, initialCid: Long = 0L) {
+    fun switchTo(
+        bvid: String,
+        startPositionMs: Long = 0L,
+        initialCid: Long = 0L,
+        cachedState: VideoUiState? = null,
+    ) {
         val start = startPositionMs.coerceAtLeast(0L)
-        if (bvid == this.bvid && initialCid == this.initialCid && start == this.startPositionMs) return
+        if (bvid == this.bvid && initialCid == this.initialCid && start == this.startPositionMs && cachedState == null) {
+            return
+        }
+        if (bvid == this.bvid && _state.value.detail != null && cachedState == null) return
         this.bvid = bvid
         this.initialCid = initialCid
         this.startPositionMs = start
@@ -88,6 +96,26 @@ class VideoViewModel(
         startTs = 0L
         lastHeartbeatAt = 0L
         initialResumeSettled = start > 0L
+        val cachedDetail = cachedState?.detail
+        if (cachedState != null && cachedDetail != null) {
+            _state.value = cachedState.copy(
+                source = null,
+                isLoading = false,
+                error = null,
+                isPlaybackLoading = true,
+                playbackError = null,
+                resumePositionMs = start,
+                message = null,
+            )
+            val targetCid = cachedState.selectedCid.takeIf { it > 0L } ?: cachedDetail.cid
+            loadPlayback(
+                qn = cachedState.requestedQuality.takeIf { it > 0 } ?: settings.defaultQuality.value,
+                cid = targetCid,
+                notifyDowngrade = false,
+                positionMs = start,
+            )
+            return
+        }
         _state.value = VideoUiState(resumePositionMs = start)
         load()
     }

@@ -552,6 +552,11 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
         return sprite
     }
 
+    /** 释放精灵图缓存，保留已排好版的弹幕条目以便返回页面时即时恢复。 */
+    fun evictSpriteCache() {
+        spriteCache.evictAll()
+    }
+
     override fun onDetachedFromWindow() {
         loopRunning = false
         lastFrameNanos = 0L

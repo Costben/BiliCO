@@ -7,6 +7,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import erl.bilico.data.model.DanmakuItem
 import erl.bilico.data.settings.DanmakuSettings
+import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.LocalRouteMinimized
 
 /**
@@ -23,29 +24,32 @@ internal fun DanmakuOverlay(
     modifier: Modifier = Modifier,
     timeline: DanmakuTimeline? = null,
 ) {
+    val isTop = LocalRouteIsTop.current
     val minimized = LocalRouteMinimized.current
+    val active = isTop && !minimized
     val interaction = LocalDanmakuInteraction.current
     AndroidView(
         factory = { context ->
             DanmakuSurfaceView(context).apply {
-                this.player = player
+                this.player = if (isTop) player else null
                 this.timeline = timeline
                 this.items = items
                 applySettings(settings)
                 selectedHit = interaction?.selectedHit
-                playing = isPlaying && !minimized
-                visibility = if (minimized) View.INVISIBLE else View.VISIBLE
+                playing = isPlaying && active
+                visibility = if (active) View.VISIBLE else View.INVISIBLE
                 interaction?.hitTest = { offset -> findDanmakuAt(offset.x, offset.y) }
             }
         },
         update = { view ->
-            view.player = player
+            view.player = if (isTop) player else null
             view.timeline = timeline
             view.items = items
             view.applySettings(settings)
             view.selectedHit = interaction?.selectedHit
-            view.playing = isPlaying && !minimized
-            view.visibility = if (minimized) View.INVISIBLE else View.VISIBLE
+            view.playing = isPlaying && active
+            view.visibility = if (active) View.VISIBLE else View.INVISIBLE
+            if (!isTop) view.evictSpriteCache()
             interaction?.hitTest = { offset -> view.findDanmakuAt(offset.x, offset.y) }
         },
         onRelease = {
