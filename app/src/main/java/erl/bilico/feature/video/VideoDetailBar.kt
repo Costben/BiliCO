@@ -70,6 +70,7 @@ internal fun VideoDetailBar(
     commentCount: Long,
     danmakuEnabled: Boolean,
     onToggleDanmaku: () -> Unit,
+    onOpenDanmakuSettings: (() -> Unit)? = null,
     composing: Boolean,
     draft: String,
     onDraftChange: (String) -> Unit,
@@ -179,6 +180,7 @@ internal fun VideoDetailBar(
                         DanmakuToggle(
                             enabled = danmakuEnabled,
                             onToggle = onToggleDanmaku,
+                            onOpenSettings = onOpenDanmakuSettings,
                         )
                     },
                     modifier = Modifier

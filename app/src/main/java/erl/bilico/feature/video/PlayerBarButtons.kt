@@ -110,27 +110,21 @@ internal fun PlayerGlyphButton(
  */
 @Composable
 internal fun rememberPlayerMoreMenuItems(
-    onDanmakuSettings: (() -> Unit)?,
     playbackEndMode: PlaybackEndMode,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
-    onWatchLater: (() -> Unit)?,
     onShare: (() -> Unit)?,
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: (() -> Unit)? = null,
 ): List<CouiMenuItem> {
-    val danmakuState by rememberUpdatedState(onDanmakuSettings)
     val selectModeState by rememberUpdatedState(onSelectPlaybackEndMode)
-    val watchLaterState by rememberUpdatedState(onWatchLater)
     val shareState by rememberUpdatedState(onShare)
     val submitSponsorState by rememberUpdatedState(onSubmitSponsor)
     val statsState by rememberUpdatedState(onShowStats)
-    val hasDanmaku = onDanmakuSettings != null
     val hasPlaybackEnd = onSelectPlaybackEndMode != null
-    val hasWatchLater = onWatchLater != null
     val hasShare = onShare != null
     val hasSubmitSponsor = onSubmitSponsor != null
     val hasStats = onShowStats != null
-    return remember(playbackEndMode, hasDanmaku, hasPlaybackEnd, hasWatchLater, hasShare, hasSubmitSponsor, hasStats) {
+    return remember(playbackEndMode, hasPlaybackEnd, hasShare, hasSubmitSponsor, hasStats) {
         buildList {
             if (hasPlaybackEnd) {
                 add(
@@ -149,12 +143,6 @@ internal fun rememberPlayerMoreMenuItems(
                     ),
                 )
             }
-            if (hasDanmaku) {
-                add(CouiMenuItem(label = "弹幕设置", onClick = { danmakuState?.invoke() }, group = 1))
-            }
-            if (hasWatchLater) {
-                add(CouiMenuItem(label = "稍后再看", onClick = { watchLaterState?.invoke() }, group = 1))
-            }
             if (hasShare) {
                 add(CouiMenuItem(label = "分享", onClick = { shareState?.invoke() }, group = 1))
             }
@@ -168,11 +156,9 @@ internal fun rememberPlayerMoreMenuItems(
     }
 }
 
-/** 顶栏右端的三个点：弹幕设置、自动联播（二级菜单）、稍后再看、分享与空降提交。 */
+/** 顶栏右端的三个点：自动联播（二级菜单）、分享、空降提交与视频信息统计。 */
 @Composable
 internal fun PlayerMoreMenu(
-    onDanmakuSettings: (() -> Unit)?,
-    onWatchLater: (() -> Unit)?,
     onShare: (() -> Unit)?,
     playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
@@ -181,10 +167,8 @@ internal fun PlayerMoreMenu(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val items = rememberPlayerMoreMenuItems(
-        onDanmakuSettings = onDanmakuSettings,
         playbackEndMode = playbackEndMode,
         onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-        onWatchLater = onWatchLater,
         onShare = onShare,
         onSubmitSponsor = onSubmitSponsor,
         onShowStats = onShowStats,
@@ -453,11 +437,9 @@ internal fun PlayerStagePopupMenus(
     hdrVideo: Boolean,
     menuBackdrop: LayerBackdrop,
     horizontalBarPad: Dp,
-    onDanmakuSettingsClick: (() -> Unit)?,
     onHideControls: () -> Unit,
     playbackEndMode: PlaybackEndMode,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
-    onWatchLater: (() -> Unit)?,
     onShare: (() -> Unit)?,
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: () -> Unit,
@@ -474,15 +456,8 @@ internal fun PlayerStagePopupMenus(
         LocalBackdrop provides if (BlurEffectsEnabled && !hdrVideo) menuBackdrop else null,
     ) {
         val stageMoreItems = rememberPlayerMoreMenuItems(
-            onDanmakuSettings = onDanmakuSettingsClick?.let { openDm ->
-                {
-                    onHideControls()
-                    openDm()
-                }
-            },
             playbackEndMode = playbackEndMode,
             onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-            onWatchLater = onWatchLater,
             onShare = onShare,
             onSubmitSponsor = onSubmitSponsor?.let { openSubmit ->
                 {

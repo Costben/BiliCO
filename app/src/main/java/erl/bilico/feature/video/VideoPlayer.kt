@@ -327,7 +327,15 @@ internal fun VideoPlayer(
                 )
             }
             val trailingActions: @Composable RowScope.() -> Unit = {
-                // 竖屏非全屏时弹幕开关在简介那一行的胶囊右端，弹幕设置收在右侧更多菜单里；全屏时两者都在顶栏。
+                // 全屏：稍后再看 · 弹幕设置 · 弹幕开关 · 小窗 · 首页 · 更多；
+                // 竖屏：弹幕设置与开关在下方「发弹幕」输入框里，顶栏在首页左侧显示稍后再看。
+                if (onWatchLater != null) {
+                    PlayerGlyphButton(
+                        glyph = PiliGlyph.WatchLater,
+                        label = "稍后再看",
+                        onClick = onWatchLater,
+                    )
+                }
                 if (fullscreen) {
                     if (onDanmakuSettingsClick != null) {
                         PlayerGlyphButton(
@@ -370,8 +378,6 @@ internal fun VideoPlayer(
                     )
                 } else {
                     PlayerMoreMenu(
-                        onDanmakuSettings = onDanmakuSettingsClick,
-                        onWatchLater = onWatchLater,
                         onShare = onShare,
                         playbackEndMode = playbackEndMode,
                         onSelectPlaybackEndMode = onSelectPlaybackEndMode,
@@ -552,11 +558,9 @@ internal fun VideoPlayer(
                 hdrVideo = hdrVideo,
                 menuBackdrop = menuBackdrop,
                 horizontalBarPad = horizontalBarPad,
-                onDanmakuSettingsClick = onDanmakuSettingsClick,
                 onHideControls = { controlsVisible = false },
                 playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-                onWatchLater = onWatchLater,
                 onShare = onShare,
                 onSubmitSponsor = onSubmitSponsor,
                 onShowStats = {

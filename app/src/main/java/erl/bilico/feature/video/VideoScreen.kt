@@ -638,6 +638,7 @@ fun VideoScreen(
                 danmakuEnabled = danmakuEnabled,
                 danmakuComposing = danmakuComposing,
                 danmakuDraft = danmakuDraft,
+                onOpenDanmakuSettings = { danmakuSettingsDialogVisible = true },
                 onDanmakuDraftChange = { danmakuDraft = it },
                 onDanmakuComposingChange = {
                     danmakuComposing = it
@@ -712,7 +713,6 @@ fun VideoScreen(
                     if (p.isPlaying) p.pause() else p.play()
                 },
                 onExpand = { slotHeight.floatValue = 0f },
-                onDanmakuSettings = { danmakuSettingsDialogVisible = true },
                 onWatchLater = viewModel::addToWatchLater,
                 playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
