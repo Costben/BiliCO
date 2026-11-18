@@ -180,10 +180,7 @@ fun VideoScreen(
     )
     val infoListState = rememberLazyListState()
     val commentListState = rememberLazyListState()
-    var qualityDialogVisible by remember { mutableStateOf(false) }
     var queueSheetVisible by remember { mutableStateOf(false) }
-    var speedDialogVisible by remember { mutableStateOf(false) }
-    var subtitleDialogVisible by remember { mutableStateOf(false) }
     var chapterDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var coinDialogVisible by remember { mutableStateOf(false) }
@@ -194,7 +191,6 @@ fun VideoScreen(
     val onSelectSpeed: (Float) -> Unit = { value ->
         speed = value
         if (speedLocked) container.settings.setLockedSpeed(value)
-        speedDialogVisible = false
     }
     val onToggleSpeedLock: () -> Unit = {
         container.settings.setSpeedLock(!speedLocked, speed)
@@ -302,9 +298,6 @@ fun VideoScreen(
         }
         danmakuComposing = false
         danmakuDraft = ""
-        qualityDialogVisible = false
-        speedDialogVisible = false
-        subtitleDialogVisible = false
         chapterDialogVisible = false
         danmakuSettingsDialogVisible = false
         coinDialogVisible = false
@@ -442,10 +435,7 @@ fun VideoScreen(
                 Box(Modifier.fillMaxSize().background(Color.Black))
             } else {
                 val stageBackdrop = rememberLayerBackdrop()
-                val anyStageDialogOpen = fullscreen && (
-                    speedDialogVisible || subtitleDialogVisible || qualityDialogVisible ||
-                        danmakuSettingsDialogVisible || chapterDialogVisible
-                    )
+                val anyStageDialogOpen = fullscreen && (danmakuSettingsDialogVisible || chapterDialogVisible)
                 VideoPlayer(
                     player = player,
                     title = state.detail?.title.orEmpty(),
@@ -469,8 +459,12 @@ fun VideoScreen(
                     hapticEnabled = gestureHaptic,
                     volumeBrightnessEnabled = gestureVolBright,
                     fullscreenHintEnabled = fullscreenGestureHint,
-                    onQualityClick = { qualityDialogVisible = true },
-                    onSpeedClick = { speedDialogVisible = true },
+                    qualities = state.source?.qualities.orEmpty(),
+                    activeQuality = state.activeQuality,
+                    onSelectQuality = { qn -> viewModel.selectQuality(qn, player.currentPosition) },
+                    speedLocked = speedLocked,
+                    onToggleSpeedLock = onToggleSpeedLock,
+                    onSelectSpeed = onSelectSpeed,
                     onBack = {
                         if (fullscreen) applyFullscreen(false) else nav.pop()
                     },
@@ -483,7 +477,9 @@ fun VideoScreen(
                     onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
                     onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
                     subtitleLabel = subtitleController.buttonLabel,
-                    onSubtitleClick = { subtitleDialogVisible = true },
+                    subtitleTracks = subtitleController.tracks,
+                    selectedSubtitleKey = subtitleController.selectedTrackKey,
+                    onSelectSubtitle = subtitleController::selectTrack,
                     onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
                         { PlaybackBridge.enterPipNow(activity) }
                     } else {
@@ -573,15 +569,6 @@ fun VideoScreen(
                         LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
                     ) {
                         VideoScreenDialogs(
-                            speedDialogVisible = speedDialogVisible,
-                            speed = speed,
-                            speedLocked = speedLocked,
-                            onToggleSpeedLock = onToggleSpeedLock,
-                            onSpeedChange = onSelectSpeed,
-                            onDismissSpeed = { speedDialogVisible = false },
-                            subtitleDialogVisible = subtitleDialogVisible,
-                            subtitleController = subtitleController,
-                            onDismissSubtitle = { subtitleDialogVisible = false },
                             coinDialogVisible = false,
                             coined = state.coined,
                             onSelectCoin = {},
@@ -589,10 +576,6 @@ fun VideoScreen(
                             favoriteFolders = null,
                             onSelectFavorite = {},
                             onDismissFavorite = {},
-                            qualityDialogVisible = qualityDialogVisible,
-                            state = state,
-                            onSelectQuality = { qn -> qualityDialogVisible = false; viewModel.selectQuality(qn, player.currentPosition) },
-                            onDismissQuality = { qualityDialogVisible = false },
                             danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
                             danmakuSettings = danmakuSettings,
                             settingsRepository = container.settings,
@@ -709,15 +692,6 @@ fun VideoScreen(
 
     if (!fullscreen) {
         VideoScreenDialogs(
-            speedDialogVisible = speedDialogVisible,
-            speed = speed,
-            speedLocked = speedLocked,
-            onToggleSpeedLock = onToggleSpeedLock,
-            onSpeedChange = onSelectSpeed,
-            onDismissSpeed = { speedDialogVisible = false },
-            subtitleDialogVisible = subtitleDialogVisible,
-            subtitleController = subtitleController,
-            onDismissSubtitle = { subtitleDialogVisible = false },
             coinDialogVisible = coinDialogVisible,
             coined = state.coined,
             onSelectCoin = { count -> coinDialogVisible = false; viewModel.coin(count) },
@@ -725,10 +699,6 @@ fun VideoScreen(
             favoriteFolders = favoriteFolders,
             onSelectFavorite = { mediaId -> favoriteFolders = null; viewModel.favorite(mediaId) },
             onDismissFavorite = { favoriteFolders = null },
-            qualityDialogVisible = qualityDialogVisible,
-            state = state,
-            onSelectQuality = { qn -> qualityDialogVisible = false; viewModel.selectQuality(qn, player?.currentPosition ?: 0L) },
-            onDismissQuality = { qualityDialogVisible = false },
             danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
             danmakuSettings = danmakuSettings,
             settingsRepository = container.settings,

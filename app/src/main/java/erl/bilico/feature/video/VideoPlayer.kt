@@ -3,7 +3,6 @@ package erl.bilico.feature.video
 import android.view.LayoutInflater
 import android.view.View
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -16,9 +15,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -33,8 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -46,23 +43,20 @@ import androidx.media3.ui.PlayerView
 import erl.bilico.R
 import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.PlaybackSource
+import erl.bilico.data.model.QualityOption
 import erl.bilico.data.model.SponsorSegment
+import erl.bilico.data.model.SubtitleTrack
 import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.LocalRouteMinimized
-import erl.bilico.ui.components.CouiStagePopupMenu
-import erl.bilico.ui.components.FullscreenExitIcon
-import erl.bilico.ui.components.FullscreenIcon
 import erl.bilico.ui.components.NavHomeOutlineIcon
 import erl.bilico.ui.components.PiliGlyph
 import erl.bilico.ui.components.PipIcon
-import erl.bilico.ui.components.PlayerScrim
 import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Back
@@ -100,8 +94,12 @@ internal fun VideoPlayer(
     hapticEnabled: Boolean = true,
     volumeBrightnessEnabled: Boolean = true,
     fullscreenHintEnabled: Boolean = true,
-    onQualityClick: () -> Unit,
-    onSpeedClick: () -> Unit,
+    qualities: List<QualityOption> = emptyList(),
+    activeQuality: Int = 0,
+    onSelectQuality: (Int) -> Unit = {},
+    speedLocked: Boolean = false,
+    onToggleSpeedLock: () -> Unit = {},
+    onSelectSpeed: (Float) -> Unit = {},
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -110,7 +108,9 @@ internal fun VideoPlayer(
     onToggleDanmaku: () -> Unit = {},
     onDanmakuSettingsClick: (() -> Unit)? = null,
     subtitleLabel: String? = null,
-    onSubtitleClick: (() -> Unit)? = null,
+    subtitleTracks: List<SubtitleTrack> = emptyList(),
+    selectedSubtitleKey: String? = null,
+    onSelectSubtitle: (String?) -> Unit = {},
     onEnterPip: (() -> Unit)? = null,
     onHome: (() -> Unit)? = null,
     onWatchLater: (() -> Unit)? = null,
@@ -134,10 +134,15 @@ internal fun VideoPlayer(
     danmakuActions: DanmakuActionCallbacks? = null,
 ) {
     var controlsVisible by remember { mutableStateOf(false) }
-    var fullscreenMoreOpen by remember { mutableStateOf(false) }
+    var activeMenu by remember { mutableStateOf(PlayerPopupMenu.NONE) }
+    var lastBottomMenu by remember { mutableStateOf(PlayerPopupMenu.SPEED) }
     var statsVisible by remember { mutableStateOf(false) }
     var selectedDanmaku by remember { mutableStateOf<DanmakuHit?>(null) }
     val danmakuInteraction = remember { DanmakuInteractionHost() }
+    var stageCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var speedEndMargin by remember { mutableStateOf(120.dp) }
+    var qualityEndMargin by remember { mutableStateOf(64.dp) }
+    var subtitleEndMargin by remember { mutableStateOf(176.dp) }
     // 正在输入弹幕：这时不能让控件条按 4.5 秒自动收，否则键盘还在、框先没了。
     var composerFocused by remember { mutableStateOf(false) }
     var prevFullscreen by remember { mutableStateOf(fullscreen) }
@@ -146,7 +151,7 @@ internal fun VideoPlayer(
         if (prevFullscreen != fullscreen) {
             prevFullscreen = fullscreen
             controlsVisible = false
-            fullscreenMoreOpen = false
+            activeMenu = PlayerPopupMenu.NONE
             statsVisible = false
             selectedDanmaku = null
         }
@@ -156,9 +161,9 @@ internal fun VideoPlayer(
     }
     danmakuInteraction.selectedHit = selectedDanmaku
 
-    LaunchedEffect(controlsVisible, fullscreenMoreOpen, composerFocused, isPlaying, isBuffering, errorMessage) {
+    LaunchedEffect(controlsVisible, activeMenu, composerFocused, isPlaying, isBuffering, errorMessage) {
         if (
-            controlsVisible && !fullscreenMoreOpen && !composerFocused &&
+            controlsVisible && activeMenu == PlayerPopupMenu.NONE && !composerFocused &&
             isPlaying && !isBuffering && errorMessage == null
         ) {
             delay(4500)
@@ -170,7 +175,7 @@ internal fun VideoPlayer(
     // 否则点一下屏幕看到控件纹丝不动，像是点不动。
     val showChrome = !inPipMode && (controlsVisible || errorMessage != null)
     LaunchedEffect(fullscreen, showChrome) {
-        if (!fullscreen || !showChrome) fullscreenMoreOpen = false
+        if (!showChrome) activeMenu = PlayerPopupMenu.NONE
     }
     val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
     // 只有横屏全屏才挂弹幕输入框：竖屏全屏画面本来就窄，页面下面还有那条固定的输入框。
@@ -188,7 +193,7 @@ internal fun VideoPlayer(
     val resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
     val menuBackdrop = rememberLayerBackdrop()
     // SurfaceView 的画面不进 Compose 的绘制层，抓出来的背景只有一块黑，不如直接退成不模糊。
-    val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && fullscreenMoreOpen && !hdrVideo
+    val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && activeMenu != PlayerPopupMenu.NONE && !hdrVideo
     val isTop = LocalRouteIsTop.current
     val minimized = LocalRouteMinimized.current
     // 舞台转场用一张静止帧顶替实时画面（SurfaceView 转不动）：在这里交出抓帧入口。
@@ -210,8 +215,22 @@ internal fun VideoPlayer(
         onDispose { frameSource.capture = null }
     }
 
+    val speedMenuItems = rememberSpeedMenuItems(
+        activeSpeed = speed,
+        onSelectSpeed = { onSelectSpeed(it); activeMenu = PlayerPopupMenu.NONE },
+    )
+    val qualityMenuItems = rememberQualityMenuItems(
+        qualities = qualities,
+        activeQuality = activeQuality,
+        onSelectQuality = { onSelectQuality(it); activeMenu = PlayerPopupMenu.NONE },
+    )
+    val subtitleMenuItems = rememberSubtitleMenuItems(
+        tracks = subtitleTracks,
+        selectedKey = selectedSubtitleKey,
+        onSelectSubtitle = { onSelectSubtitle(it); activeMenu = PlayerPopupMenu.NONE },
+    )
     val stageModifier = if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier
-    Box(stageModifier) {
+    Box(stageModifier.onGloballyPositioned { stageCoords = it }) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -343,7 +362,17 @@ internal fun VideoPlayer(
                 }
                 // 「视频信息统计」在任何视频页都能用，菜单因此恒定存在。
                 if (fullscreen) {
-                    PlayerIconButton(COUIIcons.More, "更多", onClick = { fullscreenMoreOpen = !fullscreenMoreOpen })
+                    PlayerIconButton(
+                        COUIIcons.More,
+                        "更多",
+                        onClick = {
+                            activeMenu = if (activeMenu == PlayerPopupMenu.MORE) {
+                                PlayerPopupMenu.NONE
+                            } else {
+                                PlayerPopupMenu.MORE
+                            }
+                        },
+                    )
                 } else {
                     PlayerMoreMenu(
                         onDanmakuSettings = onDanmakuSettingsClick,
@@ -404,40 +433,12 @@ internal fun VideoPlayer(
             }
         }
 
-        if (errorMessage != null && !inPipMode) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    text = errorMessage,
-                    style = COUITheme.textStyles.footnote1,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    text = "重试",
-                    modifier = Modifier
-                        .clip(SquircleShape(6.dp))
-                        .background(PlayerScrim)
-                        .clickable(onClick = onRetry)
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    style = COUITheme.textStyles.button,
-                    color = Color.White,
-                )
-            }
-        } else if (isBuffering && !inPipMode) {
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(34.dp),
-                color = Color.White,
-                strokeWidth = 3.dp,
-            )
-        }
+        PlayerStateOverlay(
+            errorMessage = errorMessage,
+            isBuffering = isBuffering,
+            inPipMode = inPipMode,
+            onRetry = onRetry,
+        )
 
         if (!inPipMode && !liveMode) {
             val bottomChromePad = when {
@@ -520,27 +521,27 @@ internal fun VideoPlayer(
                     if (!liveMode && chapters.isNotEmpty() && onChapterClick != null) {
                         ControlLabel(text = "分段", onClick = onChapterClick)
                     }
-                    if (subtitleLabel != null && onSubtitleClick != null) {
-                        ControlLabel(
-                            text = subtitleLabel,
-                            onClick = onSubtitleClick,
-                            modifier = Modifier.padding(start = 4.dp),
-                        )
-                    }
-                    ControlLabel(
-                        text = speedLabel(speed),
-                        onClick = onSpeedClick,
-                        modifier = Modifier.padding(start = 6.dp),
-                    )
-                    ControlLabel(
-                        text = qualityLabel ?: "清晰度",
-                        onClick = onQualityClick,
-                        modifier = Modifier.padding(start = 6.dp),
-                    )
-                    PlayerIconButton(
-                        icon = if (fullscreen) FullscreenExitIcon else FullscreenIcon,
-                        label = if (fullscreen) "退出全屏" else "全屏",
-                        onClick = onToggleFullscreen,
+                    PlayerBottomTrailingControls(
+                        subtitleLabel = subtitleLabel,
+                        speed = speed,
+                        qualityLabel = qualityLabel,
+                        fullscreen = fullscreen,
+                        activeMenu = activeMenu,
+                        onOpenMenu = { menu ->
+                            if (menu != PlayerPopupMenu.MORE) lastBottomMenu = menu
+                            activeMenu = menu
+                        },
+                        onDismissMenu = { activeMenu = PlayerPopupMenu.NONE },
+                        speedLocked = speedLocked,
+                        onToggleSpeedLock = onToggleSpeedLock,
+                        speedMenuItems = speedMenuItems,
+                        qualityMenuItems = qualityMenuItems,
+                        subtitleMenuItems = subtitleMenuItems,
+                        stageCoords = stageCoords,
+                        onSubtitleEndChange = { subtitleEndMargin = it },
+                        onSpeedEndChange = { speedEndMargin = it },
+                        onQualityEndChange = { qualityEndMargin = it },
+                        onToggleFullscreen = onToggleFullscreen,
                     )
                 }
             }
@@ -548,33 +549,32 @@ internal fun VideoPlayer(
         }
 
         if (fullscreen) {
-            CompositionLocalProvider(
-                LocalBackdrop provides if (BlurEffectsEnabled && !hdrVideo) menuBackdrop else null,
-            ) {
-                val stageMoreItems = rememberPlayerMoreMenuItems(
-                    onDanmakuSettings = onDanmakuSettingsClick?.let { openDm ->
-                        {
-                            controlsVisible = false
-                            openDm()
-                        }
-                    },
-                    playbackEndMode = playbackEndMode,
-                    onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-                    onWatchLater = onWatchLater,
-                    onShare = onShare,
-                    onShowStats = {
-                        fullscreenMoreOpen = false
-                        statsVisible = true
-                    },
-                )
-                CouiStagePopupMenu(
-                    show = fullscreenMoreOpen,
-                    onDismiss = { fullscreenMoreOpen = false },
-                    topMargin = 54.dp,
-                    endMargin = horizontalBarPad,
-                    items = stageMoreItems,
-                )
-            }
+            PlayerStagePopupMenus(
+                activeMenu = activeMenu,
+                lastBottomMenu = lastBottomMenu,
+                onDismiss = { activeMenu = PlayerPopupMenu.NONE },
+                hdrVideo = hdrVideo,
+                menuBackdrop = menuBackdrop,
+                horizontalBarPad = horizontalBarPad,
+                onDanmakuSettingsClick = onDanmakuSettingsClick,
+                onHideControls = { controlsVisible = false },
+                playbackEndMode = playbackEndMode,
+                onSelectPlaybackEndMode = onSelectPlaybackEndMode,
+                onWatchLater = onWatchLater,
+                onShare = onShare,
+                onShowStats = {
+                    activeMenu = PlayerPopupMenu.NONE
+                    statsVisible = true
+                },
+                speedMenuItems = speedMenuItems,
+                qualityMenuItems = qualityMenuItems,
+                subtitleMenuItems = subtitleMenuItems,
+                speedEndMargin = speedEndMargin,
+                qualityEndMargin = qualityEndMargin,
+                subtitleEndMargin = subtitleEndMargin,
+                speedLocked = speedLocked,
+                onToggleSpeedLock = onToggleSpeedLock,
+            )
         }
 
         val activeHit = selectedDanmaku

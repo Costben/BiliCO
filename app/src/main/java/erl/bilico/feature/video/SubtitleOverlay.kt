@@ -1,15 +1,8 @@
 package erl.bilico.feature.video
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
@@ -33,7 +26,6 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 @Stable
@@ -198,72 +190,4 @@ private fun findActiveSubtitleText(cues: List<SubtitleCue>, positionMs: Long): S
         }
     }
     return lines.joinToString("\n")
-}
-
-@Composable
-internal fun SubtitleDialog(
-    tracks: List<SubtitleTrack>,
-    selectedKey: String?,
-    onSelect: (String?) -> Unit,
-    onDismiss: () -> Unit,
-    inlineInStage: Boolean = false,
-) {
-    PlayerModalHost(
-        inlineInStage = inlineInStage,
-        onDismiss = onDismiss,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 10.dp),
-        ) {
-            Text(
-                text = "CC 字幕",
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-            )
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 320.dp)
-                    .scrollEndHaptic()
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                SubtitleOptionRow(
-                    label = "关闭字幕",
-                    selected = selectedKey == null,
-                    onClick = { onSelect(null) },
-                )
-                tracks.forEach { track ->
-                    SubtitleOptionRow(
-                        label = track.label,
-                        selected = track.key == selectedKey,
-                        onClick = { onSelect(track.key) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SubtitleOptionRow(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            style = COUITheme.textStyles.body1,
-            color = if (selected) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurface,
-        )
-    }
 }

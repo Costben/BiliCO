@@ -245,15 +245,6 @@ internal fun shareVideo(context: Context, title: String, bvid: String) {
 
 @Composable
 internal fun VideoScreenDialogs(
-    speedDialogVisible: Boolean,
-    speed: Float,
-    speedLocked: Boolean = false,
-    onToggleSpeedLock: () -> Unit = {},
-    onSpeedChange: (Float) -> Unit,
-    onDismissSpeed: () -> Unit,
-    subtitleDialogVisible: Boolean,
-    subtitleController: SubtitleController,
-    onDismissSubtitle: () -> Unit,
     coinDialogVisible: Boolean,
     coined: Int,
     onSelectCoin: (Int) -> Unit,
@@ -261,10 +252,6 @@ internal fun VideoScreenDialogs(
     favoriteFolders: List<FavoriteFolder>?,
     onSelectFavorite: (Long) -> Unit,
     onDismissFavorite: () -> Unit,
-    qualityDialogVisible: Boolean,
-    state: VideoUiState,
-    onSelectQuality: (Int) -> Unit,
-    onDismissQuality: () -> Unit,
     danmakuSettingsDialogVisible: Boolean = false,
     danmakuSettings: DanmakuSettings? = null,
     settingsRepository: SettingsRepository? = null,
@@ -276,30 +263,6 @@ internal fun VideoScreenDialogs(
     onDismissChapter: () -> Unit = {},
     inlineInStage: Boolean = false,
 ) {
-    if (speedDialogVisible) {
-        SpeedDialog(
-            active = speed,
-            locked = speedLocked,
-            onToggleLock = onToggleSpeedLock,
-            onSelect = onSpeedChange,
-            onDismiss = onDismissSpeed,
-            inlineInStage = inlineInStage,
-        )
-    }
-
-    if (subtitleDialogVisible) {
-        SubtitleDialog(
-            tracks = subtitleController.tracks,
-            selectedKey = subtitleController.selectedTrackKey,
-            onSelect = { key ->
-                subtitleController.selectTrack(key)
-                onDismissSubtitle()
-            },
-            onDismiss = onDismissSubtitle,
-            inlineInStage = inlineInStage,
-        )
-    }
-
     if (danmakuSettingsDialogVisible && danmakuSettings != null && settingsRepository != null) {
         DanmakuSettingsDialog(
             settings = danmakuSettings,
@@ -333,17 +296,6 @@ internal fun VideoScreenDialogs(
             positionMs = positionMs,
             onSelectChapter = onSelectChapter,
             onDismiss = onDismissChapter,
-            inlineInStage = inlineInStage,
-        )
-    }
-
-    val source = state.source
-    if (qualityDialogVisible && source != null) {
-        QualityDialog(
-            qualities = source.qualities,
-            activeQuality = state.activeQuality,
-            onSelect = onSelectQuality,
-            onDismiss = onDismissQuality,
             inlineInStage = inlineInStage,
         )
     }

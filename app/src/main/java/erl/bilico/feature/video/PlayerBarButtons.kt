@@ -1,11 +1,24 @@
 package erl.bilico.feature.video
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,13 +29,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.PlaybackEndMode
+import erl.bilico.data.model.QualityOption
+import erl.bilico.data.model.SubtitleTrack
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
+import erl.bilico.ui.components.CouiStagePopupMenu
+import erl.bilico.ui.components.FullscreenExitIcon
+import erl.bilico.ui.components.FullscreenIcon
 import erl.bilico.ui.components.PiliIcon
+import erl.bilico.ui.components.PlayerScrim
+import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.PopupPositionProvider
+import io.github.suqi8.coui.kmp.basic.Switch
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.LayerBackdrop
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
@@ -174,6 +207,353 @@ internal fun ControlLabel(
         style = COUITheme.textStyles.footnote1,
         color = Color.White,
     )
+}
+
+internal val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+@Composable
+internal fun SpeedLockMenuRow(
+    locked: Boolean,
+    onToggleLock: () -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                onToggleLock()
+            }
+            .heightIn(min = DropdownDefaults.PopupItemMinHeight)
+            .padding(
+                start = DropdownDefaults.InsideHorizontalPadding,
+                end = DropdownDefaults.InsideHorizontalPadding,
+                top = 10.dp,
+                bottom = 6.dp,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "锁定倍速",
+            style = COUITheme.textStyles.body1,
+            fontSize = DropdownDefaults.PopupItemTitleFontSize,
+            fontWeight = FontWeight.Normal,
+            color = COUITheme.colorScheme.onSurfaceContainer,
+        )
+        Spacer(Modifier.width(16.dp))
+        Switch(
+            checked = locked,
+            onCheckedChange = { onToggleLock() },
+        )
+    }
+}
+
+@Composable
+internal fun rememberSpeedMenuItems(
+    activeSpeed: Float,
+    onSelectSpeed: (Float) -> Unit,
+): List<CouiMenuItem> {
+    val onSelectState by rememberUpdatedState(onSelectSpeed)
+    return remember(activeSpeed) {
+        PLAYBACK_SPEEDS.map { option ->
+            CouiMenuItem(
+                label = speedLabel(option),
+                selected = option == activeSpeed,
+                onClick = { onSelectState(option) },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun rememberQualityMenuItems(
+    qualities: List<QualityOption>,
+    activeQuality: Int,
+    onSelectQuality: (Int) -> Unit,
+): List<CouiMenuItem> {
+    val onSelectState by rememberUpdatedState(onSelectQuality)
+    return remember(qualities, activeQuality) {
+        qualities.distinctBy { it.quality }.map { option ->
+            CouiMenuItem(
+                label = option.label.ifBlank { "${option.quality}P" },
+                selected = option.quality == activeQuality,
+                hint = when {
+                    option.needVip -> {
+                        {
+                            Text(
+                                text = "大会员",
+                                style = COUITheme.textStyles.footnote2,
+                                color = COUITheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    option.needLogin -> {
+                        {
+                            Text(
+                                text = "登录",
+                                style = COUITheme.textStyles.footnote2,
+                                color = COUITheme.colorScheme.onSurfaceSecondary,
+                            )
+                        }
+                    }
+                    else -> null
+                },
+                onClick = { onSelectState(option.quality) },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun rememberSubtitleMenuItems(
+    tracks: List<SubtitleTrack>,
+    selectedKey: String?,
+    onSelectSubtitle: (String?) -> Unit,
+): List<CouiMenuItem> {
+    val onSelectState by rememberUpdatedState(onSelectSubtitle)
+    return remember(tracks, selectedKey) {
+        buildList {
+            add(
+                CouiMenuItem(
+                    label = "关闭字幕",
+                    selected = selectedKey == null,
+                    onClick = { onSelectState(null) },
+                ),
+            )
+            tracks.forEach { track ->
+                add(
+                    CouiMenuItem(
+                        label = track.label,
+                        selected = track.key == selectedKey,
+                        onClick = { onSelectState(track.key) },
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun PlayerBottomMenuControl(
+    text: String,
+    menuOpen: Boolean,
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+    fullscreen: Boolean,
+    items: List<CouiMenuItem>,
+    headerContent: (@Composable () -> Unit)? = null,
+    stageCoords: LayoutCoordinates?,
+    onAnchorEndChange: (Dp) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    Box(
+        modifier = modifier.onGloballyPositioned { coords ->
+            if (stageCoords != null && stageCoords.isAttached && coords.isAttached) {
+                val box = stageCoords.localBoundingBoxOf(coords)
+                onAnchorEndChange(with(density) { (stageCoords.size.width - box.right).coerceAtLeast(0f).toDp() })
+            }
+        },
+    ) {
+        ControlLabel(text = text, onClick = onOpen)
+        if (!fullscreen) {
+            CouiPopupMenu(
+                show = menuOpen,
+                onDismiss = onDismiss,
+                items = items,
+                alignment = PopupPositionProvider.Align.End,
+                headerContent = headerContent,
+            )
+        }
+    }
+}
+
+internal enum class PlayerPopupMenu { NONE, MORE, SPEED, QUALITY, SUBTITLE }
+
+@Composable
+internal fun RowScope.PlayerBottomTrailingControls(
+    subtitleLabel: String?,
+    speed: Float,
+    qualityLabel: String?,
+    fullscreen: Boolean,
+    activeMenu: PlayerPopupMenu,
+    onOpenMenu: (PlayerPopupMenu) -> Unit,
+    onDismissMenu: () -> Unit,
+    speedLocked: Boolean,
+    onToggleSpeedLock: () -> Unit,
+    speedMenuItems: List<CouiMenuItem>,
+    qualityMenuItems: List<CouiMenuItem>,
+    subtitleMenuItems: List<CouiMenuItem>,
+    stageCoords: LayoutCoordinates?,
+    onSubtitleEndChange: (Dp) -> Unit,
+    onSpeedEndChange: (Dp) -> Unit,
+    onQualityEndChange: (Dp) -> Unit,
+    onToggleFullscreen: () -> Unit,
+) {
+    if (subtitleLabel != null) {
+        PlayerBottomMenuControl(
+            text = subtitleLabel,
+            menuOpen = activeMenu == PlayerPopupMenu.SUBTITLE,
+            onOpen = { onOpenMenu(PlayerPopupMenu.SUBTITLE) },
+            onDismiss = onDismissMenu,
+            fullscreen = fullscreen,
+            items = subtitleMenuItems,
+            stageCoords = stageCoords,
+            onAnchorEndChange = onSubtitleEndChange,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+    }
+    PlayerBottomMenuControl(
+        text = speedLabel(speed),
+        menuOpen = activeMenu == PlayerPopupMenu.SPEED,
+        onOpen = { onOpenMenu(PlayerPopupMenu.SPEED) },
+        onDismiss = onDismissMenu,
+        fullscreen = fullscreen,
+        items = speedMenuItems,
+        headerContent = { SpeedLockMenuRow(locked = speedLocked, onToggleLock = onToggleSpeedLock) },
+        stageCoords = stageCoords,
+        onAnchorEndChange = onSpeedEndChange,
+        modifier = Modifier.padding(start = 6.dp),
+    )
+    PlayerBottomMenuControl(
+        text = qualityLabel ?: "清晰度",
+        menuOpen = activeMenu == PlayerPopupMenu.QUALITY && qualityMenuItems.isNotEmpty(),
+        onOpen = { if (qualityMenuItems.isNotEmpty()) onOpenMenu(PlayerPopupMenu.QUALITY) },
+        onDismiss = onDismissMenu,
+        fullscreen = fullscreen,
+        items = qualityMenuItems,
+        stageCoords = stageCoords,
+        onAnchorEndChange = onQualityEndChange,
+        modifier = Modifier.padding(start = 6.dp),
+    )
+    PlayerIconButton(
+        icon = if (fullscreen) FullscreenExitIcon else FullscreenIcon,
+        label = if (fullscreen) "退出全屏" else "全屏",
+        onClick = onToggleFullscreen,
+    )
+}
+
+@Composable
+internal fun PlayerStagePopupMenus(
+    activeMenu: PlayerPopupMenu,
+    lastBottomMenu: PlayerPopupMenu,
+    onDismiss: () -> Unit,
+    hdrVideo: Boolean,
+    menuBackdrop: LayerBackdrop,
+    horizontalBarPad: Dp,
+    onDanmakuSettingsClick: (() -> Unit)?,
+    onHideControls: () -> Unit,
+    playbackEndMode: PlaybackEndMode,
+    onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
+    onWatchLater: (() -> Unit)?,
+    onShare: (() -> Unit)?,
+    onShowStats: () -> Unit,
+    speedMenuItems: List<CouiMenuItem>,
+    qualityMenuItems: List<CouiMenuItem>,
+    subtitleMenuItems: List<CouiMenuItem>,
+    speedEndMargin: Dp,
+    qualityEndMargin: Dp,
+    subtitleEndMargin: Dp,
+    speedLocked: Boolean,
+    onToggleSpeedLock: () -> Unit,
+) {
+    CompositionLocalProvider(
+        LocalBackdrop provides if (BlurEffectsEnabled && !hdrVideo) menuBackdrop else null,
+    ) {
+        val stageMoreItems = rememberPlayerMoreMenuItems(
+            onDanmakuSettings = onDanmakuSettingsClick?.let { openDm ->
+                {
+                    onHideControls()
+                    openDm()
+                }
+            },
+            playbackEndMode = playbackEndMode,
+            onSelectPlaybackEndMode = onSelectPlaybackEndMode,
+            onWatchLater = onWatchLater,
+            onShare = onShare,
+            onShowStats = onShowStats,
+        )
+        CouiStagePopupMenu(
+            show = activeMenu == PlayerPopupMenu.MORE,
+            onDismiss = onDismiss,
+            topMargin = 54.dp,
+            endMargin = horizontalBarPad,
+            items = stageMoreItems,
+        )
+        val bottomMenuShown = activeMenu == PlayerPopupMenu.SPEED ||
+            activeMenu == PlayerPopupMenu.QUALITY ||
+            activeMenu == PlayerPopupMenu.SUBTITLE
+        val shownMenu = if (bottomMenuShown) activeMenu else lastBottomMenu
+        CouiStagePopupMenu(
+            show = bottomMenuShown,
+            onDismiss = onDismiss,
+            items = when (shownMenu) {
+                PlayerPopupMenu.SPEED -> speedMenuItems
+                PlayerPopupMenu.QUALITY -> qualityMenuItems
+                else -> subtitleMenuItems
+            },
+            alignment = Alignment.BottomEnd,
+            bottomMargin = 48.dp,
+            maxHeight = 350.dp,
+            endMargin = when (shownMenu) {
+                PlayerPopupMenu.SPEED -> speedEndMargin
+                PlayerPopupMenu.QUALITY -> qualityEndMargin
+                else -> subtitleEndMargin
+            },
+            headerContent = if (shownMenu == PlayerPopupMenu.SPEED) {
+                { SpeedLockMenuRow(locked = speedLocked, onToggleLock = onToggleSpeedLock) }
+            } else {
+                null
+            },
+        )
+    }
+}
+
+@Composable
+internal fun BoxScope.PlayerStateOverlay(
+    errorMessage: String?,
+    isBuffering: Boolean,
+    inPipMode: Boolean,
+    onRetry: () -> Unit,
+) {
+    if (errorMessage != null && !inPipMode) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = errorMessage,
+                style = COUITheme.textStyles.footnote1,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "重试",
+                modifier = Modifier
+                    .clip(SquircleShape(6.dp))
+                    .background(PlayerScrim)
+                    .clickable(onClick = onRetry)
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                style = COUITheme.textStyles.button,
+                color = Color.White,
+            )
+        }
+    } else if (isBuffering && !inPipMode) {
+        CircularProgressIndicator(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(34.dp),
+            color = Color.White,
+            strokeWidth = 3.dp,
+        )
+    }
 }
 
 internal fun speedLabel(speed: Float): String {

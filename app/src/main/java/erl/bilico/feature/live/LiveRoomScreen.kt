@@ -47,8 +47,6 @@ import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.feature.video.DanmakuTimeline
 import erl.bilico.feature.video.FIXED_DURATION_MS
-import erl.bilico.feature.video.QualityDialog
-import erl.bilico.feature.video.SpeedDialog
 import erl.bilico.feature.video.VideoFullscreenStage
 import erl.bilico.feature.video.VideoMessageToast
 import erl.bilico.feature.video.VideoPlayer
@@ -126,8 +124,6 @@ fun LiveRoomScreen(
     val deviceSide = fsController.deviceSide
     val applyFullscreen = fsController.applyFullscreen
 
-    var qualityDialogVisible by remember { mutableStateOf(false) }
-    var speedDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
     val longPressSpeed = rememberLongPressSpeedController(
@@ -327,38 +323,11 @@ fun LiveRoomScreen(
 
     @Composable
     fun RenderLiveDialogs(inlineInStage: Boolean) {
-        if (speedDialogVisible) {
-            SpeedDialog(
-                active = speed,
-                locked = speedLocked,
-                onToggleLock = { container.settings.setSpeedLock(!speedLocked, speed) },
-                onSelect = { value ->
-                    speed = value
-                    if (speedLocked) container.settings.setLockedSpeed(value)
-                    speedDialogVisible = false
-                },
-                onDismiss = { speedDialogVisible = false },
-                inlineInStage = inlineInStage,
-            )
-        }
         if (danmakuSettingsDialogVisible) {
             DanmakuSettingsDialog(
                 settings = danmakuSettings,
                 repository = container.settings,
                 onDismiss = { danmakuSettingsDialogVisible = false },
-                inlineInStage = inlineInStage,
-            )
-        }
-        val playback = state.playback
-        if (qualityDialogVisible && playback != null) {
-            QualityDialog(
-                qualities = playback.qualities,
-                activeQuality = state.activeQuality,
-                onSelect = { qn ->
-                    qualityDialogVisible = false
-                    viewModel.selectQuality(qn)
-                },
-                onDismiss = { qualityDialogVisible = false },
                 inlineInStage = inlineInStage,
             )
         }
@@ -373,9 +342,7 @@ fun LiveRoomScreen(
         videoAspect = videoAspect,
         playerContent = {
             val stageBackdrop = rememberLayerBackdrop()
-            val anyStageDialogOpen = fullscreen && (
-                speedDialogVisible || qualityDialogVisible || danmakuSettingsDialogVisible
-                )
+            val anyStageDialogOpen = fullscreen && danmakuSettingsDialogVisible
             VideoPlayer(
                 player = player,
                 title = state.detail?.title.orEmpty(),
@@ -397,8 +364,15 @@ fun LiveRoomScreen(
                 hapticEnabled = gestureHaptic,
                 volumeBrightnessEnabled = gestureVolBright,
                 fullscreenHintEnabled = fullscreenGestureHint,
-                onQualityClick = { qualityDialogVisible = true },
-                onSpeedClick = { speedDialogVisible = true },
+                qualities = state.playback?.qualities.orEmpty(),
+                activeQuality = state.activeQuality,
+                onSelectQuality = viewModel::selectQuality,
+                speedLocked = speedLocked,
+                onToggleSpeedLock = { container.settings.setSpeedLock(!speedLocked, speed) },
+                onSelectSpeed = { value ->
+                    speed = value
+                    if (speedLocked) container.settings.setLockedSpeed(value)
+                },
                 onBack = {
                     if (fullscreen) applyFullscreen(false) else nav.pop()
                 },

@@ -4,9 +4,16 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -100,11 +107,65 @@ private fun buildGroupedEntries(items: List<CouiMenuItem>): List<DropdownEntry> 
  * 菜单是按这个 Box 的位置定位的。
  */
 @Composable
+private fun MenuPopupBody(
+    items: List<CouiMenuItem>,
+    groupKey: String,
+    headerContent: (@Composable () -> Unit)?,
+    scrollable: Boolean = false,
+    onItemSelected: (CouiMenuItem) -> Unit,
+) {
+    val content: @Composable () -> Unit = {
+        ListPopupColumn {
+            items.forEachIndexed { index, item ->
+                if (index > 0 && item.group != items[index - 1].group) {
+                    PopupListDivider()
+                }
+                val hasSubmenu = !item.children.isNullOrEmpty()
+                DropdownImpl(
+                    item = item.toDropdownItem(),
+                    optionSize = items.size,
+                    isSelected = item.selected,
+                    index = index,
+                    isFirst = headerContent == null && index == 0,
+                    isLast = index == items.lastIndex,
+                    groupKey = groupKey,
+                    hasSubmenu = hasSubmenu,
+                    role = Role.Button,
+                    onSelectedIndexChange = { onItemSelected(item) },
+                )
+            }
+        }
+    }
+    if (headerContent == null) {
+        if (scrollable) {
+            Box(modifier = Modifier.verticalScroll(rememberScrollState())) { content() }
+        } else {
+            content()
+        }
+    } else {
+        Column(modifier = Modifier.width(IntrinsicSize.Max)) {
+            headerContent()
+            PopupListDivider()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier),
+                propagateMinConstraints = true,
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
 internal fun CouiPopupMenu(
     show: Boolean,
     onDismiss: () -> Unit,
     items: List<CouiMenuItem>,
     preciseClickState: PreciseClickState? = null,
+    alignment: PopupPositionProvider.Align = PopupPositionProvider.Align.Start,
+    headerContent: (@Composable () -> Unit)? = null,
 ) {
     val hasSubmenus = remember(items) { items.any { !it.children.isNullOrEmpty() } }
     if (hasSubmenus) {
@@ -119,31 +180,20 @@ internal fun CouiPopupMenu(
     }
     OverlayListPopup(
         show = show,
+        alignment = alignment,
         onDismissRequest = onDismiss,
         preciseClickState = preciseClickState,
     ) {
         val dismiss = LocalDismissState.current
-        ListPopupColumn {
-            items.forEachIndexed { index, item ->
-                if (index > 0 && item.group != items[index - 1].group) {
-                    PopupListDivider()
-                }
-                DropdownImpl(
-                    item = item.toDropdownItem(),
-                    optionSize = items.size,
-                    isSelected = item.selected,
-                    index = index,
-                    isFirst = index == 0,
-                    isLast = index == items.lastIndex,
-                    groupKey = "menu",
-                    role = Role.Button,
-                    onSelectedIndexChange = {
-                        item.onClick()
-                        if (!item.keepOpen) dismiss?.invoke()
-                    },
-                )
-            }
-        }
+        MenuPopupBody(
+            items = items,
+            groupKey = "menu",
+            headerContent = headerContent,
+            onItemSelected = { item ->
+                item.onClick()
+                if (!item.keepOpen) dismiss?.invoke()
+            },
+        )
     }
 }
 
@@ -160,6 +210,10 @@ internal fun CouiStagePopupMenu(
     items: List<CouiMenuItem>,
     topMargin: Dp = 54.dp,
     endMargin: Dp = 24.dp,
+    alignment: Alignment = Alignment.TopEnd,
+    bottomMargin: Dp = 0.dp,
+    maxHeight: Dp = 350.dp,
+    headerContent: (@Composable () -> Unit)? = null,
 ) {
     val fractionProgress = remember { Animatable(0f) }
     val alphaProgress = remember { Animatable(0f) }
@@ -211,12 +265,13 @@ internal fun CouiStagePopupMenu(
         }
     }
 
+    val showAbove = alignment == Alignment.BottomEnd || alignment == Alignment.BottomStart
     val motion = ListPopupDefaults.GravityMotion
-    val gravityPath = remember(popupContentSize) {
-        val start = if (popupContentSize == IntSize.Zero) {
-            Offset(0f, -48f)
-        } else {
-            Offset(popupContentSize.width * 0.35f, -popupContentSize.height * 0.5f)
+    val gravityPath = remember(popupContentSize, showAbove) {
+        val start = when {
+            popupContentSize == IntSize.Zero -> Offset(0f, if (showAbove) 48f else -48f)
+            showAbove -> Offset(popupContentSize.width * 0.25f, popupContentSize.height * 0.45f)
+            else -> Offset(popupContentSize.width * 0.35f, -popupContentSize.height * 0.5f)
         }
         BezierGravityPathMath.controlPoints(
             start = start,
@@ -269,8 +324,12 @@ internal fun CouiStagePopupMenu(
         ) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = topMargin, end = endMargin),
+                    .align(alignment)
+                    .padding(
+                        top = if (showAbove) 48.dp else topMargin,
+                        bottom = bottomMargin,
+                        end = endMargin,
+                    ),
             ) {
                 Box(
                     modifier = Modifier.graphicsLayer {
@@ -288,43 +347,31 @@ internal fun CouiStagePopupMenu(
                         pathProgress = { pathProgress.value },
                         gravityPath = gravityPath,
                         popupLayoutPosition = PopupLayoutPosition(
-                            showBelow = true,
-                            showAbove = false,
+                            showBelow = !showAbove,
+                            showAbove = showAbove,
                             isRightAligned = true,
                         ),
-                        localTransformOrigin = TransformOrigin(0.88f, 0f),
+                        localTransformOrigin = if (showAbove) TransformOrigin(0.88f, 1f) else TransformOrigin(0.88f, 0f),
                         enableGlass = BlurEffectsEnabled,
                         interactionEnabled = show && expandedSubmenuIndex == null,
-                        modifier = Modifier.widthIn(min = 196.dp),
+                        modifier = Modifier.heightIn(max = maxHeight),
                         content = {
                             CompositionLocalProvider(LocalDismissState provides onDismiss) {
-                                ListPopupColumn {
-                                    items.forEachIndexed { index, item ->
-                                        if (index > 0 && item.group != items[index - 1].group) {
-                                            PopupListDivider()
+                                MenuPopupBody(
+                                    items = items,
+                                    groupKey = "stage_menu",
+                                    headerContent = headerContent,
+                                    scrollable = true,
+                                    onItemSelected = { item ->
+                                        val idx = items.indexOf(item)
+                                        if (!item.children.isNullOrEmpty() && idx >= 0) {
+                                            expandedSubmenuIndex = idx
+                                        } else {
+                                            item.onClick()
+                                            if (!item.keepOpen) onDismiss()
                                         }
-                                        val hasSubmenu = !item.children.isNullOrEmpty()
-                                        DropdownImpl(
-                                            item = item.toDropdownItem(),
-                                            optionSize = items.size,
-                                            isSelected = item.selected,
-                                            index = index,
-                                            isFirst = index == 0,
-                                            isLast = index == items.lastIndex,
-                                            groupKey = "stage_menu",
-                                            hasSubmenu = hasSubmenu,
-                                            role = Role.Button,
-                                            onSelectedIndexChange = {
-                                                if (hasSubmenu) {
-                                                    expandedSubmenuIndex = index
-                                                } else {
-                                                    item.onClick()
-                                                    if (!item.keepOpen) onDismiss()
-                                                }
-                                            },
-                                        )
-                                    }
-                                }
+                                    },
+                                )
                             }
                         },
                     )
