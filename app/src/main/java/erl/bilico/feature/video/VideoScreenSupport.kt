@@ -261,6 +261,7 @@ internal fun VideoScreenDialogs(
     positionMs: Long = 0L,
     onSelectChapter: (VideoChapter) -> Unit = {},
     onDismissChapter: () -> Unit = {},
+    sponsorSubmitDialog: (@Composable (inlineInStage: Boolean) -> Unit)? = null,
     inlineInStage: Boolean = false,
 ) {
     if (danmakuSettingsDialogVisible && danmakuSettings != null && settingsRepository != null) {
@@ -299,6 +300,8 @@ internal fun VideoScreenDialogs(
             inlineInStage = inlineInStage,
         )
     }
+
+    sponsorSubmitDialog?.invoke(inlineInStage)
 }
 
 

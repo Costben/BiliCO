@@ -124,6 +124,7 @@ internal fun VideoPlayer(
     chapters: List<VideoChapter> = emptyList(),
     onChapterClick: (() -> Unit)? = null,
     sponsorSegments: List<SponsorSegment> = emptyList(),
+    onSubmitSponsor: (() -> Unit)? = null,
     sponsorOverlay: @Composable BoxScope.(bottomPad: Dp, startPad: Dp) -> Unit = { _, _ -> },
     subtitleOverlay: @Composable (controlsVisible: Boolean) -> Unit = {},
     overlay: @Composable () -> Unit = {},
@@ -374,6 +375,7 @@ internal fun VideoPlayer(
                         onShare = onShare,
                         playbackEndMode = playbackEndMode,
                         onSelectPlaybackEndMode = onSelectPlaybackEndMode,
+                        onSubmitSponsor = onSubmitSponsor,
                         onShowStats = { statsVisible = true },
                     )
                 }
@@ -556,6 +558,7 @@ internal fun VideoPlayer(
                 onSelectPlaybackEndMode = onSelectPlaybackEndMode,
                 onWatchLater = onWatchLater,
                 onShare = onShare,
+                onSubmitSponsor = onSubmitSponsor,
                 onShowStats = {
                     activeMenu = PlayerPopupMenu.NONE
                     statsVisible = true

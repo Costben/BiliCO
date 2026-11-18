@@ -115,19 +115,22 @@ internal fun rememberPlayerMoreMenuItems(
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
     onWatchLater: (() -> Unit)?,
     onShare: (() -> Unit)?,
+    onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: (() -> Unit)? = null,
 ): List<CouiMenuItem> {
     val danmakuState by rememberUpdatedState(onDanmakuSettings)
     val selectModeState by rememberUpdatedState(onSelectPlaybackEndMode)
     val watchLaterState by rememberUpdatedState(onWatchLater)
     val shareState by rememberUpdatedState(onShare)
+    val submitSponsorState by rememberUpdatedState(onSubmitSponsor)
     val statsState by rememberUpdatedState(onShowStats)
     val hasDanmaku = onDanmakuSettings != null
     val hasPlaybackEnd = onSelectPlaybackEndMode != null
     val hasWatchLater = onWatchLater != null
     val hasShare = onShare != null
+    val hasSubmitSponsor = onSubmitSponsor != null
     val hasStats = onShowStats != null
-    return remember(playbackEndMode, hasDanmaku, hasPlaybackEnd, hasWatchLater, hasShare, hasStats) {
+    return remember(playbackEndMode, hasDanmaku, hasPlaybackEnd, hasWatchLater, hasShare, hasSubmitSponsor, hasStats) {
         buildList {
             if (hasPlaybackEnd) {
                 add(
@@ -155,6 +158,9 @@ internal fun rememberPlayerMoreMenuItems(
             if (hasShare) {
                 add(CouiMenuItem(label = "分享", onClick = { shareState?.invoke() }, group = 1))
             }
+            if (hasSubmitSponsor) {
+                add(CouiMenuItem(label = "提交空降片段", onClick = { submitSponsorState?.invoke() }, group = 1))
+            }
             if (hasStats) {
                 add(CouiMenuItem(label = "视频信息统计", onClick = { statsState?.invoke() }, group = 2))
             }
@@ -162,7 +168,7 @@ internal fun rememberPlayerMoreMenuItems(
     }
 }
 
-/** 顶栏右端的三个点：弹幕设置、自动联播（二级菜单）、稍后再看与分享。 */
+/** 顶栏右端的三个点：弹幕设置、自动联播（二级菜单）、稍后再看、分享与空降提交。 */
 @Composable
 internal fun PlayerMoreMenu(
     onDanmakuSettings: (() -> Unit)?,
@@ -170,6 +176,7 @@ internal fun PlayerMoreMenu(
     onShare: (() -> Unit)?,
     playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
+    onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -179,6 +186,7 @@ internal fun PlayerMoreMenu(
         onSelectPlaybackEndMode = onSelectPlaybackEndMode,
         onWatchLater = onWatchLater,
         onShare = onShare,
+        onSubmitSponsor = onSubmitSponsor,
         onShowStats = onShowStats,
     )
 
@@ -451,6 +459,7 @@ internal fun PlayerStagePopupMenus(
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
     onWatchLater: (() -> Unit)?,
     onShare: (() -> Unit)?,
+    onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: () -> Unit,
     speedMenuItems: List<CouiMenuItem>,
     qualityMenuItems: List<CouiMenuItem>,
@@ -475,6 +484,12 @@ internal fun PlayerStagePopupMenus(
             onSelectPlaybackEndMode = onSelectPlaybackEndMode,
             onWatchLater = onWatchLater,
             onShare = onShare,
+            onSubmitSponsor = onSubmitSponsor?.let { openSubmit ->
+                {
+                    onHideControls()
+                    openSubmit()
+                }
+            },
             onShowStats = onShowStats,
         )
         CouiStagePopupMenu(

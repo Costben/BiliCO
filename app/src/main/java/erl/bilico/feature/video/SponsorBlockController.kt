@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.media3.common.Player
 import erl.bilico.data.model.SponsorActionType
+import erl.bilico.data.model.SponsorCategory
 import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.repository.SponsorBlockRepository
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +17,13 @@ internal data class UndoSkipNotice(
     val segment: SponsorSegment,
     val fromMs: Long,
     val expiresAtMs: Long,
+)
+
+internal data class SponsorSubmitDraft(
+    val startMs: Long? = null,
+    val endMs: Long? = null,
+    val category: SponsorCategory = SponsorCategory.Sponsor,
+    val actionType: SponsorActionType = SponsorActionType.Skip,
 )
 
 /**
@@ -35,6 +43,9 @@ internal class SponsorBlockController(
         private set
 
     var poiSegment: SponsorSegment? by mutableStateOf(null)
+        private set
+
+    var submitDraft by mutableStateOf(SponsorSubmitDraft())
         private set
 
     private var currentBvid = ""
@@ -74,6 +85,7 @@ internal class SponsorBlockController(
         promptSegment = null
         undoNotice = null
         poiSegment = null
+        submitDraft = SponsorSubmitDraft()
         handledUuids.clear()
         dismissedPoiUuids.clear()
         restoreMuteIfNeeded(player)
@@ -197,6 +209,60 @@ internal class SponsorBlockController(
         if (!mutedBySponsor) return
         player.volume = savedVolume
         mutedBySponsor = false
+    }
+
+    fun updateSubmitDraft(draft: SponsorSubmitDraft) {
+        submitDraft = draft
+    }
+
+    fun clearSubmitDraft() {
+        submitDraft = SponsorSubmitDraft()
+    }
+
+    suspend fun submitSegment(
+        bvid: String,
+        cid: Long,
+        videoDurationMs: Long,
+        startMs: Long,
+        endMs: Long,
+        category: SponsorCategory,
+        actionType: SponsorActionType,
+        userId: String,
+        userAgent: String,
+        currentPosMs: Long,
+    ): Result<Unit> {
+        val result = repository.submitSegment(
+            bvid = bvid,
+            cid = cid,
+            videoDurationMs = videoDurationMs,
+            startMs = startMs,
+            endMs = endMs,
+            category = category,
+            actionType = actionType,
+            userId = userId,
+            userAgent = userAgent,
+        )
+        return result.map { created ->
+            if (currentBvid == bvid && currentCid == cid) {
+                created.forEach { seg ->
+                    if (currentPosMs in seg.startMs..seg.endMs) {
+                        handledUuids.add(seg.uuid)
+                    }
+                }
+                val existingIds = segments.mapTo(HashSet()) { it.uuid }
+                val merged = (segments + created.filter { it.uuid !in existingIds })
+                    .sortedBy { it.startMs }
+                segments = merged
+                clearSubmitDraft()
+                scope.launch {
+                    repository.skipSegments(bvid, cid, bypassCache = true).onSuccess { refreshed ->
+                        if (currentBvid == bvid && currentCid == cid && refreshed.isNotEmpty()) {
+                            segments = refreshed
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private companion object {

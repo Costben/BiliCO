@@ -184,6 +184,7 @@ fun VideoScreen(
     var queueSheetVisible by remember { mutableStateOf(false) }
     var chapterDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
+    var sponsorSubmitVisible by remember { mutableStateOf(false) }
     var coinDialogVisible by remember { mutableStateOf(false) }
     var favoriteFolders by remember { mutableStateOf<List<FavoriteFolder>?>(null) }
     var speed by rememberSaveable {
@@ -418,6 +419,28 @@ fun VideoScreen(
     // HDR 档位必须走 SurfaceView：TextureView 由 GPU 合成，HDR 画面会被当成 SDR 铺到屏幕上（发暗）。
     val hdrSurface = state.source?.isHdr == true
 
+    val renderSponsorSubmit: (@Composable (Boolean) -> Unit)? =
+        if (sponsorSubmitVisible && state.selectedCid > 0L) {
+            { stageInline ->
+                SponsorSubmitDialog(
+                    bvid = bvid,
+                    cid = state.selectedCid,
+                    durationMs = durationMs,
+                    currentPositionMs = { player?.currentPosition?.coerceAtLeast(0L) ?: positionMs },
+                    controller = sponsorController,
+                    sponsorUserIdProvider = container.settings::ensureSponsorUserId,
+                    inlineInStage = stageInline,
+                    onSuccess = { msg ->
+                        sponsorSubmitVisible = false
+                        viewModel.showMessage(msg)
+                    },
+                    onDismiss = { sponsorSubmitVisible = false },
+                )
+            }
+        } else {
+            null
+        }
+
     VideoFullscreenStage(
         fullscreen = fullscreen,
         landscapeSide = deviceSide,
@@ -437,7 +460,8 @@ fun VideoScreen(
                 Box(Modifier.fillMaxSize().background(Color.Black))
             } else {
                 val stageBackdrop = rememberLayerBackdrop()
-                val anyStageDialogOpen = fullscreen && (danmakuSettingsDialogVisible || chapterDialogVisible)
+                val anyStageDialogOpen = fullscreen &&
+                    (danmakuSettingsDialogVisible || chapterDialogVisible || sponsorSubmitVisible)
                 VideoPlayer(
                     player = player,
                     title = state.detail?.title.orEmpty(),
@@ -509,6 +533,11 @@ fun VideoScreen(
                         sponsorController.segments.filter { it.category.id in sponsorCategories }
                     } else {
                         emptyList()
+                    },
+                    onSubmitSponsor = if (state.selectedCid > 0L) {
+                        { sponsorSubmitVisible = true }
+                    } else {
+                        null
                     },
                     sponsorOverlay = { bottomPad, startPad ->
                         if (sponsorBlockEnabled && sponsorSkipMode >= 0) {
@@ -591,6 +620,7 @@ fun VideoScreen(
                                 if (!player.isPlaying) player.play()
                             },
                             onDismissChapter = { chapterDialogVisible = false },
+                            sponsorSubmitDialog = renderSponsorSubmit,
                             inlineInStage = true,
                         )
                     }
@@ -714,6 +744,7 @@ fun VideoScreen(
                 if (player?.isPlaying == false) player.play()
             },
             onDismissChapter = { chapterDialogVisible = false },
+            sponsorSubmitDialog = renderSponsorSubmit,
             inlineInStage = false,
         )
     }

@@ -20,6 +20,12 @@ enum class SponsorCategory(
     ExclusiveAccess("exclusive_access", "独家合作", 0xFF008A5CL),
     ;
 
+    val isSubmitSupported: Boolean
+        get() = this != ExclusiveAccess
+
+    val defaultActionType: SponsorActionType
+        get() = if (this == PoiHighlight) SponsorActionType.Poi else SponsorActionType.Skip
+
     companion object {
         val DEFAULT_IDS: Set<String> = entries
             .filter { it != ExclusiveAccess }
@@ -30,12 +36,12 @@ enum class SponsorCategory(
     }
 }
 
-enum class SponsorActionType(val id: String) {
-    Skip("skip"),
-    Mute("mute"),
-    Poi("poi"),
-    Full("full"),
-    Unknown(""),
+enum class SponsorActionType(val id: String, val label: String) {
+    Skip("skip", "跳过"),
+    Mute("mute", "静音"),
+    Poi("poi", "精彩时刻"),
+    Full("full", "全片"),
+    Unknown("", ""),
     ;
 
     companion object {

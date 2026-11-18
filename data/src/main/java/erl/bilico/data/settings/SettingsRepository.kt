@@ -118,6 +118,9 @@ class SettingsRepository(
     private val _sponsorCategories = MutableStateFlow(SponsorCategory.DEFAULT_IDS)
     val sponsorCategories: StateFlow<Set<String>> = _sponsorCategories.asStateFlow()
 
+    @Volatile
+    private var sponsorUserIdCache: String = ""
+
     private val _autoCheckUpdate = MutableStateFlow(true)
     val autoCheckUpdate: StateFlow<Boolean> = _autoCheckUpdate.asStateFlow()
 
@@ -191,6 +194,7 @@ class SettingsRepository(
                 ?.filter { SponsorCategory.fromId(it) != null }
                 ?.toSet()
                 ?: SponsorCategory.DEFAULT_IDS
+            sponsorUserIdCache = prefs[KEY_SPONSOR_USER_ID]?.takeIf { it.length >= 30 }.orEmpty()
             _autoCheckUpdate.value = prefs[KEY_AUTO_CHECK_UPDATE] ?: true
             _acceptPrerelease.value = prefs[KEY_ACCEPT_PRERELEASE] ?: true
             _inAppUpdate.value = prefs[KEY_IN_APP_UPDATE] ?: true
@@ -231,6 +235,24 @@ class SettingsRepository(
     fun setSponsorSkipMode(mode: Int) {
         _sponsorSkipMode.value = mode.coerceIn(0, 2)
         scope.launch { context.biliDataStore.edit { it[KEY_SPONSOR_SKIP_MODE] = _sponsorSkipMode.value } }
+    }
+
+    fun ensureSponsorUserId(): String {
+        val existing = sponsorUserIdCache
+        if (existing.length >= 30) return existing
+        val generated = java.util.UUID.randomUUID().toString().replace("-", "")
+        sponsorUserIdCache = generated
+        scope.launch {
+            context.biliDataStore.edit { prefs ->
+                val persisted = prefs[KEY_SPONSOR_USER_ID].orEmpty()
+                if (persisted.length >= 30) {
+                    sponsorUserIdCache = persisted
+                } else {
+                    prefs[KEY_SPONSOR_USER_ID] = generated
+                }
+            }
+        }
+        return generated
     }
 
     fun setSponsorCategoryEnabled(id: String, enabled: Boolean) {
@@ -536,6 +558,7 @@ class SettingsRepository(
         val KEY_SPONSOR_BLOCK_ENABLED = booleanPreferencesKey("sponsor_block_enabled")
         val KEY_SPONSOR_SKIP_MODE = intPreferencesKey("sponsor_skip_mode")
         val KEY_SPONSOR_CATEGORIES = stringPreferencesKey("sponsor_categories")
+        val KEY_SPONSOR_USER_ID = stringPreferencesKey("sponsor_block_user_id")
         val KEY_AUTO_CHECK_UPDATE = booleanPreferencesKey("auto_check_update")
         val KEY_ACCEPT_PRERELEASE = booleanPreferencesKey("accept_prerelease")
         val KEY_IN_APP_UPDATE = booleanPreferencesKey("in_app_update")
