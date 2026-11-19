@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -39,9 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
+import erl.bilico.ui.LocalNavEntry
+import erl.bilico.ui.LocalNavState
 import erl.bilico.ui.LocalRouteIsTop
-import erl.bilico.ui.isDarkTheme
 import erl.bilico.ui.pageContainerColor
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -119,7 +120,6 @@ internal fun VideoFullscreenStage(
      */
     surfaceViewPlayer: Boolean = false,
 ) {
-    val dark = isDarkTheme(darkMode)
     val windowLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val currentWindowLandscape by rememberUpdatedState(windowLandscape)
 
@@ -184,22 +184,26 @@ internal fun VideoFullscreenStage(
 
     StageWindowAttributesEffect(activity)
 
-    // 页面栈里的页面都常驻，状态栏图标颜色只由栈顶这一页接管：
-    // 从上一个播放页返回时，它退场会把颜色还给主题，这一页重新成为栈顶要再定回白色。
-    // 视频收到底之后状态栏下面就是页面底色，白图标会看不见，这时换成深色图标。
+    // 状态栏图标颜色由根节点按「当前非退场栈顶」统一同步；这里只上报槽位是否已收到底栏，
+    // 并在真正离开全屏舞台时确保把系统栏叫回来。
     val isTop = LocalRouteIsTop.current
-    val darkStatusIcons = barVisible && !dark
-    DisposableEffect(activity, dark, isTop, darkStatusIcons) {
-        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        if (isTop) {
-            controller?.isAppearanceLightStatusBars = darkStatusIcons
-            controller?.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    val nav = LocalNavState.current
+    val navEntry = LocalNavEntry.current
+    val currentFullscreen by rememberUpdatedState(fullscreen)
+    SideEffect {
+        if (navEntry != null && navEntry.collapsedBarVisible != barVisible) {
+            navEntry.collapsedBarVisible = barVisible
         }
+    }
+    DisposableEffect(activity, isTop) {
+        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         onDispose {
-            if (isTop) {
-                controller?.isAppearanceLightStatusBars = !dark
-                controller?.show(WindowInsetsCompat.Type.systemBars())
+            if (isTop && controller != null) {
+                // 只有真的全屏过才把系统栏叫回来。正常竖屏进退不需要 show()，
+                // 那一下会触发一次 relayoutWindow（12–19ms 的 Binder 往返）。
+                if (currentFullscreen || currentWindowLandscape) {
+                    controller.show(WindowInsetsCompat.Type.systemBars())
+                }
             }
         }
     }
@@ -214,7 +218,7 @@ internal fun VideoFullscreenStage(
         windowLandscape = { currentWindowLandscape },
         sideDegrees = { sideToDegrees(preferredSide) },
         surfaceViewPlayer = { currentSurfaceViewPlayer },
-        darkStatusIcons = { barVisible && !dark },
+        onSyncStatusBar = { nav?.requestStatusBarSync() },
     )
 
     // 横屏里把手机掉个头：整屏铺满，画面自己转 180° 就能跟上手机，转完再让系统翻窗口。
@@ -331,6 +335,7 @@ internal fun VideoFullscreenStage(
             Box(
                 modifier = Modifier
                     .background(pageSurface)
+                    .graphicsLayer {}
                     .nestedScroll(collapseScroll)
                     .drawWithContent {
                         if (!windowLandscape && progress.value < 0.9995f) drawContent()
@@ -467,9 +472,12 @@ internal fun VideoFullscreenStage(
         // 详情页里的视频槽位：高度跟着滑动变。竖屏视频收到顶栏那一条为止；
         // 横屏视频同样能收，但播放中至少留一屏的 30%，暂停了才推得干净。
         val videoH = if (portraitResizable) {
-            val full = min(portW / aspect, portH * 0.7f)
-            // 进详情页统一落在 16:9 高度：竖屏视频不再一进来就顶到最高。
-            val initial = min(portW * 9f / 16f, full)
+            // 槽位统一按 16:9 起步，不跟着视频比例走：21:9 不会被压成一条，4:3 也不会一进来就撑满宽度，
+            // 多出来或少掉的画面交给播放器的 RESIZE_MODE_FIT 补黑边（超宽补上下、偏高补左右）。
+            val sixteenNine = min(portW * 9f / 16f, portH * 0.7f)
+            // 偏高的视频仍可下拉展开到铺满宽度；超宽视频的可展开高度也不低于 16:9。
+            val full = maxOf(sixteenNine, min(portW / aspect, portH * 0.7f))
+            val initial = sixteenNine
             slotMetrics[0] = full
             val floor = if (playing) {
                 maxOf(minSlotPx, min(initial, portH * 0.3f))

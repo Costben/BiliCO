@@ -138,6 +138,15 @@ internal fun collapsedDescText(
     widthPx: Int,
 ): AnnotatedString {
     val maxWidth = widthPx.coerceAtLeast(1)
+    val plain = AnnotatedString(preview)
+    // 先按整段量一次：多数简介本来就塞得进两行，量完直接返回，不再逐字试探。
+    val baseLayout = measurer.measure(
+        text = plain,
+        style = style,
+        maxLines = DESC_COLLAPSED_LINES,
+        constraints = Constraints(maxWidth = maxWidth),
+    )
+    if (!baseLayout.hasVisualOverflow) return plain
 
     fun fits(text: AnnotatedString): Boolean = !measurer.measure(
         text = text,
@@ -146,17 +155,26 @@ internal fun collapsedDescText(
         constraints = Constraints(maxWidth = maxWidth),
     ).hasVisualOverflow
 
-    val plain = AnnotatedString(preview)
-    if (fits(plain)) return plain
-
     fun withSuffix(count: Int) = buildAnnotatedString {
         append(preview.take(count))
         append("…")
         withStyle(SpanStyle(color = accent)) { append("展开") }
     }
 
-    var low = 0
-    var high = preview.length
+    // 第二行末尾那一格就是上限。二分只在它附近的一小段里做，量次数从 log2(全文) 降到常数。
+    val lastLine = (DESC_COLLAPSED_LINES - 1)
+        .coerceAtMost((baseLayout.lineCount - 1).coerceAtLeast(0))
+    val lineEnd = baseLayout.getLineEnd(lastLine, visibleEnd = true).coerceIn(0, preview.length)
+    val probe = (lineEnd - 8).coerceAtLeast(0)
+    var low: Int
+    var high: Int
+    if (probe > 0 && fits(withSuffix(probe))) {
+        low = probe
+        high = lineEnd
+    } else {
+        low = 0
+        high = (probe - 1).coerceAtLeast(0)
+    }
     while (low < high) {
         val mid = (low + high + 1) / 2
         if (fits(withSuffix(mid))) low = mid else high = mid - 1

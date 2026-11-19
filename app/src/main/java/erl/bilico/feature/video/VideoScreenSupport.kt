@@ -180,12 +180,14 @@ internal fun rememberPlayerFullscreenController(
     videoAspect: Float,
     autoRotateMode: Int,
     inPipMode: Boolean,
+    // 播放器还没挂上时不必开重力感应：注册监听本身要走传感器服务。
+    orientationEnabled: Boolean = true,
 ): PlayerFullscreenController {
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     val windowLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val portraitStage = isPortraitVideoStage(videoAspect, fullscreen && windowLandscape)
     val allowAutoLandscape = videoAspect >= 1f
-    val deviceSide = rememberDeviceOrientationSide(autoRotateMode)
+    val deviceSide = rememberDeviceOrientationSide(if (orientationEnabled) autoRotateMode else 0)
     // 用户主动退出全屏、而手机还横着时，先锁竖屏，等手机真的竖过来再交还给传感器。
     var manualFullscreenExit by rememberSaveable { mutableStateOf(false) }
     var lastManualActionTime by remember { mutableLongStateOf(0L) }
@@ -312,6 +314,11 @@ internal fun BindPlayerEvents(
     container: AppContainer,
     onPlayingChanged: (Boolean) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
+    /**
+     * 播放意图：用户要它播（含切下一条后还在转圈的那段），但还没真正出画面。
+     * 暂停只有用户点了暂停才算数，缓冲中不算。
+     */
+    onPlayIntentChanged: (Boolean) -> Unit = {},
     onError: (PlaybackException) -> Unit,
     onVideoAspectChanged: (Float) -> Unit = {},
     onPlaybackEnded: (() -> Unit)? = null,
@@ -319,14 +326,20 @@ internal fun BindPlayerEvents(
     // 监听器只注册一次，回调要用最新值，否则换线时会读到首次组合时的空候选表。
     val currentOnPlaying by rememberUpdatedState(onPlayingChanged)
     val currentOnBuffering by rememberUpdatedState(onBufferingChanged)
+    val currentOnPlayIntent by rememberUpdatedState(onPlayIntentChanged)
     val currentOnError by rememberUpdatedState(onError)
     val currentOnAspect by rememberUpdatedState(onVideoAspectChanged)
     val currentOnEnded by rememberUpdatedState(onPlaybackEnded)
     val currentViewModel by rememberUpdatedState(viewModel)
 
     DisposableEffect(player) {
+        // 播完（STATE_ENDED）就不再算播放意图，否则视频结束了槽位还不让人推上去。
+        fun reportPlayIntent() {
+            currentOnPlayIntent(player.hasPlayIntent())
+        }
         currentOnPlaying(player.isPlaying)
         currentOnBuffering(player.playbackState == Player.STATE_BUFFERING)
+        reportPlayIntent()
         val initialSize = player.videoSize
         if (initialSize.width > 0 && initialSize.height > 0) {
             currentOnAspect(
@@ -336,6 +349,10 @@ internal fun BindPlayerEvents(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 currentOnPlaying(playing)
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                reportPlayIntent()
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -348,6 +365,7 @@ internal fun BindPlayerEvents(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 currentOnBuffering(playbackState == Player.STATE_BUFFERING)
+                reportPlayIntent()
                 if (playbackState == Player.STATE_READY) {
                     currentViewModel.markPlaybackStarted()
                 } else if (playbackState == Player.STATE_ENDED) {

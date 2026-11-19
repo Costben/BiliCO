@@ -2,8 +2,8 @@ package erl.bilico.ui
 
 import android.content.Context
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
@@ -38,8 +38,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 val ExpandEasing = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)
-const val ExpandEnterMillis = 350
-const val ExpandExitMillis = 240
+
+/** 进场曲线与时长参考系统桌面应用展开节奏，起止柔和不抢跳。 */
+val ExpandInEasing = CubicBezierEasing(0.32f, 0.08f, 0.18f, 1f)
+const val ExpandEnterMillis = 420
+const val ExpandExitMillis = 320
 const val RouteSlideMillis = 320
 const val RouteParallaxDivisor = 4f
 const val FEED_TAB_INDEX = 0
@@ -117,8 +120,11 @@ fun rememberExpandOrigin(cornerRadius: Dp = 17.dp): ExpandOrigin {
     }
 }
 
-fun Modifier.expandOrigin(origin: ExpandOrigin): Modifier =
-    onGloballyPositioned {
+@Composable
+fun Modifier.expandOrigin(origin: ExpandOrigin): Modifier {
+    val visibility = LocalExpandOriginVisibility.current
+    val currentEntry = LocalNavEntry.current
+    return onGloballyPositioned {
         origin.bounds = Rect(
             it.positionInRoot(),
             Size(it.size.width.toFloat(), it.size.height.toFloat()),
@@ -128,8 +134,11 @@ fun Modifier.expandOrigin(origin: ExpandOrigin): Modifier =
             // 读一下 key：请求刷新时这个 draw 失效，就会用卡片此刻的样子重录。
             origin.refreshKey
             origin.layer.record { this@drawWithContent.drawContent() }
-            drawLayer(origin.layer)
+            if (visibility?.isHidden(origin, currentEntry) != true) {
+                drawLayer(origin.layer)
+            }
         }
+}
 
 sealed interface Route {
     data object Main : Route
@@ -205,9 +214,17 @@ class NavState {
     var mainTab by mutableIntStateOf(0)
         private set
 
+    /** 供全屏转屏收尾后通知根节点按当前真栈顶重新对齐一次状态栏图标。 */
+    var statusBarSyncTick by mutableIntStateOf(0)
+        private set
+
+    fun requestStatusBarSync() {
+        statusBarSyncTick++
+    }
+
     val current: Route get() = stack.last().route
 
-    val isMinimizingToOrb: Boolean get() = stack.lastOrNull()?.minimizingToOrb == true
+    val isMinimizingToOrb: Boolean get() = stack.any { it.exiting && it.minimizingToOrb }
 
     fun attach(scope: CoroutineScope, context: Context? = null) {
         host = scope
@@ -239,41 +256,83 @@ class NavState {
     }
 
     fun push(route: Route, origin: ExpandOrigin? = null) {
-        val hadMinimized = route.isPlayback() && minimizedEntry != null
-        if (hadMinimized) {
-            // 新开的播放页接管会话：缩在球里的那一条到此为止，播放器一起放掉，不留两台同时活着。
-            appContext?.let(PlaybackBridge::pauseAndStopSession)
-            dismissMinimized(pausePlayback = false)
+        // 球里那条视频要在这里让位。先停掉会话、把新页压进栈，再决定旧页什么时候释放：
+        // 新页还没进栈时就不算「还有别的视频页」，旧页出栈会当场同步 release 播放器，
+        // 那一下在真机上要卡三四百毫秒，正好压在手势起手的那一帧上。
+        val prevMinimized = if (route.isPlayback()) {
+            minimizedEntry ?: stack.lastOrNull { it.exiting && it.minimizingToOrb }
+        } else {
+            null
+        }
+        val sameVideoPlayer = route is Route.Video && prevMinimized?.route is Route.Video
+        // 点的就是球里那一条：什么都不用停，播放器接着放，新页拿到的还是同一台。
+        val sameBvid = sameVideoPlayer &&
+            (route as Route.Video).bvid == (prevMinimized!!.route as Route.Video).bvid
+        if (prevMinimized != null && !sameBvid) {
+            if (sameVideoPlayer) {
+                // 同一台播放器接着用：只瞬间静音（0 次 Binder），旧片源等新页落位再停。
+                PlaybackBridge.muteForRouteSwitch()
+            } else {
+                appContext?.let(PlaybackBridge::pauseAndStopSession)
+            }
         }
         val entry = NavEntry(route, origin, initialProgress = 0f, initialFade = 0f)
         stack.add(entry)
-        val scope = host ?: return
+        var deferredDiscard: NavEntry? = null
+        if (prevMinimized != null) {
+            val wasInFlightOrb = prevMinimized !== minimizedEntry
+            prevMinimized.minimizingToOrb = false
+            if (sameVideoPlayer) {
+                // 这时新页已在栈里，旧页出栈不会再把播放器一起放掉，可以立刻撤掉它的组合。
+                if (wasInFlightOrb) {
+                    stack.remove(prevMinimized)
+                    prevMinimized.discard()
+                } else {
+                    dismissMinimized(pausePlayback = false)
+                }
+            } else {
+                // 跨类型切换要换掉另一台播放器：把释放挪到进场动画之外。
+                if (wasInFlightOrb) stack.remove(prevMinimized) else minimizedEntry = null
+                deferredDiscard = prevMinimized
+            }
+        }
+        val scope = host
+        if (scope == null) {
+            deferredDiscard?.discard()
+            return
+        }
         scope.launch {
             repeat(2) { withFrameNanos { } }
             val expand = entry.expand
             if (!expand) entry.fade.snapTo(1f)
             val millis = if (expand) ExpandEnterMillis else RouteSlideMillis
-            coroutineScope {
-                launch {
-                    entry.progress.animateTo(
-                        targetValue = 1f,
-                        animationSpec = tween(millis, easing = ExpandEasing),
-                    )
-                }
-                if (expand) {
+            try {
+                coroutineScope {
                     launch {
-                        entry.fade.animateTo(
+                        entry.progress.animateTo(
                             targetValue = 1f,
-                            animationSpec = tween(ExpandEnterMillis, easing = LinearEasing),
+                            animationSpec = tween(millis, easing = ExpandInEasing),
                         )
                     }
+                    if (expand) {
+                        launch {
+                            entry.fade.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(ExpandEnterMillis, easing = ExpandInEasing),
+                            )
+                        }
+                    }
                 }
-            }
-            if (hadMinimized) {
-                dismissMinimized(pausePlayback = false)
+            } finally {
+                // 进场中途被返回或被别的页切走：这一轮静音的旧视频没有被新页接手，
+                // 必须在这里停掉，否则球里那条会静音着在后台继续播。
+                if (sameVideoPlayer && !sameBvid && (entry.exiting || stack.lastOrNull() !== entry)) {
+                    appContext?.let(PlaybackBridge::stopForRouteSwitch)
+                }
             }
             // 这时详情页已经把列表盖住了，挪行看不见；返回时卡片已经在栏下方。
             alignCardBelowBar(entry.origin)
+            deferredDiscard?.discard()
         }
     }
 
@@ -295,10 +354,9 @@ class NavState {
         stack[stack.lastIndex] = NavEntry(route)
     }
 
-    fun pop() {
-        if (stack.size <= 1) return
-        val entry = stack.last()
-        if (entry.exiting) return
+    fun pop(initialProgressVelocity: Float = 0f) {
+        if (stack.count { !it.exiting } <= 1) return
+        val entry = stack.lastOrNull { !it.exiting } ?: return
         val targetOrb = if (shouldMinimizeOnPop(entry)) minimizeTargetOrigin(entry) else null
         val minimize = targetOrb?.bounds != null
         if (minimize) {
@@ -332,24 +390,28 @@ class NavState {
             val millis = (baseMillis * remaining).toInt().coerceAtLeast(1)
             coroutineScope {
                 launch {
+                    // 返回卡片走桌面图标回弹弹簧，收进融合球仍走固定时长淡出。
+                    val spec: AnimationSpec<Float> = if (expand && !minimize) {
+                        ExpandReturnSpringSpec
+                    } else {
+                        tween(millis, easing = ExpandEasing)
+                    }
                     entry.progress.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(
-                            millis,
-                            easing = if (expand) LinearEasing else ExpandEasing,
-                        ),
+                        animationSpec = spec,
+                        initialVelocity = if (expand && !minimize) initialProgressVelocity else 0f,
                     )
                 }
                 if (expand) {
                     launch {
                         entry.fade.animateTo(
                             targetValue = 0f,
-                            animationSpec = tween(millis, easing = LinearEasing),
+                            animationSpec = tween(millis, easing = ExpandEasing),
                         )
                     }
                 }
             }
-            if (minimize) {
+            if (minimize && entry.minimizingToOrb) {
                 finalizeMinimize(entry)
             } else {
                 stack.remove(entry)
@@ -402,14 +464,14 @@ class NavState {
                 launch {
                     entry.progress.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(millis, easing = ExpandEasing),
+                        animationSpec = tween(millis, easing = ExpandInEasing),
                     )
                 }
                 if (expand) {
                     launch {
                         entry.fade.animateTo(
                             targetValue = 1f,
-                            animationSpec = tween(ExpandEnterMillis, easing = LinearEasing),
+                            animationSpec = tween(ExpandEnterMillis, easing = ExpandInEasing),
                         )
                     }
                 }
@@ -512,40 +574,5 @@ class NavState {
                 entry.discard()
             }
         }
-    }
-}
-
-/** 把 [origin] 指到它所在的列表与浮动栏上，返回时才能把那行挪出栏底。 */
-fun ExpandOrigin.attachToRow(listState: RowScrollState?, rowKey: Any?, topBar: TopBarBounds?) {
-    this.listState = listState
-    this.rowKey = rowKey
-    this.topBar = topBar
-}
-
-/**
- * 把卡片所在的列表上移刚好够让卡片顶边落到栏下沿之下。
- *
- * 详情页的框画在页面自己的图层上，在栏之上；半截藏在栏底的卡片回来时会画到栏上面。
- * 挪列表而不是重排图层，栏本身不动，卡片落在一个栏盖不到的位置。
- *
- * 列表回滚可能把栏的折叠标题行带回来，栏的边线随之改变，所以量几轮直到两边对齐。
- */
-internal suspend fun alignCardBelowBar(origin: ExpandOrigin?) {
-    if (origin == null) return
-    val state = origin.listState ?: return
-    val bar = origin.topBar ?: return
-    repeat(4) {
-        val line = bar.bottom
-        if (line <= 0f) return
-        // 刷新可能已经把这行从列表里换掉，旧矩形会把列表滚到不知道哪里去。
-        val onScreen = origin.rowKey?.let { key -> state.visibleKeys().any { it == key } } ?: false
-        if (!onScreen) return
-        val top = origin.bounds?.top ?: return
-        val delta = line + origin.clearancePx - top
-        if (delta <= 0.5f) return
-        if (state.scrollBy(-delta) == 0f) return
-        // 一帧让列表重新布局，一帧让栏报出新下沿。
-        withFrameNanos { }
-        withFrameNanos { }
     }
 }

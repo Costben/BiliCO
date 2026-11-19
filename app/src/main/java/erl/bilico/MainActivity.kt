@@ -23,7 +23,10 @@ import androidx.compose.runtime.setValue
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.content.ContextCompat
 import androidx.core.util.Consumer
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import erl.bilico.feature.video.SystemRotationAnimation
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.ui.BiliCoRoot
@@ -87,8 +90,17 @@ class MainActivity : ComponentActivity() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         window.isNavigationBarContrastEnforced = false
                     }
+                    // 系统栏的滑出行为在这里定一次就够：播放页每次进退再写一次，都是一次跨进程调用，
+                    // 会压在正常竖屏进出视频页的首帧上。
+                    WindowCompat.getInsetsController(window, window.decorView).systemBarsBehavior =
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                         window.attributes = window.attributes.apply {
+                            // 自绘转屏的机型在开窗这一刻就把系统转场设成无缝：等到进播放页再改，
+                            // 首帧要先走一次属性下发，正好压在手势起手那一帧上。
+                            if (SystemRotationAnimation.appDriven) {
+                                rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
+                            }
                             layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
                             } else {

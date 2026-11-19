@@ -97,7 +97,7 @@ internal fun VideoInfoTab(
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
     chapters: List<VideoChapter> = emptyList(),
-    positionMs: Long = 0L,
+    positionMsProvider: () -> Long = { 0L },
     onSelectChapter: (VideoChapter) -> Unit = {},
     onOpenChapters: () -> Unit = {},
     onTagClick: (String) -> Unit = {},
@@ -138,7 +138,7 @@ internal fun VideoInfoTab(
             topInset = topInset,
             bottomInset = bottomInset,
             chapters = chapters,
-            positionMs = positionMs,
+            positionMsProvider = positionMsProvider,
             onSelectChapter = onSelectChapter,
             onOpenChapters = onOpenChapters,
             onTagClick = onTagClick,
@@ -174,7 +174,7 @@ private fun InfoContent(
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
     chapters: List<VideoChapter> = emptyList(),
-    positionMs: Long = 0L,
+    positionMsProvider: () -> Long = { 0L },
     onSelectChapter: (VideoChapter) -> Unit = {},
     onOpenChapters: () -> Unit = {},
     onTagClick: (String) -> Unit = {},
@@ -342,7 +342,7 @@ private fun InfoContent(
             item(key = "chapters-section") {
                 VideoChaptersSection(
                     chapters = chapters,
-                    positionMs = positionMs,
+                    positionMs = positionMsProvider,
                     onSelectChapter = onSelectChapter,
                     onOpenAll = onOpenChapters,
                 )

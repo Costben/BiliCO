@@ -29,6 +29,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -218,25 +219,30 @@ fun MainShell(nav: NavState, container: AppContainer) {
     }
     val collapsed: () -> Float = { collapseShown.value }
 
-    val mainVisible by remember(nav) {
+    val onMainTab by remember(nav) {
+        derivedStateOf { nav.stack.lastOrNull { !it.exiting }?.route == Route.Main }
+    }
+    // 首页带着融合球点开新视频时，进场这一秒里底栏不该先把融合球收起来再放回去：
+    // 那三个弹簧会把整条底栏连同它背后的模糊层一起拖着重画。
+    val rawOrbVisible = nav.minimizedEntry != null || nav.isMinimizingToOrb
+    val enteringOverMain by remember(nav) {
         derivedStateOf {
-            val topEntry = nav.stack.lastOrNull()
-            topEntry == null ||
-                topEntry.route == Route.Main ||
-                (nav.stack.size == 2 && (topEntry.progress.value < 1f || topEntry.exiting || topEntry.previewing))
+            val topEntry = nav.stack.lastOrNull { !it.exiting }
+            nav.stack.count { !it.exiting } == 2 && topEntry != null && topEntry.expand &&
+                !topEntry.previewing && topEntry.progress.value < 1f
         }
     }
-    val onMainTab by remember(nav) {
-        derivedStateOf { nav.stack.lastOrNull()?.route == Route.Main }
-    }
+    var settledOrbVisible by remember { mutableStateOf(rawOrbVisible) }
+    SideEffect { if (!enteringOverMain) settledOrbVisible = rawOrbVisible }
 
     Box(Modifier.fillMaxSize()) {
-        // Layer 1: 页面主内容
+        // Layer 1: 页面主内容。单独一层 RenderNode：下面几层的模糊、弹簧动画不会带着整页一起重录。
         CompositionLocalProvider(LocalTopBarBounds provides topBarBounds) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .layerBackdropIf(BlurEffectsEnabled && mainVisible, backdrop)
+                    .graphicsLayer {}
+                    .layerBackdropIf(BlurEffectsEnabled, backdrop)
                     .background(pageContainerColor())
                     .then(if (feedPanelCovering) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
@@ -305,7 +311,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     searchExpanded = searchExpanded,
                     panelCovering = feedPanelCovering,
                     bounds = topBarBounds,
-                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().graphicsLayer {},
                 )
             }
         }
@@ -328,7 +334,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                             }
                         }
                     },
-                    orbVisible = nav.minimizedEntry != null || nav.isMinimizingToOrb,
+                    orbVisible = if (enteringOverMain) settledOrbVisible else rawOrbVisible,
                     leftOrbVisible = tab == DYNAMIC_TAB_INDEX,
                     onLeftOrbClick = {
                         if (!feedPanelCovering) {
@@ -343,6 +349,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     onOrbStop = { nav.dismissMinimized(pausePlayback = true) },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .graphicsLayer {}
                         .then(if (feedPanelCovering) Modifier.clearAndSetSemantics {} else Modifier),
                 )
             }
@@ -409,6 +416,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
+                        .graphicsLayer {}
                         .then(if (feedPanelCovering) Modifier.reportTopBarBottom(topBarBounds) else Modifier),
                 )
                 // 排序圆钮的菜单宿主：圆钮画在 FeedTitleRow 的胶囊行里，这里只把锚点落到它身上。
@@ -433,7 +441,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
     }
 
     val inHomeSearchResults =
-        nav.stack.size == 1 && tab == 0 && searchExpanded && searchState.submitted.isNotBlank()
+        nav.stack.count { !it.exiting } == 1 && tab == 0 && searchExpanded && searchState.submitted.isNotBlank()
     if (inHomeSearchResults) {
         BackHandler {
             searchViewModel.onQueryChange("")

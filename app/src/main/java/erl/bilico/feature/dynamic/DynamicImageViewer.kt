@@ -12,7 +12,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -357,14 +356,12 @@ internal fun ImageViewerOverlay(
 @Composable
 private fun ViewerSystemBars(visible: Boolean) {
     val context = LocalContext.current
-    val systemDark = isSystemInDarkTheme()
     val window = remember(context) { context.findActivity()?.window }
     val controller = remember(window) {
         window?.let { WindowCompat.getInsetsController(it, it.decorView) }
     }
     LaunchedEffect(controller, visible) {
         controller ?: return@LaunchedEffect
-        controller.isAppearanceLightStatusBars = false
         if (visible) {
             controller.show(WindowInsetsCompat.Type.statusBars())
         } else {
@@ -373,13 +370,9 @@ private fun ViewerSystemBars(visible: Boolean) {
             controller.hide(WindowInsetsCompat.Type.statusBars())
         }
     }
-    DisposableEffect(controller, systemDark) {
-        val wasLight = controller?.isAppearanceLightStatusBars ?: !systemDark
+    DisposableEffect(controller) {
         onDispose {
-            controller?.let {
-                it.isAppearanceLightStatusBars = wasLight
-                it.show(WindowInsetsCompat.Type.statusBars())
-            }
+            controller?.show(WindowInsetsCompat.Type.statusBars())
         }
     }
 }

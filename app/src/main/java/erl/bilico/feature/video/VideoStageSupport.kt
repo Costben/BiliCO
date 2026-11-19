@@ -219,7 +219,7 @@ internal fun StageOrientationTransitionEffect(
     windowLandscape: () -> Boolean,
     sideDegrees: () -> Float,
     surfaceViewPlayer: () -> Boolean,
-    darkStatusIcons: () -> Boolean,
+    onSyncStatusBar: () -> Unit,
 ) {
     LaunchedEffect(fullscreen, portraitStage, activity) {
         val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
@@ -332,9 +332,8 @@ internal fun StageOrientationTransitionEffect(
                     }
                 }
                 if (!barsShown) controller?.show(WindowInsetsCompat.Type.systemBars())
-                // 转屏时窗口属性会被系统重新下发一遍，状态栏图标颜色可能被打回成跟随主题的深色，
-                // 在纯黑的播放页顶部就看不见了。落回竖屏后再按「视频有没有收到底」定一次。
-                controller?.isAppearanceLightStatusBars = darkStatusIcons()
+                // 转屏时窗口属性会被系统重新下发一遍，通知根节点按当前真栈顶重新同步状态栏图标颜色。
+                onSyncStatusBar()
             } finally {
                 if (frozenForExit) frameHolder.unfreeze()
             }
@@ -358,22 +357,33 @@ internal fun StageWindowAttributesEffect(activity: Activity?) {
         val window = activity?.window
         val oldRotation = window?.attributes?.rotationAnimation
         val oldCutout = window?.attributes?.layoutInDisplayCutoutMode
-        window?.attributes = window.attributes.apply {
-            if (SystemRotationAnimation.appDriven) {
-                rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
+        val targetRotation = if (SystemRotationAnimation.appDriven) {
+            WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
+        } else {
+            oldRotation
+        }
+        val targetCutout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        } else {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        // 属性没变就不要重写：写一次 window.attributes 就是一次跨进程调用，压在手势首帧上会看得见。
+        var changed = false
+        if (window != null && (oldRotation != targetRotation || oldCutout != targetCutout)) {
+            window.attributes = window.attributes.apply {
+                if (targetRotation != null) rotationAnimation = targetRotation
+                layoutInDisplayCutoutMode = targetCutout
             }
-            layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-            } else {
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
+            changed = true
         }
         onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            if (window != null && oldRotation != null && oldCutout != null) {
+            if (activity?.requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+            if (changed && window != null) {
                 window.attributes = window.attributes.apply {
-                    rotationAnimation = oldRotation
-                    layoutInDisplayCutoutMode = oldCutout
+                    if (oldRotation != null) rotationAnimation = oldRotation
+                    if (oldCutout != null) layoutInDisplayCutoutMode = oldCutout
                 }
             }
         }

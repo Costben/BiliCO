@@ -29,6 +29,9 @@ class NavEntry(
     /** 页面里挂着 SurfaceView（HDR 播放），转场期间不能整页离屏，否则视频层会被离屏层吃掉。 */
     var hasSurfaceView by mutableStateOf(false)
 
+    /** 播放页竖屏收到底部只剩顶栏时为 true，状态栏下方露出浅色底，需切换深色图标。 */
+    var collapsedBarVisible by mutableStateOf(false)
+
     /**
      * 这一页从栈里彻底丢掉时执行（最小化不算，收进球的页面还在）。
      * 播放页用它释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲，不释放就得等 Activity 销毁。

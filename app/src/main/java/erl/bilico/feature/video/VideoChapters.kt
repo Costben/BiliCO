@@ -139,13 +139,14 @@ internal fun PlayerChapterStrip(
 @Composable
 internal fun VideoChaptersSection(
     chapters: List<VideoChapter>,
-    positionMs: Long,
+    positionMs: () -> Long,
     onSelectChapter: (VideoChapter) -> Unit,
     onOpenAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (chapters.isEmpty()) return
-    val activeIndex = activeChapterIndex(chapters, positionMs)
+    // 进度每 500ms 变一次：只有真要画分段条时才读，别让外层跟着重排。
+    val activeIndex = activeChapterIndex(chapters, positionMs())
     val listState = rememberLazyListState()
     val hasThumbnails = remember(chapters) { chapters.any { it.imgUrl.isNotBlank() } }
     val density = LocalDensity.current

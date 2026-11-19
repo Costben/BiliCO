@@ -2,16 +2,13 @@ package erl.bilico.feature.video
 
 import android.util.Log
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -21,34 +18,26 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.data.model.isHdr
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.ReplyThreadController
-import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.player.releasePlaybackPlayer
 import erl.bilico.player.rememberPlaybackPlayer
-import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalNavEntry
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.LocalRouteMinimized
 import erl.bilico.ui.LocalRouteTransition
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
-import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
-import io.github.suqi8.coui.kmp.blur.LocalBackdrop
-import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -96,21 +85,9 @@ fun VideoScreen(
     else cachedUiState ?: VideoUiState(resumePositionMs = savedPositionMs)
 
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
-    val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
-    val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
-    val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
-    val playbackEndMode by container.settings.playbackEndMode.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
-    val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
     val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
-    val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
-    val swipeDownLockLongPressSpeed by container.settings.swipeDownLockLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
-    val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
-    val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
-    val sponsorBlockEnabled by container.settings.sponsorBlockEnabled.collectAsStateWithLifecycle()
-    val sponsorSkipMode by container.settings.sponsorSkipMode.collectAsStateWithLifecycle()
-    val sponsorCategories by container.settings.sponsorCategories.collectAsStateWithLifecycle()
     val speedLocked by container.settings.speedLocked.collectAsStateWithLifecycle()
     val lockedSpeed by container.settings.lockedSpeed.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
@@ -119,6 +96,8 @@ fun VideoScreen(
     val danmakuController = remember { DanmakuController(container.danmaku, scope) }
     val subtitleController = remember { SubtitleController(container.subtitles, scope) }
     val sponsorController = remember { SponsorBlockController(container.sponsorBlock, scope) }
+    // 播放进度不让页面自己读：只有播放器、字幕、进度条这些真正画它的组件才订阅。
+    val clock = remember { VideoPlaybackClock() }
 
     val routeTransition = LocalRouteTransition.current
     var stageReady by remember {
@@ -134,21 +113,28 @@ fun VideoScreen(
             stageReady = true
         }
     }
+    // 退场时先把详情栏的毛玻璃关掉：这一路每帧都在重录整块详情区，退场那 240ms 全砸在上面。
+    val blurActive by remember(routeTransition) {
+        derivedStateOf {
+            routeTransition == null ||
+                (!routeTransition.exiting() && routeTransition.progress() >= 0.999f)
+        }
+    }
     val state = rememberEnterState(bvid, liveState, stageReady)
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    // 点媒体条封面会重建 Activity。播放器跟着页面记住，重建时还是同一个，媒体条不会拿到已释放的实例。
-    // 进场过渡期间先保留黑底播放器槽位与详情内容，落位后再挂载 ExoPlayer 与 PlayerView。
-    // key 固定成 "video"：连播换下一条时接着用同一台播放器，换源由下面 setMediaSource 那一步做。
     val isTop = LocalRouteIsTop.current
     val isMinimized = LocalRouteMinimized.current
     val isActiveRoute = isTop || isMinimized
+    val playbackEntry = LocalNavEntry.current
+    // 收进融合球时这一页会被拆掉重建，缩放的退场动画还没结束时也还不能算「落位」。
+    // 这段期间播放没有停，不能把状态抹成暂停，否则球的图标和菜单会显示「继续播放」。
+    val staysInOrb = isMinimized || playbackEntry?.minimizingToOrb == true
     // 缩进融合球时进度恒为 0、等不到「落位」，但球上的封面和播放状态要靠这一页的会话维持，
     // 所以最小化期间照旧保留播放器槽位与事件监听。
     val player = if (stageReady || isMinimized) rememberPlaybackPlayer("video") { buildConfiguredExoPlayer(context) } else null
     // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
-    val playbackEntry = LocalNavEntry.current
     DisposableEffect(playbackEntry) {
         playbackEntry?.onDiscard = {
             val hasOtherVideo = nav.stack.any { it !== playbackEntry && it.route is Route.Video } ||
@@ -189,6 +175,7 @@ fun VideoScreen(
         videoAspect = effectiveVideoAspect,
         autoRotateMode = autoRotateMode,
         inPipMode = inPipMode,
+        orientationEnabled = stageReady,
     )
     val fullscreen = fsController.fullscreen
     val deviceSide = fsController.deviceSide
@@ -251,62 +238,55 @@ fun VideoScreen(
     }
 
     val effectiveSpeed = longPressSpeed.effectiveSpeed
-    var positionMs by remember { mutableLongStateOf(0L) }
-    var durationMs by remember { mutableLongStateOf(0L) }
-    var isPlaying by remember { mutableStateOf(false) }
+    // 收进球后这一页会重建，初值直接取播放器当前状态，别从「暂停」开始再等事件纠正。
+    var isPlaying by remember(player) { mutableStateOf(player?.isPlaying == true) }
+    // 播放意图：切到下一条后还在转圈、没出画之前，仍然算「在播」。
+    // 详情页的槽位下限按它来定，只有用户自己点了暂停才允许把视频推上去。
+    var playIntent by remember(player) { mutableStateOf(player?.hasPlayIntent() == true) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(isTop) {
+    LaunchedEffect(isTop, staysInOrb) {
         if (!isTop) {
-            if (positionMs > 0L) savedPositionMs = positionMs
-            isPlaying = false
+            val position = player?.currentPosition?.coerceAtLeast(0L) ?: clock.positionMs
+            if (position > 0L) savedPositionMs = position
+            // 收进球（含退场动画）时播放还在继续，状态留给播放器事件维护；
+            // 只有被别的页面真正盖住才归零。
+            if (!staysInOrb) isPlaying = false
             isBuffering = false
             longPressSpeed.onActiveChange(false)
         }
     }
 
-    val headers = remember(bvid) { container.client.mediaRequestHeaders(bvid) }
-    val dataSourceFactory = remember(headers) {
-        OkHttpDataSource.Factory(container.client.mediaClient()).setDefaultRequestProperties(headers)
-    }
     val playbackAttempts = remember(player) { player?.let { PlaybackAttempts(it) { effectiveSpeed } } }
 
     if (player != null) {
-        BindPlaybackSession(
+        VideoPlaybackEffects(
             player = player,
-            title = state.detail?.title.orEmpty(),
-            subtitle = state.detail?.upName.orEmpty(),
-            artworkUrl = state.detail?.cover.orEmpty(),
+            bvid = bvid,
+            isTop = isTop,
+            isActiveRoute = isActiveRoute,
             isPlaying = isPlaying,
-            backgroundPlay = backgroundPlay,
-            autoPip = autoPip,
+            state = state,
+            viewModel = viewModel,
+            container = container,
+            nav = nav,
+            clock = clock,
+            attempts = playbackAttempts,
+            effectiveSpeed = effectiveSpeed,
+            danmakuController = danmakuController,
+            sponsorController = sponsorController,
+            onPlayingChanged = { isPlaying = it },
+            onBufferingChanged = { isBuffering = it },
+            onPlayIntentChanged = { playIntent = it },
+            onError = { error ->
+                Log.w("BiliPlayer", describePlaybackError(error), error)
+                // 线路坏了先换一条，候选表走完才把错误抛给界面。
+                if (playbackAttempts?.next() != true) playerError = describePlaybackError(error)
+            },
+            onClearError = { playerError = null },
+            onVideoAspectChanged = { playerVideoAspect = it },
         )
-
-        if (isActiveRoute) {
-            BindPlayerEvents(
-                player = player,
-                viewModel = viewModel,
-                container = container,
-                onPlayingChanged = { isPlaying = it },
-                onBufferingChanged = { isBuffering = it },
-                onError = { error ->
-                    Log.w("BiliPlayer", describePlaybackError(error), error)
-                    // 线路坏了先换一条，候选表走完才把错误抛给界面。
-                    if (playbackAttempts?.next() != true) playerError = describePlaybackError(error)
-                },
-                onVideoAspectChanged = { playerVideoAspect = it },
-                onPlaybackEnded = {
-                    handleVideoPlaybackEnded(
-                        mode = playbackEndMode,
-                        player = player,
-                        viewModel = viewModel,
-                        nav = nav,
-                        state = state,
-                    )
-                },
-            )
-        }
     }
 
     var routeInitialized by remember { mutableStateOf(false) }
@@ -319,8 +299,8 @@ fun VideoScreen(
         // 原地连播切到下一条时清掉上一条的播控与列表态，仅保留当前舞台与全屏朝向。
         player?.stop()
         player?.clearMediaItems()
-        positionMs = 0L
-        durationMs = 0L
+        clock.positionMs = 0L
+        clock.durationMs = 0L
         isPlaying = false
         isBuffering = false
         playerError = null
@@ -346,16 +326,6 @@ fun VideoScreen(
         replyThread.close()
     }
 
-    LaunchedEffect(player, bvid, state.selectedCid, sponsorBlockEnabled, isActiveRoute) {
-        if (player != null && isActiveRoute) {
-            sponsorController.attach(bvid, state.selectedCid, sponsorBlockEnabled, player)
-        }
-    }
-
-    DisposableEffect(player) {
-        onDispose { if (player != null) sponsorController.restoreMuteIfNeeded(player) }
-    }
-
     LaunchedEffect(state.selectedCid, state.detail?.aid) {
         val cid = state.selectedCid
         if (cid > 0L) {
@@ -373,65 +343,6 @@ fun VideoScreen(
                     }
                 },
             )
-        }
-    }
-
-    LaunchedEffect(player, bvid, state.source, isTop) {
-        // 只让栈顶这一页往共享播放器里装片源：压在下面的播放页还留在组合里，
-        // 一旦它们也跟着状态变化重新装载，就会把正在播的那条顶掉、从头再来一遍。
-        if (!isTop) return@LaunchedEffect
-        val currentPlayer = player ?: return@LaunchedEffect
-        val attempts = playbackAttempts ?: return@LaunchedEffect
-        val source = state.source ?: return@LaunchedEffect
-        val mediaId = playbackMediaId(bvid, state.selectedCid, source.videoUrl)
-        // 缩进融合球、再从球里回来时这一页会被重建一次，播放器本身没换；
-        // 此时再 setMediaSource 一次就会从 0 重新播。片源没变且播放器还装着它，就只登记候选表。
-        if (currentPlayer.playbackState != Player.STATE_IDLE &&
-            currentPlayer.currentMediaItem?.mediaId == mediaId
-        ) {
-            attempts.adopt(source, dataSourceFactory, mediaId)
-            return@LaunchedEffect
-        }
-        playerError = null
-        if (state.resumePositionMs <= 0L && source.lastPlayTimeMs >= 3_000L) {
-            viewModel.applyServerResumeHint(source.lastPlayCid, source.lastPlayTimeMs)
-        }
-        val resumeAt = viewModel.state.value.resumePositionMs
-        attempts.start(source, dataSourceFactory, resumeAt, mediaId)
-        if (resumeAt > 0L) viewModel.consumeResumePosition()
-    }
-
-    // 切号 / 登录态变了：按当前清晰度重新取流，让刚生效的大会员档位回到清晰度菜单里。
-    // 首帧拿到的登录态不重取，免得一进页面就白闪一下。
-    val playbackAccount by container.session.account.collectAsStateWithLifecycle()
-    var playbackAccountKey by remember { mutableStateOf<Pair<Long, Boolean>?>(null) }
-    LaunchedEffect(playbackAccount, isTop) {
-        val key = playbackAccount?.let { it.mid to it.vip }
-        val previous = playbackAccountKey
-        playbackAccountKey = key
-        if (isTop && previous != null && previous != key) viewModel.refreshPlayback(positionMs)
-    }
-
-    LaunchedEffect(player, effectiveSpeed, isTop) {
-        if (isTop) player?.setPlaybackSpeed(effectiveSpeed)
-    }
-
-    LaunchedEffect(player, isActiveRoute) {
-        val currentPlayer = player?.takeIf { isActiveRoute } ?: return@LaunchedEffect
-        while (true) {
-            positionMs = currentPlayer.currentPosition.coerceAtLeast(0L)
-            durationMs = currentPlayer.duration.coerceAtLeast(0L)
-            playbackAttempts?.rememberPosition(positionMs)
-            viewModel.reportHeartbeat(positionMs / 1000, currentPlayer.isPlaying)
-            danmakuController.onPosition(positionMs)
-            sponsorController.onPosition(
-                positionMs = positionMs,
-                player = currentPlayer,
-                enabled = container.settings.sponsorBlockEnabled.value,
-                skipMode = container.settings.sponsorSkipMode.value,
-                enabledCategories = container.settings.sponsorCategories.value,
-            )
-            delay(500)
         }
     }
 
@@ -457,8 +368,8 @@ fun VideoScreen(
                 SponsorSubmitDialog(
                     bvid = bvid,
                     cid = state.selectedCid,
-                    durationMs = durationMs,
-                    currentPositionMs = { player?.currentPosition?.coerceAtLeast(0L) ?: positionMs },
+                    durationMs = clock.durationMs,
+                    currentPositionMs = { player?.currentPosition?.coerceAtLeast(0L) ?: clock.positionMs },
                     controller = sponsorController,
                     sponsorUserIdProvider = container.settings::ensureSponsorUserId,
                     inlineInStage = stageInline,
@@ -481,7 +392,7 @@ fun VideoScreen(
         darkMode = darkMode,
         videoAspect = effectiveVideoAspect,
         portraitResizable = true,
-        playing = isPlaying,
+        playing = playIntent,
         surfaceViewPlayer = hdrSurface,
         canExpand = {
             val list = when {
@@ -493,174 +404,55 @@ fun VideoScreen(
         },
         playerContent = {
             if (player == null) {
-                Box(Modifier.fillMaxSize().background(Color.Black))
+                EmptyVideoPlayerSlot()
             } else {
-                val stageBackdrop = rememberLayerBackdrop()
-                val anyStageDialogOpen = fullscreen &&
-                    (danmakuSettingsDialogVisible || chapterDialogVisible || sponsorSubmitVisible)
-                VideoPlayer(
+                VideoPlayerSlot(
                     player = player,
-                    title = state.detail?.title.orEmpty(),
-                    isPlaying = isPlaying,
-                    positionMs = positionMs,
-                    durationMs = durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
-                    isBuffering = state.isPlaybackLoading || isBuffering,
-                    errorMessage = state.playbackError ?: playerError,
-                    qualityLabel = state.qualityLabel(),
-                    source = state.source,
-                    hdrVideo = hdrSurface,
-                    speed = speed,
+                    clock = clock,
+                    state = state,
+                    container = container,
+                    viewModel = viewModel,
+                    nav = nav,
+                    bvid = bvid,
                     fullscreen = fullscreen,
                     portraitFullscreen = fullscreen && fsController.portraitStage,
-                    onPlayPause = {
-                        if (player.isPlaying) player.pause() else player.play()
-                    },
-                    onSeek = { player.seekTo(it) },
-                    onToggleFullscreen = { applyFullscreen(!fullscreen) },
-                    onFullscreenChange = applyFullscreen,
-                    hapticEnabled = gestureHaptic,
-                    volumeBrightnessEnabled = gestureVolBright,
-                    fullscreenHintEnabled = fullscreenGestureHint,
-                    qualities = state.source?.qualities.orEmpty(),
-                    activeQuality = state.activeQuality,
-                    onSelectQuality = { qn -> viewModel.selectQuality(qn, player.currentPosition) },
-                    speedLocked = speedLocked,
-                    onToggleSpeedLock = onToggleSpeedLock,
-                    onSelectSpeed = onSelectSpeed,
-                    onBack = {
-                        if (fullscreen) applyFullscreen(false) else nav.pop()
-                    },
-                    onRetry = viewModel::load,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .layerBackdropIf(BlurEffectsEnabled && anyStageDialogOpen, stageBackdrop),
                     inPipMode = inPipMode,
-                    danmakuEnabled = danmakuEnabled,
-                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
-                    onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
-                    subtitleLabel = subtitleController.buttonLabel,
-                    subtitleTracks = subtitleController.tracks,
-                    selectedSubtitleKey = subtitleController.selectedTrackKey,
-                    onSelectSubtitle = subtitleController::selectTrack,
-                    onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
-                        { PlaybackBridge.enterPipNow(activity) }
-                    } else {
-                        null
-                    },
-                    onHome = { nav.popToMain() },
-                    onWatchLater = viewModel::addToWatchLater,
-                    playbackEndMode = playbackEndMode,
-                    onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
-                    onShare = {
-                        shareVideo(
-                            context = context,
-                            title = state.detail?.title.orEmpty(),
-                            bvid = bvid,
-                        )
-                    },
+                    isPlaying = isPlaying,
+                    isBuffering = isBuffering,
+                    playerError = playerError,
+                    message = message,
+                    hdrVideo = hdrSurface,
+                    speed = speed,
+                    speedLocked = speedLocked,
                     longPressSpeed = longPressSpeed,
-                    longPressSpeedMode = resolveLongPressSpeedMode(
-                        adjustableLongPressSpeed,
-                        swipeDownLockLongPressSpeed,
-                    ),
-                    chapters = subtitleController.chapters,
-                    onChapterClick = { chapterDialogVisible = true },
-                    sponsorSegments = if (sponsorBlockEnabled) {
-                        sponsorController.segments.filter { it.category.id in sponsorCategories }
-                    } else {
-                        emptyList()
-                    },
+                    onSelectSpeed = onSelectSpeed,
+                    onToggleSpeedLock = onToggleSpeedLock,
+                    danmakuEnabled = danmakuEnabled,
+                    onOpenDanmakuSettings = { danmakuSettingsDialogVisible = true },
+                    subtitleController = subtitleController,
+                    danmakuController = danmakuController,
+                    sponsorController = sponsorController,
+                    danmakuDraft = danmakuDraft,
+                    onDanmakuDraftChange = { danmakuDraft = it },
+                    onSendDanmaku = sendDanmaku,
+                    chapterDialogVisible = chapterDialogVisible,
+                    onOpenChapterDialog = { chapterDialogVisible = true },
+                    onDismissChapterDialog = { chapterDialogVisible = false },
+                    danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
+                    onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
+                    sponsorSubmitDialog = renderSponsorSubmit,
                     onSubmitSponsor = if (state.selectedCid > 0L) {
                         { sponsorSubmitVisible = true }
                     } else {
                         null
                     },
-                    sponsorOverlay = { bottomPad, startPad ->
-                        if (sponsorBlockEnabled && sponsorSkipMode >= 0) {
-                            SponsorBlockPromptOverlay(
-                                undoNotice = sponsorController.undoNotice,
-                                promptSegment = sponsorController.promptSegment,
-                                poiSegment = sponsorController.poiSegment,
-                                bottomPad = bottomPad,
-                                startPad = startPad,
-                                onUndoSkip = { sponsorController.undoSkip(player) },
-                                onSkipPrompt = { sponsorController.skipPromptSegment(player) },
-                                onDismissPrompt = { sponsorController.dismissPromptSegment() },
-                                onJumpPoi = { sponsorController.jumpToPoi(player) },
-                                onDismissPoi = { sponsorController.dismissPoi() },
-                            )
-                        }
+                    onFullscreenChange = applyFullscreen,
+                    onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
+                        { PlaybackBridge.enterPipNow(activity) }
+                    } else {
+                        null
                     },
-                    subtitleOverlay = { chromeVisible ->
-                        SubtitleOverlay(
-                            cues = subtitleController.cues,
-                            positionMs = positionMs,
-                            fullscreen = fullscreen,
-                            controlsVisible = chromeVisible,
-                            inPip = inPipMode,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    },
-                    danmakuComposer = { onFocusChange ->
-                        FullscreenDanmakuComposer(
-                            draft = danmakuDraft,
-                            onDraftChange = { danmakuDraft = it },
-                            onSend = sendDanmaku,
-                            onFocusChange = onFocusChange,
-                        )
-                    },
-                    overlay = {
-                        DanmakuOverlay(
-                            player = player,
-                            items = danmakuController.items,
-                            isPlaying = isPlaying,
-                            settings = danmakuSettings,
-                        )
-                    },
-                    danmakuActions = rememberDanmakuActions(
-                        aid = state.detail?.aid ?: 0L,
-                        cid = state.selectedCid,
-                        fullscreen = fullscreen,
-                        positionMs = { player.currentPosition.coerceAtLeast(0L) },
-                        isLoggedIn = { container.session.isLoggedIn() },
-                        repository = container.danmaku,
-                        controller = danmakuController,
-                        scope = scope,
-                        onShowMessage = viewModel::showMessage,
-                        onShowLoginHint = viewModel::showLoginHint,
-                    ),
                 )
-                if (fullscreen) {
-                    VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)
-                    CompositionLocalProvider(
-                        LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
-                    ) {
-                        VideoScreenDialogs(
-                            coinDialogVisible = false,
-                            coined = state.coined,
-                            onSelectCoin = {},
-                            onDismissCoin = {},
-                            favoriteFolders = null,
-                            onSelectFavorite = {},
-                            onDismissFavorite = {},
-                            danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
-                            danmakuSettings = danmakuSettings,
-                            settingsRepository = container.settings,
-                            onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
-                            chapterDialogVisible = chapterDialogVisible,
-                            chapters = subtitleController.chapters,
-                            positionMs = positionMs,
-                            onSelectChapter = { chapter ->
-                                chapterDialogVisible = false
-                                player.seekTo(chapter.fromMs)
-                                if (!player.isPlaying) player.play()
-                            },
-                            onDismissChapter = { chapterDialogVisible = false },
-                            sponsorSubmitDialog = renderSponsorSubmit,
-                            inlineInStage = true,
-                        )
-                    }
-                }
             }
         },
         detailContent = {
@@ -725,14 +517,14 @@ fun VideoScreen(
                 onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
                 onOpenVideo = { next -> nav.push(Route.Video(next)) },
                 chapters = subtitleController.chapters,
-                positionMs = positionMs,
+                positionMsProvider = { clock.positionMs },
                 onSelectChapter = { chapter ->
                     player?.seekTo(chapter.fromMs)
                     if (player?.isPlaying == false) player.play()
                 },
                 onOpenChapters = { chapterDialogVisible = true },
                 barBackdrops = barBackdrops,
-                blurActive = stageReady,
+                blurActive = blurActive,
                 backEnabled = !fullscreen,
                 commentRootId = commentRootId,
                 commentTargetId = commentTargetId,
@@ -742,25 +534,24 @@ fun VideoScreen(
             VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = false)
         },
         portraitCollapsedBar = {
-            val slotHeight = LocalPortraitSlotHeight.current
-            CollapsedVideoBar(
+            VideoCollapsedBarSlot(
+                player = player,
                 isPlaying = isPlaying,
-                onBack = { nav.pop() },
-                onHome = { nav.popToMain() },
-                onPlayPause = {
-                    val p = player ?: return@CollapsedVideoBar
-                    if (p.isPlaying) p.pause() else p.play()
-                },
-                onExpand = { slotHeight.floatValue = 0f },
-                playbackEndMode = playbackEndMode,
-                onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
-                onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
+                container = container,
+                nav = nav,
+                bvid = bvid,
+                state = state,
                 backdrop = barBackdrops.barMaterial,
             )
         },
     )
 
-    if (!fullscreen) {
+    // 竖屏弹窗只在真有弹窗时挂载：平时这里不订阅任何东西，也不会跟着进度重组。
+    if (!fullscreen && (
+            coinDialogVisible || favoriteFolders != null || danmakuSettingsDialogVisible ||
+                chapterDialogVisible || renderSponsorSubmit != null
+            )
+    ) {
         VideoScreenDialogs(
             coinDialogVisible = coinDialogVisible,
             coined = state.coined,
@@ -770,12 +561,16 @@ fun VideoScreen(
             onSelectFavorite = { mediaId -> favoriteFolders = null; viewModel.favorite(mediaId) },
             onDismissFavorite = { favoriteFolders = null },
             danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
-            danmakuSettings = danmakuSettings,
+            danmakuSettings = if (danmakuSettingsDialogVisible) {
+                container.settings.danmakuSettings.collectAsStateWithLifecycle().value
+            } else {
+                null
+            },
             settingsRepository = container.settings,
             onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
             chapterDialogVisible = chapterDialogVisible,
             chapters = subtitleController.chapters,
-            positionMs = positionMs,
+            positionMs = clock.positionMs,
             onSelectChapter = { chapter ->
                 chapterDialogVisible = false
                 player?.seekTo(chapter.fromMs)

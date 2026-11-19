@@ -75,7 +75,7 @@ internal fun VideoDetailSection(
     onOpenUser: (Long) -> Unit,
     onOpenVideo: (String) -> Unit,
     chapters: List<VideoChapter> = emptyList(),
-    positionMs: Long = 0L,
+    positionMsProvider: () -> Long = { 0L },
     onSelectChapter: (VideoChapter) -> Unit = {},
     onOpenChapters: () -> Unit = {},
     barBackdrops: VideoBarBackdrops? = null,
@@ -103,7 +103,8 @@ internal fun VideoDetailSection(
             state = detailPager,
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdropIf(BlurEffectsEnabled && blurActive, detailLayerBackdrop)
+                // 图层常驻：LayerBackdrop 自己按消费者数量录制，进退场时拆装节点反而会让整页重录。
+                .layerBackdropIf(BlurEffectsEnabled, detailLayerBackdrop)
                 .background(pageBg),
             beyondViewportPageCount = 0,
             key = { DETAIL_PAGES[it] },
@@ -139,7 +140,7 @@ internal fun VideoDetailSection(
                         topInset = contentTop,
                         bottomInset = navBarBottom,
                         chapters = chapters,
-                        positionMs = positionMs,
+                        positionMsProvider = positionMsProvider,
                         onSelectChapter = onSelectChapter,
                         onOpenChapters = onOpenChapters,
                         onTagClick = { tag ->
