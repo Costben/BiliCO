@@ -1,6 +1,13 @@
 package erl.bilico.data.model
 
 /** 推荐流卡片所需的字段，UI 不直接消费接口模型。 */
+data class FeedDislikeReason(
+    val id: Int,
+    val name: String,
+    val toast: String = "",
+    val isFeedback: Boolean = false,
+)
+
 data class FeedVideo(
     val bvid: String,
     val aid: Long,
@@ -10,11 +17,19 @@ data class FeedVideo(
     val upMid: Long,
     val upFace: String = "",
     val playCount: Long,
+    val likeCount: Long = 0,
     val danmaku: Long = 0,
     val durationSec: Int,
     val playCountText: String,
     val danmakuText: String = "",
     val durationText: String,
+    val isFollowed: Boolean = false,
+    val officialType: Int = -1,
+    val appParam: Long = 0L,
+    val cardGoto: String = "av",
+    val fromAppFeed: Boolean = false,
+    val dislikeReasons: List<FeedDislikeReason> = emptyList(),
+    val dislikeFeedbacks: List<FeedDislikeReason> = emptyList(),
 )
 
 data class VideoPart(
@@ -146,6 +161,8 @@ data class Comment(
     val mid: Long = 0L,
     val location: String = "",
     val vipColorHex: String = "",
+    val officialType: Int = -1,
+    val officialDesc: String = "",
     val sailing: CommentSailing? = null,
     val subReplyEntryText: String = "",
     val isTop: Boolean = false,
@@ -247,6 +264,16 @@ data class DynamicArticleCard(
     val dynamicId: String = "",
 )
 
+/** 动态卡片内嵌的投票摘要；详细选项与实时票数按 `voteId` 从 `vote_info` 拉取。 */
+data class DynamicVoteSummary(
+    val voteId: Long,
+    val title: String = "",
+    val endTimeSec: Long = 0L,
+    val joinNum: Long = 0L,
+    val choiceCnt: Int = 1,
+    val status: Int = 0,
+)
+
 data class DynamicItemUi(
     val id: String,
     val dynamicId: String = "",
@@ -254,6 +281,8 @@ data class DynamicItemUi(
     val authorMid: Long = 0L,
     val authorName: String,
     val authorFace: String,
+    val authorOfficialType: Int = -1,
+    val authorOfficialDesc: String = "",
     /** 头像框；空串就是不挂框。 */
     val authorPendant: String = "",
     /** 大会员昵称色（`#RRGGBB`），空串用默认前景色。 */
@@ -276,6 +305,7 @@ data class DynamicItemUi(
     val live: DynamicLiveCard? = null,
     /** 专栏或图文长文：点开进阅读页。 */
     val article: DynamicArticleCard? = null,
+    val vote: DynamicVoteSummary? = null,
     val forward: DynamicItemUi? = null,
     val forwardCount: Int = 0,
     val commentCount: Int = 0,
@@ -304,19 +334,29 @@ data class DynamicLockedUi(
     val jumpUrl: String = "",
 )
 
+enum class HistoryBusiness {
+    VIDEO,
+    LIVE,
+    ARTICLE,
+}
+
 data class HistoryItem(
     val key: String = "",
-    val bvid: String,
+    val bvid: String = "",
     val cid: Long = 0L,
     val seasonId: Long = 0L,
     val epId: Long = 0L,
     val isPgc: Boolean = false,
+    val businessType: HistoryBusiness = HistoryBusiness.VIDEO,
+    val targetId: Long = 0L,
+    val badge: String = "",
+    val liveStatus: Int = 0,
     val title: String,
     val cover: String,
     val upName: String,
     val viewAtSec: Long,
-    val progressSec: Int,
-    val durationSec: Int,
+    val progressSec: Int = 0,
+    val durationSec: Int = 0,
 )
 
 /** 历史记录条目按需补的播放量 / 弹幕数（接口列表本身不带）。 */
@@ -344,6 +384,8 @@ data class LiveRoomDetail(
     val cover: String,
     val anchorName: String,
     val anchorFace: String,
+    val anchorOfficialType: Int = -1,
+    val anchorOfficialDesc: String = "",
     val online: Long,
     val description: String,
     val areaName: String,
@@ -357,14 +399,35 @@ data class LivePlayback(
     val candidates: List<LiveCandidate>,
     val qualities: List<QualityOption>,
     val activeQuality: Int,
+    val streams: List<LiveStreamNode> = emptyList(),
+    val initialSelection: LiveStreamSelection = LiveStreamSelection(),
+    val onlyAudio: Boolean = false,
 ) {
     val url: String get() = candidates.first().url
     val isHls: Boolean get() = candidates.first().isHls
+
+    fun resolveCandidate(selection: LiveStreamSelection): LiveCandidate? {
+        val stream = streams.getOrNull(selection.streamIndex) ?: streams.firstOrNull() ?: return null
+        val format = stream.formats.getOrNull(selection.formatIndex) ?: stream.formats.firstOrNull() ?: return null
+        val codec = format.codecs.getOrNull(selection.codecIndex) ?: format.codecs.firstOrNull() ?: return null
+        val urlInfo = codec.urlInfos.getOrNull(selection.urlIndex) ?: codec.urlInfos.firstOrNull() ?: return null
+        val fullUrl = urlInfo.host + codec.baseUrl + urlInfo.extra
+        return LiveCandidate(
+            url = fullUrl,
+            isHls = stream.protocolName == "http_hls" || fullUrl.contains(".m3u8", ignoreCase = true),
+            selection = selection,
+            currentQn = codec.currentQn,
+            acceptQn = codec.acceptQn,
+        )
+    }
 }
 
 data class LiveCandidate(
     val url: String,
     val isHls: Boolean,
+    val selection: LiveStreamSelection = LiveStreamSelection(),
+    val currentQn: Int = 0,
+    val acceptQn: List<Int> = emptyList(),
 )
 
 // ---------- 搜索 / 空间 / 收藏 / 关注 ----------
@@ -388,6 +451,7 @@ data class SearchUser(
     val fansText: String,
     val videoCountText: String,
     val level: Int = 0,
+    val officialType: Int = -1,
     val officialDesc: String = "",
     val recentVideos: List<SearchVideo> = emptyList(),
 )
@@ -450,6 +514,8 @@ data class SpaceProfile(
     val followersText: String,
     val followingText: String,
     val likesText: String,
+    val officialType: Int = -1,
+    val officialDesc: String = "",
 )
 
 /** 空间投稿、收藏夹内容、稍后再看、历史共用的一张视频条目。 */
@@ -481,6 +547,8 @@ data class FollowingUser(
     val name: String,
     val face: String,
     val sign: String,
+    val officialType: Int = -1,
+    val officialDesc: String = "",
 )
 
 data class QrLogin(

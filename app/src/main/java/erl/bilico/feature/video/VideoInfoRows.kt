@@ -1,6 +1,7 @@
 package erl.bilico.feature.video
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,9 +44,11 @@ import erl.bilico.data.model.VideoEpisode
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.util.Formatters
 import erl.bilico.feature.feed.MoreMenu
+import erl.bilico.feature.feed.rememberVideoCardMenuItems
 import erl.bilico.feature.feed.shareVideo
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.LoadingImage
+import erl.bilico.ui.nestedBlockColor
 import erl.bilico.ui.components.StatLabel
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -67,6 +70,8 @@ internal val DESC_END_RESERVE = 8.dp
 internal fun UpRow(
     detail: VideoDetail,
     followers: Long?,
+    officialType: Int = -1,
+    officialDesc: String = "",
     following: Boolean,
     avatarPx: Int,
     onOpenUser: (Long) -> Unit,
@@ -76,12 +81,11 @@ internal fun UpRow(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CoverImage(
+        erl.bilico.ui.components.Avatar(
             url = Formatters.sizedImageUrl(detail.upFace, avatarPx, avatarPx),
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .clickable(enabled = detail.upMid > 0L) { onOpenUser(detail.upMid) },
+            size = 44.dp,
+            officialType = officialType,
+            modifier = Modifier.clickable(enabled = detail.upMid > 0L) { onOpenUser(detail.upMid) },
         )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
@@ -99,9 +103,29 @@ internal fun UpRow(
                 color = COUITheme.colorScheme.onSurfaceSecondary,
                 maxLines = 1,
             )
+            if (officialDesc.isNotBlank()) {
+                Text(
+                    text = officialDesc,
+                    style = COUITheme.textStyles.footnote2,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Spacer(Modifier.width(10.dp))
         FollowButton(following = following, onClick = onFollow)
+        if (detail.upMid > 0L) {
+            Spacer(Modifier.width(6.dp))
+            erl.bilico.ui.components.UserMoreMenu(
+                mid = detail.upMid,
+                name = detail.upName,
+                face = detail.upFace,
+                videoAid = detail.aid,
+                videoBvid = detail.bvid,
+                videoTitle = detail.title,
+            )
+        }
     }
 }
 
@@ -260,9 +284,14 @@ internal fun RelatedVideoRow(
                         StatLabel(COUIIcons.Messages, video.danmakuText)
                     }
                     Spacer(Modifier.weight(1f))
+                    val relatedMenuItems = rememberVideoCardMenuItems(
+                        video = video,
+                        onWatchLater = onWatchLater,
+                    )
                     MoreMenu(
                         onWatchLater = onWatchLater,
                         onShare = { shareVideo(context, video) },
+                        items = relatedMenuItems,
                     )
                 }
             }
@@ -304,82 +333,77 @@ internal fun CollectionRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(SquircleShape(8.dp))
-            .background(
-                if (selected) COUITheme.colorScheme.pressBackground else COUITheme.colorScheme.surface,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = index.toString(),
-            modifier = Modifier.width(28.dp),
-            style = COUITheme.textStyles.footnote1,
-            color = if (selected) {
-                COUITheme.colorScheme.primary
-            } else {
-                COUITheme.colorScheme.onSurfaceSecondary
-            },
-        )
-        Text(
-            text = episode.title.ifBlank { "第 $index 集" },
-            modifier = Modifier.weight(1f),
-            style = COUITheme.textStyles.body2,
-            color = if (selected) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (episode.durationSec > 0) {
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = Formatters.formatDuration(episode.durationSec),
-                style = COUITheme.textStyles.footnote2,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
-            )
-        }
-    }
+    SelectableEpisodeRow(
+        prefix = index.toString(),
+        prefixWidth = 28.dp,
+        title = episode.title.ifBlank { "第 $index 集" },
+        durationSec = episode.durationSec,
+        maxLines = 2,
+        selected = selected,
+        onClick = onClick,
+    )
 }
 
 @Composable
 internal fun PartRow(part: VideoPart, selected: Boolean, onClick: () -> Unit) {
+    SelectableEpisodeRow(
+        prefix = "P${part.index}",
+        prefixWidth = 36.dp,
+        title = part.title.ifBlank { "第 ${part.index} P" },
+        durationSec = part.durationSec,
+        maxLines = 1,
+        selected = selected,
+        onClick = onClick,
+    )
+}
+
+/** 合集与分P 共用选项行，配色与投票卡片选项行保持一致。 */
+@Composable
+private fun SelectableEpisodeRow(
+    prefix: String,
+    prefixWidth: androidx.compose.ui.unit.Dp,
+    title: String,
+    durationSec: Long,
+    maxLines: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val scheme = COUITheme.colorScheme
+    val rowShape = SquircleShape(10.dp)
+    val rowBg = if (selected) scheme.primary.copy(alpha = 0.12f) else nestedBlockColor()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(SquircleShape(8.dp))
-            .background(
-                if (selected) COUITheme.colorScheme.pressBackground else COUITheme.colorScheme.surface,
+            .clip(rowShape)
+            .background(rowBg)
+            .then(
+                if (selected) Modifier.border(1.dp, scheme.primary.copy(alpha = 0.55f), rowShape)
+                else Modifier,
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "P${part.index}",
-            modifier = Modifier.width(36.dp),
+            text = prefix,
+            modifier = Modifier.width(prefixWidth),
             style = COUITheme.textStyles.footnote1,
-            color = if (selected) {
-                COUITheme.colorScheme.primary
-            } else {
-                COUITheme.colorScheme.onSurfaceSecondary
-            },
+            color = if (selected) scheme.primary else scheme.onSurfaceSecondary,
         )
         Text(
-            text = part.title.ifBlank { "第 ${part.index} P" },
+            text = title,
             modifier = Modifier.weight(1f),
             style = COUITheme.textStyles.body2,
-            color = if (selected) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurface,
-            maxLines = 1,
+            color = if (selected) scheme.primary else scheme.onSurface,
+            maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
         )
-        if (part.durationSec > 0) {
+        if (durationSec > 0) {
+            Spacer(Modifier.width(8.dp))
             Text(
-                text = Formatters.formatDuration(part.durationSec),
+                text = Formatters.formatDuration(durationSec),
                 style = COUITheme.textStyles.footnote2,
-                color = COUITheme.colorScheme.onSurfaceSecondary,
+                color = if (selected) scheme.primary else scheme.onSurfaceSecondary,
             )
         }
     }

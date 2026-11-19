@@ -2,6 +2,7 @@ package erl.bilico.feature.feed
 
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -53,6 +54,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.launch
 
 /** 推荐流与排行榜共用的视频卡片。 */
 @Composable
@@ -126,8 +128,10 @@ internal fun FeedCard(
             Spacer(Modifier.height(6.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(video.upFace, 18.dp)
-                Spacer(Modifier.width(6.dp))
+                if (video.upFace.isNotBlank()) {
+                    Avatar(video.upFace, 18.dp, officialType = video.officialType)
+                    Spacer(Modifier.width(6.dp))
+                }
                 Text(
                     text = video.upName.ifBlank { "未知 UP" },
                     fontSize = 12.sp,
@@ -148,31 +152,128 @@ internal fun FeedCard(
                     StatLabel(COUIIcons.Messages, video.danmakuText)
                 }
                 Spacer(Modifier.weight(1f))
+                val cardMenuItems = rememberVideoCardMenuItems(
+                    video = video,
+                    onWatchLater = onWatchLater,
+                )
                 MoreMenu(
                     onWatchLater = onWatchLater,
                     onShare = { shareVideo(context, video) },
+                    items = cardMenuItems,
                 )
             }
         }
     }
 
+        val longPressItems = rememberVideoCardMenuItems(
+            video = video,
+            onWatchLater = onWatchLater,
+        )
         CouiPopupMenu(
             show = menuExpanded,
             onDismiss = { menuExpanded = false },
-            items = listOf(
-                CouiMenuItem("稍后再看", onWatchLater),
-                CouiMenuItem("分享", { shareVideo(context, video) }),
-            ),
+            items = longPressItems,
             preciseClickState = pressState,
         )
     }
 }
 
-/** 卡片右下角的三个点：COUI 的玻璃弹层菜单，稍后再看与分享。与 UP 主头像同高。 */
+@Composable
+internal fun rememberVideoCardMenuItems(
+    video: FeedVideo,
+    onWatchLater: () -> Unit,
+): List<CouiMenuItem> {
+    val context = LocalContext.current
+    val container = erl.bilico.di.LocalAppContainer.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var showDislike by remember(video.bvid) { mutableStateOf(false) }
+    var showReport by remember(video.bvid) { mutableStateOf(false) }
+    var showKeyword by remember(video.bvid) { mutableStateOf(false) }
+
+    if (showDislike) {
+        erl.bilico.ui.components.FeedDislikeDialog(
+            video = video,
+            onDismiss = { showDislike = false },
+        )
+    }
+    if (showReport && video.aid > 0L) {
+        erl.bilico.ui.components.ReportDialog(
+            target = erl.bilico.ui.components.ReportTarget.Video(
+                aid = video.aid,
+                bvid = video.bvid,
+                title = video.title,
+            ),
+            onDismiss = { showReport = false },
+        )
+    }
+    if (showKeyword) {
+        erl.bilico.ui.components.KeywordBlockDialog(
+            allowedScopes = listOf(
+                erl.bilico.data.repository.BlockKeywordScope.VIDEO_TITLE,
+                erl.bilico.data.repository.BlockKeywordScope.UP_NAME,
+            ),
+            initialScope = erl.bilico.data.repository.BlockKeywordScope.VIDEO_TITLE,
+            scopeInitialKeywords = mapOf(
+                erl.bilico.data.repository.BlockKeywordScope.VIDEO_TITLE to video.title,
+                erl.bilico.data.repository.BlockKeywordScope.UP_NAME to video.upName,
+            ),
+            onDismiss = { showKeyword = false },
+        )
+    }
+
+    return remember(video, onWatchLater, container, context, scope) {
+        buildList {
+            add(CouiMenuItem("稍后再看", onWatchLater))
+            add(CouiMenuItem("分享", { shareVideo(context, video) }))
+            if (container != null) {
+                add(CouiMenuItem("我不想看", onClick = { showDislike = true }, group = 1))
+                add(CouiMenuItem("关键词屏蔽", onClick = { showKeyword = true }, group = 1))
+                if (video.upMid > 0L) {
+                    add(
+                        CouiMenuItem(
+                            label = "屏蔽该 UP 主",
+                            group = 1,
+                            onClick = {
+                                if (container.session.isLoggedIn() && container.session.csrf().isNotBlank()) {
+                                    scope.launch {
+                                        container.blocks.toggleServerBlacklist(
+                                            mid = video.upMid,
+                                            add = true,
+                                            name = video.upName,
+                                            face = video.upFace,
+                                        ).onSuccess {
+                                            Toast.makeText(context, "已屏蔽 UP 主（已同步账号黑名单）", Toast.LENGTH_SHORT).show()
+                                        }.onFailure { err ->
+                                            container.blocks.blockUserLocally(video.upMid, video.upName, video.upFace)
+                                            Toast.makeText(
+                                                context,
+                                                "已本地屏蔽 UP 主 ${video.upName}（云端同步失败：${err.message ?: "未知错误"}）",
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                    }
+                                } else {
+                                    container.blocks.blockUserLocally(video.upMid, video.upName, video.upFace)
+                                    Toast.makeText(context, "已本地屏蔽 UP 主 ${video.upName}", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        ),
+                    )
+                }
+                if (video.aid > 0L) {
+                    add(CouiMenuItem("举报视频", onClick = { showReport = true }, group = 2))
+                }
+            }
+        }
+    }
+}
+
+/** 卡片右下角的三个点：COUI 的玻璃弹层菜单，稍后再看、分享、屏蔽与举报。 */
 @Composable
 internal fun MoreMenu(
     onWatchLater: () -> Unit,
     onShare: () -> Unit,
+    items: List<CouiMenuItem>? = null,
 ) {
     val scheme = COUITheme.colorScheme
     var expanded by remember { mutableStateOf(false) }
@@ -201,7 +302,7 @@ internal fun MoreMenu(
         CouiPopupMenu(
             show = expanded,
             onDismiss = { expanded = false },
-            items = listOf(
+            items = items ?: listOf(
                 CouiMenuItem("稍后再看", onWatchLater),
                 CouiMenuItem("分享", onShare),
             ),

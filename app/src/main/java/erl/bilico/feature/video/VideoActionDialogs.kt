@@ -9,11 +9,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.FavoriteFolder
+import erl.bilico.data.model.VideoDetail
+import erl.bilico.data.model.VideoEpisode
+import erl.bilico.data.util.Formatters
+import erl.bilico.ui.components.CouiMenuItem
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
@@ -116,6 +123,53 @@ internal fun FavoriteFolderDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+/** 组装播放器底部「选集」更多菜单项（分P / 合集，仅两项及以上时返回非空列表）。 */
+@Composable
+internal fun rememberEpisodesMenuItems(
+    detail: VideoDetail?,
+    selectedCid: Long,
+    onSelectPart: (Int) -> Unit,
+    onSelectEpisode: (VideoEpisode) -> Unit,
+): List<CouiMenuItem> {
+    val partClickState by rememberUpdatedState(onSelectPart)
+    val episodeClickState by rememberUpdatedState(onSelectEpisode)
+    return remember(detail, selectedCid) {
+        if (detail == null) return@remember emptyList()
+        val pages = detail.pages.takeIf { it.size > 1 }.orEmpty()
+        val episodes = detail.collection?.episodes?.takeIf { it.size > 1 }.orEmpty()
+        if (pages.isEmpty() && episodes.isEmpty()) return@remember emptyList()
+        val partItems = pages.mapIndexed { index, part ->
+            CouiMenuItem(
+                label = "P${part.index} ${part.title.ifBlank { "第 ${part.index} P" }}",
+                summary = part.durationSec.takeIf { it > 0 }?.let(Formatters::formatDuration),
+                selected = part.cid == selectedCid,
+                onClick = { partClickState(index) },
+                group = 0,
+            )
+        }
+        val episodeItems = episodes.mapIndexed { index, episode ->
+            CouiMenuItem(
+                label = "${index + 1}. ${episode.title.ifBlank { "第 ${index + 1} 集" }}",
+                summary = episode.durationSec.takeIf { it > 0 }?.let(Formatters::formatDuration),
+                selected = episode.bvid == detail.bvid && (episode.cid <= 0L || episode.cid == selectedCid),
+                onClick = { episodeClickState(episode) },
+                group = 1,
+            )
+        }
+        when {
+            partItems.isNotEmpty() && episodeItems.isNotEmpty() -> {
+                val colTitle = detail.collection?.title?.ifBlank { "合集" } ?: "合集"
+                listOf(
+                    CouiMenuItem(label = "分P（${partItems.size}）", children = partItems, group = 0),
+                    CouiMenuItem(label = "$colTitle（${episodeItems.size}）", children = episodeItems, group = 0),
+                )
+            }
+            partItems.isNotEmpty() -> partItems
+            else -> episodeItems
         }
     }
 }

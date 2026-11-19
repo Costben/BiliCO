@@ -157,6 +157,7 @@ private fun DynamicAvatar(
         Avatar(
             url = avatarUrl,
             size = size * 0.86f,
+            officialType = item.authorOfficialType,
             modifier = Modifier.clickable(onClick = onClick),
         )
         if (pendantUrl.isNotBlank()) {
@@ -219,15 +220,75 @@ internal fun rememberDynamicMenuItems(
     onDelete: (() -> Unit)?,
 ): List<CouiMenuItem> {
     val context = LocalContext.current
-    return remember(item, onWatchLater, onDelete, context) {
+    val container = erl.bilico.di.LocalAppContainer.current
+    var showReport by remember(item.id) { mutableStateOf(false) }
+    var showKeyword by remember(item.id) { mutableStateOf(false) }
+
+    if (showReport && item.dynamicId.isNotBlank() && item.authorMid > 0L) {
+        erl.bilico.ui.components.ReportDialog(
+            target = erl.bilico.ui.components.ReportTarget.Dynamic(
+                dynamicId = item.dynamicId,
+                uid = item.authorMid,
+                authorName = item.authorName,
+                authorFace = item.authorFace,
+            ),
+            onDismiss = { showReport = false },
+        )
+    }
+    if (showKeyword) {
+        val allowed = buildList {
+            add(erl.bilico.data.repository.BlockKeywordScope.DYNAMIC)
+            add(erl.bilico.data.repository.BlockKeywordScope.UP_NAME)
+            if (item.video != null) add(erl.bilico.data.repository.BlockKeywordScope.VIDEO_TITLE)
+        }
+        val map = buildMap {
+            put(erl.bilico.data.repository.BlockKeywordScope.DYNAMIC, item.content.ifBlank { item.title })
+            put(erl.bilico.data.repository.BlockKeywordScope.UP_NAME, item.authorName)
+            item.video?.let { put(erl.bilico.data.repository.BlockKeywordScope.VIDEO_TITLE, it.title) }
+        }
+        erl.bilico.ui.components.KeywordBlockDialog(
+            allowedScopes = allowed,
+            initialScope = erl.bilico.data.repository.BlockKeywordScope.DYNAMIC,
+            scopeInitialKeywords = map,
+            onDismiss = { showKeyword = false },
+        )
+    }
+
+    return remember(item, onWatchLater, onDelete, container, context) {
         buildList {
             val video = item.video
             if (video != null && onWatchLater != null) {
                 add(CouiMenuItem("稍后再看", { onWatchLater(video) }))
             }
             add(CouiMenuItem("分享动态", { shareDynamic(context, item) }))
+            if (container != null) {
+                if (item.authorMid > 0L) {
+                    add(
+                        CouiMenuItem(
+                            label = "屏蔽 UP 主",
+                            group = 1,
+                            onClick = {
+                                container.blocks.blockUserLocally(
+                                    item.authorMid,
+                                    item.authorName,
+                                    item.authorFace,
+                                )
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "已屏蔽 UP 主 ${item.authorName}",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        ),
+                    )
+                }
+                add(CouiMenuItem("按关键词屏蔽", onClick = { showKeyword = true }, group = 1))
+                if (item.dynamicId.isNotBlank() && item.authorMid > 0L) {
+                    add(CouiMenuItem("举报动态", onClick = { showReport = true }, group = 2))
+                }
+            }
             if (onDelete != null) {
-                add(CouiMenuItem("删除动态", onDelete, group = 1))
+                add(CouiMenuItem("删除动态", onDelete, group = 2))
             }
         }
     }

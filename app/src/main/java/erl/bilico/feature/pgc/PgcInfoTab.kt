@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,15 +53,17 @@ internal fun PgcInfoTab(
     onRetry: () -> Unit,
     onSelectEpisode: (Int) -> Unit,
     onSelectSeason: (Long) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+    topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     when {
-        detail == null && isLoading -> LoadingState(modifier.padding(bottom = bottomInset))
+        detail == null && isLoading -> LoadingState(modifier.padding(top = topInset, bottom = bottomInset))
 
         detail == null -> ErrorState(
             message = error ?: "番剧加载失败",
-            modifier = modifier.padding(bottom = bottomInset),
+            modifier = modifier.padding(top = topInset, bottom = bottomInset),
             onRetry = onRetry,
         )
 
@@ -70,6 +74,8 @@ internal fun PgcInfoTab(
             onToggleFollow = onToggleFollow,
             onSelectEpisode = onSelectEpisode,
             onSelectSeason = onSelectSeason,
+            listState = listState,
+            topInset = topInset,
             bottomInset = bottomInset,
             modifier = modifier,
         )
@@ -84,16 +90,19 @@ private fun PgcInfoContent(
     onToggleFollow: () -> Unit,
     onSelectEpisode: (Int) -> Unit,
     onSelectSeason: (Long) -> Unit,
+    listState: LazyListState,
+    topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     var descExpanded by rememberSaveable(detail.seasonId) { mutableStateOf(false) }
 
     LazyColumn(
+        state = listState,
         modifier = modifier.scrollEndHaptic(),
         contentPadding = PaddingValues(
             start = 16.dp,
-            top = 12.dp,
+            top = 12.dp + topInset,
             end = 16.dp,
             bottom = 12.dp + bottomInset,
         ),

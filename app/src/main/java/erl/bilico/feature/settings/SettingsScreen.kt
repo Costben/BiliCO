@@ -69,6 +69,7 @@ fun SettingsScreen(
     val returnBounce by container.settings.returnBounce.collectAsStateWithLifecycle()
     val quality by container.settings.defaultQuality.collectAsStateWithLifecycle()
     val cdnOption by container.settings.cdnOption.collectAsStateWithLifecycle()
+    val feedSource by container.settings.feedSource.collectAsStateWithLifecycle()
     val inAppBackgroundPlay by container.settings.inAppBackgroundPlay.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
@@ -292,6 +293,34 @@ fun SettingsScreen(
             }
         }
 
+        item(key = "block-title") { SectionTitle("内容过滤与屏蔽") }
+
+        item(key = "block") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
+                insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
+            ) {
+                OverlayDropdownPreference(
+                    items = FEED_SOURCE_OPTIONS,
+                    selectedIndex = feedSource.coerceIn(0, FEED_SOURCE_OPTIONS.lastIndex),
+                    title = "推荐信息流来源",
+                    summary = "切换首页推荐为 App 端或网页端；云端黑名单与「我不想看」偏好按当前账号同步",
+                    modifier = Modifier.testTag("settings_feed_source"),
+                    cardListPosition = CardListPosition.Head,
+                    onSelectedIndexChange = container.settings::setFeedSource,
+                )
+                PreferenceDivider()
+                ArrowPreference(
+                    title = "屏蔽管理",
+                    summary = "关键词、UP 主、黑名单、视频与推荐过滤",
+                    cardListPosition = CardListPosition.Tail,
+                    onClick = { nav.push(Route.BlockManager) },
+                )
+            }
+        }
+
         item(key = "storage-title") { SectionTitle("存储") }
 
         item(key = "storage") {
@@ -503,6 +532,7 @@ fun SettingsScreen(
 
 /** 下标即存储值：0 跟随系统，1 浅色，2 深色。 */
 private val DARK_MODE_OPTIONS = listOf("跟随系统", "浅色", "深色")
+private val FEED_SOURCE_OPTIONS = listOf("App 端推荐", "网页端推荐")
 private val AUTO_ROTATE_OPTIONS = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
 private val LONG_PRESS_SPEED_OPTIONS = listOf(150, 200, 250, 300, 400)
 private val SPONSOR_SKIP_MODES = listOf("自动跳过", "手动提示", "仅标记片段")

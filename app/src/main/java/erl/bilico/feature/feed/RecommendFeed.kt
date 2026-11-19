@@ -102,8 +102,9 @@ internal fun RecommendFeed(
     onCollapse: (Float) -> Unit,
     refreshTick: Int,
 ) {
-    val viewModel: FeedViewModel = viewModel { FeedViewModel(container.feed) }
+    val viewModel: FeedViewModel = viewModel { FeedViewModel(container.feed, container.settings) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val pullState = rememberFullPagePullToRefreshState()
     val density = LocalDensity.current
@@ -237,8 +238,8 @@ internal fun RecommendFeed(
                 }
             }
             val inserted = shown.inserted.coerceIn(0, shown.items.size)
-            val freshItems = shown.items.take(inserted)
-            val olderItems = shown.items.drop(inserted)
+            val freshItems = shown.items.take(inserted).filter { blocks.shouldShowFeedVideo(it) }
+            val olderItems = shown.items.drop(inserted).filter { blocks.shouldShowFeedVideo(it) }
             val card: @Composable (FeedVideo) -> Unit = { video ->
                 val origin = rememberExpandOrigin()
                 val topBar = LocalTopBarBounds.current

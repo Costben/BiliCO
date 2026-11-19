@@ -36,6 +36,8 @@ class SpaceRepository(
             val data = response.data ?: error("没有拿到用户资料")
             val stat = runCatching { api.relationStat(mid) }.getOrNull()?.data
             val likes = runCatching { api.upStat(mid) }.getOrNull()?.data?.likes
+            val officialType = data.official?.resolvedType() ?: -1
+            val officialDesc = data.official?.resolvedDesc().orEmpty()
             SpaceProfile(
                 mid = data.mid.takeIf { it > 0L } ?: mid,
                 name = data.name,
@@ -44,6 +46,8 @@ class SpaceRepository(
                 followersText = stat?.let { Formatters.formatStat(it.follower) } ?: "-",
                 followingText = stat?.let { Formatters.formatStat(it.following) } ?: "-",
                 likesText = likes?.let { Formatters.formatStat(it) } ?: "-",
+                officialType = officialType,
+                officialDesc = officialDesc,
             )
         }
     }

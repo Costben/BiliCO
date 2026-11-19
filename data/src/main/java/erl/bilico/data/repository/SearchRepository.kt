@@ -279,6 +279,7 @@ class SearchRepository(
             fansText = Formatters.formatStat(fans.toLong()) + "粉丝",
             videoCountText = "${Formatters.formatStat(videos.toLong())}视频",
             level = level,
+            officialType = officialVerify?.resolvedType() ?: -1,
             officialDesc = officialVerify?.desc.orEmpty(),
             recentVideos = res.mapNotNull { it.toVideo(fallbackAuthor = upName, fallbackMid = mid) }.take(2),
         )

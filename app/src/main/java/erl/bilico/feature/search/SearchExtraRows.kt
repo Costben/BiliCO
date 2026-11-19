@@ -299,7 +299,7 @@ internal fun SearchUserRow(
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(url = avatarUrl, size = 44.dp)
+                Avatar(url = avatarUrl, size = 44.dp, officialType = user.officialType)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

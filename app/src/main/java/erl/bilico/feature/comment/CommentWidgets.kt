@@ -132,13 +132,22 @@ internal fun BiliCommentItem(
             ),
     ) {
     Row(modifier = Modifier.fillMaxWidth()) {
-        CoverImage(
-            url = Formatters.sizedImageUrl(comment.avatar, avatarPx, avatarPx),
-            modifier = Modifier
-                .size(avatarDp)
-                .clip(CircleShape)
-                .clickable(onClick = openUser),
-        )
+        Box(modifier = Modifier.size(avatarDp)) {
+            CoverImage(
+                url = Formatters.sizedImageUrl(comment.avatar, avatarPx, avatarPx),
+                modifier = Modifier
+                    .size(avatarDp)
+                    .clip(CircleShape)
+                    .clickable(onClick = openUser),
+            )
+            if (comment.officialType == 0 || comment.officialType == 1) {
+                erl.bilico.ui.components.OfficialVerifyBadge(
+                    type = comment.officialType,
+                    size = (avatarDp * 0.36f).coerceIn(11.dp, 16.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                )
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(
@@ -179,7 +188,7 @@ internal fun BiliCommentItem(
                     Spacer(Modifier.width(8.dp))
                     CommentSailingBadge(sailing = sailing, isDark = isDark)
                 }
-                if (canManageOwn) {
+                if (menuItems.isNotEmpty()) {
                     CommentMoreButton(
                         menuItems = menuItems,
                         modifier = Modifier.padding(start = 4.dp),

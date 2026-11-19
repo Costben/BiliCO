@@ -63,6 +63,7 @@ class DynamicRepository(
     private val buvid: BuvidManager,
     private val session: SessionRepository? = null,
 ) {
+    val votes = DynamicVoteRepository(api, buvid, session)
     private val detailSeedCache = ConcurrentHashMap<String, DynamicItemUi>()
     private val _deletedIds = MutableSharedFlow<String>(extraBufferCapacity = 32)
     val deletedIds: SharedFlow<String> = _deletedIds.asSharedFlow()
@@ -366,6 +367,7 @@ class DynamicRepository(
             .toList()
         val video = major?.archive?.toCard()
         val live = major?.toLiveCard(authorMid = author?.mid ?: 0L)
+        val vote = extractDynamicVote(content, rawNodes)
 
         val articleId = major?.article?.id ?: 0L
         val selfId = idStr.ifBlank { basic?.ridStr.orEmpty() }
@@ -384,7 +386,7 @@ class DynamicRepository(
             live != null -> DynamicKind.LIVE
             video != null -> DynamicKind.VIDEO
             images.isNotEmpty() -> DynamicKind.IMAGES
-            text.isNotEmpty() || resolvedTitle.isNotEmpty() || article != null -> DynamicKind.TEXT
+            text.isNotEmpty() || resolvedTitle.isNotEmpty() || article != null || vote != null -> DynamicKind.TEXT
             else -> DynamicKind.UNSUPPORTED
         }
         if (kind == DynamicKind.UNSUPPORTED && author == null) return null
@@ -418,9 +420,9 @@ class DynamicRepository(
             id = "$depth:${selfId.ifBlank { fallbackId }}",
             dynamicId = selfId,
             kind = kind,
-            authorMid = author?.mid ?: 0L,
-            authorName = author?.name.orEmpty(),
+            authorMid = author?.mid ?: 0L, authorName = author?.name.orEmpty(),
             authorFace = Formatters.normalizeImageUrl(author?.face),
+            authorOfficialType = author?.officialVerify?.resolvedType() ?: -1, authorOfficialDesc = author?.officialVerify?.resolvedDesc().orEmpty(),
             authorPendant = Formatters.normalizeImageUrl(author?.pendant?.image),
             authorNameColor = nameColor,
             nameplateUrl = Formatters.normalizeImageUrl(decorate?.cardUrl),
@@ -437,6 +439,7 @@ class DynamicRepository(
             video = video,
             live = live,
             article = article,
+            vote = vote,
             forward = nested,
             forwardCount = stat?.forward?.count ?: 0,
             commentCount = stat?.comment?.count ?: 0,
@@ -588,13 +591,7 @@ class DynamicRepository(
         /** 长文型 opus 在 feed/详情正文里给图片占位用的写法。 */
         const val OPUS_IMAGE_PLACEHOLDER = "[图片]"
 
-        const val FEED_FEATURES =
-            "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote,decorationCard," +
-                "onlyfansAssetsV2,onlyfansQaCard,forwardListHidden,ugcDelete"
-
-        const val DETAIL_FEATURES =
-            "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote,endFooterHidden," +
-                "decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion," +
-                "forwardListHidden,htmlNewStyle"
+        const val FEED_FEATURES = "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote,decorationCard,onlyfansAssetsV2,onlyfansQaCard,forwardListHidden,ugcDelete"
+        const val DETAIL_FEATURES = "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion,forwardListHidden,htmlNewStyle"
     }
 }

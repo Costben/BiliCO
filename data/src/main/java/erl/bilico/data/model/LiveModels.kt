@@ -2,6 +2,7 @@ package erl.bilico.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class LiveListResponse(
@@ -184,6 +185,7 @@ data class LiveRoomDetailInfo(
 @Serializable
 data class LiveAnchorInfo(
     @SerialName("base_info") val baseInfo: LiveAnchorBaseInfo? = null,
+    @SerialName("official_info") val officialInfo: OfficialVerifyData? = null,
 )
 
 @Serializable
@@ -239,5 +241,12 @@ data class LiveContributionRankData(
 data class LiveDanmakuServer(
     val token: String,
     val urls: List<String>,
+)
+
+@Serializable
+data class LiveSuperChatResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: JsonObject? = null,
 )
 

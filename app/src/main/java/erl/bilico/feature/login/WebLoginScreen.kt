@@ -83,10 +83,16 @@ fun WebLoginScreen(
         CookieManager.getInstance().flush()
         val cookies = readBiliWebViewCookies()
         val sessData = cookies["SESSDATA"]?.trim().orEmpty()
+        val jct = cookies["bili_jct"]?.trim().orEmpty()
         if (sessData.isEmpty()) {
             if (manualTrigger) {
                 hint = "尚未检测到登录状态，请先在页面中完成登录"
             }
+            return
+        }
+        if (!manualTrigger && jct.isEmpty()) {
+            // 等待跨域名重定向写完 bili_jct，避免只保存 SESSDATA 导致点赞/拉黑/反馈提示「登录后可用」。
+            hint = "检测到登录态，正在同步安全校验 Cookie…"
             return
         }
         saving = true

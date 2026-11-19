@@ -1,6 +1,7 @@
 package erl.bilico.data.session
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import erl.bilico.data.biliDataStore
@@ -110,7 +111,13 @@ class CookieStore(
         var changed = false
         cookies.forEach { cookie ->
             val previous = values[cookie.name]
-            if (cookie.value.isEmpty()) {
+            val emptyOrDeleted = cookie.value.isEmpty() || cookie.value.equals("deleted", ignoreCase = true)
+            if (emptyOrDeleted) {
+                if (cookie.name in PROTECTED_SESSION_COOKIES) {
+                    // 仅记录域名与 Cookie 键名，不记录任何凭证值；避免个别子接口下发过期头静默清空登录态。
+                    Log.w("BiliCookie", "Ignored server clear for ${cookie.name} from ${url.host}${url.encodedPath}")
+                    return@forEach
+                }
                 if (previous != null) {
                     values.remove(cookie.name)
                     changed = true
@@ -134,5 +141,6 @@ class CookieStore(
 
     private companion object {
         val KEY_COOKIES = stringPreferencesKey("cookies")
+        val PROTECTED_SESSION_COOKIES = setOf("SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5")
     }
 }

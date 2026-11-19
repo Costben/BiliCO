@@ -103,6 +103,7 @@ internal fun PlayerGestureLayer(
     val currentPosition by rememberUpdatedState(positionMs)
     val currentDuration by rememberUpdatedState(durationMs)
     val currentSeekEnabled by rememberUpdatedState(seekEnabled)
+    val currentHasLongPressSpeed by rememberUpdatedState(longPressSpeed != null)
     val currentLongPressActive by rememberUpdatedState(longPressSpeed?.active == true)
     val currentLongPressLocked by rememberUpdatedState(longPressSpeed?.locked == true)
     val currentLongPressValue by rememberUpdatedState(longPressSpeed?.speed ?: 2f)
@@ -140,7 +141,7 @@ internal fun PlayerGestureLayer(
                         longPressed = false
                         longPressHeldRef[0] = false
                         val released = tryAwaitRelease()
-                        if (longPressed && (released || !adjustingSpeedRef[0])) {
+                        if (currentHasLongPressSpeed && longPressed && (released || !adjustingSpeedRef[0])) {
                             longPressed = false
                             longPressHeldRef[0] = false
                             if (!currentLongPressLocked) {
@@ -152,6 +153,7 @@ internal fun PlayerGestureLayer(
                     onTap = { offset -> currentOnTap(offset) },
                     onDoubleTap = { currentOnDoubleTap() },
                     onLongPress = {
+                        if (!currentHasLongPressSpeed) return@detectTapGestures
                         if (currentLongPressLocked) {
                             if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
                             currentOnLongPress(false)

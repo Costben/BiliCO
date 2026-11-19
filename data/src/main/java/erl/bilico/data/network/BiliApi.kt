@@ -1,11 +1,14 @@
 package erl.bilico.data.network
 
 import erl.bilico.data.model.AddReplyResponse
+import erl.bilico.data.model.AppealTagsResponse
+import erl.bilico.data.model.AppFeedResponse
 import erl.bilico.data.model.ArchiveStatResponse
 import erl.bilico.data.model.ArchiveTagsResponse
 import erl.bilico.data.model.ArticleViewResponse
 import erl.bilico.data.model.BangumiFollowResponse
 import erl.bilico.data.model.BaseResponse
+import erl.bilico.data.model.BlackListResponse
 import erl.bilico.data.model.CreateDynamicResponse
 import erl.bilico.data.model.DynamicDetailResponse
 import erl.bilico.data.model.DynamicFeedResponse
@@ -25,6 +28,8 @@ import erl.bilico.data.model.FavFolderResponse
 import erl.bilico.data.model.FavResourceResponse
 import erl.bilico.data.model.FollowingsResponse
 import erl.bilico.data.model.HistoryResponse
+import erl.bilico.data.model.HistoryShadowResponse
+import erl.bilico.data.model.VoteInfoResponse
 import erl.bilico.data.model.ImFetchMsgsResponse
 import erl.bilico.data.model.ImSendMsgResponse
 import erl.bilico.data.model.ImSessionListResponse
@@ -35,6 +40,9 @@ import erl.bilico.data.model.LiveListResponse
 import erl.bilico.data.model.LivePlayUrlResponse
 import erl.bilico.data.model.LiveRoomDetailResponse
 import erl.bilico.data.model.LiveRoomInfoResponse
+import erl.bilico.data.model.LiveSuperChatResponse
+import erl.bilico.data.model.MemberCardResponse
+import erl.bilico.data.model.MemberReportResponse
 import erl.bilico.data.model.NavResponse
 import erl.bilico.data.model.PlayUrlResponse
 import erl.bilico.data.model.PlayerInfoResponse
@@ -58,6 +66,7 @@ import okhttp3.RequestBody
 import retrofit2.http.FieldMap
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.Headers
 import retrofit2.http.Multipart
 import retrofit2.http.POST
@@ -71,6 +80,18 @@ interface BiliApi {
 
     @GET("x/web-interface/wbi/index/top/feed/rcmd")
     suspend fun recommend(@QueryMap params: Map<String, String>): RecommendResponse
+
+    @GET("https://app.bilibili.com/x/v2/feed/index")
+    suspend fun appRecommend(
+        @Header("buvid") buvid: String,
+        @QueryMap params: Map<String, String>,
+    ): AppFeedResponse
+
+    @GET("https://app.bilibili.com/x/feed/dislike")
+    suspend fun appFeedDislike(@QueryMap params: Map<String, String>): BaseResponse
+
+    @GET("https://app.bilibili.com/x/feed/dislike/cancel")
+    suspend fun appFeedDislikeCancel(@QueryMap params: Map<String, String>): BaseResponse
 
     @GET("x/web-interface/view")
     suspend fun videoInfo(@Query("bvid") bvid: String): VideoInfoResponse
@@ -186,6 +207,20 @@ interface BiliApi {
     @GET("x/web-interface/history/cursor")
     suspend fun history(@QueryMap params: Map<String, String>): HistoryResponse
 
+    @GET("x/web-interface/history/search")
+    suspend fun historySearch(@QueryMap params: Map<String, String>): HistoryResponse
+
+    @FormUrlEncoded
+    @POST("x/v2/history/clear")
+    suspend fun clearHistory(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @GET("x/v2/history/shadow")
+    suspend fun historyShadowStatus(): HistoryShadowResponse
+
+    @FormUrlEncoded
+    @POST("x/v2/history/shadow/set")
+    suspend fun setHistoryShadow(@FieldMap fields: Map<String, String>): BaseResponse
+
     @GET("x/web-interface/archive/stat")
     suspend fun archiveStat(@Query("bvid") bvid: String): ArchiveStatResponse
 
@@ -209,6 +244,9 @@ interface BiliApi {
 
     @GET("https://api.live.bilibili.com/xlive/general-interface/v1/rank/queryContributionRank")
     suspend fun liveContributionRank(@QueryMap params: Map<String, String>): LiveContributionRankResponse
+
+    @GET("https://api.live.bilibili.com/av/v1/SuperChat/getMessageList")
+    suspend fun liveSuperChats(@Query("room_id") roomId: Long): LiveSuperChatResponse
 
     @Headers(
         "Origin: https://live.bilibili.com",
@@ -351,6 +389,46 @@ interface BiliApi {
     @POST("x/relation/modify")
     suspend fun modifyRelation(@FieldMap fields: Map<String, String>): BaseResponse
 
+    @GET("x/web-interface/card")
+    suspend fun memberCard(
+        @Query("mid") mid: Long,
+        @Query("photo") photo: Boolean = false,
+    ): MemberCardResponse
+
+    @GET("x/relation/blacks")
+    suspend fun blackList(@QueryMap params: Map<String, String>): BlackListResponse
+
+    // ---------- 举报 ----------
+
+    @GET("x/web-interface/archive/appeal/tags")
+    suspend fun appealTags(): AppealTagsResponse
+
+    @FormUrlEncoded
+    @POST("x/web-interface/appeal/v2/submit")
+    suspend fun reportVideo(
+        @Header("buid") buid: String,
+        @FieldMap fields: Map<String, String>,
+    ): BaseResponse
+
+    @Headers(
+        "Origin: https://space.bilibili.com",
+        "Referer: https://space.bilibili.com/",
+    )
+    @FormUrlEncoded
+    @POST("https://space.bilibili.com/ajax/report/add")
+    suspend fun reportMember(@FieldMap fields: Map<String, String>): MemberReportResponse
+
+    @FormUrlEncoded
+    @POST("x/dynamic/feed/dynamic_report/add")
+    suspend fun reportDynamic(
+        @Query("csrf") csrf: String,
+        @FieldMap fields: Map<String, String>,
+    ): BaseResponse
+
+    @FormUrlEncoded
+    @POST("x/v2/reply/report")
+    suspend fun reportComment(@FieldMap fields: Map<String, String>): BaseResponse
+
     // ---------- 消息 ----------
 
     @GET("https://api.bilibili.com/x/msgfeed/reply")
@@ -376,6 +454,13 @@ interface BiliApi {
     @FormUrlEncoded
     @POST("https://api.vc.bilibili.com/web_im/v1/web_im/send_msg")
     suspend fun imSendMsg(@FieldMap params: Map<String, String>): ImSendMsgResponse
+
+    @GET("https://api.vc.bilibili.com/vote_svr/v1/vote_svr/vote_info")
+    suspend fun voteInfo(@Query("vote_id") voteId: Long): VoteInfoResponse
+
+    @FormUrlEncoded
+    @POST("https://api.vc.bilibili.com/vote_svr/v1/vote_svr/do_vote")
+    suspend fun doVote(@FieldMap fields: Map<String, String>): BaseResponse
 }
 
 interface PassportApi {
@@ -388,7 +473,36 @@ interface PassportApi {
     @FormUrlEncoded
     @POST("x/passport-tv-login/h5/refresh")
     suspend fun refreshToken(@FieldMap params: Map<String, String>): TvRefreshResponse
+
+    @FormUrlEncoded
+    @POST("x/passport-tv-login/qrcode/auth_code")
+    suspend fun generateTvAuthCode(@FieldMap params: Map<String, String>): TvAuthCodeResponse
+
+    @Headers(
+        "Origin: https://passport.bilibili.com",
+        "Referer: https://passport.bilibili.com/",
+    )
+    @FormUrlEncoded
+    @POST("x/passport-tv-login/h5/qrcode/confirm")
+    suspend fun confirmTvQrCode(@FieldMap params: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
+    @POST("x/passport-tv-login/qrcode/poll")
+    suspend fun pollTvQrCode(@FieldMap params: Map<String, String>): TvRefreshResponse
 }
+
+@kotlinx.serialization.Serializable
+data class TvAuthCodeResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: TvAuthCodeData? = null,
+)
+
+@kotlinx.serialization.Serializable
+data class TvAuthCodeData(
+    @kotlinx.serialization.SerialName("auth_code") val authCode: String = "",
+    val url: String = "",
+)
 
 @kotlinx.serialization.Serializable
 data class TvRefreshResponse(
@@ -403,4 +517,16 @@ data class TvRefreshData(
     @kotlinx.serialization.SerialName("access_token") val accessToken: String = "",
     @kotlinx.serialization.SerialName("refresh_token") val refreshToken: String = "",
     @kotlinx.serialization.SerialName("expires_in") val expiresIn: Long = 0,
+    @kotlinx.serialization.SerialName("cookie_info") val cookieInfo: TvCookieInfo? = null,
+)
+
+@kotlinx.serialization.Serializable
+data class TvCookieInfo(
+    val cookies: List<TvCookieItem> = emptyList(),
+)
+
+@kotlinx.serialization.Serializable
+data class TvCookieItem(
+    val name: String = "",
+    val value: String = "",
 )

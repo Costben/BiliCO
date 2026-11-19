@@ -83,6 +83,10 @@ fun CommentTab(
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
+    val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
+    val visibleComments = remember(state.items, blocks) {
+        state.items.mapNotNull { blocks.filterCommentTree(it) }
+    }
     val currentMid = account?.mid ?: container.session.mid()
     val localThreadController = remember { ReplyThreadController() }
     val threadController = replyThreadController ?: localThreadController
@@ -127,6 +131,7 @@ fun CommentTab(
             }
     }
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalCommentTarget provides (oid to type)) {
     Box(modifier) {
     Column(Modifier.fillMaxSize()) {
         Box(
@@ -177,7 +182,7 @@ fun CommentTab(
                             )
                         }
                     }
-                    items(state.items, key = { it.id }) { comment ->
+                    items(visibleComments, key = { it.id }) { comment ->
                         // 灰底页面 → 白卡片 → 浅灰楼中楼，三层配色照微博评论那套来。
                         Card(
                             modifier = Modifier
@@ -365,6 +370,7 @@ fun CommentTab(
             initialIndex = index,
             onDismiss = { imageViewer = null },
         )
+    }
     }
     }
 }

@@ -77,6 +77,10 @@ fun RankingSection(
 ) {
     val viewModel: RankingViewModel = viewModel { RankingViewModel(container.ranking) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
+    val visibleItems = remember(state.items, blocks) {
+        state.items.filter { blocks.shouldShowFeedVideo(it) }
+    }
     val scope = rememberCoroutineScope()
     val pullState = rememberFullPagePullToRefreshState()
     val density = LocalDensity.current
@@ -165,7 +169,7 @@ fun RankingSection(
             }
 
             items(
-                items = state.items,
+                items = visibleItems,
                 key = { it.bvid },
                 contentType = { "rank-card" },
             ) { video ->

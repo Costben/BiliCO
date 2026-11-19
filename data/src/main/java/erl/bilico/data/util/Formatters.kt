@@ -167,4 +167,37 @@ object Formatters {
             else -> java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").format(viewed)
         }
     }
+
+    private const val BV_XOR_CODE = 23442827791579L
+    private const val BV_MAX_AID = 1L shl 51
+    private const val BV_BASE = 58L
+    private const val BV_TABLE = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf"
+
+    /** 将数字 aid 转为 BV 号（对齐官方 / PiliPlus Base58 算法）。 */
+    fun av2bv(aid: Long): String {
+        if (aid <= 0L) return ""
+        val bytes = charArrayOf('B', 'V', '1', '0', '0', '0', '0', '0', '0', '0', '0', '0')
+        var bvIndex = bytes.size - 1
+        var tmp = (BV_MAX_AID or aid) xor BV_XOR_CODE
+        while (tmp > 0L && bvIndex >= 3) {
+            bytes[bvIndex--] = BV_TABLE[(tmp % BV_BASE).toInt()]
+            tmp /= BV_BASE
+        }
+        val t1 = bytes[3]; bytes[3] = bytes[9]; bytes[9] = t1
+        val t2 = bytes[4]; bytes[4] = bytes[7]; bytes[7] = t2
+        return String(bytes)
+    }
+
+    /** 将 `96.6万` / `1.2亿` / `2011` 等简写数字还原为近似数值，供过滤规则使用。 */
+    fun parseStatCount(raw: String): Long {
+        val text = raw.trim()
+        if (text.isEmpty()) return 0L
+        val clean = Regex("([0-9]+(?:\\.[0-9]+)?)([万亿]?)").find(text) ?: return 0L
+        val num = clean.groupValues[1].toDoubleOrNull() ?: return 0L
+        return when (clean.groupValues[2]) {
+            "万" -> (num * 10_000.0).toLong()
+            "亿" -> (num * 100_000_000.0).toLong()
+            else -> num.toLong()
+        }
+    }
 }

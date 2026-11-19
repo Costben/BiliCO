@@ -16,8 +16,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -224,6 +226,19 @@ internal fun SearchPanelBody(
         CompositionLocalProvider(LocalBackdrop provides if (BlurEffectsEnabled) searchBackdrop else null) {
             val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
             val bottomPadding = maxOf(16.dp + navBottomPadding(), imeBottom + 16.dp)
+            val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
+            val visibleState = remember(state, blocks) {
+                state.copy(
+                    allVideos = state.allVideos.filter { blocks.shouldShowSearchVideo(it) },
+                    videos = state.videos.filter { blocks.shouldShowSearchVideo(it) },
+                    allUsers = state.allUsers.filterNot {
+                        blocks.isMidBlocked(it.mid) || blocks.matchesUpName(it.name)
+                    },
+                    users = state.users.filterNot {
+                        blocks.isMidBlocked(it.mid) || blocks.matchesUpName(it.name)
+                    },
+                )
+            }
             SearchResultContainer(
                 state = transitionState,
                 modifier = Modifier.fillMaxSize(),
@@ -263,7 +278,7 @@ internal fun SearchPanelBody(
                         }
                     } else if (resultsVisible) {
                         searchResultItems(
-                            state = state,
+                            state = visibleState,
                             nav = nav,
                             rowScrollState = rowScrollState,
                             topBarBounds = barBounds,

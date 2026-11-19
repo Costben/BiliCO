@@ -1,9 +1,11 @@
 package erl.bilico.di
 
 import android.content.Context
+import androidx.compose.runtime.staticCompositionLocalOf
 import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.TokenRefreshHelper
 import erl.bilico.data.repository.ArticleRepository
+import erl.bilico.data.repository.BlockRepository
 import erl.bilico.data.repository.CommentRepository
 import erl.bilico.data.repository.DanmakuRepository
 import erl.bilico.data.repository.DynamicRepository
@@ -18,6 +20,7 @@ import erl.bilico.data.repository.MessageRepository
 import erl.bilico.data.repository.PgcRepository
 import erl.bilico.data.repository.RankingRepository
 import erl.bilico.data.repository.RelationRepository
+import erl.bilico.data.repository.ReportRepository
 import erl.bilico.data.repository.SearchRepository
 import erl.bilico.data.repository.SpaceRepository
 import erl.bilico.data.repository.SponsorBlockRepository
@@ -26,6 +29,7 @@ import erl.bilico.data.repository.VideoRepository
 import erl.bilico.data.repository.WatchLaterRepository
 import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.settings.SettingsRepository
+import erl.bilico.feature.cast.DlnaCastController
 import erl.bilico.update.AppUpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,9 +54,11 @@ class AppContainer(context: Context) {
         scope = scope,
     )
 
+    val settings = SettingsRepository(appContext, scope)
+
     val tokenRefresh = TokenRefreshHelper(client.passportApi, session)
 
-    val feed = FeedRepository(client.api, client.wbi, client.buvid)
+    val feed = FeedRepository(client.api, client.wbi, client.buvid, session, client.cookieStore, tokenRefresh, settings)
 
     val video = VideoRepository(client.api, client.wbi, client.buvid, session, client.okHttp)
 
@@ -64,11 +70,9 @@ class AppContainer(context: Context) {
 
     val articles = ArticleRepository(client.api, client.wbi, client.buvid)
 
-    val history = HistoryRepository(client.api, client.buvid)
+    val history = HistoryRepository(client.api, client.buvid, session)
 
     val live = LiveRepository(client.api, client.wbi, client.buvid)
-
-    val settings = SettingsRepository(appContext, scope)
 
     val updater = AppUpdateManager(appContext, settings)
 
@@ -97,4 +101,12 @@ class AppContainer(context: Context) {
     val subtitles = SubtitleRepository(client.api, client.wbi, client.buvid, client.okHttp)
 
     val sponsorBlock = SponsorBlockRepository(client.okHttp)
+
+    val blocks = BlockRepository(appContext, scope, client.api, client.buvid, session)
+
+    val reports = ReportRepository(client.api, client.buvid, client.cookieStore, session)
+
+    val dlna = DlnaCastController(appContext, scope, client, video, pgc, settings)
 }
+
+val LocalAppContainer = staticCompositionLocalOf<AppContainer?> { null }

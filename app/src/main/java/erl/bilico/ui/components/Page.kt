@@ -216,6 +216,7 @@ fun SecondaryPagerPage(
     pagerState: PagerState,
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
+    topBar: (@Composable () -> Unit)? = null,
     header: @Composable () -> Unit,
     page: @Composable (index: Int, contentTop: Dp) -> Unit,
 ) {
@@ -250,31 +251,44 @@ fun SecondaryPagerPage(
             LocalEdgeToEdge provides true,
         ) {
             PinnedBarDensity {
-                SmallTopAppBar(
-                    title = title,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .onSizeChanged {
-                            val h = with(density) { it.height.toDp() }
-                            // 顶栏物理底沿落在 ChipTab 胶囊下方 6dp；首项留出 6dp 使得第一张卡片
-                            // 距离 ChipTab 胶囊底沿正好 12dp，严丝合缝对齐系统便签规范。
-                            measuredContentTop = h + 6.dp
+                if (topBar != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .onSizeChanged {
+                                val h = with(density) { it.height.toDp() }
+                                measuredContentTop = h + 6.dp
+                            },
+                    ) {
+                        topBar()
+                    }
+                } else {
+                    SmallTopAppBar(
+                        title = title,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .onSizeChanged {
+                                val h = with(density) { it.height.toDp() }
+                                // 顶栏物理底沿落在 ChipTab 胶囊下方 6dp；首项留出 6dp 使得第一张卡片
+                                // 距离 ChipTab 胶囊底沿正好 12dp，严丝合缝对齐系统便签规范。
+                                measuredContentTop = h + 6.dp
+                            },
+                        color = pageColor,
+                        showDivider = false,
+                        gradientGlass = BlurEffectsEnabled,
+                        navigationIcon = { BackIconButton(onClick = onBack) },
+                        actions = actions,
+                        bottomContent = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 10.dp, bottom = 6.dp),
+                            ) {
+                                header()
+                            }
                         },
-                    color = pageColor,
-                    showDivider = false,
-                    gradientGlass = BlurEffectsEnabled,
-                    navigationIcon = { BackIconButton(onClick = onBack) },
-                    actions = actions,
-                    bottomContent = {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 10.dp, bottom = 6.dp),
-                        ) {
-                            header()
-                        }
-                    },
-                )
+                    )
+                }
             }
         }
     }

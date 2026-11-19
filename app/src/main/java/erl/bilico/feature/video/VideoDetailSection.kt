@@ -129,6 +129,8 @@ internal fun VideoDetailSection(
                         favorited = state.favorited,
                         following = state.following,
                         upFollowers = state.upFollowers,
+                        upOfficialType = state.upOfficialType,
+                        upOfficialDesc = state.upOfficialDesc,
                         onLike = onLike,
                         onDislike = onDislike,
                         onCoin = onOpenCoin,

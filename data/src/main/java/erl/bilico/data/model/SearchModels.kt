@@ -61,8 +61,11 @@ data class SearchPgcScore(
 @Serializable
 data class SearchOfficialVerify(
     val type: Int = -1,
+    val role: Int = 0,
     val desc: String = "",
-)
+) {
+    fun resolvedType(): Int = OfficialVerifyData(type = type, role = role, desc = desc).resolvedType()
+}
 
 @Serializable
 data class SearchItem(

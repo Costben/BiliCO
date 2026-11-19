@@ -286,7 +286,7 @@ private fun FollowingBody(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(url = avatarUrl, size = 44.dp)
+        Avatar(url = avatarUrl, size = 44.dp, officialType = user.officialType)
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(
                 text = user.name.ifBlank { "未知用户" },

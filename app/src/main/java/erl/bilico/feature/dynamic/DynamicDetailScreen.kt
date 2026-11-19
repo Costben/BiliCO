@@ -334,7 +334,14 @@ fun DynamicDetailScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             verticalArrangement = Arrangement.spacedBy(18.dp),
                                         ) {
-                                            commentState.items.forEach { comment ->
+                                            val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
+                                            val visibleComments = remember(commentState.items, blocks) {
+                                                commentState.items.mapNotNull { blocks.filterCommentTree(it) }
+                                            }
+                                            androidx.compose.runtime.CompositionLocalProvider(
+                                                erl.bilico.feature.comment.LocalCommentTarget provides (commentOid to commentType),
+                                            ) {
+                                            visibleComments.forEach { comment ->
                                                 BiliCommentItem(
                                                     comment = comment,
                                                     onLike = {
@@ -366,6 +373,7 @@ fun DynamicDetailScreen(
                                                     currentMid = currentMid,
                                                     onDelete = { commentViewModel.deleteComment(comment) },
                                                 )
+                                            }
                                             }
                                             when {
                                                 commentState.isLoadingMore -> Box(

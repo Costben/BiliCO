@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import erl.bilico.data.model.FavoriteFolder
+import erl.bilico.data.model.VideoEpisode
 import erl.bilico.data.model.isHdr
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.ReplyThreadController
@@ -194,6 +195,8 @@ fun VideoScreen(
     var chapterDialogVisible by remember { mutableStateOf(false) }
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var sponsorSubmitVisible by remember { mutableStateOf(false) }
+    var castDialogVisible by remember { mutableStateOf(false) }
+    var reportVideoVisible by remember { mutableStateOf(false) }
     var coinDialogVisible by remember { mutableStateOf(false) }
     var favoriteFolders by remember { mutableStateOf<List<FavoriteFolder>?>(null) }
     var speed by rememberSaveable {
@@ -362,27 +365,43 @@ fun VideoScreen(
     // HDR 档位必须走 SurfaceView：TextureView 由 GPU 合成，HDR 画面会被当成 SDR 铺到屏幕上（发暗）。
     val hdrSurface = state.source?.isHdr == true
 
-    val renderSponsorSubmit: (@Composable (Boolean) -> Unit)? =
-        if (sponsorSubmitVisible && state.selectedCid > 0L) {
-            { stageInline ->
-                SponsorSubmitDialog(
-                    bvid = bvid,
-                    cid = state.selectedCid,
-                    durationMs = clock.durationMs,
-                    currentPositionMs = { player?.currentPosition?.coerceAtLeast(0L) ?: clock.positionMs },
-                    controller = sponsorController,
-                    sponsorUserIdProvider = container.settings::ensureSponsorUserId,
-                    inlineInStage = stageInline,
-                    onSuccess = { msg ->
-                        sponsorSubmitVisible = false
-                        viewModel.showMessage(msg)
-                    },
-                    onDismiss = { sponsorSubmitVisible = false },
-                )
-            }
+    val detailAid = state.detail?.aid ?: 0L
+    val openSponsor = if (state.selectedCid > 0L) ({ sponsorSubmitVisible = true }) else null
+    val openCast = if (state.selectedCid > 0L) ({ castDialogVisible = true }) else null
+    val openReportVideo = if (detailAid > 0L) ({ reportVideoVisible = true }) else null
+    val renderSponsorSubmit = rememberSponsorSubmitDialog(
+        visible = sponsorSubmitVisible, bvid = bvid, cid = state.selectedCid, durationMs = clock.durationMs,
+        currentPositionMs = { player?.currentPosition?.coerceAtLeast(0L) ?: clock.positionMs },
+        controller = sponsorController, sponsorUserIdProvider = container.settings::ensureSponsorUserId,
+        onSuccess = { msg -> sponsorSubmitVisible = false; viewModel.showMessage(msg) },
+        onDismiss = { sponsorSubmitVisible = false },
+    )
+    val renderCast = rememberCastDialog(
+        visible = castDialogVisible, bvid = bvid, cid = state.selectedCid, qn = state.activeQuality,
+        title = state.detail?.title.orEmpty(),
+        positionProvider = { player?.currentPosition?.coerceAtLeast(0L) ?: clock.positionMs },
+        onDismiss = { castDialogVisible = false },
+    )
+    val renderReportVideo = rememberReportVideoDialog(
+        visible = reportVideoVisible, aid = detailAid, bvid = bvid, title = state.detail?.title.orEmpty(),
+        onDismiss = { reportVideoVisible = false },
+    )
+
+    val selectPart: (Int) -> Unit = { index ->
+        val currentPos = player?.currentPosition ?: 0L
+        viewModel.flushHeartbeat(currentPos / 1000, container.scope)
+        viewModel.selectPart(index, currentPos)
+    }
+    val selectEpisode: (VideoEpisode) -> Unit = { episode ->
+        val partIndex = state.detail?.pages?.indexOfFirst { it.cid == episode.cid } ?: -1
+        if (episode.bvid == bvid && partIndex >= 0) {
+            selectPart(partIndex)
+        } else if (fullscreen) {
+            nav.replaceTop(Route.Video(episode.bvid, 0L, episode.cid))
         } else {
-            null
+            nav.push(Route.Video(episode.bvid, 0L, episode.cid))
         }
+    }
 
     VideoFullscreenStage(
         fullscreen = fullscreen,
@@ -435,23 +454,14 @@ fun VideoScreen(
                     danmakuDraft = danmakuDraft,
                     onDanmakuDraftChange = { danmakuDraft = it },
                     onSendDanmaku = sendDanmaku,
-                    chapterDialogVisible = chapterDialogVisible,
-                    onOpenChapterDialog = { chapterDialogVisible = true },
-                    onDismissChapterDialog = { chapterDialogVisible = false },
+                    onSelectPart = selectPart, onSelectEpisode = selectEpisode,
                     danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
                     onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
-                    sponsorSubmitDialog = renderSponsorSubmit,
-                    onSubmitSponsor = if (state.selectedCid > 0L) {
-                        { sponsorSubmitVisible = true }
-                    } else {
-                        null
-                    },
+                    sponsorSubmitDialog = renderSponsorSubmit, onSubmitSponsor = openSponsor,
+                    castDialog = renderCast, onCast = openCast,
+                    reportVideoDialog = renderReportVideo, onReportVideo = openReportVideo,
                     onFullscreenChange = applyFullscreen,
-                    onEnterPip = if (PlaybackBridge.canEnterPip(activity)) {
-                        { PlaybackBridge.enterPipNow(activity) }
-                    } else {
-                        null
-                    },
+                    onEnterPip = if (PlaybackBridge.canEnterPip(activity)) { { PlaybackBridge.enterPipNow(activity) } } else null,
                 )
             }
         },
@@ -477,21 +487,8 @@ fun VideoScreen(
                 onSendDanmaku = sendDanmaku,
                 onSelectPage = { page -> scope.launch { detailPager.animateScrollToPage(page) } },
                 onRetry = viewModel::load,
-                onSelectPart = { index ->
-                    val currentPos = player?.currentPosition ?: 0L
-                    viewModel.flushHeartbeat(currentPos / 1000, container.scope)
-                    viewModel.selectPart(index, currentPos)
-                },
-                onSelectEpisode = { episode ->
-                    val partIndex = state.detail?.pages?.indexOfFirst { it.cid == episode.cid } ?: -1
-                    if (episode.bvid == bvid && partIndex >= 0) {
-                        val currentPos = player?.currentPosition ?: 0L
-                        viewModel.flushHeartbeat(currentPos / 1000, container.scope)
-                        viewModel.selectPart(partIndex, currentPos)
-                    } else {
-                        nav.push(Route.Video(episode.bvid, 0L, episode.cid))
-                    }
-                },
+                onSelectPart = selectPart,
+                onSelectEpisode = selectEpisode,
                 onOpenQueue = { queueSheetVisible = true },
                 onOpenCoin = { coinDialogVisible = true },
                 onOpenFavorite = {
@@ -535,13 +532,9 @@ fun VideoScreen(
         },
         portraitCollapsedBar = {
             VideoCollapsedBarSlot(
-                player = player,
-                isPlaying = isPlaying,
-                container = container,
-                nav = nav,
-                bvid = bvid,
-                state = state,
-                backdrop = barBackdrops.barMaterial,
+                player = player, isPlaying = isPlaying, container = container, nav = nav,
+                bvid = bvid, state = state, backdrop = barBackdrops.barMaterial,
+                onCast = openCast, onReportVideo = openReportVideo,
             )
         },
     )
@@ -549,27 +542,22 @@ fun VideoScreen(
     // 竖屏弹窗只在真有弹窗时挂载：平时这里不订阅任何东西，也不会跟着进度重组。
     if (!fullscreen && (
             coinDialogVisible || favoriteFolders != null || danmakuSettingsDialogVisible ||
-                chapterDialogVisible || renderSponsorSubmit != null
+                chapterDialogVisible || renderSponsorSubmit != null ||
+                renderCast != null || renderReportVideo != null
             )
     ) {
         VideoScreenDialogs(
-            coinDialogVisible = coinDialogVisible,
-            coined = state.coined,
+            coinDialogVisible = coinDialogVisible, coined = state.coined,
             onSelectCoin = { count -> coinDialogVisible = false; viewModel.coin(count) },
             onDismissCoin = { coinDialogVisible = false },
             favoriteFolders = favoriteFolders,
             onSelectFavorite = { mediaId -> favoriteFolders = null; viewModel.favorite(mediaId) },
             onDismissFavorite = { favoriteFolders = null },
             danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
-            danmakuSettings = if (danmakuSettingsDialogVisible) {
-                container.settings.danmakuSettings.collectAsStateWithLifecycle().value
-            } else {
-                null
-            },
+            danmakuSettings = if (danmakuSettingsDialogVisible) container.settings.danmakuSettings.collectAsStateWithLifecycle().value else null,
             settingsRepository = container.settings,
             onDismissDanmakuSettings = { danmakuSettingsDialogVisible = false },
-            chapterDialogVisible = chapterDialogVisible,
-            chapters = subtitleController.chapters,
+            chapterDialogVisible = chapterDialogVisible, chapters = subtitleController.chapters,
             positionMs = clock.positionMs,
             onSelectChapter = { chapter ->
                 chapterDialogVisible = false
@@ -578,6 +566,8 @@ fun VideoScreen(
             },
             onDismissChapter = { chapterDialogVisible = false },
             sponsorSubmitDialog = renderSponsorSubmit,
+            castDialog = renderCast,
+            reportVideoDialog = renderReportVideo,
             inlineInStage = false,
         )
     }

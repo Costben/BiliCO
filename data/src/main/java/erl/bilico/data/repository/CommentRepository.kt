@@ -524,6 +524,8 @@ class CommentRepository(
             mid = mid,
             location = replyControl?.location.orEmpty().trim(),
             vipColorHex = vipColor,
+            officialType = member.officialVerify?.resolvedType() ?: -1,
+            officialDesc = member.officialVerify?.resolvedDesc().orEmpty(),
             sailing = sailing,
             subReplyEntryText = replyControl?.subReplyEntryText.orEmpty().trim(),
             isTop = isTop,

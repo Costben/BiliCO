@@ -163,6 +163,7 @@ internal fun ReplyDetailPage(
     modifier: Modifier = Modifier,
 ) {
     val account by container.session.account.collectAsStateWithLifecycle()
+    val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
     val currentMid = account?.mid ?: container.session.mid()
     val detailState = rememberReplyDetailState(
         container = container,
@@ -173,6 +174,9 @@ internal fun ReplyDetailPage(
         onSubReplyDeleted = onSubReplyDeleted,
         onRootDeleted = onRootDeleted,
     )
+    val visibleReplies = remember(detailState.items, blocks) {
+        detailState.items.mapNotNull { blocks.filterCommentTree(it) }
+    }
     LaunchedEffect(comment) {
         if (comment.id == detailState.rootComment.id) {
             detailState.rootComment = comment
@@ -350,6 +354,7 @@ internal fun ReplyDetailPage(
     CompositionLocalProvider(
         LocalOpenBvid provides parentOpenBvid,
         LocalCommentSeek provides parentSeek,
+        LocalCommentTarget provides (oid to type),
         LocalEdgeToEdge provides true,
     ) {
         Box(
@@ -424,7 +429,7 @@ internal fun ReplyDetailPage(
                     }
                 }
 
-                if (detailState.items.isEmpty()) {
+                if (visibleReplies.isEmpty()) {
                     item(key = "sub_placeholder") {
                         SubReplyPlaceholderBox(
                             isLoading = detailState.isLoading,
@@ -433,7 +438,7 @@ internal fun ReplyDetailPage(
                         )
                     }
                 } else {
-                    itemsIndexed(detailState.items, key = { _, reply -> reply.id }) { index, reply ->
+                    itemsIndexed(visibleReplies, key = { _, reply -> reply.id }) { index, reply ->
                         val itemIndex = SUB_REPLY_ITEM_OFFSET + index
                         val displayReply = remember(reply, threadUserMids) {
                             if (threadUserMids.isEmpty()) reply

@@ -47,6 +47,7 @@ import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LibraryVideoRow
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.OfficialVerifyLabel
 import erl.bilico.ui.components.PageTabRow
 import erl.bilico.ui.components.SearchClearButton
 import erl.bilico.ui.components.SecondaryPage
@@ -136,7 +137,10 @@ fun SpaceScreen(
                         },
                         gradientColor = Color.Transparent,
                         titleContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 BackIconButton(onClick = nav::pop)
                                 Spacer(Modifier.width(8.dp))
                                 Text(
@@ -145,7 +149,16 @@ fun SpaceScreen(
                                     color = COUITheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
                                 )
+                                val profile = state.profile
+                                if (profile != null && profile.mid > 0L && profile.mid != (account?.mid ?: 0L)) {
+                                    erl.bilico.ui.components.UserMoreMenu(
+                                        mid = profile.mid,
+                                        name = profile.name,
+                                        face = profile.face,
+                                    )
+                                }
                             }
                         },
                         trailingIcon = {
@@ -282,7 +295,7 @@ private fun ProfileCard(profile: SpaceProfile) {
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Avatar(url = avatarUrl, size = 64.dp)
+                Avatar(url = avatarUrl, size = 64.dp, officialType = profile.officialType)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Row(
@@ -328,6 +341,14 @@ private fun ProfileCard(profile: SpaceProfile) {
                         ProfileStatItem("关注", profile.followingText)
                     }
                 }
+            }
+
+            if (profile.officialType == 0 || profile.officialType == 1 || profile.officialDesc.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                OfficialVerifyLabel(
+                    type = profile.officialType,
+                    desc = profile.officialDesc,
+                )
             }
 
             if (profile.sign.isNotBlank()) {

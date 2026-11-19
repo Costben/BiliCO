@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -35,12 +34,12 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.QualityOption
 import erl.bilico.data.model.SubtitleTrack
+import erl.bilico.feature.live.PlayerSuperChatButton
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
@@ -113,26 +112,53 @@ internal fun rememberPlayerMoreMenuItems(
     playbackEndMode: PlaybackEndMode,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
     onShare: (() -> Unit)?,
+    onCast: (() -> Unit)? = null,
+    onSelectLine: (() -> Unit)? = null,
+    audioOnly: Boolean = false,
+    onToggleAudioOnly: (() -> Unit)? = null,
+    onReportVideo: (() -> Unit)? = null,
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: (() -> Unit)? = null,
 ): List<CouiMenuItem> {
     val selectModeState by rememberUpdatedState(onSelectPlaybackEndMode)
     val shareState by rememberUpdatedState(onShare)
+    val castState by rememberUpdatedState(onCast)
+    val selectLineState by rememberUpdatedState(onSelectLine)
+    val toggleAudioState by rememberUpdatedState(onToggleAudioOnly)
+    val reportVideoState by rememberUpdatedState(onReportVideo)
     val submitSponsorState by rememberUpdatedState(onSubmitSponsor)
     val statsState by rememberUpdatedState(onShowStats)
     val hasPlaybackEnd = onSelectPlaybackEndMode != null
     val hasShare = onShare != null
+    val hasCast = onCast != null
+    val hasSelectLine = onSelectLine != null
+    val hasToggleAudio = onToggleAudioOnly != null
+    val hasReportVideo = onReportVideo != null
     val hasSubmitSponsor = onSubmitSponsor != null
     val hasStats = onShowStats != null
-    return remember(playbackEndMode, hasPlaybackEnd, hasShare, hasSubmitSponsor, hasStats) {
+    return remember(
+        playbackEndMode, hasPlaybackEnd, hasShare, hasCast,
+        hasSelectLine, audioOnly, hasToggleAudio, hasReportVideo, hasSubmitSponsor, hasStats,
+    ) {
         buildList {
+            if (hasSelectLine) {
+                add(CouiMenuItem(label = "切换线路", onClick = { selectLineState?.invoke() }, group = 0))
+            }
+            if (hasToggleAudio) {
+                add(
+                    CouiMenuItem(
+                        label = if (audioOnly) "退出黑听（恢复画面）" else "黑听（仅听音频）",
+                        selected = audioOnly,
+                        onClick = { toggleAudioState?.invoke() },
+                        group = 0,
+                    ),
+                )
+            }
+            if (hasCast) add(CouiMenuItem(label = "投屏", onClick = { castState?.invoke() }, group = 0))
             if (hasPlaybackEnd) {
                 add(
                     CouiMenuItem(
-                        label = "自动联播",
-                        summary = playbackEndMode.label,
-                        onClick = {},
-                        group = 0,
+                        label = "自动联播", summary = playbackEndMode.label, onClick = {}, group = 0,
                         children = PlaybackEndMode.entries.map { option ->
                             CouiMenuItem(
                                 label = option.label,
@@ -143,44 +169,36 @@ internal fun rememberPlayerMoreMenuItems(
                     ),
                 )
             }
-            if (hasShare) {
-                add(CouiMenuItem(label = "分享", onClick = { shareState?.invoke() }, group = 1))
-            }
-            if (hasSubmitSponsor) {
-                add(CouiMenuItem(label = "提交空降片段", onClick = { submitSponsorState?.invoke() }, group = 1))
-            }
-            if (hasStats) {
-                add(CouiMenuItem(label = "视频信息统计", onClick = { statsState?.invoke() }, group = 2))
-            }
+            if (hasShare) add(CouiMenuItem(label = "分享", onClick = { shareState?.invoke() }, group = 1))
+            if (hasSubmitSponsor) add(CouiMenuItem(label = "提交空降片段", onClick = { submitSponsorState?.invoke() }, group = 1))
+            if (hasReportVideo) add(CouiMenuItem(label = "举报视频", onClick = { reportVideoState?.invoke() }, group = 1))
+            if (hasStats) add(CouiMenuItem(label = "视频信息统计", onClick = { statsState?.invoke() }, group = 2))
         }
     }
 }
 
-/** 顶栏右端的三个点：自动联播（二级菜单）、分享、空降提交与视频信息统计。 */
+/** 顶栏右端的三个点：投屏、切换线路、黑听、自动联播、分享、空降提交、举报与视频信息统计。 */
 @Composable
 internal fun PlayerMoreMenu(
     onShare: (() -> Unit)?,
     playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
+    onCast: (() -> Unit)? = null,
+    onSelectLine: (() -> Unit)? = null,
+    audioOnly: Boolean = false,
+    onToggleAudioOnly: (() -> Unit)? = null,
+    onReportVideo: (() -> Unit)? = null,
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val items = rememberPlayerMoreMenuItems(
-        playbackEndMode = playbackEndMode,
-        onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-        onShare = onShare,
-        onSubmitSponsor = onSubmitSponsor,
-        onShowStats = onShowStats,
+        playbackEndMode, onSelectPlaybackEndMode, onShare, onCast,
+        onSelectLine, audioOnly, onToggleAudioOnly, onReportVideo, onSubmitSponsor, onShowStats,
     )
-
     Box {
         PlayerIconButton(COUIIcons.More, "更多", onClick = { expanded = true })
-        CouiPopupMenu(
-            show = expanded,
-            onDismiss = { expanded = false },
-            items = items,
-        )
+        CouiPopupMenu(show = expanded, onDismiss = { expanded = false }, items = items)
     }
 }
 
@@ -338,6 +356,7 @@ internal fun PlayerBottomMenuControl(
     fullscreen: Boolean,
     items: List<CouiMenuItem>,
     headerContent: (@Composable () -> Unit)? = null,
+    maxHeight: Dp? = null,
     stageCoords: LayoutCoordinates?,
     onAnchorEndChange: (Dp) -> Unit,
     modifier: Modifier = Modifier,
@@ -358,13 +377,14 @@ internal fun PlayerBottomMenuControl(
                 onDismiss = onDismiss,
                 items = items,
                 alignment = PopupPositionProvider.Align.End,
+                maxHeight = maxHeight,
                 headerContent = headerContent,
             )
         }
     }
 }
 
-internal enum class PlayerPopupMenu { NONE, MORE, SPEED, QUALITY, SUBTITLE }
+internal enum class PlayerPopupMenu { NONE, MORE, EPISODES, SPEED, QUALITY, SUBTITLE }
 
 @Composable
 internal fun RowScope.PlayerBottomTrailingControls(
@@ -372,20 +392,40 @@ internal fun RowScope.PlayerBottomTrailingControls(
     speed: Float,
     qualityLabel: String?,
     fullscreen: Boolean,
+    liveMode: Boolean = false,
+    onSelectLine: (() -> Unit)? = null,
+    onSuperChatsClick: (() -> Unit)? = null,
+    superChatCount: Int = 0,
     activeMenu: PlayerPopupMenu,
     onOpenMenu: (PlayerPopupMenu) -> Unit,
     onDismissMenu: () -> Unit,
     speedLocked: Boolean,
     onToggleSpeedLock: () -> Unit,
+    episodesMenuItems: List<CouiMenuItem>,
     speedMenuItems: List<CouiMenuItem>,
     qualityMenuItems: List<CouiMenuItem>,
     subtitleMenuItems: List<CouiMenuItem>,
     stageCoords: LayoutCoordinates?,
+    onEpisodesEndChange: (Dp) -> Unit,
     onSubtitleEndChange: (Dp) -> Unit,
     onSpeedEndChange: (Dp) -> Unit,
     onQualityEndChange: (Dp) -> Unit,
     onToggleFullscreen: () -> Unit,
 ) {
+    if (!liveMode && episodesMenuItems.isNotEmpty()) {
+        PlayerBottomMenuControl(
+            text = "选集",
+            menuOpen = activeMenu == PlayerPopupMenu.EPISODES,
+            onOpen = { onOpenMenu(PlayerPopupMenu.EPISODES) },
+            onDismiss = onDismissMenu,
+            fullscreen = fullscreen,
+            items = episodesMenuItems,
+            maxHeight = 350.dp,
+            stageCoords = stageCoords,
+            onAnchorEndChange = onEpisodesEndChange,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+    }
     if (subtitleLabel != null) {
         PlayerBottomMenuControl(
             text = subtitleLabel,
@@ -399,18 +439,27 @@ internal fun RowScope.PlayerBottomTrailingControls(
             modifier = Modifier.padding(start = 4.dp),
         )
     }
-    PlayerBottomMenuControl(
-        text = speedLabel(speed),
-        menuOpen = activeMenu == PlayerPopupMenu.SPEED,
-        onOpen = { onOpenMenu(PlayerPopupMenu.SPEED) },
-        onDismiss = onDismissMenu,
-        fullscreen = fullscreen,
-        items = speedMenuItems,
-        headerContent = { SpeedLockMenuRow(locked = speedLocked, onToggleLock = onToggleSpeedLock) },
-        stageCoords = stageCoords,
-        onAnchorEndChange = onSpeedEndChange,
-        modifier = Modifier.padding(start = 6.dp),
-    )
+    if (!liveMode) {
+        PlayerBottomMenuControl(
+            text = speedLabel(speed),
+            menuOpen = activeMenu == PlayerPopupMenu.SPEED,
+            onOpen = { onOpenMenu(PlayerPopupMenu.SPEED) },
+            onDismiss = onDismissMenu,
+            fullscreen = fullscreen,
+            items = speedMenuItems,
+            headerContent = { SpeedLockMenuRow(locked = speedLocked, onToggleLock = onToggleSpeedLock) },
+            stageCoords = stageCoords,
+            onAnchorEndChange = onSpeedEndChange,
+            modifier = Modifier.padding(start = 6.dp),
+        )
+    } else {
+        if (onSelectLine != null) {
+            ControlLabel(text = "线路", onClick = onSelectLine, modifier = Modifier.padding(start = 4.dp))
+        }
+        if (onSuperChatsClick != null) {
+            PlayerSuperChatButton(count = superChatCount, onClick = onSuperChatsClick)
+        }
+    }
     PlayerBottomMenuControl(
         text = qualityLabel ?: "清晰度",
         menuOpen = activeMenu == PlayerPopupMenu.QUALITY && qualityMenuItems.isNotEmpty(),
@@ -441,11 +490,18 @@ internal fun PlayerStagePopupMenus(
     playbackEndMode: PlaybackEndMode,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
     onShare: (() -> Unit)?,
+    onCast: (() -> Unit)? = null,
+    onSelectLine: (() -> Unit)? = null,
+    audioOnly: Boolean = false,
+    onToggleAudioOnly: (() -> Unit)? = null,
+    onReportVideo: (() -> Unit)? = null,
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: () -> Unit,
+    episodesMenuItems: List<CouiMenuItem>,
     speedMenuItems: List<CouiMenuItem>,
     qualityMenuItems: List<CouiMenuItem>,
     subtitleMenuItems: List<CouiMenuItem>,
+    episodesEndMargin: Dp,
     speedEndMargin: Dp,
     qualityEndMargin: Dp,
     subtitleEndMargin: Dp,
@@ -459,12 +515,12 @@ internal fun PlayerStagePopupMenus(
             playbackEndMode = playbackEndMode,
             onSelectPlaybackEndMode = onSelectPlaybackEndMode,
             onShare = onShare,
-            onSubmitSponsor = onSubmitSponsor?.let { openSubmit ->
-                {
-                    onHideControls()
-                    openSubmit()
-                }
-            },
+            onCast = onCast?.let { open -> { onHideControls(); open() } },
+            onSelectLine = onSelectLine?.let { open -> { onHideControls(); open() } },
+            audioOnly = audioOnly,
+            onToggleAudioOnly = onToggleAudioOnly,
+            onReportVideo = onReportVideo?.let { open -> { onHideControls(); open() } },
+            onSubmitSponsor = onSubmitSponsor?.let { open -> { onHideControls(); open() } },
             onShowStats = onShowStats,
         )
         CouiStagePopupMenu(
@@ -474,7 +530,8 @@ internal fun PlayerStagePopupMenus(
             endMargin = horizontalBarPad,
             items = stageMoreItems,
         )
-        val bottomMenuShown = activeMenu == PlayerPopupMenu.SPEED ||
+        val bottomMenuShown = activeMenu == PlayerPopupMenu.EPISODES ||
+            activeMenu == PlayerPopupMenu.SPEED ||
             activeMenu == PlayerPopupMenu.QUALITY ||
             activeMenu == PlayerPopupMenu.SUBTITLE
         val shownMenu = if (bottomMenuShown) activeMenu else lastBottomMenu
@@ -482,6 +539,7 @@ internal fun PlayerStagePopupMenus(
             show = bottomMenuShown,
             onDismiss = onDismiss,
             items = when (shownMenu) {
+                PlayerPopupMenu.EPISODES -> episodesMenuItems
                 PlayerPopupMenu.SPEED -> speedMenuItems
                 PlayerPopupMenu.QUALITY -> qualityMenuItems
                 else -> subtitleMenuItems
@@ -490,6 +548,7 @@ internal fun PlayerStagePopupMenus(
             bottomMargin = 48.dp,
             maxHeight = 350.dp,
             endMargin = when (shownMenu) {
+                PlayerPopupMenu.EPISODES -> episodesEndMargin
                 PlayerPopupMenu.SPEED -> speedEndMargin
                 PlayerPopupMenu.QUALITY -> qualityEndMargin
                 else -> subtitleEndMargin
@@ -499,49 +558,6 @@ internal fun PlayerStagePopupMenus(
             } else {
                 null
             },
-        )
-    }
-}
-
-@Composable
-internal fun BoxScope.PlayerStateOverlay(
-    errorMessage: String?,
-    isBuffering: Boolean,
-    inPipMode: Boolean,
-    onRetry: () -> Unit,
-) {
-    if (errorMessage != null && !inPipMode) {
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = errorMessage,
-                style = COUITheme.textStyles.footnote1,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "重试",
-                modifier = Modifier
-                    .clip(SquircleShape(6.dp))
-                    .background(PlayerScrim)
-                    .clickable(onClick = onRetry)
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                style = COUITheme.textStyles.button,
-                color = Color.White,
-            )
-        }
-    } else if (isBuffering && !inPipMode) {
-        CircularProgressIndicator(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(34.dp),
-            color = Color.White,
-            strokeWidth = 3.dp,
         )
     }
 }

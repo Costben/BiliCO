@@ -14,6 +14,14 @@ data class HistoryResponse(
 data class HistoryPageData(
     val list: List<HistoryData> = emptyList(),
     val cursor: HistoryCursor? = null,
+    @SerialName("has_more") val hasMore: Boolean = false,
+)
+
+@Serializable
+data class HistoryShadowResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: Boolean = false,
 )
 
 @Serializable
@@ -37,6 +45,11 @@ data class HistoryData(
     val history: HistoryEntry? = null,
     val progress: Int = -1,
     @SerialName("view_at") val viewAt: Long = 0,
+    @SerialName("live_status") val liveStatus: Int = 0,
+    val badge: String = "",
+    @SerialName("tag_name") val tagName: String = "",
+    val uri: String = "",
+    val kid: String = "",
 )
 
 @Serializable

@@ -156,6 +156,35 @@ class PgcRepository(
         }
     }
 
+    /** 获取番剧合流 MP4 投屏直链（`fnval=1` 单流 durl）。 */
+    suspend fun castUrl(
+        epId: Long,
+        cid: Long,
+        qn: Int = 80,
+        cdn: CdnOption = CdnOption.Auto,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val keys = runCatching { wbi.getKeys() }.getOrNull()
+            val params = buildMap {
+                if (epId > 0L) put("ep_id", epId.toString())
+                if (cid > 0L) put("cid", cid.toString())
+                put("qn", qn.coerceAtLeast(16).toString())
+                put("fnval", "1")
+                put("fnver", "0")
+                put("fourk", "1")
+            }
+            val signed = if (keys != null) WbiUtils.sign(params, keys.first, keys.second) else params
+            val raw = runCatching { api.pgcPlayUrl(signed).string() }.getOrNull()
+                ?: api.pgcPlayUrlLegacy(signed).string()
+            val data = parsePlayUrl(raw)
+            val segment = data.durl?.firstOrNull() ?: error("未拿到可投屏的番剧流")
+            PlaybackCdn.candidates(listOf(segment.url) + segment.backupUrl.orEmpty(), cdn)
+                .firstOrNull()
+                ?: segment.url
+        }
+    }
+
     suspend fun rank(seasonType: Int = 1): Result<List<BangumiCard>> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()

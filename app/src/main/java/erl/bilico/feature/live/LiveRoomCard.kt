@@ -5,10 +5,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,9 +34,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import erl.bilico.data.model.LiveRoomDetail
 import erl.bilico.data.model.LiveRoomItem
 import erl.bilico.data.repository.LiveRepository
 import erl.bilico.data.util.Formatters
+import erl.bilico.ui.components.OfficialVerifyBadge
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -130,6 +137,86 @@ internal fun LiveRoomCard(room: LiveRoomItem, onClick: () -> Unit) {
                 color = COUITheme.colorScheme.onSurfaceSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun LiveRoomInfo(detail: LiveRoomDetail, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    val avatarPx = with(density) { 36.dp.roundToPx() }
+    val avatarUrl = remember(detail.anchorFace) {
+        Formatters.sizedImageUrl(detail.anchorFace, avatarPx, avatarPx)
+    }
+
+    Column(modifier) {
+        Text(
+            text = detail.title,
+            style = COUITheme.textStyles.title3,
+            maxLines = 2,
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (detail.anchorFace.isNotBlank()) {
+                Box(modifier = Modifier.size(36.dp)) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = null,
+                        modifier = Modifier.size(36.dp).clip(CircleShape),
+                        contentScale = ContentScale.Crop,
+                    )
+                    if (detail.anchorOfficialType == 0 || detail.anchorOfficialType == 1) {
+                        OfficialVerifyBadge(
+                            type = detail.anchorOfficialType,
+                            size = 13.dp,
+                            modifier = Modifier.align(Alignment.BottomEnd),
+                        )
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+            }
+            Column {
+                Text(
+                    text = detail.anchorName.ifBlank { "未知主播" },
+                    style = COUITheme.textStyles.body2,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = buildString {
+                        if (detail.areaName.isNotBlank()) append(detail.areaName).append(" · ")
+                        if (detail.isLive) {
+                            val count = detail.onlineCount
+                            if (count != null) {
+                                append("高能观众(").append(Formatters.formatStat(count)).append(")")
+                            } else {
+                                append("高能观众")
+                            }
+                        } else {
+                            append("未开播")
+                        }
+                    },
+                    style = COUITheme.textStyles.footnote2,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                )
+            }
+        }
+
+        val cleanDescription = remember(detail.description) {
+            detail.description
+                .replace(Regex("<[^>]+>"), " ")
+                .replace("&nbsp;", " ")
+                .trim()
+        }
+        if (cleanDescription.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = cleanDescription,
+                style = COUITheme.textStyles.footnote1,
+                color = COUITheme.colorScheme.onSurfaceSecondary,
+                maxLines = 2,
             )
         }
     }

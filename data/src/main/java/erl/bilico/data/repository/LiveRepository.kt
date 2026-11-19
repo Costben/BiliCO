@@ -1,14 +1,22 @@
 package erl.bilico.data.repository
 
+import erl.bilico.data.live.toLiveSuperChat
 import erl.bilico.data.model.LiveCandidate
+import erl.bilico.data.model.LiveCodecNode
 import erl.bilico.data.model.LiveDanmakuServer
+import erl.bilico.data.model.LiveFormatNode
 import erl.bilico.data.model.LivePlayUrlData
 import erl.bilico.data.model.LivePlayback
 import erl.bilico.data.model.LiveQuality
 import erl.bilico.data.model.LiveRoomDetail
 import erl.bilico.data.model.LiveRoomItem
-import erl.bilico.data.model.LiveStream
+import erl.bilico.data.model.LiveStreamNode
+import erl.bilico.data.model.LiveStreamSelection
+import erl.bilico.data.model.LiveSuperChat
+import erl.bilico.data.model.LiveUrlHostNode
 import erl.bilico.data.model.QualityOption
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.network.WbiKeyManager
@@ -213,6 +221,8 @@ class LiveRepository(
                     anchorFace = Formatters.normalizeImageUrl(
                         response.data?.anchorInfo?.baseInfo?.face,
                     ),
+                    anchorOfficialType = response.data?.anchorInfo?.officialInfo?.resolvedType() ?: -1,
+                    anchorOfficialDesc = response.data?.anchorInfo?.officialInfo?.resolvedDesc().orEmpty(),
                     online = room.online,
                     description = room.description,
                     areaName = room.areaName,
@@ -280,12 +290,32 @@ class LiveRepository(
             }
         }
 
-    suspend fun playback(roomId: Long, qn: Int = DEFAULT_QN): Result<LivePlayback> =
+    suspend fun superChats(roomId: Long): Result<List<LiveSuperChat>> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (roomId <= 0L) return@runCatching emptyList()
+            buvid.ensure()
+            val response = api.liveSuperChats(roomId)
+            if (response.code != 0) {
+                error(response.message.ifBlank { "醒目留言加载失败(${response.code})" })
+            }
+            val list = response.data?.get("list") as? JsonArray ?: return@runCatching emptyList()
+            val nowSec = System.currentTimeMillis() / 1000L
+            list.mapNotNull { (it as? JsonObject)?.toLiveSuperChat() }
+                .filter { it.endTimeSec > nowSec }
+        }
+    }
+
+    suspend fun playback(
+        roomId: Long,
+        qn: Int = DEFAULT_QN,
+        onlyAudio: Boolean = false,
+        preferredLine: List<String>? = null,
+    ): Result<LivePlayback> =
         withContext(Dispatchers.IO) {
             runCatching {
                 buvid.ensure()
                 val keys = wbi.getKeys()
-                val params = mapOf(
+                val params = linkedMapOf(
                     "room_id" to roomId.toString(),
                     "protocol" to "0,1",
                     "format" to "0,1,2",
@@ -297,6 +327,9 @@ class LiveRepository(
                     "panorama" to "1",
                     "web_location" to "444.8",
                 )
+                if (onlyAudio) {
+                    params["only_audio"] = "1"
+                }
                 val response = api.livePlayUrl(WbiUtils.sign(params, keys.first, keys.second))
                 val data = response.data
                 if (response.code != 0 || data == null) {
@@ -305,33 +338,81 @@ class LiveRepository(
                 if (data.liveStatus != null && data.liveStatus != 1) {
                     error("未开播")
                 }
-                data.toPlayback(qn)
+                data.toPlayback(qn, onlyAudio, preferredLine)
             }
         }
 
     /**
-     * 旧项目 LivePlaybackPolicy.resolveLivePlayback 的做法：把接口给的所有线路摊平成一个有序候选表，
-     * 播放失败时按顺序换下一条。这里同样先排 HLS（fmp4 优先、avc 优先），再排 FLV。
+     * 照搬 PiliPlus 的 `stream -> format -> codec -> url_info` 层级结构保留完整线路树，
+     * 同时依据偏好（或默认 HLS/fmp4/avc）定位初始线路索引，并展开有序候选列表供播放失败时顺延。
      */
-    private fun LivePlayUrlData.toPlayback(requestedQn: Int): LivePlayback {
+    private fun LivePlayUrlData.toPlayback(
+        requestedQn: Int,
+        onlyAudio: Boolean,
+        preferredLine: List<String>?,
+    ): LivePlayback {
         val qualities = qualitiesOf()
-        val streams = playurlInfo?.playurl?.stream.orEmpty()
-        val ordered = streams.sortedBy { if (it.protocolName == "http_hls") 0 else 1 }
+        val qnDescMap = qualities.associate { it.quality to it.label }
+        val rawStreams = playurlInfo?.playurl?.stream.orEmpty()
+        val streamNodes = rawStreams.mapNotNull { stream ->
+            val formatNodes = stream.format.mapNotNull { format ->
+                val codecNodes = format.codec.mapNotNull { codec ->
+                    val hosts = codec.urlInfo.filter { it.host.isNotBlank() }
+                        .map { LiveUrlHostNode(host = it.host, extra = it.extra) }
+                    if (codec.baseUrl.isBlank() || hosts.isEmpty()) return@mapNotNull null
+                    val label = qnDescMap[codec.currentQn]
+                        ?: codec.currentQn.takeIf { it > 0 }?.let { "${it}P" }
+                        ?: ""
+                    LiveCodecNode(
+                        codecName = codec.codecName,
+                        currentQn = codec.currentQn,
+                        qualityDesc = label,
+                        acceptQn = codec.acceptQn,
+                        baseUrl = codec.baseUrl,
+                        urlInfos = hosts,
+                    )
+                }
+                if (codecNodes.isEmpty()) null else LiveFormatNode(format.formatName, codecNodes)
+            }
+            if (formatNodes.isEmpty()) null else LiveStreamNode(stream.protocolName, formatNodes)
+        }
+
+        val initialSelection = resolveInitialSelection(streamNodes, preferredLine)
         val candidates = ArrayList<LiveCandidate>()
-        for (stream in ordered) {
-            val isHls = stream.protocolName == "http_hls"
-            val formats = stream.format.filter { it.codec.isNotEmpty() }
-                .sortedBy { if (it.formatName == "fmp4") 0 else 1 }
-            for (format in formats) {
-                val codecs = format.codec.filter { it.baseUrl.isNotBlank() }
-                    .sortedBy { if (it.codecName == "avc") 0 else 1 }
-                for (codec in codecs) {
-                    for (urlInfo in codec.urlInfo) {
-                        if (urlInfo.host.isBlank()) continue
-                        val url = urlInfo.host + codec.baseUrl + urlInfo.extra
-                        if (candidates.none { it.url == url }) {
-                            candidates += LiveCandidate(url, isHls)
-                        }
+        fun addSelection(sel: LiveStreamSelection) {
+            val s = streamNodes.getOrNull(sel.streamIndex) ?: return
+            val f = s.formats.getOrNull(sel.formatIndex) ?: return
+            val c = f.codecs.getOrNull(sel.codecIndex) ?: return
+            val u = c.urlInfos.getOrNull(sel.urlIndex) ?: return
+            val fullUrl = u.host + c.baseUrl + u.extra
+            if (candidates.none { it.url == fullUrl }) {
+                candidates += LiveCandidate(
+                    url = fullUrl,
+                    isHls = s.protocolName == "http_hls" || fullUrl.contains(".m3u8", ignoreCase = true),
+                    selection = sel,
+                    currentQn = c.currentQn,
+                    acceptQn = c.acceptQn,
+                )
+            }
+        }
+
+        addSelection(initialSelection)
+        val sortedStreamIndices = streamNodes.indices.sortedBy {
+            if (streamNodes[it].protocolName == "http_hls") 0 else 1
+        }
+        for (si in sortedStreamIndices) {
+            val formats = streamNodes[si].formats
+            val sortedFormatIndices = formats.indices.sortedBy {
+                if (formats[it].formatName == "fmp4") 0 else 1
+            }
+            for (fi in sortedFormatIndices) {
+                val codecs = formats[fi].codecs
+                val sortedCodecIndices = codecs.indices.sortedBy {
+                    if (codecs[it].codecName == "avc") 0 else 1
+                }
+                for (ci in sortedCodecIndices) {
+                    for (ui in codecs[ci].urlInfos.indices) {
+                        addSelection(LiveStreamSelection(si, fi, ci, ui))
                     }
                 }
             }
@@ -343,16 +424,57 @@ class LiveRepository(
         }
         if (candidates.isEmpty()) error("没有可播放的直播流")
         val first = candidates.first()
-        val activeQuality = if (first.isHls) {
-            streams.firstOrNull { it.protocolName == "http_hls" }?.pickQuality()
-        } else {
-            null
-        } ?: currentQuality.takeIf { it > 0 } ?: requestedQn
+        val activeQuality = first.currentQn.takeIf { it > 0 }
+            ?: currentQuality.takeIf { it > 0 }
+            ?: requestedQn
         return LivePlayback(
             candidates = candidates,
             qualities = qualities,
             activeQuality = activeQuality,
+            streams = streamNodes,
+            initialSelection = initialSelection,
+            onlyAudio = onlyAudio,
         )
+    }
+
+    private fun resolveInitialSelection(
+        streams: List<LiveStreamNode>,
+        preferredLine: List<String>?,
+    ): LiveStreamSelection {
+        if (preferredLine != null && preferredLine.size >= 3) {
+            val (pName, fName, cName) = preferredLine
+            streams.forEachIndexed { si, s ->
+                if (s.protocolName == pName) {
+                    s.formats.forEachIndexed { fi, f ->
+                        if (f.formatName == fName) {
+                            f.codecs.forEachIndexed { ci, c ->
+                                if (c.codecName == cName) {
+                                    return LiveStreamSelection(si, fi, ci, 0)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // 没有保存偏好时默认优先 HLS + fmp4 + avc，保持原有首选画质与低首帧延迟策略。
+        var bestScore = Int.MAX_VALUE
+        var best = LiveStreamSelection()
+        streams.forEachIndexed { si, s ->
+            val pScore = if (s.protocolName == "http_hls") 0 else 100
+            s.formats.forEachIndexed { fi, f ->
+                val fScore = if (f.formatName == "fmp4") 0 else 10
+                f.codecs.forEachIndexed { ci, c ->
+                    val cScore = if (c.codecName == "avc") 0 else 1
+                    val score = pScore + fScore + cScore
+                    if (score < bestScore) {
+                        bestScore = score
+                        best = LiveStreamSelection(si, fi, ci, 0)
+                    }
+                }
+            }
+        }
+        return best
     }
 
     private fun LivePlayUrlData.qualitiesOf(): List<QualityOption> {
@@ -369,13 +491,6 @@ class LiveRepository(
             .filter { accepted.isEmpty() || it.qn in accepted }
             .distinctBy { it.qn }
             .map { QualityOption(quality = it.qn, label = it.desc) }
-    }
-
-    private fun LiveStream.pickQuality(): Int? {
-        val formats = format.filter { it.codec.isNotEmpty() }
-        val preferred = formats.firstOrNull { it.formatName == "fmp4" } ?: formats.firstOrNull()
-        val codec = preferred?.codec?.firstOrNull { it.baseUrl.isNotBlank() }
-        return codec?.currentQn?.takeIf { it > 0 }
     }
 
     private companion object {

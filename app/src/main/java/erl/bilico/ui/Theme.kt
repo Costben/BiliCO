@@ -4,6 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.theme.ColorSchemeMode
 import io.github.suqi8.coui.kmp.theme.ThemeController
@@ -33,4 +34,11 @@ fun BiliCoTheme(darkMode: Int, content: @Composable () -> Unit) {
         )
     }
     COUITheme(controller = controller, content = content)
+}
+
+/** 卡片内部嵌块（投票框、分P/合集内嵌行）通用底色：暗色用半透明白提亮一级，亮色用浅灰与白卡拉出层次。 */
+@Composable
+internal fun nestedBlockColor(): Color {
+    val scheme = COUITheme.colorScheme
+    return if (scheme.background.luminance() < 0.5f) scheme.surfaceContainer else scheme.background
 }

@@ -1,5 +1,6 @@
 package erl.bilico.data.repository
 
+import erl.bilico.data.model.UpCardSummary
 import erl.bilico.data.model.VideoRelationData
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BuvidManager
@@ -52,6 +53,27 @@ class InteractionRepository(
         runCatching {
             buvid.ensure()
             api.relationStat(mid).data?.follower
+        }.getOrNull()
+    }
+
+    /** UP 主名片摘要（粉丝数 + 官方认证），优先走 x/web-interface/card。 */
+    suspend fun upCardSummary(mid: Long): UpCardSummary? = withContext(Dispatchers.IO) {
+        if (mid <= 0L) return@withContext null
+        runCatching {
+            buvid.ensure()
+            val data = api.memberCard(mid).data
+            val card = data?.card
+            val official = card?.resolvedOfficial()
+            val followers = when {
+                (data?.follower ?: 0L) > 0L -> data?.follower ?: 0L
+                (card?.fans ?: 0L) > 0L -> card?.fans ?: 0L
+                else -> api.relationStat(mid).data?.follower ?: 0L
+            }
+            UpCardSummary(
+                followers = followers,
+                officialType = official?.resolvedType() ?: -1,
+                officialDesc = official?.resolvedDesc().orEmpty(),
+            )
         }.getOrNull()
     }
 

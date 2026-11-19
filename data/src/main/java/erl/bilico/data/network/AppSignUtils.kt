@@ -9,6 +9,9 @@ object AppSignUtils {
     const val TV_APP_KEY = "4409e2ce8ffd12b8"
     private const val TV_APP_SEC = "59b43e04ad6965f34319062b478f83dd"
 
+    const val ANDROID_LOGIN_APP_KEY = "783bbb7264451d82"
+    private const val ANDROID_LOGIN_APP_SEC = "2653583c8873dea268ab9386918b1d65"
+
     const val ANDROID_APP_KEY = "1d8b6e7d45233436"
     private const val ANDROID_APP_SEC = "560c52ccd288fed045859ed18bffd973"
 
@@ -35,6 +38,9 @@ object AppSignUtils {
 
     fun signForTvLogin(params: Map<String, String>): Map<String, String> =
         signEncoded(params + ("appkey" to TV_APP_KEY), TV_APP_SEC)
+
+    fun signForAndroidQrLogin(params: Map<String, String>): Map<String, String> =
+        signEncoded(params + ("appkey" to ANDROID_LOGIN_APP_KEY), ANDROID_LOGIN_APP_SEC)
 
     private fun signEncoded(params: Map<String, String>, appSec: String): Map<String, String> {
         val sorted = params.toSortedMap()

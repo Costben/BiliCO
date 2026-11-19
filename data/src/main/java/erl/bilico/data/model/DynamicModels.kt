@@ -126,6 +126,7 @@ data class DynamicAuthor(
     /** 头像框。 */
     val pendant: DynamicPendant? = null,
     val vip: DynamicVip? = null,
+    @SerialName("official_verify") val officialVerify: OfficialVerifyData? = null,
     /** 装扮卡片：右侧的名牌图与粉丝编号。 */
     val decorate: DynamicDecorate? = null,
     /** opus 详情里装扮字段换了个名字，两种都收。 */
@@ -170,6 +171,78 @@ data class DynamicFan(
 data class DynamicContent(
     val desc: DynamicDesc? = null,
     val major: DynamicMajor? = null,
+    val additional: DynamicAdditional? = null,
+)
+
+@Serializable
+data class DynamicAdditional(
+    val type: String = "",
+    val vote: DynamicAdditionalVote? = null,
+)
+
+@Serializable
+data class DynamicAdditionalVote(
+    @SerialName("vote_id")
+    @Serializable(with = FlexibleLongSerializer::class)
+    val voteId: Long = 0L,
+    val desc: String = "",
+    val title: String = "",
+    @SerialName("end_time")
+    @Serializable(with = FlexibleLongSerializer::class)
+    val endTime: Long = 0L,
+    @SerialName("join_num")
+    @Serializable(with = FlexibleLongSerializer::class)
+    val joinNum: Long = 0L,
+    @SerialName("choice_cnt")
+    @Serializable(with = FlexibleIntSerializer::class)
+    val choiceCnt: Int = 1,
+    @Serializable(with = FlexibleIntSerializer::class)
+    val status: Int = 0,
+)
+
+@Serializable
+data class VoteInfoResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: VoteInfoData? = null,
+)
+
+@Serializable
+data class VoteInfoData(
+    val info: VoteInfoDetail? = null,
+)
+
+@Serializable
+data class VoteInfoDetail(
+    @SerialName("vote_id")
+    @Serializable(with = FlexibleLongSerializer::class)
+    val voteId: Long = 0L,
+    val title: String = "",
+    val desc: String = "",
+    @Serializable(with = FlexibleIntSerializer::class)
+    val type: Int = 0,
+    @SerialName("choice_cnt")
+    @Serializable(with = FlexibleIntSerializer::class)
+    val choiceCnt: Int = 1,
+    @Serializable(with = FlexibleLongSerializer::class)
+    val endtime: Long = 0L,
+    @Serializable(with = FlexibleIntSerializer::class)
+    val status: Int = 0,
+    @Serializable(with = FlexibleLongSerializer::class)
+    val cnt: Long = 0L,
+    val options: List<VoteOptionData> = emptyList(),
+    @SerialName("my_votes") val myVotes: List<Int> = emptyList(),
+)
+
+@Serializable
+data class VoteOptionData(
+    @Serializable(with = FlexibleIntSerializer::class)
+    val idx: Int = 0,
+    val desc: String = "",
+    val title: String = "",
+    @Serializable(with = FlexibleLongSerializer::class)
+    val cnt: Long = 0L,
+    @SerialName("img_url") val imgUrl: String = "",
 )
 
 @Serializable
@@ -183,6 +256,8 @@ data class DynamicRichTextNode(
     val type: String = "",
     val text: String = "",
     @SerialName("orig_text") val origText: String = "",
+    val rid: String = "",
+    @SerialName("jump_url") val jumpUrl: String = "",
     val emoji: DynamicEmoji? = null,
     val rich: DynamicRichTextNode? = null,
 )

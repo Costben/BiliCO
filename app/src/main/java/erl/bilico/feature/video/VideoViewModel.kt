@@ -38,6 +38,8 @@ data class VideoUiState(
     val favorited: Boolean = false,
     val following: Boolean = false,
     val upFollowers: Long? = null,
+    val upOfficialType: Int = -1,
+    val upOfficialDesc: String = "",
     val interactionBusy: Boolean = false,
 )
 
@@ -440,8 +442,14 @@ class VideoViewModel(
     private fun loadUpFollowers(mid: Long) {
         if (mid <= 0L) return
         viewModelScope.launch {
-            interactions.upFollowers(mid)?.let { count ->
-                _state.update { it.copy(upFollowers = count) }
+            interactions.upCardSummary(mid)?.let { card ->
+                _state.update {
+                    it.copy(
+                        upFollowers = card.followers,
+                        upOfficialType = card.officialType,
+                        upOfficialDesc = card.officialDesc,
+                    )
+                }
             }
         }
     }

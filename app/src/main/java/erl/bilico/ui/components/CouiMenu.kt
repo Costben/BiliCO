@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -19,12 +21,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
@@ -46,6 +55,7 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.overlay.OverlayCascadingListPopup
 import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.LocalDismissState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -96,6 +106,47 @@ private fun buildGroupedEntries(items: List<CouiMenuItem>): List<DropdownEntry> 
     return result
 }
 
+@Composable
+private fun rememberSelectedScrollModifier(
+    selectedIndex: Int,
+    trigger: Any?,
+): Modifier {
+    val requester = remember { BringIntoViewRequester() }
+    var selectedSize by remember(selectedIndex) { mutableStateOf(IntSize.Zero) }
+    var selectedCoords by remember(selectedIndex) { mutableStateOf<LayoutCoordinates?>(null) }
+    var scrolledForOpen by remember(selectedIndex, trigger) { mutableStateOf(false) }
+    val density = LocalDensity.current
+
+    LaunchedEffect(trigger, selectedIndex, selectedSize.height) {
+        val active = trigger != null && trigger != false
+        if (active && selectedIndex > 0 && !scrolledForOpen && selectedSize.height > 0) {
+            val padPx = with(density) { 72.dp.toPx() }
+            val target = Rect(
+                left = 0f,
+                top = -padPx,
+                right = selectedSize.width.toFloat().coerceAtLeast(1f),
+                bottom = selectedSize.height.toFloat() + padPx,
+            )
+            // OverlayListPopup 首帧透明度 < 0.1 时先挂 frozenVerticalScroll，等切到 verticalScroll 再滚入可视区。
+            for (attempt in 0 until 5) {
+                delay(if (attempt == 0) 90L else 60L)
+                withFrameNanos { }
+                requester.bringIntoView(target)
+                withFrameNanos { }
+                val coords = selectedCoords
+                if (coords != null && coords.isAttached && coords.boundsInWindow().height >= selectedSize.height * 0.5f) {
+                    scrolledForOpen = true
+                    break
+                }
+            }
+        }
+    }
+    return Modifier
+        .onSizeChanged { selectedSize = it }
+        .onGloballyPositioned { selectedCoords = it }
+        .bringIntoViewRequester(requester)
+}
+
 /**
  * COUI 那套弹层菜单：面板半透明，后面是背景模糊，边缘有一圈高光和内阴影，
  * 打开时按重力路径从锚点弹出来，收起时缩回锚点。
@@ -109,8 +160,14 @@ private fun MenuPopupBody(
     items: List<CouiMenuItem>,
     groupKey: String,
     headerContent: (@Composable () -> Unit)?,
+    scrollTrigger: Boolean = false,
     onItemSelected: (CouiMenuItem) -> Unit,
 ) {
+    val selectedIndex = remember(items) { items.indexOfFirst { it.selected } }
+    val selectedModifier = rememberSelectedScrollModifier(
+        selectedIndex = selectedIndex,
+        trigger = scrollTrigger,
+    )
     val content: @Composable () -> Unit = {
         ListPopupColumn {
             items.forEachIndexed { index, item ->
@@ -123,6 +180,7 @@ private fun MenuPopupBody(
                     optionSize = items.size,
                     isSelected = item.selected,
                     index = index,
+                    modifier = if (index == selectedIndex) selectedModifier else Modifier,
                     isFirst = headerContent == null && index == 0,
                     isLast = index == items.lastIndex,
                     groupKey = groupKey,
@@ -156,6 +214,7 @@ internal fun CouiPopupMenu(
     items: List<CouiMenuItem>,
     preciseClickState: PreciseClickState? = null,
     alignment: PopupPositionProvider.Align = PopupPositionProvider.Align.Start,
+    maxHeight: Dp? = null,
     headerContent: (@Composable () -> Unit)? = null,
 ) {
     val hasSubmenus = remember(items) { items.any { !it.children.isNullOrEmpty() } }
@@ -166,6 +225,7 @@ internal fun CouiPopupMenu(
             entries = entries,
             onDismissRequest = onDismiss,
             alignment = PopupPositionProvider.Align.End,
+            maxHeight = maxHeight,
         )
         return
     }
@@ -173,6 +233,7 @@ internal fun CouiPopupMenu(
         show = show,
         alignment = alignment,
         onDismissRequest = onDismiss,
+        maxHeight = maxHeight,
         preciseClickState = preciseClickState,
     ) {
         val dismiss = LocalDismissState.current
@@ -180,6 +241,7 @@ internal fun CouiPopupMenu(
             items = items,
             groupKey = "menu",
             headerContent = headerContent,
+            scrollTrigger = show,
             onItemSelected = { item ->
                 item.onClick()
                 if (!item.keepOpen) dismiss?.invoke()
@@ -352,6 +414,7 @@ internal fun CouiStagePopupMenu(
                                     items = items,
                                     groupKey = "stage_menu",
                                     headerContent = headerContent,
+                                    scrollTrigger = show,
                                     onItemSelected = { item ->
                                         val idx = items.indexOf(item)
                                         if (!item.children.isNullOrEmpty() && idx >= 0) {
@@ -377,6 +440,11 @@ internal fun CouiStagePopupMenu(
                 }
 
                 if (activeTrigger != null && activeChildren.isNotEmpty()) {
+                    val subSelectedIndex = remember(activeChildren) { activeChildren.indexOfFirst { it.selected } }
+                    val subSelectedModifier = rememberSelectedScrollModifier(
+                        selectedIndex = subSelectedIndex,
+                        trigger = displayedSubmenuIndex,
+                    )
                     ListPopupContent(
                         popupContentSize = subContentSize,
                         onPopupContentSizeChange = { subContentSize = it },
@@ -417,6 +485,7 @@ internal fun CouiStagePopupMenu(
                                         optionSize = activeChildren.size + 1,
                                         isSelected = child.selected,
                                         index = childIndex + 1,
+                                        modifier = if (childIndex == subSelectedIndex) subSelectedModifier else Modifier,
                                         groupKey = "stage_submenu",
                                         isFirst = false,
                                         isLast = childIndex == activeChildren.lastIndex,

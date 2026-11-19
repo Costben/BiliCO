@@ -110,6 +110,8 @@ class RelationRepository(
                         name = user.uname,
                         face = Formatters.normalizeImageUrl(user.face),
                         sign = user.sign,
+                        officialType = user.officialVerify?.resolvedType() ?: -1,
+                        officialDesc = user.officialVerify?.resolvedDesc().orEmpty(),
                     )
                 }
                 items to (pn * ps < (data?.total ?: 0))

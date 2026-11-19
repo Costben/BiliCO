@@ -27,18 +27,19 @@ internal fun CommentSortTabRow(
     )
 }
 
-/** 评论详情（楼中楼）排序分段标签栏（最热 / 最新 / 最旧）。 */
+/** 评论详情（楼中楼）排序分段标签栏（最旧 / 最热 / 最新）。 */
 @Composable
 internal fun ReplySortTabRow(
     sort: ReplySort,
     onSelectSort: (ReplySort) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val selectedIndex = REPLY_SORT_ORDER.indexOf(sort).coerceAtLeast(0)
     MiniSortTabRow(
         tabs = REPLY_SORT_TABS,
-        selectedIndex = sort.ordinal,
+        selectedIndex = selectedIndex,
         onSelectIndex = { index ->
-            onSelectSort(ReplySort.entries.getOrElse(index) { ReplySort.Hot })
+            onSelectSort(REPLY_SORT_ORDER.getOrElse(index) { ReplySort.Old })
         },
         minWidth = 48.dp,
         modifier = modifier,
@@ -68,4 +69,5 @@ private fun MiniSortTabRow(
 }
 
 private val COMMENT_SORT_TABS = listOf("最热", "最新")
-private val REPLY_SORT_TABS = listOf("最热", "最新", "最旧")
+private val REPLY_SORT_TABS = listOf("最旧", "最热", "最新")
+private val REPLY_SORT_ORDER = listOf(ReplySort.Old, ReplySort.Hot, ReplySort.New)

@@ -44,6 +44,8 @@ internal fun CollapsedVideoBar(
     onPlayPause: () -> Unit,
     onExpand: () -> Unit,
     onShare: (() -> Unit)? = null,
+    onCast: (() -> Unit)? = null,
+    onReportVideo: (() -> Unit)? = null,
     playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
     backdrop: Backdrop? = LocalBackdrop.current,
@@ -100,6 +102,8 @@ internal fun CollapsedVideoBar(
                     playbackEndMode = playbackEndMode,
                     onSelectPlaybackEndMode = onSelectPlaybackEndMode,
                     onShare = onShare,
+                    onCast = onCast,
+                    onReportVideo = onReportVideo,
                 )
                 CouiPopupMenu(
                     show = moreOpen,

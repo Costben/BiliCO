@@ -264,6 +264,8 @@ internal fun VideoScreenDialogs(
     onSelectChapter: (VideoChapter) -> Unit = {},
     onDismissChapter: () -> Unit = {},
     sponsorSubmitDialog: (@Composable (inlineInStage: Boolean) -> Unit)? = null,
+    castDialog: (@Composable (inlineInStage: Boolean) -> Unit)? = null,
+    reportVideoDialog: (@Composable (inlineInStage: Boolean) -> Unit)? = null,
     inlineInStage: Boolean = false,
 ) {
     if (danmakuSettingsDialogVisible && danmakuSettings != null && settingsRepository != null) {
@@ -304,6 +306,85 @@ internal fun VideoScreenDialogs(
     }
 
     sponsorSubmitDialog?.invoke(inlineInStage)
+    castDialog?.invoke(inlineInStage)
+    reportVideoDialog?.invoke(inlineInStage)
+}
+
+@Composable
+internal fun rememberSponsorSubmitDialog(
+    visible: Boolean,
+    bvid: String,
+    cid: Long,
+    durationMs: Long,
+    currentPositionMs: () -> Long,
+    controller: SponsorBlockController,
+    sponsorUserIdProvider: () -> String,
+    onSuccess: (String) -> Unit,
+    onDismiss: () -> Unit,
+): (@Composable (Boolean) -> Unit)? = if (visible && cid > 0L) {
+    { inlineInStage ->
+        SponsorSubmitDialog(
+            bvid = bvid,
+            cid = cid,
+            durationMs = durationMs,
+            currentPositionMs = currentPositionMs,
+            controller = controller,
+            sponsorUserIdProvider = sponsorUserIdProvider,
+            inlineInStage = inlineInStage,
+            onSuccess = onSuccess,
+            onDismiss = onDismiss,
+        )
+    }
+} else null
+
+@Composable
+internal fun rememberCastDialog(
+    visible: Boolean,
+    bvid: String,
+    cid: Long,
+    qn: Int,
+    title: String,
+    positionProvider: () -> Long,
+    onDismiss: () -> Unit,
+): (@Composable (Boolean) -> Unit)? = if (visible && cid > 0L) {
+    { inlineInStage ->
+        erl.bilico.feature.cast.CastSheet(
+            request = erl.bilico.feature.cast.CastMediaRequest(
+                title = title,
+                bvid = bvid,
+                cid = cid,
+                qn = qn,
+                initialPositionMs = positionProvider(),
+            ),
+            inlineInStage = inlineInStage,
+            onDismiss = onDismiss,
+        )
+    }
+} else {
+    null
+}
+
+@Composable
+internal fun rememberReportVideoDialog(
+    visible: Boolean,
+    aid: Long,
+    bvid: String,
+    title: String,
+    onDismiss: () -> Unit,
+): (@Composable (Boolean) -> Unit)? = if (visible && aid > 0L) {
+    { inlineInStage ->
+        erl.bilico.ui.components.ReportDialog(
+            target = erl.bilico.ui.components.ReportTarget.Video(
+                aid = aid,
+                bvid = bvid,
+                title = title,
+            ),
+            inlineInStage = inlineInStage,
+            onDismiss = onDismiss,
+        )
+    }
+} else {
+    null
 }
 
 

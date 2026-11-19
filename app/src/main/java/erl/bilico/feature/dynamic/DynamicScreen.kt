@@ -145,10 +145,12 @@ fun DynamicScreen(
                         DynamicViewModel(container.dynamic, container.session, type)
                     }
                     val state by viewModel.state.collectAsStateWithLifecycle()
+                    val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
                     LaunchedEffect(loggedIn) { viewModel.onLoginStateChanged(loggedIn) }
 
                     DynamicContent(
                         state = state,
+                        blocks = blocks,
                         viewModel = viewModel,
                         topInset = topInset,
                         active = pagerState.settledPage == page,
@@ -213,6 +215,7 @@ private data class ShownDynamic(
 @Composable
 private fun DynamicContent(
     state: DynamicUiState,
+    blocks: erl.bilico.data.repository.BlockSnapshot,
     viewModel: DynamicViewModel,
     topInset: Dp,
     active: Boolean,
@@ -332,8 +335,8 @@ private fun DynamicContent(
                     }
                 }
                 val inserted = shown.inserted.coerceIn(0, shown.items.size)
-                val freshItems = shown.items.take(inserted)
-                val olderItems = shown.items.drop(inserted)
+                val freshItems = shown.items.take(inserted).filter { blocks.shouldShowDynamic(it) }
+                val olderItems = shown.items.drop(inserted).filter { blocks.shouldShowDynamic(it) }
                 val card: @Composable (DynamicItemUi) -> Unit = { item ->
                     DynamicCard(
                         item = item,

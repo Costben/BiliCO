@@ -261,7 +261,7 @@ private val MIN_DANMAKU_CAPSULE_WIDTH = 124.dp
  * 那是给旧的纯文字「取消」算的。把胶囊「发送」塞进去，整行右端就比左端多空一截；
  * 多量这 16dp 让搜索栏自己把这截吃回去，行尾重新对齐。
  */
-private fun Modifier.actionEndSlack(slack: Dp): Modifier =
+internal fun Modifier.actionEndSlack(slack: Dp): Modifier =
     layout { measurable, constraints ->
         val extra = slack.roundToPx()
         val placeable = if (extra == 0) {
@@ -280,7 +280,7 @@ private fun Modifier.actionEndSlack(slack: Dp): Modifier =
 
 
 /** 弹幕输入框与发送按钮共用的紧凑高度；与 COUI-Kit ChipTab 32dp 一致 */
-private val DETAIL_CAPSULE_HEIGHT = 32.dp
+internal val DETAIL_CAPSULE_HEIGHT = 32.dp
 
 /**
  * 「简介 / 评论」标签栏的高度。
@@ -291,7 +291,7 @@ private val DETAIL_CAPSULE_HEIGHT = 32.dp
 internal val DETAIL_BAR_HEIGHT = 48.dp
 
 /** COUI `SearchBar` 在 `outsideEndAction` 后面固定垫的 16dp，展开时补回来。 */
-private val ACTION_END_SLACK = 16.dp
+internal val ACTION_END_SLACK = 16.dp
 
 /** COUI 搜索栏背景变形的时长，让标签收起与胶囊铺开同一条节奏。 */
 private const val DETAIL_RESIZE_MILLIS = 450

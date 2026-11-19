@@ -2,40 +2,24 @@ package erl.bilico.feature.pgc
 
 import android.util.Log
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.PlaybackException
@@ -45,12 +29,13 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.isHdr
 import erl.bilico.di.AppContainer
-import erl.bilico.feature.comment.CommentTab
-import erl.bilico.feature.comment.ReplyDetailOverlay
 import erl.bilico.feature.comment.ReplyThreadController
+import erl.bilico.feature.video.CollapsedVideoBar
 import erl.bilico.feature.video.DanmakuController
 import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
+import erl.bilico.feature.video.FullscreenDanmakuComposer
+import erl.bilico.feature.video.LocalPortraitSlotHeight
 import erl.bilico.feature.video.PlaybackAttempts
 import erl.bilico.feature.video.SubtitleController
 import erl.bilico.feature.video.SubtitleOverlay
@@ -64,7 +49,7 @@ import erl.bilico.feature.video.rememberDanmakuActions
 import erl.bilico.feature.video.rememberLongPressSpeedController
 import erl.bilico.feature.video.resolveLongPressSpeedMode
 import erl.bilico.feature.video.rememberPlayerFullscreenController
-import erl.bilico.feature.video.rememberStableNavBarBottomDp
+import erl.bilico.feature.video.rememberVideoBarBackdrops
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
@@ -73,15 +58,15 @@ import erl.bilico.player.releasePlaybackPlayer
 import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalNavEntry
+import erl.bilico.ui.LocalRouteTransition
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
-import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.layerBackdropIf
-import io.github.suqi8.coui.kmp.basic.Text
+import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
-import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun PgcScreen(
@@ -149,8 +134,23 @@ fun PgcScreen(
     val fullscreen = fsController.fullscreen
     val deviceSide = fsController.deviceSide
     val applyFullscreen = fsController.applyFullscreen
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val routeTransition = LocalRouteTransition.current
+    val blurActive by remember(routeTransition) {
+        derivedStateOf {
+            routeTransition == null ||
+                (!routeTransition.exiting() && routeTransition.progress() >= 0.999f)
+        }
+    }
+    val detailPager = rememberPagerState(pageCount = { 2 })
+    val infoListState = rememberLazyListState()
+    val commentListState = rememberLazyListState()
+    val replyThread = remember(seasonId) { ReplyThreadController() }
+    val replyListState = rememberLazyListState()
+    val barBackdrops = rememberVideoBarBackdrops(pageContainerColor())
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
+    var castDialogVisible by remember { mutableStateOf(false) }
+    var danmakuComposing by rememberSaveable { mutableStateOf(false) }
+    var danmakuDraft by rememberSaveable { mutableStateOf("") }
     var speed by rememberSaveable {
         mutableFloatStateOf(if (speedLocked) lockedSpeed else 1f)
     }
@@ -294,6 +294,28 @@ fun PgcScreen(
 
     var danmakuActionMessage by remember { mutableStateOf<String?>(null) }
     val message = danmakuActionMessage ?: state.message
+    val sendDanmaku: () -> Unit = {
+        val text = danmakuDraft.trim()
+        val aid = episode?.aid ?: 0L
+        val cid = episode?.cid ?: 0L
+        when {
+            text.isEmpty() || cid <= 0L -> Unit
+            !container.session.isLoggedIn() -> danmakuActionMessage = "请先登录后再操作"
+            else -> scope.launch {
+                val position = player.currentPosition.coerceAtLeast(0L)
+                container.danmaku.send(aid, cid, text, position)
+                    .onSuccess { dmid ->
+                        danmakuDraft = ""
+                        danmakuComposing = false
+                        val showAtMs = maxOf(position, player.currentPosition.coerceAtLeast(0L))
+                        danmakuController.appendSelf(content = text, timeMs = showAtMs, serverId = dmid)
+                        danmakuController.reload(position)
+                        danmakuActionMessage = "弹幕已发送"
+                    }
+                    .onFailure { danmakuActionMessage = it.message ?: "发送弹幕失败" }
+            }
+        }
+    }
     if (danmakuActionMessage != null) {
         LaunchedEffect(danmakuActionMessage) {
             delay(2600)
@@ -317,6 +339,22 @@ fun PgcScreen(
                 inlineInStage = inlineInStage,
             )
         }
+        val currentEp = viewModel.currentEpisode
+        val castEpId = currentEp?.epId ?: epId
+        val castCid = currentEp?.cid ?: 0L
+        if (castDialogVisible && (castEpId > 0L || castCid > 0L)) {
+            erl.bilico.feature.cast.CastSheet(
+                request = erl.bilico.feature.cast.CastMediaRequest(
+                    title = state.detail?.title.orEmpty(),
+                    epId = castEpId,
+                    cid = castCid,
+                    qn = state.activeQuality,
+                    initialPositionMs = player.currentPosition.coerceAtLeast(0L),
+                ),
+                inlineInStage = inlineInStage,
+                onDismiss = { castDialogVisible = false },
+            )
+        }
     }
 
     // HDR 档位必须走 SurfaceView：TextureView 由 GPU 合成，HDR 画面会被当成 SDR 铺到屏幕上（发暗）。
@@ -329,10 +367,20 @@ fun PgcScreen(
         activity = activity,
         darkMode = darkMode,
         videoAspect = effectiveVideoAspect,
+        portraitResizable = true,
+        playing = isPlaying || isBuffering,
         surfaceViewPlayer = hdrSurface,
+        canExpand = {
+            val list = when {
+                replyThread.root != null -> replyListState
+                detailPager.currentPage == 0 -> infoListState
+                else -> commentListState
+            }
+            list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0
+        },
         playerContent = {
             val stageBackdrop = rememberLayerBackdrop()
-            val anyStageDialogOpen = fullscreen && danmakuSettingsDialogVisible
+            val anyStageDialogOpen = fullscreen && (danmakuSettingsDialogVisible || castDialogVisible)
             VideoPlayer(
                 player = player,
                 title = state.detail?.title.orEmpty(),
@@ -387,6 +435,11 @@ fun PgcScreen(
                     null
                 },
                 onHome = { nav.popToMain() },
+                onCast = if ((viewModel.currentEpisode?.epId ?: epId) > 0L || (viewModel.currentEpisode?.cid ?: 0L) > 0L) {
+                    { castDialogVisible = true }
+                } else {
+                    null
+                },
                 playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
                 longPressSpeed = longPressSpeed,
@@ -402,6 +455,14 @@ fun PgcScreen(
                         controlsVisible = chromeVisible,
                         inPip = inPipMode,
                         modifier = Modifier.fillMaxSize(),
+                    )
+                },
+                danmakuComposer = { onFocusChange ->
+                    FullscreenDanmakuComposer(
+                        draft = danmakuDraft,
+                        onDraftChange = { danmakuDraft = it },
+                        onSend = sendDanmaku,
+                        onFocusChange = onFocusChange,
                     )
                 },
                 overlay = {
@@ -435,75 +496,63 @@ fun PgcScreen(
             }
         },
         detailContent = {
-            val navBarBottom = rememberStableNavBarBottomDp()
-            val replyThread = remember(seasonId) { ReplyThreadController() }
-            val aid = episode?.aid ?: 0L
-            Box(modifier = Modifier.fillMaxSize()) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    PgcTabRow(selected = tab, onSelect = { tab = it })
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                    ) {
-                        when (tab) {
-                            0 -> PgcInfoTab(
-                                detail = state.detail,
-                                isLoading = state.isLoading,
-                                error = state.error,
-                                selectedEpIndex = state.selectedEpIndex,
-                                followed = state.followed,
-                                onToggleFollow = viewModel::toggleFollow,
-                                onRetry = viewModel::load,
-                                onSelectEpisode = { index ->
-                                    viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
-                                    viewModel.selectEpisode(index)
-                                },
-                                onSelectSeason = { id -> nav.push(Route.Pgc(id, 0L)) },
-                                bottomInset = navBarBottom,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-
-                            else -> {
-                                if (aid > 0L) {
-                                    CompositionLocalProvider(
-                                        LocalCommentSeek provides { ms -> player.seekTo(ms); if (!player.isPlaying) player.play() },
-                                    ) {
-                                        CommentTab(
-                                            container = container,
-                                            oid = aid,
-                                            onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
-                                            bottomInset = navBarBottom,
-                                            replyThreadController = replyThread,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (aid > 0L) {
-                    CompositionLocalProvider(
-                        LocalCommentSeek provides { ms -> player.seekTo(ms); if (!player.isPlaying) player.play() },
-                    ) {
-                        ReplyDetailOverlay(
-                            controller = replyThread,
-                            container = container,
-                            oid = aid,
-                            topInset = 0.dp,
-                            bottomInset = navBarBottom,
-                            backEnabled = !fullscreen,
-                            onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-            }
+            PgcDetailSection(
+                container = container,
+                nav = nav,
+                state = state,
+                aid = episode?.aid ?: 0L,
+                detailPager = detailPager,
+                infoListState = infoListState,
+                commentListState = commentListState,
+                replyThread = replyThread,
+                replyListState = replyListState,
+                danmakuEnabled = danmakuEnabled,
+                danmakuComposing = danmakuComposing,
+                danmakuDraft = danmakuDraft,
+                onOpenDanmakuSettings = { danmakuSettingsDialogVisible = true },
+                onDanmakuDraftChange = { danmakuDraft = it },
+                onDanmakuComposingChange = {
+                    danmakuComposing = it
+                    if (!it) danmakuDraft = ""
+                },
+                onSendDanmaku = sendDanmaku,
+                onSelectPage = { page -> scope.launch { detailPager.animateScrollToPage(page) } },
+                onToggleFollow = viewModel::toggleFollow,
+                onRetry = viewModel::load,
+                onSelectEpisode = { index ->
+                    viewModel.flushHeartbeat(player.currentPosition.coerceAtLeast(0L) / 1000, container.scope)
+                    viewModel.selectEpisode(index)
+                },
+                onSelectSeason = { id -> nav.push(Route.Pgc(id, 0L)) },
+                onSeekCommentMs = { ms ->
+                    player.seekTo(ms)
+                    if (!player.isPlaying) player.play()
+                },
+                barBackdrops = barBackdrops,
+                blurActive = blurActive,
+                backEnabled = !fullscreen,
+            )
         },
         portraitOverlay = {
             VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = false)
+        },
+        portraitCollapsedBar = {
+            val slotHeight = LocalPortraitSlotHeight.current
+            CollapsedVideoBar(
+                isPlaying = isPlaying,
+                onBack = { nav.pop() },
+                onHome = { nav.popToMain() },
+                onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+                onExpand = { slotHeight.floatValue = 0f },
+                playbackEndMode = playbackEndMode,
+                onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
+                onCast = if ((viewModel.currentEpisode?.epId ?: epId) > 0L || (viewModel.currentEpisode?.cid ?: 0L) > 0L) {
+                    { castDialogVisible = true }
+                } else {
+                    null
+                },
+                backdrop = barBackdrops.barMaterial,
+            )
         },
     )
 
@@ -512,51 +561,8 @@ fun PgcScreen(
     }
 }
 
-@Composable
-private fun PgcTabRow(selected: Int, onSelect: (Int) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(44.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TABS.forEachIndexed { index, label ->
-            val active = selected == index
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable { onSelect(index) },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = label,
-                    style = COUITheme.textStyles.body1,
-                    fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
-                    color = if (active) {
-                        COUITheme.colorScheme.onSurface
-                    } else {
-                        COUITheme.colorScheme.onSurfaceSecondary
-                    },
-                )
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .width(18.dp)
-                        .height(3.dp)
-                        .clip(SquircleShape(2.dp))
-                        .background(if (active) COUITheme.colorScheme.primary else Color.Transparent),
-                )
-            }
-        }
-    }
-}
-
 private fun PgcUiState.qualityLabel(): String? {
     val source = source ?: return null
     val active = source.qualities.firstOrNull { it.quality == activeQuality }
     return active?.label?.takeIf { it.isNotBlank() } ?: "${activeQuality}P"
 }
-
-private val TABS = listOf("简介", "评论")

@@ -37,6 +37,7 @@ class RankingRepository(
                     upMid = item.owner?.mid ?: 0L,
                     upFace = Formatters.normalizeImageUrl(item.owner?.face),
                     playCount = view,
+                    likeCount = item.stat?.like ?: 0L,
                     danmaku = danmaku,
                     durationSec = item.duration,
                     playCountText = Formatters.formatStat(view),

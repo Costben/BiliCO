@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.repository.FeedRepository
+import erl.bilico.data.settings.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -25,6 +27,7 @@ data class FeedUiState(
 
 class FeedViewModel(
     private val repository: FeedRepository,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(FeedUiState())
@@ -35,6 +38,15 @@ class FeedViewModel(
 
     init {
         refresh()
+        viewModelScope.launch {
+            settings.feedSource.drop(1).collect {
+                // 切换 App 端 / 网页端推荐源后重置列表并按新源加载。
+                nextPage = 1
+                inFlight = false
+                _state.value = FeedUiState(isInitialLoading = true)
+                refresh()
+            }
+        }
     }
 
     fun refresh() {

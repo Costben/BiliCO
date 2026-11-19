@@ -4,6 +4,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -20,8 +21,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,12 +35,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.VideoChapter
@@ -61,6 +69,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Favorites
 import io.github.suqi8.coui.kmp.icon.extended.Info
 import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.Play
+import kotlinx.coroutines.delay
 import io.github.suqi8.coui.kmp.icon.extended.Share
 import io.github.suqi8.coui.kmp.icon.extended.Stopwatch
 import io.github.suqi8.coui.kmp.icon.extended.Store
@@ -86,6 +95,8 @@ internal fun VideoInfoTab(
     favorited: Boolean,
     following: Boolean,
     upFollowers: Long?,
+    upOfficialType: Int = -1,
+    upOfficialDesc: String = "",
     onLike: () -> Unit,
     onDislike: () -> Unit,
     onCoin: () -> Unit,
@@ -127,6 +138,8 @@ internal fun VideoInfoTab(
             favorited = favorited,
             following = following,
             upFollowers = upFollowers,
+            upOfficialType = upOfficialType,
+            upOfficialDesc = upOfficialDesc,
             onLike = onLike,
             onDislike = onDislike,
             onCoin = onCoin,
@@ -163,6 +176,8 @@ private fun InfoContent(
     favorited: Boolean,
     following: Boolean,
     upFollowers: Long?,
+    upOfficialType: Int = -1,
+    upOfficialDesc: String = "",
     onLike: () -> Unit,
     onDislike: () -> Unit,
     onCoin: () -> Unit,
@@ -187,6 +202,10 @@ private fun InfoContent(
     var partsExpanded by rememberSaveable(detail.bvid) { mutableStateOf(false) }
     val density = LocalDensity.current
     val avatarPx = with(density) { 44.dp.roundToPx() }
+    val blocks by container.blocks.snapshot.collectAsState()
+    val visibleRelated = remember(related, blocks) {
+        related.filter { blocks.shouldShowFeedVideo(it, isRelated = true) }
+    }
     val desc = detail.desc.trim()
     // 收起时把换行压成空格：简介里的空行会让省略号单独占一行，白吃一行高度。
     val descPreview = remember(desc) { desc.replace(Regex("\\s*\\n+\\s*"), " ").trim() }
@@ -209,6 +228,8 @@ private fun InfoContent(
             UpRow(
                 detail = detail,
                 followers = upFollowers,
+                officialType = upOfficialType,
+                officialDesc = upOfficialDesc,
                 following = following,
                 avatarPx = avatarPx,
                 onOpenUser = onOpenUser,
@@ -352,49 +373,94 @@ private fun InfoContent(
         val collection = detail.collection
         if (collection != null && collection.episodes.size > 1) {
             item(key = "collection-section") {
-                ExpandableList(
-                    groupCount = 1,
-                    childCount = { collection.episodes.size },
-                    expandedGroups = if (collectionExpanded) setOf(0) else emptySet(),
-                    onExpandedGroupsChange = { collectionExpanded = 0 in it },
-                    groupContent = { _, expanded ->
-                        ExpandableSectionHeader(
-                            text = "${collection.title.ifBlank { "合集" }}（${collection.episodes.size}）",
-                            expanded = expanded,
-                        )
-                    },
-                ) { _, index ->
-                    val episode = collection.episodes[index]
-                    CollectionRow(
-                        index = index + 1,
-                        episode = episode,
-                        selected = episode.bvid == detail.bvid &&
-                            (episode.cid <= 0L || episode.cid == selectedCid),
-                        onClick = { onSelectEpisode(episode) },
-                    )
+                val selectedEpisodeIndex = remember(collection.episodes, detail.bvid, selectedCid) {
+                    collection.episodes.indexOfFirst { ep ->
+                        ep.bvid == detail.bvid && (ep.cid <= 0L || ep.cid == selectedCid)
+                    }
+                }
+                val colScrollModifier = rememberExpandedSelectionModifier(
+                    resetKey = detail.bvid,
+                    expanded = collectionExpanded,
+                    selectedIndex = selectedEpisodeIndex,
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(SquircleShape(12.dp))
+                        .background(COUITheme.colorScheme.surfaceContainer)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    ExpandableList(
+                        groupCount = 1,
+                        childCount = { collection.episodes.size },
+                        expandedGroups = if (collectionExpanded) setOf(0) else emptySet(),
+                        onExpandedGroupsChange = { collectionExpanded = 0 in it },
+                        groupContent = { _, expanded ->
+                            ExpandableSectionHeader(
+                                text = "${collection.title.ifBlank { "合集" }}（${collection.episodes.size}）",
+                                expanded = expanded,
+                            )
+                        },
+                    ) { _, index ->
+                        val episode = collection.episodes[index]
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 6.dp)
+                                .then(if (index == selectedEpisodeIndex) colScrollModifier else Modifier),
+                        ) {
+                            CollectionRow(
+                                index = index + 1,
+                                episode = episode,
+                                selected = index == selectedEpisodeIndex,
+                                onClick = { onSelectEpisode(episode) },
+                            )
+                        }
+                    }
                 }
             }
         }
 
         if (detail.pages.size > 1) {
             item(key = "parts-section") {
-                ExpandableList(
-                    groupCount = 1,
-                    childCount = { detail.pages.size },
-                    expandedGroups = if (partsExpanded) setOf(0) else emptySet(),
-                    onExpandedGroupsChange = { partsExpanded = 0 in it },
-                    groupContent = { _, expanded ->
-                        ExpandableSectionHeader(
-                            text = "分P（${detail.pages.size}）",
-                            expanded = expanded,
-                        )
-                    },
-                ) { _, index ->
-                    PartRow(
-                        part = detail.pages[index],
-                        selected = detail.pages[index].cid == selectedCid,
-                        onClick = { onSelectPart(index) },
-                    )
+                val selectedPartIndex = remember(detail.pages, selectedCid) {
+                    detail.pages.indexOfFirst { it.cid == selectedCid }
+                }
+                val partScrollModifier = rememberExpandedSelectionModifier(
+                    resetKey = detail.bvid,
+                    expanded = partsExpanded,
+                    selectedIndex = selectedPartIndex,
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(SquircleShape(12.dp))
+                        .background(COUITheme.colorScheme.surfaceContainer)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    ExpandableList(
+                        groupCount = 1,
+                        childCount = { detail.pages.size },
+                        expandedGroups = if (partsExpanded) setOf(0) else emptySet(),
+                        onExpandedGroupsChange = { partsExpanded = 0 in it },
+                        groupContent = { _, expanded ->
+                            ExpandableSectionHeader(
+                                text = "分P（${detail.pages.size}）",
+                                expanded = expanded,
+                            )
+                        },
+                    ) { _, index ->
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 6.dp)
+                                .then(if (index == selectedPartIndex) partScrollModifier else Modifier),
+                        ) {
+                            PartRow(
+                                part = detail.pages[index],
+                                selected = index == selectedPartIndex,
+                                onClick = { onSelectPart(index) },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -403,7 +469,7 @@ private fun InfoContent(
             HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
         }
 
-        if (related.isNotEmpty()) {
+        if (visibleRelated.isNotEmpty()) {
             item(key = "related-title") {
                 Text(
                     text = "其他推荐视频",
@@ -411,7 +477,7 @@ private fun InfoContent(
                     fontWeight = FontWeight.Medium,
                 )
             }
-            items(related, key = { "related-${it.bvid}" }) { video ->
+            items(visibleRelated, key = { "related-${it.bvid}" }) { video ->
                 RelatedVideoRow(
                     video = video,
                     onWatchLater = rememberWatchLaterAction(container, video),
@@ -449,4 +515,40 @@ private fun VideoTagChips(
             )
         }
     }
+}
+
+/** 折叠区块从收起转为展开且当前选集靠后时，等展开动画落位后滚到选中行。 */
+@Composable
+private fun rememberExpandedSelectionModifier(
+    resetKey: Any?,
+    expanded: Boolean,
+    selectedIndex: Int,
+): Modifier {
+    val requester = remember { BringIntoViewRequester() }
+    var rowSize by remember(selectedIndex, resetKey) { mutableStateOf(IntSize.Zero) }
+    var wasExpanded by remember(resetKey) { mutableStateOf(expanded) }
+    val density = LocalDensity.current
+
+    LaunchedEffect(expanded, selectedIndex) {
+        val justExpanded = expanded && !wasExpanded
+        wasExpanded = expanded
+        if (justExpanded && selectedIndex > 2) {
+            delay(430L)
+            if (rowSize.height > 0) {
+                val padPx = with(density) { 96.dp.toPx() }
+                requester.bringIntoView(
+                    Rect(
+                        left = 0f,
+                        top = -padPx,
+                        right = rowSize.width.toFloat().coerceAtLeast(1f),
+                        bottom = rowSize.height.toFloat() + padPx,
+                    ),
+                )
+            }
+        }
+    }
+
+    return Modifier
+        .onSizeChanged { rowSize = it }
+        .bringIntoViewRequester(requester)
 }

@@ -1,5 +1,6 @@
 package erl.bilico.feature.live
 
+import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -27,16 +28,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.media3.common.MediaItem
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import androidx.media3.datasource.HttpDataSource
-import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.extractor.DefaultExtractorsFactory
 import erl.bilico.data.model.DanmakuItem
 import erl.bilico.data.model.DanmakuType
 import erl.bilico.data.model.EmoteImage
@@ -47,14 +42,13 @@ import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.feature.video.DanmakuTimeline
 import erl.bilico.feature.video.FIXED_DURATION_MS
+import erl.bilico.feature.video.FullscreenDanmakuComposer
 import erl.bilico.feature.video.VideoFullscreenStage
 import erl.bilico.feature.video.VideoMessageToast
 import erl.bilico.feature.video.VideoPlayer
 import erl.bilico.feature.video.copyDanmakuToClipboard
 import erl.bilico.feature.video.describePlaybackError
 import erl.bilico.feature.video.findActivity
-import erl.bilico.feature.video.rememberLongPressSpeedController
-import erl.bilico.feature.video.resolveLongPressSpeedMode
 import erl.bilico.feature.video.rememberPlayerFullscreenController
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.player.BindPlaybackSession
@@ -66,11 +60,11 @@ import erl.bilico.player.rememberPlaybackPlayer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalNavEntry
 import erl.bilico.ui.NavState
+import erl.bilico.ui.Route
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -83,39 +77,36 @@ fun LiveRoomScreen(
     nav: NavState,
     roomId: Long,
 ) {
+    val context = LocalContext.current
+    val streamPrefs = remember(context) {
+        context.getSharedPreferences("live_stream_prefs", Context.MODE_PRIVATE)
+    }
     val viewModel: LiveRoomViewModel = viewModel(key = "live-$roomId") {
-        LiveRoomViewModel(container.live, container.client.okHttp, roomId, container.session.mid())
+        LiveRoomViewModel(container.live, container.client.okHttp, roomId, container.session.mid(), streamPrefs)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
     val advancedPlusOne by container.settings.advancedPlusOne.collectAsStateWithLifecycle()
-    val speedLocked by container.settings.speedLocked.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val gestureHaptic by container.settings.gestureHaptic.collectAsStateWithLifecycle()
-    val longPressSpeedPercent by container.settings.longPressSpeed.collectAsStateWithLifecycle()
-    val adjustableLongPressSpeed by container.settings.adjustableLongPressSpeed.collectAsStateWithLifecycle()
-    val swipeDownLockLongPressSpeed by container.settings.swipeDownLockLongPressSpeed.collectAsStateWithLifecycle()
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
-    val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val scope = rememberCoroutineScope()
     val player = rememberPlaybackPlayer("live-$roomId") { buildConfiguredExoPlayer(context) }
-    // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
     val playbackEntry = LocalNavEntry.current
     DisposableEffect(playbackEntry, roomId) {
         playbackEntry?.onDiscard = { releasePlaybackPlayer("live-$roomId") }
         onDispose { }
     }
 
-    // 视频本身的宽高比（宽 / 高），来自解码器上报的首帧尺寸；0 表示还没拿到。
     var videoAspect by remember(roomId) { mutableFloatStateOf(0f) }
     val fsController = rememberPlayerFullscreenController(
         videoAspect = videoAspect,
@@ -127,12 +118,10 @@ fun LiveRoomScreen(
     val applyFullscreen = fsController.applyFullscreen
 
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
-    var speed by rememberSaveable { mutableFloatStateOf(1f) }
-    val longPressSpeed = rememberLongPressSpeedController(
-        baseSpeed = speed,
-        boostPercent = longPressSpeedPercent,
-    )
-    val effectiveSpeed = longPressSpeed.effectiveSpeed
+    var castDialogVisible by remember { mutableStateOf(false) }
+    var lineDialogVisible by remember { mutableStateOf(false) }
+    var scDrawerVisible by remember { mutableStateOf(false) }
+    var danmakuDraft by rememberSaveable(roomId) { mutableStateOf("") }
 
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
@@ -152,8 +141,6 @@ fun LiveRoomScreen(
             liveMessage = null
         }
     }
-    // 直播弹幕走自己的时间轴：播放器在 FLV 直播里 currentPosition 会来回跳，
-    // 拿它当时间轴会让同一秒进来的弹幕挤在同一时刻、入轨互相顶掉。
     val overlayTimeline = remember {
         DanmakuTimeline().apply { source = { SystemClock.elapsedRealtime() } }
     }
@@ -163,33 +150,52 @@ fun LiveRoomScreen(
         consumedDanmakuSeq = viewModel.state.value.danmakuSeq
     }
 
-    fun mediaSourceFor(candidate: LiveCandidate): MediaSource {
-        val headers = container.client.mediaRequestHeaders().toMutableMap().apply {
-            put("Referer", "https://live.bilibili.com/")
-            put("Origin", "https://live.bilibili.com")
-        }
-        val dataSourceFactory = OkHttpDataSource.Factory(container.client.mediaClient())
-            .setDefaultRequestProperties(headers)
-        return if (candidate.isHls) {
-            HlsMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(candidate.url))
-        } else {
-            ProgressiveMediaSource.Factory(
-                dataSourceFactory,
-                DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true),
-            ).createMediaSource(MediaItem.fromUri(candidate.url))
-        }
-    }
-
     fun prepareCandidate(candidate: LiveCandidate) {
         playerError = null
         clearDanmakuOverlay()
-        player.setMediaSource(mediaSourceFor(candidate))
+        player.setPlaybackSpeed(1f)
+        player.setMediaSource(createLiveMediaSource(container.client, candidate))
         player.prepare()
-        // 直播从最新位置起播，避免一进房就落后到窗口外。
         player.seekToDefaultPosition()
-        player.setPlaybackSpeed(effectiveSpeed)
         player.playWhenReady = true
+    }
+
+    fun sendLiveDanmaku(text: String, emotes: Map<String, EmoteImage> = emptyMap(), onSent: (() -> Unit)? = null) {
+        val realRoomId = state.detail?.roomId?.takeIf { it > 0L } ?: roomId
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        if (!container.session.isLoggedIn()) {
+            liveMessage = "请先登录后再操作"
+            return
+        }
+        scope.launch {
+            container.live.sendDanmaku(realRoomId, trimmed, container.session.csrf())
+                .onSuccess {
+                    onSent?.invoke()
+                    val stamp = overlayTimeline.nowMs.coerceAtLeast(lastOverlayStamp + 1L)
+                    lastOverlayStamp = stamp
+                    overlayItems += DanmakuItem(
+                        id = nextSelfDanmakuId--,
+                        timeMs = stamp.toInt(),
+                        type = DanmakuType.SCROLL,
+                        content = trimmed,
+                        color = 0xFFFFFF,
+                        fontSize = 25,
+                        isSelf = true,
+                        emotes = emotes,
+                    )
+                    liveMessage = "弹幕已发送"
+                }
+                .onFailure { liveMessage = it.message ?: "发送弹幕失败" }
+        }
+    }
+
+    // 黑听模式：同步禁用视频轨道解码与渲染，切回视频模式时立即恢复。
+    LaunchedEffect(player, state.onlyAudio) {
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, state.onlyAudio)
+            .build()
     }
 
     DisposableEffect(player) {
@@ -218,9 +224,7 @@ fun LiveRoomScreen(
             }
         }
         player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-        }
+        onDispose { player.removeListener(listener) }
     }
 
     BindPlaybackSession(
@@ -233,13 +237,14 @@ fun LiveRoomScreen(
         autoPip = autoPip,
     )
 
-    LaunchedEffect(state.playback, state.playbackGeneration) {
+    LaunchedEffect(state.playbackGeneration) {
         val playback = state.playback ?: return@LaunchedEffect
+        val first = playback.candidates.firstOrNull() ?: return@LaunchedEffect
         candidateIndex = 0
-        prepareCandidate(playback.candidates.first())
+        viewModel.updateActiveSelection(first.selection)
+        prepareCandidate(first)
     }
 
-    // 换线路：403/404/5xx 或网络错误时按候选表顺延，全试完再重取一次地址（token 可能过期）。
     LaunchedEffect(errorEvent) {
         val error = errorEvent ?: return@LaunchedEffect
         errorEvent = null
@@ -248,7 +253,7 @@ fun LiveRoomScreen(
         Log.w(
             "BiliLive",
             "player error code=${error.errorCode} name=${error.errorCodeName} " +
-                "http=${httpStatus(error)} index=$candidateIndex/${playback?.candidates?.size} " +
+                "http=${liveHttpStatus(error)} index=$candidateIndex/${playback?.candidates?.size} " +
                 "url=${failed?.url?.take(120)}",
             error,
         )
@@ -262,6 +267,7 @@ fun LiveRoomScreen(
         val next = playback?.candidates?.getOrNull(candidateIndex + 1)
         if (next != null) {
             candidateIndex += 1
+            viewModel.updateActiveSelection(next.selection)
             prepareCandidate(next)
             return@LaunchedEffect
         }
@@ -273,17 +279,11 @@ fun LiveRoomScreen(
         playerError = describePlaybackError(error)
     }
 
-    LaunchedEffect(effectiveSpeed) {
-        player.setPlaybackSpeed(effectiveSpeed)
-    }
-
-    // 直播弹幕直接按到达时的播放位置入轨，和视频弹幕共用同一套 120Hz 渲染。
     LaunchedEffect(state.danmakuSeq) {
         val pending = state.danmakuSeq - consumedDanmakuSeq
         if (pending <= 0L) return@LaunchedEffect
         val count = pending.coerceAtMost(state.danmaku.size.toLong()).toInt()
         if (count <= 0) return@LaunchedEffect
-        // 暂停期间收到的弹幕只留在列表面板里，恢复播放时不会一次性糊满屏幕。
         if (!player.isPlaying) {
             consumedDanmakuSeq = state.danmakuSeq
             return@LaunchedEffect
@@ -293,11 +293,7 @@ fun LiveRoomScreen(
         val firstId = state.danmakuSeq - count
         state.danmaku.takeLast(count).forEachIndexed { index, message ->
             if (!viewModel.isBlocked(message.mid, message.text)) {
-                val medal = if (message.medalName.isNotBlank()) {
-                    "${message.medalName} ${message.medalLevel}"
-                } else {
-                    ""
-                }
+                val medal = if (message.medalName.isNotBlank()) "${message.medalName} ${message.medalLevel}" else ""
                 overlayItems += DanmakuItem(
                     id = firstId + index,
                     timeMs = nowMs,
@@ -323,6 +319,13 @@ fun LiveRoomScreen(
 
     BackHandler(enabled = fullscreen) { applyFullscreen(false) }
 
+    val castStreamUrl = remember(state.playback, candidateIndex) {
+        val list = state.playback?.candidates.orEmpty()
+        list.firstOrNull { it.url.contains(".m3u8", ignoreCase = true) }?.url
+            ?: list.getOrNull(candidateIndex)?.url
+            ?: list.firstOrNull()?.url.orEmpty()
+    }
+
     @Composable
     fun RenderLiveDialogs(inlineInStage: Boolean) {
         if (danmakuSettingsDialogVisible) {
@@ -333,6 +336,48 @@ fun LiveRoomScreen(
                 inlineInStage = inlineInStage,
             )
         }
+        if (lineDialogVisible) {
+            LiveStreamDialog(
+                streams = state.playback?.streams.orEmpty(),
+                current = state.lineSelection,
+                inlineInStage = inlineInStage,
+                onSelect = { sel ->
+                    viewModel.selectLine(sel)
+                    liveMessage = "已切换直播线路"
+                },
+                onDismiss = { lineDialogVisible = false },
+            )
+        }
+        if (castDialogVisible && castStreamUrl.isNotBlank()) {
+            erl.bilico.feature.cast.CastSheet(
+                request = erl.bilico.feature.cast.CastMediaRequest(
+                    title = state.detail?.title.orEmpty(),
+                    liveStreamUrl = castStreamUrl,
+                ),
+                inlineInStage = inlineInStage,
+                onDismiss = { castDialogVisible = false },
+            )
+        }
+    }
+
+    @Composable
+    fun RenderSuperChatDrawer(inlineInStage: Boolean) {
+        LiveSuperChatDrawer(
+            visible = scDrawerVisible,
+            items = state.superChatHistory,
+            nowSec = state.nowSec,
+            inlineInStage = inlineInStage,
+            onReplay = { sc ->
+                scDrawerVisible = false
+                viewModel.replaySuperChat(sc)
+                liveMessage = "正在回放 ${sc.userName} 的 SC"
+            },
+            onCopy = { sc ->
+                copyDanmakuToClipboard(context, sc.message)
+                liveMessage = "已复制 SC 留言"
+            },
+            onDismiss = { scDrawerVisible = false },
+        )
     }
 
     VideoFullscreenStage(
@@ -344,7 +389,7 @@ fun LiveRoomScreen(
         videoAspect = videoAspect,
         playerContent = {
             val stageBackdrop = rememberLayerBackdrop()
-            val anyStageDialogOpen = fullscreen && danmakuSettingsDialogVisible
+            val anyStageDialogOpen = fullscreen && (danmakuSettingsDialogVisible || castDialogVisible || lineDialogVisible || scDrawerVisible)
             VideoPlayer(
                 player = player,
                 title = state.detail?.title.orEmpty(),
@@ -354,12 +399,10 @@ fun LiveRoomScreen(
                 isBuffering = state.isPlaybackLoading || isBuffering,
                 errorMessage = state.playbackError ?: playerError,
                 qualityLabel = state.qualityLabel(),
-                speed = speed,
+                speed = 1f,
                 fullscreen = fullscreen,
                 portraitFullscreen = fullscreen && fsController.portraitStage,
-                onPlayPause = {
-                    if (player.isPlaying) player.pause() else player.play()
-                },
+                onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                 onSeek = {},
                 onToggleFullscreen = { applyFullscreen(!fullscreen) },
                 onFullscreenChange = applyFullscreen,
@@ -369,23 +412,27 @@ fun LiveRoomScreen(
                 qualities = state.playback?.qualities.orEmpty(),
                 activeQuality = state.activeQuality,
                 onSelectQuality = viewModel::selectQuality,
-                speedLocked = speedLocked,
-                onToggleSpeedLock = { container.settings.setSpeedLock(!speedLocked, speed) },
-                onSelectSpeed = { value ->
-                    longPressSpeed.onActiveChange(false)
-                    speed = value
-                    if (speedLocked) container.settings.setLockedSpeed(value)
-                },
-                onBack = {
-                    if (fullscreen) applyFullscreen(false) else nav.pop()
-                },
+                onBack = { if (fullscreen) applyFullscreen(false) else nav.pop() },
                 onRetry = viewModel::retryPlayback,
                 modifier = Modifier
                     .fillMaxSize()
                     .layerBackdropIf(BlurEffectsEnabled && anyStageDialogOpen, stageBackdrop),
                 inPipMode = inPipMode,
                 liveMode = true,
-                statusText = state.statusText(),
+                statusText = if (state.onlyAudio) "黑听中" else state.statusText(),
+                audioOnly = state.onlyAudio,
+                onToggleAudioOnly = {
+                    viewModel.toggleOnlyAudio()
+                    liveMessage = if (!state.onlyAudio) "已开启黑听（仅播放音频）" else "已恢复视频画面"
+                },
+                onSelectLine = if (!state.playback?.streams.isNullOrEmpty()) {
+                    { lineDialogVisible = true }
+                } else {
+                    null
+                },
+                superChatCount = state.superChatHistory.size,
+                onSuperChatsClick = { scDrawerVisible = true },
+                audioOnlyOverlay = { LiveAudioOnlyOverlay(detail = state.detail) },
                 danmakuEnabled = danmakuEnabled,
                 onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
                 onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
@@ -395,14 +442,22 @@ fun LiveRoomScreen(
                     null
                 },
                 onHome = { nav.popToMain() },
-                longPressSpeed = longPressSpeed,
-                longPressSpeedMode = resolveLongPressSpeedMode(
-                    adjustableLongPressSpeed,
-                    swipeDownLockLongPressSpeed,
-                ),
+                onCast = if (castStreamUrl.isNotBlank()) {
+                    { castDialogVisible = true }
+                } else {
+                    null
+                },
+                danmakuComposer = { onFocusChange ->
+                    FullscreenDanmakuComposer(
+                        draft = danmakuDraft,
+                        onDraftChange = { danmakuDraft = it },
+                        onSend = {
+                            sendLiveDanmaku(danmakuDraft) { danmakuDraft = "" }
+                        },
+                        onFocusChange = onFocusChange,
+                    )
+                },
                 overlay = {
-                    // 弹幕视图按引用判断列表有没有换过：这里必须给一份新列表，
-                    // 直接传可变的 SnapshotStateList 会让它永远认为「没变」，直播弹幕一条都画不出来。
                     DanmakuOverlay(
                         player = player,
                         items = overlayItems.toList(),
@@ -411,63 +466,43 @@ fun LiveRoomScreen(
                         timeline = overlayTimeline,
                     )
                 },
-                danmakuActions = run {
-                    fun sendLivePlusOne(text: String, emotes: Map<String, EmoteImage>) {
-                        val realRoomId = state.detail?.roomId?.takeIf { it > 0L } ?: roomId
-                        if (!container.session.isLoggedIn()) {
-                            liveMessage = "请先登录后再操作"
-                            return
+                danmakuActions = DanmakuActionCallbacks(
+                    onCopy = { item ->
+                        copyDanmakuToClipboard(context, item.content)
+                        liveMessage = "已复制弹幕"
+                    },
+                    onPlusOne = { item -> sendLiveDanmaku(item.content, item.emotes) },
+                    onAdvancedPlusOne = if (advancedPlusOne) {
+                        { item ->
+                            sendLiveDanmaku(formatAdvancedPlusOneText(item.senderMedal, item.senderName, item.content), item.emotes)
                         }
-                        scope.launch {
-                            container.live.sendDanmaku(realRoomId, text, container.session.csrf())
-                                .onSuccess {
-                                    val stamp = overlayTimeline.nowMs.coerceAtLeast(lastOverlayStamp + 1L)
-                                    lastOverlayStamp = stamp
-                                    overlayItems += DanmakuItem(
-                                        id = nextSelfDanmakuId--,
-                                        timeMs = stamp.toInt(),
-                                        type = DanmakuType.SCROLL,
-                                        content = text,
-                                        color = 0xFFFFFF,
-                                        fontSize = 25,
-                                        isSelf = true,
-                                        emotes = emotes,
-                                    )
-                                    liveMessage = "弹幕已发送"
-                                }
-                                .onFailure { liveMessage = it.message ?: "发送弹幕失败" }
-                        }
-                    }
-                    DanmakuActionCallbacks(
-                        onCopy = { item ->
-                            copyDanmakuToClipboard(context, item.content)
-                            liveMessage = "已复制弹幕"
-                        },
-                        onPlusOne = { item -> sendLivePlusOne(item.content, item.emotes) },
-                        onAdvancedPlusOne = if (advancedPlusOne) {
-                            { item ->
-                                val prefix = buildString {
-                                    if (item.senderMedal.isNotBlank()) append("[${item.senderMedal}]")
-                                    if (item.senderName.isNotBlank()) {
-                                        if (isNotEmpty()) append(' ')
-                                        append("@${item.senderName}")
-                                    }
-                                    if (isNotEmpty()) append(": ")
-                                }
-                                sendLivePlusOne(prefix + item.content, item.emotes)
-                            }
-                        } else {
-                            null
-                        },
-                        onBlock = { item ->
-                            val mid = item.midHash.toLongOrNull() ?: 0L
-                            viewModel.blockTemporary(mid, item.content)
-                            overlayItems.removeAll { viewModel.isBlocked(it.midHash.toLongOrNull() ?: 0L, it.content) }
-                            liveMessage = "已临时屏蔽该弹幕及发送者"
-                        },
-                    )
-                },
+                    } else {
+                        null
+                    },
+                    onBlock = { item ->
+                        val mid = item.midHash.toLongOrNull() ?: 0L
+                        viewModel.blockTemporary(mid, item.content)
+                        overlayItems.removeAll { viewModel.isBlocked(it.midHash.toLongOrNull() ?: 0L, it.content) }
+                        liveMessage = "已临时屏蔽该弹幕及发送者"
+                    },
+                ),
             )
+            val fsSc = state.fullscreenSuperChat
+            if ((fullscreen || state.fullscreenSuperChatIsReplay) && !inPipMode && fsSc != null && (danmakuEnabled || state.fullscreenSuperChatIsReplay)) {
+                FullscreenSuperChatOverlay(
+                    sc = fsSc,
+                    endSec = state.fullscreenSuperChatEndSec,
+                    nowSec = state.nowSec,
+                    onDismiss = viewModel::dismissFullscreenSuperChat,
+                    isReplay = state.fullscreenSuperChatIsReplay,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(
+                            start = if (fullscreen) 24.dp else 12.dp,
+                            bottom = if (fullscreen) 58.dp else 12.dp,
+                        ),
+                )
+            }
             if (fullscreen) {
                 VideoMessageToast(message = liveMessage, inPipMode = inPipMode, inFullscreen = true)
                 CompositionLocalProvider(
@@ -475,9 +510,11 @@ fun LiveRoomScreen(
                 ) {
                     RenderLiveDialogs(inlineInStage = true)
                 }
+                RenderSuperChatDrawer(inlineInStage = true)
             }
         },
         portraitOverlay = {
+            if (!fullscreen) RenderSuperChatDrawer(inlineInStage = false)
             VideoMessageToast(message = liveMessage, inPipMode = inPipMode, inFullscreen = false)
         },
         detailContent = {
@@ -487,13 +524,11 @@ fun LiveRoomScreen(
                     state.isLoading -> LoadingState(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
-
                     state.error != null -> ErrorState(
                         message = state.error.orEmpty(),
                         modifier = Modifier.weight(1f),
                         onRetry = viewModel::load,
                     )
-
                     else -> state.detail?.let { detail ->
                         LiveRoomInfo(
                             detail = detail,
@@ -501,21 +536,38 @@ fun LiveRoomScreen(
                         )
                         HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
                         LiveDanmakuPanel(
-                            messages = state.danmaku,
-                            firstSeq = state.danmakuSeq - state.danmaku.size,
+                            entries = state.chatEntries,
+                            activeSuperChats = state.activeSuperChats,
+                            nowSec = state.nowSec,
                             state = state.danmakuState,
                             error = state.danmakuError,
                             danmakuEnabled = danmakuEnabled,
-                            onToggleDanmaku = {
-                                container.settings.setDanmakuEnabled(!danmakuEnabled)
+                            draft = danmakuDraft,
+                            onDraftChange = { danmakuDraft = it },
+                            onSendDanmaku = { sendLiveDanmaku(danmakuDraft) { danmakuDraft = "" } },
+                            onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                            onPlusOne = { text, emotes -> sendLiveDanmaku(text, emotes) },
+                            onAdvancedPlusOne = { medal, name, text, emotes ->
+                                sendLiveDanmaku(formatAdvancedPlusOneText(medal, name, text), emotes)
                             },
+                            onCopyDanmaku = { msg -> liveMessage = msg },
+                            onBlockUser = { mid, name ->
+                                viewModel.blockUserTemporary(mid)
+                                overlayItems.removeAll { (it.midHash.toLongOrNull() ?: 0L) == mid }
+                                liveMessage = "已临时屏蔽 $name"
+                            },
+                            onBlockContent = { text ->
+                                viewModel.blockContentTemporary(text)
+                                val trimmed = text.trim()
+                                overlayItems.removeAll { it.content.trim() == trimmed }
+                                liveMessage = "已临时屏蔽该弹幕"
+                            },
+                            onOpenSpace = { mid -> nav.push(Route.Space(mid)) },
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
                                 .padding(bottom = navBarBottom),
-                            onOpenDanmakuSettings = {
-                                danmakuSettingsDialogVisible = true
-                            },
+                            onOpenDanmakuSettings = { danmakuSettingsDialogVisible = true },
                         )
                     }
                 }
@@ -541,16 +593,6 @@ private fun LiveRoomUiState.qualityLabel(): String? {
         ?.label
         ?.takeIf { it.isNotBlank() }
     return label ?: activeQuality.takeIf { it > 0 }?.let { "${it}P" }
-}
-
-/** 从异常链里掏出 HTTP 状态码，日志里能直接看出是 403 还是超时。 */
-private fun httpStatus(error: PlaybackException): Int? {
-    var cause: Throwable? = error.cause
-    while (cause != null) {
-        if (cause is HttpDataSource.InvalidResponseCodeException) return cause.responseCode
-        cause = cause.cause
-    }
-    return null
 }
 
 private const val MAX_OVERLAY_DANMAKU = 600

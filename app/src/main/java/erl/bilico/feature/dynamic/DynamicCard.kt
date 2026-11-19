@@ -188,6 +188,13 @@ internal fun DynamicCard(
             )
         }
 
+        item.vote?.let { vote ->
+            DynamicVoteCard(
+                vote = vote,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+
         val forward = item.forward
         when {
             live != null -> DynamicLiveCardView(
@@ -521,6 +528,12 @@ private fun ForwardBox(
                 color = COUITheme.colorScheme.onSurface,
                 prefixColor = linkBlue,
                 maxLines = if (isDetail) Int.MAX_VALUE else 6,
+            )
+        }
+        item.vote?.let { vote ->
+            DynamicVoteCard(
+                vote = vote,
+                modifier = Modifier.padding(top = 8.dp),
             )
         }
         val video = item.video

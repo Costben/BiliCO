@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -67,19 +68,34 @@ import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 @Composable
-fun Avatar(url: String?, size: Dp, modifier: Modifier = Modifier) {    val scheme = COUITheme.colorScheme
-    Box(
-        modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(scheme.surfaceContainerHigh),
-    ) {
-        if (!url.isNullOrBlank()) {
-            AsyncImage(
-                model = url,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size),
+fun Avatar(
+    url: String?,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    officialType: Int = -1,
+) {
+    val scheme = COUITheme.colorScheme
+    Box(modifier = modifier.size(size)) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(scheme.surfaceContainerHigh),
+        ) {
+            if (!url.isNullOrBlank()) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(size),
+                )
+            }
+        }
+        if (officialType == 0 || officialType == 1) {
+            OfficialVerifyBadge(
+                type = officialType,
+                size = (size * 0.34f).coerceIn(12.dp, 20.dp),
+                modifier = Modifier.align(Alignment.BottomEnd),
             )
         }
     }
@@ -174,17 +190,40 @@ fun SectionTitle(
     horizontalPadding: Dp = 16.dp,
     topPadding: Dp = 16.dp,
     bottomPadding: Dp = 0.dp,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
-    SmallTitle(
-        text = text,
-        modifier = modifier,
-        insideMargin = PaddingValues(
-            start = horizontalPadding,
-            top = topPadding,
-            end = horizontalPadding,
-            bottom = bottomPadding,
-        ),
-    )
+    if (trailing == null) {
+        SmallTitle(
+            text = text,
+            modifier = modifier,
+            insideMargin = PaddingValues(
+                start = horizontalPadding,
+                top = topPadding,
+                end = horizontalPadding,
+                bottom = bottomPadding,
+            ),
+        )
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(
+                    start = horizontalPadding,
+                    top = topPadding,
+                    end = horizontalPadding,
+                    bottom = bottomPadding,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                SmallTitle(
+                    text = text,
+                    insideMargin = PaddingValues(0.dp),
+                )
+            }
+            trailing()
+        }
+    }
 }
 
 @Composable

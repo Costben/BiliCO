@@ -82,6 +82,7 @@ data class ReplyMember(
     @SerialName("level_info") val levelInfo: ReplyLevel = ReplyLevel(),
     val vip: ReplyVip? = null,
     @SerialName("user_sailing") val userSailing: ReplyUserSailing? = null,
+    @SerialName("official_verify") val officialVerify: OfficialVerifyData? = null,
 )
 
 @Serializable

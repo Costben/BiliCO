@@ -165,6 +165,47 @@ class VideoRepository(
             }
         }
 
+    /** 获取合流 MP4 投屏直链（`fnval=1` 走 durl 单流，避免 DASH 音画分离电视无法播放）。 */
+    suspend fun castUrl(
+        bvid: String,
+        cid: Long,
+        qn: Int = 80,
+        cdn: CdnOption = CdnOption.Auto,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            val keys = wbi.getKeys()
+            val params = mapOf(
+                "bvid" to bvid,
+                "cid" to cid.toString(),
+                "qn" to qn.coerceAtLeast(16).toString(),
+                "fnval" to "1",
+                "fnver" to "0",
+                "fourk" to "1",
+                "platform" to "pc",
+            )
+            val signed = WbiUtils.sign(params, keys.first, keys.second)
+            val data = runCatching { api.playUrl(signed) }.getOrNull()
+                ?.takeIf { it.code == 0 }?.data
+                ?: api.playUrlLegacy(
+                    mapOf(
+                        "bvid" to bvid,
+                        "cid" to cid.toString(),
+                        "qn" to qn.coerceAtLeast(16).toString(),
+                        "fnval" to "1",
+                        "fnver" to "0",
+                        "platform" to "html5",
+                        "high_quality" to "1",
+                    ),
+                ).data
+                ?: error("获取投屏流地址失败")
+            val segment = data.durl?.firstOrNull() ?: error("未拿到可投屏的视频流")
+            PlaybackCdn.candidates(listOf(segment.url) + segment.backupUrl.orEmpty(), cdn)
+                .firstOrNull()
+                ?: segment.url
+        }
+    }
+
     /** 简介下面那一栏「其他推荐视频」：接口按相关度给一串，字段和推荐流卡片对得上。 */
     suspend fun related(bvid: String): Result<List<FeedVideo>> = withContext(Dispatchers.IO) {
         runCatching {
@@ -186,6 +227,7 @@ class VideoRepository(
                         upMid = item.owner.mid,
                         upFace = Formatters.normalizeImageUrl(item.owner.face),
                         playCount = item.stat.view,
+                        likeCount = item.stat.like,
                         danmaku = item.stat.danmaku,
                         durationSec = item.duration,
                         playCountText = Formatters.formatStat(item.stat.view),

@@ -17,11 +17,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** 评论详情（楼中楼）排序：最热、最新、最旧。 */
+/** 评论详情（楼中楼）排序：最旧、最热、最新。 */
 internal enum class ReplySort {
+    Old,
     Hot,
     New,
-    Old,
 }
 
 /** 控制评论详情内嵌页面的打开、关闭及与主评论区的数据同步。 */
@@ -58,7 +58,7 @@ internal class ReplyDetailState(
     private val onRootDeleted: () -> Unit,
 ) {
     var rootComment by mutableStateOf(initialRoot)
-    var sort by mutableStateOf(ReplySort.Hot)
+    var sort by mutableStateOf(ReplySort.Old)
         private set
     var items by mutableStateOf<List<Comment>>(emptyList())
         private set

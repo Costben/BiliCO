@@ -121,6 +121,7 @@ data class FollowingsUser(
     val uname: String = "",
     val face: String = "",
     val sign: String = "",
+    @SerialName("official_verify") val officialVerify: OfficialVerifyData? = null,
 )
 
 @Serializable

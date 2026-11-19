@@ -3,6 +3,7 @@ package erl.bilico.data.live
 import android.util.Log
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.LiveDanmakuMessage
+import erl.bilico.data.model.LiveSuperChat
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -60,6 +61,18 @@ class LiveDanmakuClient(
 
     /** 服务端实时推送的「高能观众」人数（ONLINE_RANK_COUNT），与 PiliPlus 口径一致。 */
     val onlineCount: SharedFlow<Long> = _onlineCount.asSharedFlow()
+
+    private val _superChats = MutableSharedFlow<LiveSuperChat>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val superChats: SharedFlow<LiveSuperChat> = _superChats.asSharedFlow()
+
+    private val _deletedSuperChatIds = MutableSharedFlow<List<Long>>(
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val deletedSuperChatIds: SharedFlow<List<Long>> = _deletedSuperChatIds.asSharedFlow()
 
     private var socket: WebSocket? = null
     private var heartbeat: Job? = null
@@ -206,9 +219,18 @@ class LiveDanmakuClient(
         }
         items.forEach { element ->
             val obj = element as? JsonObject ?: return@forEach
-            parseOnlineRankCount(obj)?.let { _onlineCount.tryEmit(it) }
-            val message = parseDanmaku(obj) ?: return@forEach
-            _messages.tryEmit(message)
+            val cmd = obj["cmd"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            when {
+                cmd.startsWith("ONLINE_RANK_COUNT") -> parseOnlineRankCount(obj)?.let { _onlineCount.tryEmit(it) }
+                cmd == "SUPER_CHAT_MESSAGE" || cmd == "SUPER_CHAT_MESSAGE_JPN" -> {
+                    (obj["data"] as? JsonObject)?.toLiveSuperChat()?.let { _superChats.tryEmit(it) }
+                }
+                cmd == "SUPER_CHAT_MESSAGE_DELETE" -> {
+                    val ids = (obj["data"] as? JsonObject)?.parseDeletedSuperChatIds().orEmpty()
+                    if (ids.isNotEmpty()) _deletedSuperChatIds.tryEmit(ids)
+                }
+                else -> parseDanmaku(obj)?.let { _messages.tryEmit(it) }
+            }
         }
     }
 

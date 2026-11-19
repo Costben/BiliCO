@@ -52,9 +52,11 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.LocalRouteMinimized
+import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.NavHomeOutlineIcon
 import erl.bilico.ui.components.PiliGlyph
 import erl.bilico.ui.components.PipIcon
+import erl.bilico.ui.components.PlayerStateOverlay
 import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -62,6 +64,7 @@ import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Back
 import io.github.suqi8.coui.kmp.icon.extended.More
+import io.github.suqi8.coui.kmp.icon.extended.Music
 import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -116,14 +119,22 @@ internal fun VideoPlayer(
     onHome: (() -> Unit)? = null,
     onWatchLater: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    onCast: (() -> Unit)? = null,
+    onReportVideo: (() -> Unit)? = null,
     playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
     longPressSpeed: LongPressSpeedController? = null,
     longPressSpeedMode: LongPressSpeedMode = LongPressSpeedMode.FIXED,
     liveMode: Boolean = false,
     statusText: String? = null,
+    audioOnly: Boolean = false,
+    onToggleAudioOnly: (() -> Unit)? = null,
+    onSelectLine: (() -> Unit)? = null,
+    superChatCount: Int = 0,
+    onSuperChatsClick: (() -> Unit)? = null,
+    audioOnlyOverlay: (@Composable BoxScope.() -> Unit)? = null,
     chapters: List<VideoChapter> = emptyList(),
-    onChapterClick: (() -> Unit)? = null,
+    episodesMenuItems: List<CouiMenuItem> = emptyList(),
     sponsorSegments: List<SponsorSegment> = emptyList(),
     onSubmitSponsor: (() -> Unit)? = null,
     sponsorOverlay: @Composable BoxScope.(bottomPad: Dp, startPad: Dp) -> Unit = { _, _ -> },
@@ -139,6 +150,7 @@ internal fun VideoPlayer(
     var selectedDanmaku by remember { mutableStateOf<DanmakuHit?>(null) }
     val danmakuInteraction = remember { DanmakuInteractionHost() }
     var stageCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var episodesEndMargin by remember { mutableStateOf(224.dp) }
     var speedEndMargin by remember { mutableStateOf(120.dp) }
     var qualityEndMargin by remember { mutableStateOf(64.dp) }
     var subtitleEndMargin by remember { mutableStateOf(176.dp) }
@@ -177,8 +189,8 @@ internal fun VideoPlayer(
         if (!showChrome) activeMenu = PlayerPopupMenu.NONE
     }
     val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
-    // 只有横屏全屏才挂弹幕输入框：竖屏全屏画面本来就窄，页面下面还有那条固定的输入框。
-    val showStageComposer = fullscreen && !portraitFullscreen && !liveMode && danmakuComposer != null
+    // 只有横屏全屏才挂弹幕输入框：竖屏全屏画面本来就窄，页面下面也有聊天区。
+    val showStageComposer = fullscreen && !portraitFullscreen && danmakuComposer != null
     // 竖屏全屏时顶栏贴着屏幕顶端，得让开状态栏和挖孔，否则第一行会被挖孔吃进去。
     // 用固定高度而不是实时 inset：全屏收系统栏不会让这两行跟着上下跳。
     val portraitTopPad = if (portraitFullscreen) {
@@ -260,11 +272,15 @@ internal fun VideoPlayer(
                     surfaceHost.value = view
                     view.player = if (isTop) player else null
                     view.resizeMode = resizeMode
-                    // 舞台用替身帧顶替期间要把实时画面藏起来，否则它会从替身帧底下露出来。
-                    view.visibility = if (minimized || frozenVideo) View.INVISIBLE else View.VISIBLE
+                    // 舞台用替身帧或黑听纯音频期间把视频画面隐藏，避免帧残留或黑屏闪烁。
+                    view.visibility = if (minimized || frozenVideo || audioOnly) View.INVISIBLE else View.VISIBLE
                 },
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+
+        if (audioOnly && audioOnlyOverlay != null) {
+            audioOnlyOverlay()
         }
 
         CompositionLocalProvider(LocalDanmakuInteraction provides danmakuInteraction) {
@@ -278,7 +294,7 @@ internal fun VideoPlayer(
                 positionMs = positionMs,
                 durationMs = durationMs,
                 seekEnabled = !liveMode,
-                longPressSpeed = longPressSpeed,
+                longPressSpeed = if (liveMode) null else longPressSpeed,
                 longPressSpeedMode = longPressSpeedMode,
                 fullscreen = fullscreen,
                 hapticEnabled = hapticEnabled,
@@ -361,12 +377,16 @@ internal fun VideoPlayer(
                 if (!fullscreen && onHome != null) {
                     PlayerIconButton(NavHomeOutlineIcon, "首页", onHome)
                 }
-                if (onEnterPip != null) {
-                    PlayerIconButton(PipIcon, "小窗", onEnterPip)
+                if (onToggleAudioOnly != null) {
+                    PlayerIconButton(
+                        icon = COUIIcons.Music,
+                        label = if (audioOnly) "退出黑听" else "黑听（仅听音频）",
+                        onClick = onToggleAudioOnly,
+                        tint = if (audioOnly) COUITheme.colorScheme.primary else Color.White,
+                    )
                 }
-                if (fullscreen && onHome != null) {
-                    PlayerIconButton(NavHomeOutlineIcon, "首页", onHome)
-                }
+                if (onEnterPip != null) PlayerIconButton(PipIcon, "小窗", onEnterPip)
+                if (fullscreen && onHome != null) PlayerIconButton(NavHomeOutlineIcon, "首页", onHome)
                 // 「视频信息统计」在任何视频页都能用，菜单因此恒定存在。
                 if (fullscreen) {
                     PlayerIconButton(
@@ -382,11 +402,11 @@ internal fun VideoPlayer(
                     )
                 } else {
                     PlayerMoreMenu(
-                        onShare = onShare,
-                        playbackEndMode = playbackEndMode,
+                        onShare = onShare, onCast = onCast, onSelectLine = onSelectLine,
+                        audioOnly = audioOnly, onToggleAudioOnly = onToggleAudioOnly,
+                        onReportVideo = onReportVideo, playbackEndMode = playbackEndMode,
                         onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-                        onSubmitSponsor = onSubmitSponsor,
-                        onShowStats = { statsVisible = true },
+                        onSubmitSponsor = onSubmitSponsor, onShowStats = { statsVisible = true },
                     )
                 }
             }
@@ -439,12 +459,7 @@ internal fun VideoPlayer(
             }
         }
 
-        PlayerStateOverlay(
-            errorMessage = errorMessage,
-            isBuffering = isBuffering,
-            inPipMode = inPipMode,
-            onRetry = onRetry,
-        )
+        PlayerStateOverlay(errorMessage = errorMessage, isBuffering = isBuffering, inPipMode = inPipMode, onRetry = onRetry)
 
         if (!inPipMode && !liveMode) {
             val bottomChromePad = when {
@@ -462,9 +477,7 @@ internal fun VideoPlayer(
                     .fillMaxWidth()
                     // 全屏发弹幕时软键盘会把底栏顶走，整条跟着键盘抬起来。
                     .imePadding()
-                    .background(
-                        Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))),
-                    )
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
                     .padding(horizontal = horizontalBarPad, vertical = 6.dp),
             ) {
                 if (!liveMode && chapters.isNotEmpty()) {
@@ -524,26 +537,18 @@ internal fun VideoPlayer(
                     } else {
                         Spacer(Modifier.weight(1f))
                     }
-                    if (!liveMode && chapters.isNotEmpty() && onChapterClick != null) {
-                        ControlLabel(text = "分段", onClick = onChapterClick)
-                    }
                     PlayerBottomTrailingControls(
-                        subtitleLabel = subtitleLabel,
-                        speed = speed,
-                        qualityLabel = qualityLabel,
-                        fullscreen = fullscreen,
-                        activeMenu = activeMenu,
-                        onOpenMenu = { menu ->
-                            if (menu != PlayerPopupMenu.MORE) lastBottomMenu = menu
-                            activeMenu = menu
-                        },
+                        subtitleLabel = subtitleLabel, speed = speed, qualityLabel = qualityLabel,
+                        fullscreen = fullscreen, liveMode = liveMode, onSelectLine = onSelectLine,
+                        onSuperChatsClick = onSuperChatsClick?.let { open -> { controlsVisible = false; open() } },
+                        superChatCount = superChatCount, activeMenu = activeMenu,
+                        onOpenMenu = { menu -> if (menu != PlayerPopupMenu.MORE) lastBottomMenu = menu; activeMenu = menu },
                         onDismissMenu = { activeMenu = PlayerPopupMenu.NONE },
-                        speedLocked = speedLocked,
-                        onToggleSpeedLock = onToggleSpeedLock,
-                        speedMenuItems = speedMenuItems,
-                        qualityMenuItems = qualityMenuItems,
-                        subtitleMenuItems = subtitleMenuItems,
+                        speedLocked = speedLocked, onToggleSpeedLock = onToggleSpeedLock,
+                        episodesMenuItems = episodesMenuItems, speedMenuItems = speedMenuItems,
+                        qualityMenuItems = qualityMenuItems, subtitleMenuItems = subtitleMenuItems,
                         stageCoords = stageCoords,
+                        onEpisodesEndChange = { episodesEndMargin = it },
                         onSubtitleEndChange = { subtitleEndMargin = it },
                         onSpeedEndChange = { speedEndMargin = it },
                         onQualityEndChange = { qualityEndMargin = it },
@@ -556,29 +561,20 @@ internal fun VideoPlayer(
 
         if (fullscreen) {
             PlayerStagePopupMenus(
-                activeMenu = activeMenu,
-                lastBottomMenu = lastBottomMenu,
-                onDismiss = { activeMenu = PlayerPopupMenu.NONE },
-                hdrVideo = hdrVideo,
-                menuBackdrop = menuBackdrop,
-                horizontalBarPad = horizontalBarPad,
-                onHideControls = { controlsVisible = false },
-                playbackEndMode = playbackEndMode,
+                activeMenu = activeMenu, lastBottomMenu = lastBottomMenu,
+                onDismiss = { activeMenu = PlayerPopupMenu.NONE }, hdrVideo = hdrVideo,
+                menuBackdrop = menuBackdrop, horizontalBarPad = horizontalBarPad,
+                onHideControls = { controlsVisible = false }, playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-                onShare = onShare,
-                onSubmitSponsor = onSubmitSponsor,
-                onShowStats = {
-                    activeMenu = PlayerPopupMenu.NONE
-                    statsVisible = true
-                },
-                speedMenuItems = speedMenuItems,
-                qualityMenuItems = qualityMenuItems,
-                subtitleMenuItems = subtitleMenuItems,
-                speedEndMargin = speedEndMargin,
-                qualityEndMargin = qualityEndMargin,
-                subtitleEndMargin = subtitleEndMargin,
-                speedLocked = speedLocked,
-                onToggleSpeedLock = onToggleSpeedLock,
+                onShare = onShare, onCast = onCast, onSelectLine = onSelectLine,
+                audioOnly = audioOnly, onToggleAudioOnly = onToggleAudioOnly,
+                onReportVideo = onReportVideo, onSubmitSponsor = onSubmitSponsor,
+                onShowStats = { activeMenu = PlayerPopupMenu.NONE; statsVisible = true },
+                episodesMenuItems = episodesMenuItems, speedMenuItems = speedMenuItems,
+                qualityMenuItems = qualityMenuItems, subtitleMenuItems = subtitleMenuItems,
+                episodesEndMargin = episodesEndMargin, speedEndMargin = speedEndMargin,
+                qualityEndMargin = qualityEndMargin, subtitleEndMargin = subtitleEndMargin,
+                speedLocked = speedLocked, onToggleSpeedLock = onToggleSpeedLock,
             )
         }
 

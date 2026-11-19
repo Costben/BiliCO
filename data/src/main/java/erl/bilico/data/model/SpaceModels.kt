@@ -17,6 +17,7 @@ data class SpaceUserInfo(
     val face: String = "",
     val sign: String = "",
     val level: Int = 0,
+    val official: OfficialVerifyData? = null,
 )
 
 @Serializable
