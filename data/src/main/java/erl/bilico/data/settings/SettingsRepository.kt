@@ -80,6 +80,10 @@ class SettingsRepository(
     private val _gestureHaptic = MutableStateFlow(true)
     val gestureHaptic: StateFlow<Boolean> = _gestureHaptic.asStateFlow()
 
+    /** 卡片展开后退回列表时是否保留轻压回弹效果。 */
+    private val _returnBounce = MutableStateFlow(true)
+    val returnBounce: StateFlow<Boolean> = _returnBounce.asStateFlow()
+
     /** 长按倍速的倍数，按百分比存：200 = 2x。 */
     private val _longPressSpeed = MutableStateFlow(DEFAULT_LONG_PRESS_SPEED)
     val longPressSpeed: StateFlow<Int> = _longPressSpeed.asStateFlow()
@@ -176,6 +180,7 @@ class SettingsRepository(
             _autoPlayNext.value = resolvedEndMode == PlaybackEndMode.AUTO_NEXT
             _autoPip.value = prefs[KEY_AUTO_PIP] ?: true
             _gestureHaptic.value = prefs[KEY_GESTURE_HAPTIC] ?: true
+            _returnBounce.value = prefs[KEY_RETURN_BOUNCE] ?: true
             _longPressSpeed.value = (prefs[KEY_LONG_PRESS_SPEED] ?: DEFAULT_LONG_PRESS_SPEED)
                 .coerceIn(125, 400)
             val adjustable = prefs[KEY_ADJUSTABLE_LONG_PRESS_SPEED] ?: false
@@ -293,6 +298,11 @@ class SettingsRepository(
     fun setGestureHaptic(enabled: Boolean) {
         _gestureHaptic.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_GESTURE_HAPTIC] = enabled } }
+    }
+
+    fun setReturnBounce(enabled: Boolean) {
+        _returnBounce.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_RETURN_BOUNCE] = enabled } }
     }
 
     fun setInAppBackgroundPlay(enabled: Boolean) {
@@ -546,6 +556,7 @@ class SettingsRepository(
         val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
         val KEY_PLAYBACK_END_MODE = intPreferencesKey("playback_end_mode")
         val KEY_GESTURE_HAPTIC = booleanPreferencesKey("gesture_haptic")
+        val KEY_RETURN_BOUNCE = booleanPreferencesKey("return_bounce")
         val KEY_AUTO_ROTATE_MODE = intPreferencesKey("auto_rotate_mode")
         val KEY_LONG_PRESS_SPEED = intPreferencesKey("long_press_speed")
         val KEY_ADJUSTABLE_LONG_PRESS_SPEED = booleanPreferencesKey("adjustable_long_press_speed")

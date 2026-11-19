@@ -207,6 +207,7 @@ class NavState {
     var orbOrigin: ExpandOrigin? = null
     var secondaryOrbOrigin: ExpandOrigin? = null
     var inAppBackgroundPlay: () -> Boolean = { true }
+    var returnBounce: () -> Boolean = { true }
 
     private var host: CoroutineScope? = null
     private var appContext: Context? = null
@@ -390,8 +391,9 @@ class NavState {
             val millis = (baseMillis * remaining).toInt().coerceAtLeast(1)
             coroutineScope {
                 launch {
-                    // 返回卡片走桌面图标回弹弹簧，收进融合球仍走固定时长淡出。
-                    val spec: AnimationSpec<Float> = if (expand && !minimize) {
+                    // 允许回弹时走桌面图标回弹弹簧，关闭或收进融合球时走平滑淡出。
+                    val bounce = expand && !minimize && returnBounce()
+                    val spec: AnimationSpec<Float> = if (bounce) {
                         ExpandReturnSpringSpec
                     } else {
                         tween(millis, easing = ExpandEasing)
@@ -399,7 +401,7 @@ class NavState {
                     entry.progress.animateTo(
                         targetValue = 0f,
                         animationSpec = spec,
-                        initialVelocity = if (expand && !minimize) initialProgressVelocity else 0f,
+                        initialVelocity = if (bounce) initialProgressVelocity else 0f,
                     )
                 }
                 if (expand) {

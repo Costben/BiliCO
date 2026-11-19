@@ -66,6 +66,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
+    val returnBounce by container.settings.returnBounce.collectAsStateWithLifecycle()
     val quality by container.settings.defaultQuality.collectAsStateWithLifecycle()
     val cdnOption by container.settings.cdnOption.collectAsStateWithLifecycle()
     val inAppBackgroundPlay by container.settings.inAppBackgroundPlay.collectAsStateWithLifecycle()
@@ -114,6 +115,14 @@ fun SettingsScreen(
                     modifier = Modifier.testTag("settings_dark"),
                     cardListPosition = CardListPosition.Head,
                     onSelectedIndexChange = container.settings::setDarkMode,
+                )
+                SwitchPreference(
+                    checked = returnBounce,
+                    onCheckedChange = container.settings::setReturnBounce,
+                    title = "返回动画回弹",
+                    summary = "退回卡片时保留轻压回弹效果",
+                    modifier = Modifier.testTag("settings_return_bounce"),
+                    cardListPosition = CardListPosition.Middle,
                 )
                 val selectedQuality = DefaultQuality.fromId(quality)
                 val qualityEntry = remember(selectedQuality) {

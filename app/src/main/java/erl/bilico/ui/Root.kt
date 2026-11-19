@@ -140,6 +140,7 @@ internal fun BiliCoRoot(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val inAppBackgroundPlay by container.settings.inAppBackgroundPlay.collectAsStateWithLifecycle()
+    val returnBounce by container.settings.returnBounce.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val dark = isDarkTheme(darkMode)
     SideEffect {
@@ -147,6 +148,7 @@ internal fun BiliCoRoot(
         nav.orbOrigin = orbOrigin
         nav.secondaryOrbOrigin = secondaryOrbOrigin
         nav.inAppBackgroundPlay = { inAppBackgroundPlay }
+        nav.returnBounce = { returnBounce }
         viewerHost.attach(scope)
     }
 
