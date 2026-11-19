@@ -92,11 +92,8 @@ fun VideoScreen(
             )
         }
     }
-    val state = if (viewModel.currentBvid == bvid) {
-        currentState
-    } else {
-        cachedUiState ?: VideoUiState(resumePositionMs = savedPositionMs)
-    }
+    val liveState = if (viewModel.currentBvid == bvid) currentState
+    else cachedUiState ?: VideoUiState(resumePositionMs = savedPositionMs)
 
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
@@ -137,6 +134,7 @@ fun VideoScreen(
             stageReady = true
         }
     }
+    val state = rememberEnterState(bvid, liveState, stageReady)
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
