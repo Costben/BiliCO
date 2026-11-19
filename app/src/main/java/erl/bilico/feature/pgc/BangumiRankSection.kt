@@ -205,6 +205,7 @@ internal fun BangumiRankCard(
             fontSize = 14.sp,
             lineHeight = 19.sp,
             fontWeight = FontWeight.Medium,
+            minLines = 2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             color = COUITheme.colorScheme.onSurface,
