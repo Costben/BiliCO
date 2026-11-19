@@ -201,7 +201,7 @@ class FavoriteFolderContentViewModel(
                     nextPage = page + 1
                     _state.update {
                         it.copy(
-                            items = if (firstPage) list else it.items + list,
+                            items = (if (firstPage) list else it.items + list).distinctBy { video -> video.bvid },
                             isLoading = false,
                             isRefreshing = false,
                             isLoadingMore = false,

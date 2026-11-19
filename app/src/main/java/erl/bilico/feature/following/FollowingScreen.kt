@@ -204,6 +204,7 @@ fun FollowingScreen(
             NotificationSwipeBox(
                 onSettings = null,
                 onDismiss = {
+                    if (openKey == user.mid) openKey = null
                     viewModel.unfollow(user) { msg ->
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     }

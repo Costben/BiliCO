@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.FollowingUser
 import erl.bilico.data.repository.RelationRepository
 import erl.bilico.data.session.SessionRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +30,8 @@ class FollowingViewModel(
 
     private var nextPage = 1
     private var inFlight = false
+    private var loadGeneration = 0
+    private var loadJob: Job? = null
 
     init {
         refresh()
@@ -42,6 +45,7 @@ class FollowingViewModel(
         }
         nextPage = 1
         inFlight = false
+        loadJob?.cancel()
         _state.update { it.copy(isLoading = it.items.isEmpty(), error = null) }
         load(firstPage = true)
     }
@@ -130,14 +134,16 @@ class FollowingViewModel(
     private fun load(firstPage: Boolean) {
         val mid = session.account.value?.mid ?: return
         inFlight = true
+        val gen = ++loadGeneration
         val page = if (firstPage) 1 else nextPage
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             repository.followings(mid, page)
                 .onSuccess { (list, hasMore) ->
+                    if (gen != loadGeneration) return@onSuccess
                     nextPage = page + 1
                     _state.update {
                         it.copy(
-                            items = if (firstPage) list else it.items + list,
+                            items = (if (firstPage) list else it.items + list).distinctBy { user -> user.mid },
                             isLoading = false,
                             isLoadingMore = false,
                             isEnd = !hasMore,
@@ -146,6 +152,7 @@ class FollowingViewModel(
                     }
                 }
                 .onFailure { error ->
+                    if (gen != loadGeneration) return@onFailure
                     _state.update {
                         it.copy(
                             isLoading = false,
@@ -154,7 +161,7 @@ class FollowingViewModel(
                         )
                     }
                 }
-            inFlight = false
+            if (gen == loadGeneration) inFlight = false
         }
     }
 }
