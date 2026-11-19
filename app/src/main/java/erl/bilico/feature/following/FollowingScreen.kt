@@ -216,7 +216,9 @@ fun FollowingScreen(
                 containerColor = CardDefaults.defaultColors().color,
                 dismissOnFullSwipe = true,
                 dismissDescription = "取消关注",
-                modifier = Modifier.animateItem(),
+                // 划走结束时滑动盒会先把卡片弹回原位，默认淡出是在那之后才播的，看起来像闪回来再往下淡掉。
+                // 被删的这条直接拿掉；后面的条目仍按默认弹簧上移补位。
+                modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
             ) {
                 MultiSelectSlideRow(
                     selectionMode = selectionMode,
