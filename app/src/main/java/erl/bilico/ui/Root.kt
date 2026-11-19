@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -49,6 +50,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
+import erl.bilico.ExternalVideoLink
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.article.ArticleScreen
 import erl.bilico.feature.chat.ChatScreen
@@ -125,7 +127,11 @@ private fun openVideoTarget(
 }
 
 @Composable
-fun BiliCoRoot(container: AppContainer) {
+internal fun BiliCoRoot(
+    container: AppContainer,
+    externalVideoLink: ExternalVideoLink? = null,
+    onVideoLinkHandled: (ExternalVideoLink) -> Unit = {},
+) {
     val nav = remember { NavState() }
     val origins = remember { ImageOrigins() }
     val viewerHost = remember { ImageViewerHost() }
@@ -140,6 +146,28 @@ fun BiliCoRoot(container: AppContainer) {
         nav.secondaryOrbOrigin = secondaryOrbOrigin
         nav.inAppBackgroundPlay = { inAppBackgroundPlay }
         viewerHost.attach(scope)
+    }
+
+    LaunchedEffect(externalVideoLink) {
+        val link = externalVideoLink ?: return@LaunchedEffect
+        val bvid = link.bvid ?: link.aid?.let { container.messages.resolveBvid(it).getOrNull() }
+        if (bvid == null) {
+            Toast.makeText(context, "无法打开此视频链接", Toast.LENGTH_SHORT).show()
+        } else {
+            val current = nav.stack.lastOrNull()?.route as? Route.Video
+            if (current?.bvid != bvid) {
+                nav.push(Route.Video(bvid, startSec = link.startSec))
+            } else if (link.startSec > 0L) {
+                val active = PlaybackBridge.activePlayer
+                if (active != null) {
+                    active.seekTo(link.startSec * 1000L)
+                    if (!active.isPlaying) active.play()
+                } else {
+                    nav.replaceTop(Route.Video(bvid, startSec = link.startSec))
+                }
+            }
+        }
+        onVideoLinkHandled(link)
     }
 
     LaunchedEffect(PlaybackBridge.stopVersion) {

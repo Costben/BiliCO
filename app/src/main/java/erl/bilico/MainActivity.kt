@@ -33,6 +33,7 @@ import erl.bilico.ui.isDarkTheme
 class MainActivity : ComponentActivity() {
 
     private var inPipMode by mutableStateOf(false)
+    private var pendingVideoLink by mutableStateOf<ExternalVideoLink?>(null)
 
     private val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
         inPipMode = info.isInPictureInPictureMode
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingVideoLink = ExternalVideoLink.fromIntent(intent)
         // 整个 App 只有播放页会真的转成横屏（由 VideoFullscreenStage 申请），其余页面一律锁竖屏。
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         enableEdgeToEdge()
@@ -97,10 +99,18 @@ class MainActivity : ComponentActivity() {
                     onDispose { }
                 }
                 CompositionLocalProvider(LocalInPipMode provides inPipMode) {
-                    BiliCoRoot(container)
+                    BiliCoRoot(container, pendingVideoLink) { handled ->
+                        if (pendingVideoLink === handled) pendingVideoLink = null
+                    }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        ExternalVideoLink.fromIntent(intent)?.let { pendingVideoLink = it }
     }
 
     override fun onResume() {
