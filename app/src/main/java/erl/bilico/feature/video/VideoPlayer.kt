@@ -228,6 +228,7 @@ internal fun VideoPlayer(
         onSelectSubtitle = { onSelectSubtitle(it); activeMenu = PlayerPopupMenu.NONE },
     )
     val stageModifier = if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier
+    RegisterSurfaceViewEntry(hdrVideo)
     Box(stageModifier.onGloballyPositioned { stageCoords = it }) {
         Box(
             modifier = Modifier

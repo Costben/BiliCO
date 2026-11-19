@@ -7,6 +7,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -16,14 +22,17 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -35,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import kotlinx.coroutines.delay
 import kotlin.math.pow
 
 internal class ExpandShape(
@@ -175,37 +185,24 @@ internal fun ExpandLayer(
                 }
             }
             .drawWithContent {
-                if (!entry.expand) {
-                    drawContent()
-                    return@drawWithContent
-                }
-                val p = frameProgress(progress())
-                if (!exiting && p <= 0.0005f) return@drawWithContent
+                if (entry.expand && !exiting && frameProgress(progress()) <= 0.0005f) return@drawWithContent
                 drawContent()
-                if (!exiting) return@drawWithContent
-                val cardAlpha = ((0.24f - p) / 0.18f).coerceIn(0f, 1f)
-                val layerSize = origin.layer.size
-                if (cardAlpha > 0f && layerSize.width > 0 && layerSize.height > 0 && bounds.width > 0f) {
-                    val k = size.width / bounds.width
-                    withTransform({ scale(k, k, pivot = Offset.Zero) }) {
-                        clipRect(0f, 0f, bounds.width, bounds.height) {
-                            drawIntoCanvas { canvas ->
-                                canvas.saveLayer(
-                                    Rect(0f, 0f, bounds.width, bounds.height),
-                                    Paint().apply { alpha = cardAlpha },
-                                )
-                                drawRect(surface, size = bounds.size)
-                                drawLayer(origin.layer)
-                                canvas.restore()
-                            }
-                        }
-                    }
-                }
             },
     ) {
+        // 转场期间把整页先画进一张离屏图层，再整体缩放、圆角裁剪后贴上去。
+        // 直接在圆角裁剪和缩放底下逐个绘制，GPU 要为每种「控件 × 圆角裁剪」组合现编一条渲染管线，
+        // 冷启动后头几次开、退视频会因此连掉几帧；离屏后页面内容按平常的方式绘制，裁剪只作用在一次贴图上。
         Box(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    val transitioning = entry.expand && (exiting || progress() < 1f || enterContentAlpha() < 0.999f)
+                    compositingStrategy = if (transitioning && !entry.hasSurfaceView) {
+                        CompositingStrategy.Offscreen
+                    } else {
+                        CompositingStrategy.Auto
+                    }
+                }
                 .drawBehind {
                     if (!entry.expand) return@drawBehind
                     val p = frameProgress(progress())
@@ -216,35 +213,91 @@ internal fun ExpandLayer(
                     val ca = enterContentAlpha()
                     if (p < 1f || ca < 0.999f) {
                         drawRect(surface)
-                        if (ca < 0.999f) {
-                            val layerSize = origin.layer.size
-                            if (layerSize.width > 0 && layerSize.height > 0 && bounds.width > 0f) {
-                                val k = size.width / bounds.width
-                                withTransform({ scale(k, k, pivot = Offset.Zero) }) {
-                                    clipRect(0f, 0f, bounds.width, bounds.height) {
-                                        drawLayer(origin.layer)
-                                    }
-                                }
-                            }
-                        }
+                        if (ca < 0.999f) drawCardSnapshot(origin.layer, bounds, alpha = 1f, surface = null)
                     }
-                },
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    if (!entry.expand) {
-                        alpha = 1f
-                        translationY = 0f
-                        return@graphicsLayer
-                    }
-                    val p = frameProgress(progress())
-                    alpha = if (exiting) 1f else enterContentAlpha()
-                    translationY = -statusBarTop * (1f - p)
+                }
+                .drawWithContent {
+                    drawContent()
+                    if (!entry.expand || !exiting) return@drawWithContent
+                    val cardAlpha = ((0.24f - frameProgress(progress())) / 0.18f).coerceIn(0f, 1f)
+                    if (cardAlpha > 0f) drawCardSnapshot(origin.layer, bounds, alpha = cardAlpha, surface = surface)
                 },
         ) {
-            Box(Modifier.fillMaxSize().background(surface)) { content() }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        // 淡入用普通的图层透明度。ModulateAlpha 会把每个绘制换成另一套着色器组合，
+                        // 冷启动后第一次展开要为此现编七八条管线，正好压在动画上。
+                        if (!entry.expand) {
+                            alpha = 1f
+                            translationY = 0f
+                            return@graphicsLayer
+                        }
+                        val p = frameProgress(progress())
+                        alpha = if (exiting) 1f else enterContentAlpha()
+                        translationY = -statusBarTop * (1f - p)
+                    },
+            ) {
+                Box(Modifier.fillMaxSize().background(surface)) { content() }
+            }
         }
     }
 }
+
+/** 把点击时拍下的卡片按页面宽度放大画上来；[surface] 非空时先垫一层底色并整体按 [alpha] 淡出。 */
+private fun DrawScope.drawCardSnapshot(layer: GraphicsLayer, bounds: Rect, alpha: Float, surface: Color?) {
+    val layerSize = layer.size
+    if (layerSize.width <= 0 || layerSize.height <= 0 || bounds.width <= 0f) return
+    val k = size.width / bounds.width
+    withTransform({ scale(k, k, pivot = Offset.Zero) }) {
+        clipRect(0f, 0f, bounds.width, bounds.height) {
+            if (surface == null) {
+                drawLayer(layer)
+            } else {
+                drawIntoCanvas { canvas ->
+                    canvas.saveLayer(Rect(0f, 0f, bounds.width, bounds.height), Paint().apply { this.alpha = alpha })
+                    drawRect(surface, size = bounds.size)
+                    drawLayer(layer)
+                    canvas.restore()
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * 转场时页面要先画进离屏图层，离屏目标用的渲染管线和直接上屏的是两套，
+ * 进程里第一次用到时 GPU 要现编十来条（8 至尊版上约 90ms），正好压在第一次开视频的展开动画上。
+ * 首页内容画好、用户还没点进去时，把整棵界面离屏绘制两三帧（画面不变），让这批管线提前编好。
+ */
+@Stable
+internal class LayerPipelineWarmup {
+    var active by mutableStateOf(false)
+        internal set
+}
+
+@Composable
+internal fun rememberLayerPipelineWarmup(nav: NavState): LayerPipelineWarmup {
+    val warmup = remember { LayerPipelineWarmup() }
+    LaunchedEffect(warmup) {
+        delay(WarmupDelayMillis)
+        // 已经点进别的页面就不必了：那次转场自己会把管线编出来，这时再离屏一帧只是白费。
+        if (nav.stack.size != 1 || nav.minimizedEntry?.hasSurfaceView == true) return@LaunchedEffect
+        warmup.active = true
+        repeat(WarmupFrames) {
+            withFrameNanos { }
+            // 这几帧里用户可能已经点进视频页：那次转场自己会编管线，继续离屏只是白画。
+            if (nav.stack.size != 1) {
+                warmup.active = false
+                return@LaunchedEffect
+            }
+        }
+        warmup.active = false
+    }
+    return warmup
+}
+
+private const val WarmupDelayMillis = 1500L
+private const val WarmupFrames = 3

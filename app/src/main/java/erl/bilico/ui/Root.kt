@@ -29,14 +29,17 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
@@ -187,7 +190,9 @@ fun BiliCoRoot(container: AppContainer) {
         if (windowPortrait) frozenPortrait.capture(configuration, constraints.maxWidth, constraints.maxHeight)
 
         // backdrop 只挂在这一层：整栈内容录一次就够，逐页各录一次是白费。
-        Box(Modifier.fillMaxSize().layerBackdropIf(BlurEffectsEnabled, rootBackdrop)) {
+        val gpuWarmup = rememberLayerPipelineWarmup(nav)
+        val cornerPx = with(LocalDensity.current) { screenCorner.toPx() }
+        val stackContent: @Composable () -> Unit = {
             Box(Modifier.fillMaxSize().background(pageSurface))
             val minimized = nav.minimizedEntry
             val layers = buildList {
@@ -209,6 +214,32 @@ fun BiliCoRoot(container: AppContainer) {
                     )
                 }
             }
+        }
+        // 这两层节点常驻，warmup 只改图层属性、不动组合结构。否则 1.5s 时父节点树变两次，
+        // 整棵 stackContent 会被销毁重建两次：正在滑的首页断触、滚动位置复位、图片重新请求。
+        // 结构和展开转场同构：外层圆角裁剪、内层离屏。全屏半径下画面看不出变化，
+        // 但离屏 + 圆角裁剪这条路径会真的走一遍，退出转场要用的管线提前编好。
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val warming = gpuWarmup.active && size.height > 0f
+                    clip = warming
+                    shape = if (warming) ExpandShape(size.height, cornerPx) else RectangleShape
+                },
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        compositingStrategy = if (gpuWarmup.active) {
+                            CompositingStrategy.Offscreen
+                        } else {
+                            CompositingStrategy.Auto
+                        }
+                    }
+                    .layerBackdropIf(BlurEffectsEnabled, rootBackdrop),
+            ) { stackContent() }
         }
         // 滑动退场/进场且窗口缩小时四角会露出窗口底色，补一层页面底色，只画在超级椭圆外侧。
         val cornerMaskCache = remember(cornerShape) {
