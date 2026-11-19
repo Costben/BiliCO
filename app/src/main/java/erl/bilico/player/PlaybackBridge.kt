@@ -307,9 +307,24 @@ fun BindPlaybackSession(
     val routeEntry = erl.bilico.ui.LocalNavEntry.current
     val navState = erl.bilico.ui.LocalNavState.current
     val currentBackgroundPlay = rememberUpdatedState(backgroundPlay)
+    // 出栈时先暂停再播退场动画：暂停会改 isPlaying，若此时照常重绑就会把刚停掉的服务重新拉起、
+    // 重建媒体会话并重载封面，全压在退场那几帧上。缩进融合球不算出栈，会话照常维持。
+    val poppingOut = routeEntry?.exiting == true && !routeEntry.minimizingToOrb
 
-    LaunchedEffect(activeSession, player, title, subtitle, artworkUrl, isPlaying, effectiveAutoPip) {
+    LaunchedEffect(activeSession, player, title, subtitle, artworkUrl, isPlaying, effectiveAutoPip, poppingOut) {
         if (!activeSession) return@LaunchedEffect
+        if (poppingOut) {
+            // 出栈时播放器已经暂停，但退场动画还要跑 240ms，系统这段时间仍按上一次的参数判断
+            // 要不要自动进画中画。这里先把 autoEnter 关掉，免得这时上滑回桌面拉起一个已暂停的画中画窗。
+            if (activity != null && PlaybackBridge.canEnterPip(activity) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                runCatching {
+                    activity.setPictureInPictureParams(
+                        PlaybackBridge.buildPipParams(activity, isPlaying = false, autoEnter = false),
+                    )
+                }
+            }
+            return@LaunchedEffect
+        }
         PlaybackBridge.bind(
             player = player,
             title = title,

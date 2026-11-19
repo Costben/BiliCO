@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Handler
@@ -147,16 +148,24 @@ class PlaybackService : MediaSessionService() {
                 Log.w(TAG, "封面下载失败 ${error.message}")
                 null
             } ?: run {
-                loadedArtwork = ""
+                // 清空要回主线程做，并确认这条仍是当前封面：直接在工作线程写会把刚切到的下一条抹掉。
+                mainHandler.post {
+                    if (PlaybackBridge.activeArtworkUrl == source) loadedArtwork = ""
+                }
                 return@Thread
             }
             Log.i(TAG, "封面已下载 ${bytes.size}")
+            // 下载期间会话可能已经换了、封面也切走了，这时解码只是白烧 CPU。
+            if (mediaSession !== session || PlaybackBridge.activeArtworkUrl != source) return@Thread
+            // 解码放在下载线程里做完，主线程只负责把结果交给会话，不跟页面转场抢帧。
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            if (bitmap == null) Log.w(TAG, "封面解码失败")
             mainHandler.post {
                 if (mediaSession !== session || PlaybackBridge.activeArtworkUrl != source) return@post
                 artworkBytes = bytes
                 // 标题不变时播放器不会再发元数据变化。补一次替换，让会话重新读封面。
                 publishArtwork(bytes)
-                publishLegacyArtwork(bytes)
+                if (bitmap != null) publishLegacyArtwork(bitmap)
                 val target = mediaSession ?: return@post
                 runCatching { onUpdateNotification(target, true) }
             }
@@ -184,11 +193,7 @@ class PlaybackService : MediaSessionService() {
      * 流体云读的是系统媒体会话里的封面位图，不读播放器元数据。
      * 封面下好后直接写进这一层，标题和作者保持不变。
      */
-    private fun publishLegacyArtwork(bytes: ByteArray) {
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: run {
-            Log.w(TAG, "封面解码失败")
-            return
-        }
+    private fun publishLegacyArtwork(bitmap: Bitmap) {
         val session = mediaSession ?: return
         val compat = runCatching { legacySession(session) }.getOrElse {
             Log.w(TAG, "系统会话取不到 ${it.javaClass.simpleName}: ${it.cause?.message ?: it.message}")
@@ -201,10 +206,9 @@ class PlaybackService : MediaSessionService() {
             .putBitmap(MediaMetadataCompat.METADATA_KEY_ART, bitmap)
             .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
             .build()
+        // 不回读封面字节做核对：回读会在主线程把整张位图重新压缩一遍，退场动画会被它卡住。
         runCatching { compat.setMetadata(metadata) }
             .onFailure { Log.w(TAG, "系统会话封面写入失败 ${it.javaClass.simpleName}") }
-        val written = compat.controller.metadata?.getMostRelevantArtworkBitmapData()?.size ?: 0
-        Log.i(TAG, "系统会话封面字节 $written")
     }
 
     private fun legacySession(session: MediaSession): MediaSessionCompat {
