@@ -1,0 +1,19 @@
+# 只写本 App 自己的热路径。AGP 先用未混淆的源码类名展开通配，再由 R8 按 mapping 改写，
+# 所以这里的包通配能覆盖到 release 里被重命名的类；第三方库的 profile 由各自 AAR 提供，不重复写。
+# 启动与首页外壳：HSPL 覆盖冷启动、首帧与信息流首屏。
+HSPLerl/bilico/MainActivity;->**(**)**
+HSPLerl/bilico/BiliCoApplication;->**(**)**
+Lerl/bilico/MainActivity;
+Lerl/bilico/BiliCoApplication;
+# 首页外壳与信息流：只用 H，避免把整包方法钉在 AOT 里。
+HLerl/bilico/ui/**;->**(**)**
+HLerl/bilico/feature/feed/**;->**(**)**
+Lerl/bilico/ui/**;
+Lerl/bilico/feature/feed/**;
+# 视频页：进退转场与首帧，不标 S/L。
+HLerl/bilico/feature/video/**;->**(**)**
+# 播放器：媒体会话与后台播放服务。
+HLerl/bilico/player/**;->**(**)**
+# 数据层：启动和首页信息流必经的模型与序列化。
+HSPLerl/bilico/data/**;->**(**)**
+Lerl/bilico/data/**;
