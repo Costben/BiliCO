@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -194,6 +195,7 @@ internal fun VideoPlayer(
     val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && activeMenu != PlayerPopupMenu.NONE && !hdrVideo
     val isTop = LocalRouteIsTop.current
     val minimized = LocalRouteMinimized.current
+    val keepScreenOn = isTop && !inPipMode && rememberPlaybackScreenOn(player)
     // 舞台转场用一张静止帧顶替实时画面（SurfaceView 转不动）：在这里交出抓帧入口。
     val frozenVideo = LocalStageFrozenVideo.current
     val frameSource = LocalStageFrameSource.current
@@ -229,7 +231,8 @@ internal fun VideoPlayer(
     )
     val stageModifier = if (LocalStageOpaquePlayer.current) modifier.background(Color.Black) else modifier
     RegisterSurfaceViewEntry(hdrVideo)
-    Box(stageModifier.onGloballyPositioned { stageCoords = it }) {
+    val screenModifier = if (keepScreenOn) Modifier.keepScreenOn() else Modifier
+    Box(stageModifier.then(screenModifier).onGloballyPositioned { stageCoords = it }) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
