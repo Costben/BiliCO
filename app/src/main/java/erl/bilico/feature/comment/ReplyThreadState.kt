@@ -12,11 +12,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import erl.bilico.data.model.Comment
-import erl.bilico.data.model.CommentSort
 import erl.bilico.di.AppContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** 评论详情（楼中楼）排序：最热、最新、最旧。 */
+internal enum class ReplySort {
+    Hot,
+    New,
+    Old,
+}
 
 /** 控制评论详情内嵌页面的打开、关闭及与主评论区的数据同步。 */
 class ReplyThreadController {
@@ -52,7 +58,7 @@ internal class ReplyDetailState(
     private val onRootDeleted: () -> Unit,
 ) {
     var rootComment by mutableStateOf(initialRoot)
-    var sort by mutableStateOf(CommentSort.Hot)
+    var sort by mutableStateOf(ReplySort.Hot)
         private set
     var items by mutableStateOf<List<Comment>>(emptyList())
         private set
@@ -69,7 +75,7 @@ internal class ReplyDetailState(
     var toast by mutableStateOf<String?>(null)
         private set
 
-    private var hotPage = 0
+    private var forwardPage = 0
     private var nextNewPage = 0
     private var knownTotal = -1
     private var generation = 0
@@ -82,31 +88,31 @@ internal class ReplyDetailState(
         }
     }
 
-    fun selectSort(nextSort: CommentSort) {
+    fun selectSort(nextSort: ReplySort) {
         if (sort == nextSort) return
         sort = nextSort
         loadInitial(nextSort)
     }
 
-    fun loadInitial(targetSort: CommentSort = sort) {
+    fun loadInitial(targetSort: ReplySort = sort) {
         generation += 1
         val reqGen = generation
         val rootId = rootComment.id
         items = emptyList()
-        hotPage = 0
+        forwardPage = 0
         nextNewPage = 0
         isEnd = false
         error = null
         isLoading = true
         scope.launch {
-            if (targetSort == CommentSort.Hot) {
+            if (targetSort == ReplySort.Hot || targetSort == ReplySort.Old) {
                 container.comments.replies(oid, rootId, page = 1, pageSize = SUB_REPLY_PAGE_SIZE, type = type)
                     .onSuccess { page ->
                         if (reqGen != generation) return@onSuccess
                         knownTotal = page.total
                         totalCount = maxOf(totalCount, page.total, page.replies.size)
-                        hotPage = 1
-                        items = sortHotSubReplies(page.replies).distinctBy { it.id }
+                        forwardPage = 1
+                        items = orderSubReplies(page.replies, targetSort).distinctBy { it.id }
                         isEnd = page.replies.isEmpty() || page.replies.size >= page.total
                     }
                     .onFailure { failure ->
@@ -174,16 +180,16 @@ internal class ReplyDetailState(
         isLoading = true
         error = null
         scope.launch {
-            if (activeSort == CommentSort.Hot) {
-                val next = hotPage + 1
+            if (activeSort == ReplySort.Hot || activeSort == ReplySort.Old) {
+                val next = forwardPage + 1
                 container.comments.replies(oid, rootId, page = next, pageSize = SUB_REPLY_PAGE_SIZE, type = type)
                     .onSuccess { page ->
                         if (reqGen != generation) return@onSuccess
-                        hotPage = next
+                        forwardPage = next
                         knownTotal = maxOf(knownTotal, page.total)
                         totalCount = maxOf(totalCount, page.total)
                         val knownIds = items.mapTo(HashSet()) { it.id }
-                        val fresh = sortHotSubReplies(page.replies.filter { it.id !in knownIds })
+                        val fresh = orderSubReplies(page.replies.filter { it.id !in knownIds }, activeSort)
                         items = items + fresh
                         isEnd = page.replies.isEmpty() || (knownTotal > 0 && items.size >= knownTotal)
                     }
@@ -344,7 +350,10 @@ internal fun rememberReplyDetailState(
     }
 }
 
-private fun sortHotSubReplies(list: List<Comment>): List<Comment> =
-    list.sortedWith(compareByDescending<Comment> { it.like }.thenBy { it.timeSec })
+private fun orderSubReplies(list: List<Comment>, sort: ReplySort): List<Comment> = when (sort) {
+    ReplySort.Hot -> list.sortedWith(compareByDescending<Comment> { it.like }.thenBy { it.timeSec })
+    ReplySort.New -> list.sortedByDescending { it.timeSec }
+    ReplySort.Old -> list.sortedBy { it.timeSec }
+}
 
 private const val SUB_REPLY_PAGE_SIZE = 20

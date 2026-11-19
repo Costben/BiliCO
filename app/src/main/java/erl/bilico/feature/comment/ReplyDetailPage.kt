@@ -143,7 +143,7 @@ internal fun ReplyDetailOverlay(
     }
 }
 
-/** 评论详情内嵌页面：在底部区域直接展开，覆盖简介/评论/发弹幕，支持「最热」「最新」切换与回复。 */
+/** 评论详情内嵌页面：在底部区域直接展开，覆盖简介/评论/发弹幕，支持「最热」「最新」「最旧」切换与回复。 */
 @Composable
 internal fun ReplyDetailPage(
     container: AppContainer,
@@ -417,7 +417,7 @@ internal fun ReplyDetailPage(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
-                        CommentSortTabRow(
+                        ReplySortTabRow(
                             sort = detailState.sort,
                             onSelectSort = detailState::selectSort,
                         )

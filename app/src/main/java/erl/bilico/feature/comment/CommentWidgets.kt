@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.InlineTextContent
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
@@ -43,7 +42,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.Comment
-import erl.bilico.data.model.CommentSort
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.CouiPopupMenu
@@ -52,8 +50,6 @@ import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.imageOrigin
 import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.TabRowDefaults
-import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
@@ -552,28 +548,3 @@ private fun CommentActionBar(
         }
     }
 }
-
-/** 评论排序迷你分段标签栏（最热 / 最新），对应 COUI `SegmentButton.Tiny` 规格。 */
-@Composable
-internal fun CommentSortTabRow(
-    sort: CommentSort,
-    onSelectSort: (CommentSort) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    TabRowWithContour(
-        tabs = COMMENT_SORT_TABS,
-        selectedTabIndex = if (sort == CommentSort.Hot) 0 else 1,
-        onTabSelected = { index ->
-            onSelectSort(if (index == 0) CommentSort.Hot else CommentSort.New)
-        },
-        minWidth = 56.dp,
-        height = TabRowDefaults.TabRowWithContourTinyHeight,
-        cornerRadius = TabRowDefaults.TabRowWithContourTinyCornerRadius,
-        contourPadding = TabRowDefaults.TabRowWithContourTinyPadding,
-        segmentPadding = 10.dp,
-        colors = TabRowDefaults.tabRowColors(),
-        modifier = modifier.wrapContentWidth(unbounded = true),
-    )
-}
-
-private val COMMENT_SORT_TABS = listOf("最热", "最新")
