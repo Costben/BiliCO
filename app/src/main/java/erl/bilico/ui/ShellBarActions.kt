@@ -199,6 +199,7 @@ internal fun FloatingBottomBar(
     onTab: (Int) -> Unit,
     onReselect: (Int) -> Unit,
     onPrimaryReselect: () -> Unit = {},
+    barBounds: TopBarBounds? = null,
     leftOrbVisible: Boolean = false,
     onLeftOrbClick: () -> Unit = {},
     orbVisible: Boolean = false,
@@ -268,91 +269,98 @@ internal fun FloatingBottomBar(
             }
         }
 
-        BottomFloatingAccessoryNavigationBar(
-            startAccessoryVisible = leftOrbVisible,
-            endAccessoryVisible = orbVisible,
-            startAccessory = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .testTag("dynamic_compose_orb")
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            role = Role.Button,
-                            onClick = onLeftOrbClick,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = COUIIcons.Add,
-                        contentDescription = "发动态",
-                        modifier = Modifier.size(24.dp),
-                        tint = COUITheme.colorScheme.onSurface,
-                    )
-                }
-            },
-            endAccessory = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .testTag("playback_fusion_orb")
-                        .combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            role = Role.Button,
-                            onLongClick = { orbMenuExpanded = true },
-                            onClick = onOrbClick,
-                        )
-                        .drawWithContent {
-                            if (orbOrigin != null) {
-                                orbOrigin.refreshKey
-                                orbOrigin.layer.record { this@drawWithContent.drawContent() }
-                                drawLayer(orbOrigin.layer)
-                            } else {
-                                drawContent()
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PlaybackOrbContent(
-                        artworkUrl = orbArtworkUrl,
-                        isPlaying = orbIsPlaying,
-                    )
-                    PlaybackOrbMenu(
-                        expanded = orbMenuExpanded,
-                        isPlaying = orbIsPlaying,
-                        onDismissRequest = { orbMenuExpanded = false },
-                        onTogglePlay = onOrbTogglePlay,
-                        onStopPlayback = onOrbStop,
-                    )
-                }
-            },
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (barBounds != null) Modifier.reportBottomBarTop(barBounds) else Modifier),
+            contentAlignment = Alignment.BottomCenter,
         ) {
-            BottomFloatingNavigationBarItem(
-                selected = tab == 0,
-                onClick = { click(0) },
-                icon = NavHomeOutlineIcon,
-                selectedIcon = NavHomeFilledIcon,
-                label = "推荐",
-                modifier = Modifier.testTag("bottom_tab_feed"),
-            )
-            BottomFloatingNavigationBarItem(
-                selected = tab == 1,
-                onClick = { click(1) },
-                icon = NavDynamicOutlineIcon,
-                selectedIcon = NavDynamicFilledIcon,
-                label = "动态",
-                modifier = Modifier.testTag("bottom_tab_dynamic"),
-            )
-            BottomFloatingNavigationBarItem(
-                selected = tab == ME_TAB_INDEX,
-                onClick = { click(ME_TAB_INDEX) },
-                icon = NavMeOutlineIcon,
-                selectedIcon = NavMeFilledIcon,
-                label = "我的",
-                modifier = Modifier.testTag("bottom_tab_me"),
-            )
+            BottomFloatingAccessoryNavigationBar(
+                startAccessoryVisible = leftOrbVisible,
+                endAccessoryVisible = orbVisible,
+                startAccessory = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("dynamic_compose_orb")
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                role = Role.Button,
+                                onClick = onLeftOrbClick,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = COUIIcons.Add,
+                            contentDescription = "发动态",
+                            modifier = Modifier.size(24.dp),
+                            tint = COUITheme.colorScheme.onSurface,
+                        )
+                    }
+                },
+                endAccessory = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("playback_fusion_orb")
+                            .combinedClickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                role = Role.Button,
+                                onLongClick = { orbMenuExpanded = true },
+                                onClick = onOrbClick,
+                            )
+                            .drawWithContent {
+                                if (orbOrigin != null) {
+                                    orbOrigin.refreshKey
+                                    orbOrigin.layer.record { this@drawWithContent.drawContent() }
+                                    drawLayer(orbOrigin.layer)
+                                } else {
+                                    drawContent()
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        PlaybackOrbContent(
+                            artworkUrl = orbArtworkUrl,
+                            isPlaying = orbIsPlaying,
+                        )
+                        PlaybackOrbMenu(
+                            expanded = orbMenuExpanded,
+                            isPlaying = orbIsPlaying,
+                            onDismissRequest = { orbMenuExpanded = false },
+                            onTogglePlay = onOrbTogglePlay,
+                            onStopPlayback = onOrbStop,
+                        )
+                    }
+                },
+            ) {
+                BottomFloatingNavigationBarItem(
+                    selected = tab == 0,
+                    onClick = { click(0) },
+                    icon = NavHomeOutlineIcon,
+                    selectedIcon = NavHomeFilledIcon,
+                    label = "推荐",
+                    modifier = Modifier.testTag("bottom_tab_feed"),
+                )
+                BottomFloatingNavigationBarItem(
+                    selected = tab == 1,
+                    onClick = { click(1) },
+                    icon = NavDynamicOutlineIcon,
+                    selectedIcon = NavDynamicFilledIcon,
+                    label = "动态",
+                    modifier = Modifier.testTag("bottom_tab_dynamic"),
+                )
+                BottomFloatingNavigationBarItem(
+                    selected = tab == ME_TAB_INDEX,
+                    onClick = { click(ME_TAB_INDEX) },
+                    icon = NavMeOutlineIcon,
+                    selectedIcon = NavMeFilledIcon,
+                    label = "我的",
+                    modifier = Modifier.testTag("bottom_tab_me"),
+                )
+            }
         }
     }
 }

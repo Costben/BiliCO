@@ -473,28 +473,40 @@ fun ExpandOrigin.attachToRow(listState: RowScrollState?, rowKey: Any?, topBar: T
 }
 
 /**
- * 把卡片所在的列表上移刚好够让卡片顶边落到栏下沿之下。
+ * 把卡片所在的列表挪到顶栏之下、底栏之上的安全可视区内。
  *
- * 详情页的框画在页面自己的图层上，在栏之上；半截藏在栏底的卡片回来时会画到栏上面。
- * 挪列表而不是重排图层，栏本身不动，卡片落在一个栏盖不到的位置。
+ * 详情页的框画在页面自己的图层上，在顶栏与底栏之上；半截藏在顶栏或底栏底下的卡片回来时会画到栏上面，
+ * 落定后栏再盖回来会显得突兀。挪列表而不是重排图层，栏本身不动，卡片落在一个栏盖不到的完整位置。
  *
- * 列表回滚可能把栏的折叠标题行带回来，栏的边线随之改变，所以量几轮直到两边对齐。
+ * 列表滚动可能把栏的折叠标题行带回来，栏的边线随之改变，所以量几轮直到两边对齐。
  */
 internal suspend fun alignCardBelowBar(origin: ExpandOrigin?) {
     if (origin == null) return
     val state = origin.listState ?: return
     val bar = origin.topBar ?: return
     repeat(4) {
-        val line = bar.bottom
-        if (line <= 0f) return
         // 刷新可能已经把这行从列表里换掉，旧矩形会把列表滚到不知道哪里去。
         val onScreen = origin.rowKey?.let { key -> state.visibleKeys().any { it == key } } ?: false
         if (!onScreen) return
-        val top = origin.bounds?.top ?: return
-        val delta = line + origin.clearancePx - top
-        if (delta <= 0.5f) return
-        if (state.scrollBy(-delta) == 0f) return
-        // 一帧让列表重新布局，一帧让栏报出新下沿。
+        val bounds = origin.bounds ?: return
+        val topLine = bar.bottom
+        val topSafe = topLine + origin.clearancePx
+        val topDelta = if (topLine > 0f) topSafe - bounds.top else 0f
+
+        val bottomLine = bar.bottomBarTop
+        val bottomSafe = bottomLine - origin.clearancePx
+        val rawBottomDelta = if (bottomLine > 0f) bounds.bottom - bottomSafe else 0f
+        // 卡片高度若超过安全区高度，优先保证顶边不撞进顶栏下沿。
+        val maxUpShift = if (topLine > 0f) (bounds.top - topSafe).coerceAtLeast(0f) else Float.MAX_VALUE
+        val bottomDelta = rawBottomDelta.coerceAtMost(maxUpShift)
+
+        val scrollDelta = when {
+            topDelta > 0.5f -> -topDelta
+            bottomDelta > 0.5f -> bottomDelta
+            else -> return
+        }
+        if (state.scrollBy(scrollDelta) == 0f) return
+        // 一帧让列表重新布局，一帧让栏报出新边线。
         withFrameNanos { }
         withFrameNanos { }
     }

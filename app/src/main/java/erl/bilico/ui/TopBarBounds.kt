@@ -20,8 +20,16 @@ class TopBarBounds {
     var bottom by mutableFloatStateOf(0f)
         private set
 
+    /** 底部悬浮导航栏可视顶边（根坐标），为 0 表示当前页无底栏。 */
+    var bottomBarTop by mutableFloatStateOf(0f)
+        private set
+
     fun report(top: Float, height: Float) {
         bottom = top + height
+    }
+
+    fun reportBottomBar(top: Float) {
+        bottomBarTop = top
     }
 }
 
@@ -32,4 +40,10 @@ val LocalTopBarBounds = staticCompositionLocalOf<TopBarBounds?> { null }
 fun Modifier.reportTopBarBottom(bounds: TopBarBounds): Modifier =
     onGloballyPositioned {
         bounds.report(it.positionInRoot().y, it.size.height.toFloat())
+    }
+
+/** 持续把 [bounds] 更新到底部悬浮导航栏的可视上沿。 */
+fun Modifier.reportBottomBarTop(bounds: TopBarBounds): Modifier =
+    onGloballyPositioned {
+        bounds.reportBottomBar(it.positionInRoot().y)
     }

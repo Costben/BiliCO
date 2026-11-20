@@ -339,6 +339,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     onPrimaryReselect = {
                         if (!feedPanelCovering) feedPrimaryTapTick++
                     },
+                    barBounds = topBarBounds,
                     orbVisible = if (enteringOverMain) settledOrbVisible else rawOrbVisible,
                     leftOrbVisible = tab == DYNAMIC_TAB_INDEX,
                     onLeftOrbClick = {
