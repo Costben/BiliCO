@@ -80,6 +80,7 @@ import erl.bilico.feature.settings.SettingsScreen
 import erl.bilico.feature.space.SpaceScreen
 import erl.bilico.feature.update.UpdateDialog
 import erl.bilico.feature.update.UpdateScreen
+import erl.bilico.feature.video.PlayerWindowBrightnessEffect
 import erl.bilico.feature.video.VideoScreen
 import erl.bilico.feature.watchlater.WatchLaterScreen
 import erl.bilico.player.LocalInPipMode
@@ -313,6 +314,9 @@ internal fun BiliCoRoot(
         val topEntry = nav.stack.lastOrNull { !it.exiting }
         val topRoute = topEntry?.route
         val inPipMode = LocalInPipMode.current
+        // 播放页的亮度手势借的是宿主窗口，离开播放页必须还给系统，
+        // 否则回到首页还停在调过的那一档，整个界面一直刺眼。
+        PlayerWindowBrightnessEffect(active = topRoute?.isPlayback() == true && !inPipMode)
         val wantLightStatusBars = !dark &&
             viewerHost.active == null &&
             (topEntry == null || !topEntry.route.isPlayback() || inPipMode || topEntry.collapsedBarVisible)
