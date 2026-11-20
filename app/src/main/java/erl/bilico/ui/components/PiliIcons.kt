@@ -77,6 +77,14 @@ internal val EmojiIcon: ImageVector by lazy {
     )
 }
 
+/** 空降助手：Material 的 skip_next，表示跳到下一个标记片段。 */
+internal val SkipSegmentIcon: ImageVector by lazy {
+    icon(
+        name = "SkipSegment",
+        path = "M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z",
+    )
+}
+
 /** 画中画：Material 的 picture_in_picture_alt 路径，字体里没有这个字形。 */
 internal val PipIcon: ImageVector by lazy {
     icon(

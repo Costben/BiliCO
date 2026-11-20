@@ -24,6 +24,7 @@ import erl.bilico.ui.components.NavHomeOutlineIcon
 import erl.bilico.ui.components.PiliGlyph
 import erl.bilico.ui.components.PiliIcon
 import erl.bilico.ui.components.PipIcon
+import erl.bilico.ui.components.SkipSegmentIcon
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
@@ -55,6 +56,7 @@ internal fun PlayerTopBarItemIcon(
         PlayerTopBarItem.AUDIO_ONLY -> Icon(COUIIcons.Music, null, modifier.size(size), tint)
         PlayerTopBarItem.PIP -> Icon(PipIcon, null, modifier.size(size), tint)
         PlayerTopBarItem.STATS -> Icon(COUIIcons.Info, null, modifier.size(size), tint)
+        PlayerTopBarItem.SPONSOR -> Icon(SkipSegmentIcon, null, modifier.size(size), tint)
         PlayerTopBarItem.MORE -> Icon(COUIIcons.More, null, modifier.size(size), tint)
     }
 }
@@ -68,6 +70,7 @@ internal class PlayerTopBarActions(
     val onShare: (() -> Unit)?,
     val onCast: (() -> Unit)?,
     val onShowStats: (() -> Unit)?,
+    val onOpenSponsor: (() -> Unit)?,
     val onHome: (() -> Unit)?,
     val onToggleAudioOnly: (() -> Unit)?,
     val onEnterPip: (() -> Unit)?,
@@ -210,6 +213,9 @@ private fun RowScope.Item(
         }
         PlayerTopBarItem.STATS -> actions.onShowStats?.let {
             PlayerIconButton(COUIIcons.Info, "视频信息统计", it)
+        }
+        PlayerTopBarItem.SPONSOR -> actions.onOpenSponsor?.let {
+            PlayerIconButton(SkipSegmentIcon, "空降助手", it)
         }
         // 「顶栏设置」和「视频信息统计」挂在更多菜单下面。
         PlayerTopBarItem.MORE -> if (fullscreen) {

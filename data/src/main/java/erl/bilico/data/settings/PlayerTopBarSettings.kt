@@ -88,6 +88,12 @@ enum class PlayerTopBarItem(
         summary = "分辨率、码率、丢帧等实时数据",
         modes = BOTH_MODES,
     ),
+    SPONSOR(
+        id = "sponsor",
+        label = "空降助手",
+        summary = "快捷跳转社区标记的片段，也可以提交新片段",
+        modes = BOTH_MODES,
+    ),
     MORE(
         id = "more",
         label = "更多菜单",

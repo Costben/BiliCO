@@ -163,6 +163,7 @@ internal fun BoxScope.VideoPlayerSlot(
             emptyList()
         },
         onSubmitSponsor = onSubmitSponsor,
+        onJumpSponsorSegment = { segment -> sponsorController.jumpToSegment(player, segment) },
         sponsorOverlay = { bottomPad, startPad ->
             if (sponsorBlockEnabled && sponsorSkipMode >= 0) {
                 SponsorBlockPromptOverlay(

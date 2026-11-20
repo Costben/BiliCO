@@ -134,6 +134,7 @@ internal fun VideoPlayer(
     episodesMenuItems: List<CouiMenuItem> = emptyList(),
     sponsorSegments: List<SponsorSegment> = emptyList(),
     onSubmitSponsor: (() -> Unit)? = null,
+    onJumpSponsorSegment: ((SponsorSegment) -> Unit)? = null,
     sponsorOverlay: @Composable BoxScope.(bottomPad: Dp, startPad: Dp) -> Unit = { _, _ -> },
     subtitleOverlay: @Composable (controlsVisible: Boolean) -> Unit = {},
     overlay: @Composable () -> Unit = {},
@@ -145,6 +146,7 @@ internal fun VideoPlayer(
     var lastBottomMenu by remember { mutableStateOf(PlayerPopupMenu.SPEED) }
     var statsVisible by remember { mutableStateOf(false) }
     var topBarSettingsVisible by remember { mutableStateOf(false) }
+    var sponsorAssistVisible by remember { mutableStateOf(false) }
     var selectedDanmaku by remember { mutableStateOf<DanmakuHit?>(null) }
     val danmakuInteraction = remember { DanmakuInteractionHost() }
     var stageCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -163,6 +165,7 @@ internal fun VideoPlayer(
             activeMenu = PlayerPopupMenu.NONE
             statsVisible = false
             topBarSettingsVisible = false
+            sponsorAssistVisible = false
             selectedDanmaku = null
         }
     }
@@ -373,6 +376,14 @@ internal fun VideoPlayer(
                         controlsVisible = false
                         statsVisible = true
                     },
+                    onOpenSponsor = if (onJumpSponsorSegment != null || onSubmitSponsor != null) {
+                        {
+                            controlsVisible = false
+                            sponsorAssistVisible = true
+                        }
+                    } else {
+                        null
+                    },
                     onHome = onHome,
                     onToggleAudioOnly = onToggleAudioOnly,
                     onEnterPip = onEnterPip,
@@ -529,6 +540,24 @@ internal fun VideoPlayer(
                 source = source,
                 inlineInStage = fullscreen,
                 onDismiss = { statsVisible = false },
+            )
+        }
+
+        if (sponsorAssistVisible) {
+            SponsorAssistDialog(
+                segments = sponsorSegments,
+                inlineInStage = fullscreen,
+                onJump = { segment ->
+                    sponsorAssistVisible = false
+                    onJumpSponsorSegment?.invoke(segment)
+                },
+                onSubmit = onSubmitSponsor?.let { submit ->
+                    {
+                        sponsorAssistVisible = false
+                        submit()
+                    }
+                },
+                onDismiss = { sponsorAssistVisible = false },
             )
         }
 

@@ -185,6 +185,18 @@ internal class SponsorBlockController(
         promptSegment = null
     }
 
+    /**
+     * 空降助手里的快捷跳转：跳到片段起点，并把它从自动跳过的候选里摘掉。
+     *
+     * 跳过类片段落在起点会立刻命中自动跳过判定，不标成已处理就等于原地弹回去。
+     */
+    fun jumpToSegment(player: Player, segment: SponsorSegment) {
+        if (segment.actionType == SponsorActionType.Skip) handledUuids.add(segment.uuid)
+        promptSegment = null
+        poiSegment = null
+        player.seekTo(segment.startMs)
+    }
+
     fun jumpToPoi(player: Player) {
         val seg = poiSegment ?: return
         dismissedPoiUuids.add(seg.uuid)
