@@ -20,9 +20,11 @@ import erl.bilico.feature.comment.ReplyDetailOverlay
 import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.feature.video.CollapsedBarHeight
 import erl.bilico.feature.video.DETAIL_BAR_HEIGHT
+import erl.bilico.feature.video.DETAIL_CONTENT_GAP
 import erl.bilico.feature.video.DetailBarGlassSurface
 import erl.bilico.feature.video.VideoBarBackdrops
 import erl.bilico.feature.video.VideoDetailBar
+import erl.bilico.feature.video.rememberBarScrolled
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.feature.video.rememberStableStatusBarHeightPx
 import erl.bilico.ui.BlurEffectsEnabled
@@ -73,7 +75,9 @@ internal fun PgcDetailSection(
     val pageBg = pageContainerColor()
     val statusBarDp = with(LocalDensity.current) { rememberStableStatusBarHeightPx().toDp() }
     val firstRowHeight = statusBarDp + CollapsedBarHeight
-    val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + 12.dp
+    val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + DETAIL_CONTENT_GAP
+    // 与普通视频详情页一致：停在顶部时不启用毛玻璃。
+    val barBlurActive = blurActive && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
 
     Box(
         modifier = Modifier
@@ -115,6 +119,7 @@ internal fun PgcDetailSection(
                                 onOpenUser = { mid -> if (mid > 0L) nav.push(Route.Space(mid)) },
                                 listState = commentListState,
                                 topInset = contentTop,
+                                topGap = 0.dp,
                                 bottomInset = navBarBottom,
                                 replyThreadController = replyThread,
                                 modifier = Modifier.fillMaxSize(),
@@ -137,8 +142,10 @@ internal fun PgcDetailSection(
                 .align(Alignment.TopCenter)
                 .fillMaxWidth(),
             containerColor = pageBg,
-            backdrop = if (BlurEffectsEnabled && blurActive) detailLayerBackdrop else null,
-            materialBackdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop else null,
+            backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,
+            materialBackdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop else null,
+            // 与视频详情页一致：模糊与渐隐都收在栏的下沿。
+            extraHeight = 0.dp,
             topInset = firstRowHeight,
         ) {
             VideoDetailBar(
@@ -153,7 +160,7 @@ internal fun PgcDetailSection(
                 onDraftChange = onDanmakuDraftChange,
                 onComposingChange = onDanmakuComposingChange,
                 onSend = onSendDanmaku,
-                backdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
+                backdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
             )
         }
 

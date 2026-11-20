@@ -218,7 +218,7 @@ private fun InfoContent(
         modifier = modifier.scrollEndHaptic(),
         contentPadding = PaddingValues(
             start = 16.dp,
-            top = 12.dp + topInset,
+            top = topInset,
             end = 16.dp,
             bottom = 12.dp + bottomInset,
         ),

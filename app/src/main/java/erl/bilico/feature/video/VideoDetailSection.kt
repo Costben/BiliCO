@@ -93,7 +93,10 @@ internal fun VideoDetailSection(
     val firstRowHeight = statusBarDp + CollapsedBarHeight
     // 列表整块铺到最上面（一直到折叠态状态栏），滚动时正文从两行栏底下穿过去；
     // 静止时靠列表顶部内边距让出折叠栏 + 弹幕切换栏，第一行不会被压住。
-    val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + 12.dp
+    val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + DETAIL_CONTENT_GAP
+    // 停在顶部时栏下面没有东西会滚过去，这时候开着模糊只会把第一行的上沿糊出软边；
+    // 等列表真的滚起来再启用。
+    val barBlurActive = blurActive && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -196,6 +199,7 @@ internal fun VideoDetailSection(
                                 onOpenUser = onOpenUser,
                                 listState = commentListState,
                                 topInset = contentTop,
+                                topGap = 0.dp,
                                 bottomInset = navBarBottom,
                                 targetRootId = commentRootId,
                                 targetReplyId = commentTargetId,
@@ -213,8 +217,10 @@ internal fun VideoDetailSection(
                 .align(Alignment.TopCenter)
                 .fillMaxWidth(),
             containerColor = pageBg,
-            backdrop = if (BlurEffectsEnabled && blurActive) detailLayerBackdrop else null,
-            materialBackdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop else null,
+            backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,
+            materialBackdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop else null,
+            // 模糊与渐隐都收在栏的下沿，不往下多铺一截去糊正文第一行。
+            extraHeight = 0.dp,
             topInset = firstRowHeight,
         ) {
             VideoDetailBar(
@@ -229,7 +235,7 @@ internal fun VideoDetailSection(
                 onDraftChange = onDanmakuDraftChange,
                 onComposingChange = onDanmakuComposingChange,
                 onSend = onSendDanmaku,
-                backdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
+                backdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
             )
         }
 

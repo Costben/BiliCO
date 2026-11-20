@@ -73,6 +73,7 @@ fun CommentTab(
     type: Int = 1,
     listState: LazyListState = rememberLazyListState(),
     topInset: Dp = 0.dp,
+    topGap: Dp = 12.dp,
     bottomInset: Dp = navBottomPadding(),
     targetRootId: Long = 0L,
     targetReplyId: Long = 0L,
@@ -158,7 +159,7 @@ fun CommentTab(
                     modifier = Modifier.fillMaxSize().scrollEndHaptic(),
                     contentPadding = PaddingValues(
                         start = 16.dp,
-                        top = 12.dp + topInset,
+                        top = topGap + topInset,
                         end = 16.dp,
                         bottom = 88.dp + bottomInset,
                     ),

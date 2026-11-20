@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -288,7 +290,35 @@ internal val DETAIL_CAPSULE_HEIGHT = 32.dp
  * 详情页把列表顶到整块区域的最上面，由这条栏浮在上面盖住滚过去的正文；
  * 列表的顶部内边距要按这个高度留，静止时第一行才不会被栏压住。
  */
-internal val DETAIL_BAR_HEIGHT = 48.dp
+internal val DETAIL_BAR_HEIGHT = 44.dp
+
+/** 切换栏下沿到正文第一行之间的间距；栏本身是浮层，正文从这里开始就不会被压住。 */
+internal val DETAIL_CONTENT_GAP = 4.dp
+
+/** 列表滚过这段距离才算离开顶部，顶栏到这时才开始启用毛玻璃。 */
+private val DETAIL_BLUR_THRESHOLD = 8.dp
+
+/**
+ * 顶栏是否已经离开列表顶部。
+ *
+ * 停在顶部时栏下面没有内容会滚过去，这时候开着模糊只会把正文第一行的上沿糊出软边；
+ * 滚动起来再启用。只订阅一个布尔量，滑动过程中不会让整页重组。
+ */
+@Composable
+internal fun rememberBarScrolled(
+    page: Int,
+    infoList: LazyListState,
+    commentList: LazyListState,
+): Boolean {
+    val thresholdPx = with(LocalDensity.current) { DETAIL_BLUR_THRESHOLD.roundToPx() }
+    val scrolled = remember(page, infoList, commentList, thresholdPx) {
+        derivedStateOf {
+            val list = if (page == 0) infoList else commentList
+            list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > thresholdPx
+        }
+    }
+    return scrolled.value
+}
 
 /** COUI `SearchBar` 在 `outsideEndAction` 后面固定垫的 16dp，展开时补回来。 */
 internal val ACTION_END_SLACK = 16.dp
