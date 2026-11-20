@@ -4,8 +4,11 @@ import android.content.Context
 import erl.bilico.data.session.CookieStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import retrofit2.Retrofit
@@ -65,6 +68,21 @@ class BiliClient(
         .retryOnConnectionFailure(true)
         .build()
 
+    /** 图片加载专用客户端：提升单主机并发与 HTTP/2 连接池复用，避免信息流封面与头像排队空白。 */
+    private val imageOkHttp: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(BiliHeaderInterceptor())
+        .dispatcher(
+            Dispatcher().apply {
+                maxRequests = 64
+                maxRequestsPerHost = 16
+            },
+        )
+        .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
+        .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
     val api: BiliApi = retrofit("https://api.bilibili.com/", okHttp).create(BiliApi::class.java)
 
     val passportApi: PassportApi = retrofit(
@@ -77,6 +95,9 @@ class BiliClient(
 
     /** 给 ExoPlayer 使用同一套请求头，避免 CDN 403。 */
     fun mediaClient(): OkHttpClient = mediaOkHttp
+
+    /** 给 Coil 全局 ImageLoader 使用的高并发图片客户端。 */
+    fun imageClient(): OkHttpClient = imageOkHttp
 
     /** 封面走同一条网络栈。系统自己去拉图床会被拒。 */
     fun fetchBytes(url: String): ByteArray {
