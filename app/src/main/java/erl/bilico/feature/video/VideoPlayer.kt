@@ -3,13 +3,10 @@ package erl.bilico.feature.video
 import android.view.LayoutInflater
 import android.view.View
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,7 +30,6 @@ import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,23 +44,19 @@ import erl.bilico.data.model.QualityOption
 import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.model.SubtitleTrack
 import erl.bilico.data.model.VideoChapter
+import erl.bilico.data.settings.PlayerTopBarLayout
+import erl.bilico.data.settings.PlayerTopBarMode
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.LocalRouteMinimized
 import erl.bilico.ui.components.CouiMenuItem
-import erl.bilico.ui.components.NavHomeOutlineIcon
-import erl.bilico.ui.components.PiliGlyph
-import erl.bilico.ui.components.PipIcon
 import erl.bilico.ui.components.PlayerStateOverlay
 import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Back
-import io.github.suqi8.coui.kmp.icon.extended.More
-import io.github.suqi8.coui.kmp.icon.extended.Music
 import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -104,6 +96,11 @@ internal fun VideoPlayer(
     speedLocked: Boolean = false,
     onToggleSpeedLock: () -> Unit = {},
     onSelectSpeed: (Float) -> Unit = {},
+    /** 顶栏配置：全屏与竖屏各一份，决定按钮的排列顺序与哪些被隐藏。 */
+    topBarLayoutFullscreen: PlayerTopBarLayout = PlayerTopBarLayout(),
+    topBarLayoutPortrait: PlayerTopBarLayout = PlayerTopBarLayout(),
+    onToggleTopBarItem: ((PlayerTopBarMode, String, Boolean) -> Unit)? = null,
+    onMoveTopBarItem: ((PlayerTopBarMode, Int, Int) -> Unit)? = null,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -147,6 +144,7 @@ internal fun VideoPlayer(
     var activeMenu by remember { mutableStateOf(PlayerPopupMenu.NONE) }
     var lastBottomMenu by remember { mutableStateOf(PlayerPopupMenu.SPEED) }
     var statsVisible by remember { mutableStateOf(false) }
+    var topBarSettingsVisible by remember { mutableStateOf(false) }
     var selectedDanmaku by remember { mutableStateOf<DanmakuHit?>(null) }
     val danmakuInteraction = remember { DanmakuInteractionHost() }
     var stageCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -164,6 +162,7 @@ internal fun VideoPlayer(
             controlsVisible = false
             activeMenu = PlayerPopupMenu.NONE
             statsVisible = false
+            topBarSettingsVisible = false
             selectedDanmaku = null
         }
     }
@@ -189,6 +188,23 @@ internal fun VideoPlayer(
         if (!showChrome) activeMenu = PlayerPopupMenu.NONE
     }
     val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
+    // 顶栏按当前模式取一份配置：全屏（横屏 / 竖屏视频全屏）与竖屏各管各的。
+    val topBarMode = if (fullscreen) PlayerTopBarMode.FULLSCREEN else PlayerTopBarMode.PORTRAIT
+    val topBarItems = if (fullscreen) {
+        topBarLayoutFullscreen.visibleItems(topBarMode)
+    } else {
+        topBarLayoutPortrait.visibleItems(topBarMode)
+    }
+    // 三个点里的「顶栏设置」；没有挂设置回调时不出现这一项。
+    val openTopBarSettings: (() -> Unit)? = if (onToggleTopBarItem != null) {
+        {
+            controlsVisible = false
+            activeMenu = PlayerPopupMenu.NONE
+            topBarSettingsVisible = true
+        }
+    } else {
+        null
+    }
     // 只有横屏全屏才挂弹幕输入框：竖屏全屏画面本来就窄，页面下面也有聊天区。
     val showStageComposer = fullscreen && !portraitFullscreen && danmakuComposer != null
     // 竖屏全屏时顶栏贴着屏幕顶端，得让开状态栏和挖孔，否则第一行会被挖孔吃进去。
@@ -327,136 +343,59 @@ internal fun VideoPlayer(
         }
 
         if (showChrome) {
-            // 照 COUI 顶栏：左边最多一个按钮（返回），其余都在右端，首页紧挨着更多菜单。
-            // 竖屏全屏画面只有屏幕宽，单行会把两组挤在一起，所以拆成上下两行，右组单独靠右。
-            val leadingActions: @Composable RowScope.() -> Unit = {
-                // 竖屏全屏下第一行只留标题：返回挪到下面的「只剩顶栏」状态里，
-                // 全屏时画面就是全部，这个键也基本按不到。
-                if (!portraitFullscreen) {
-                    PlayerIconButton(COUIIcons.Back, "返回", onBack)
-                }
-                Text(
-                    text = title,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp),
-                    style = COUITheme.textStyles.body2,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            val trailingActions: @Composable RowScope.() -> Unit = {
-                // 全屏：稍后再看 · 弹幕设置 · 弹幕开关 · 小窗 · 首页 · 更多；
-                // 竖屏：弹幕设置与开关在下方「发弹幕」输入框里，顶栏在首页左侧显示稍后再看。
-                if (onWatchLater != null) {
-                    PlayerGlyphButton(
-                        glyph = PiliGlyph.WatchLater,
-                        label = "稍后再看",
-                        onClick = onWatchLater,
-                    )
-                }
-                if (fullscreen) {
-                    if (onDanmakuSettingsClick != null) {
-                        PlayerGlyphButton(
-                            glyph = PiliGlyph.DmSettings,
-                            label = "弹幕设置",
-                            onClick = {
-                                controlsVisible = false
-                                onDanmakuSettingsClick()
-                            },
-                        )
-                    }
-                    PlayerGlyphButton(
-                        glyph = if (danmakuEnabled) PiliGlyph.DmOn else PiliGlyph.DmOff,
-                        label = if (danmakuEnabled) "关闭弹幕" else "开启弹幕",
-                        onClick = onToggleDanmaku,
-                        tint = if (danmakuEnabled) Color.White else Color.White.copy(alpha = 0.45f),
-                    )
-                }
-                if (!fullscreen && onHome != null) {
-                    PlayerIconButton(NavHomeOutlineIcon, "首页", onHome)
-                }
-                if (onToggleAudioOnly != null) {
-                    PlayerIconButton(
-                        icon = COUIIcons.Music,
-                        label = if (audioOnly) "退出黑听" else "黑听（仅听音频）",
-                        onClick = onToggleAudioOnly,
-                        tint = if (audioOnly) COUITheme.colorScheme.primary else Color.White,
-                    )
-                }
-                if (onEnterPip != null) PlayerIconButton(PipIcon, "小窗", onEnterPip)
-                if (fullscreen && onHome != null) PlayerIconButton(NavHomeOutlineIcon, "首页", onHome)
-                // 「视频信息统计」在任何视频页都能用，菜单因此恒定存在。
-                if (fullscreen) {
-                    PlayerIconButton(
-                        COUIIcons.More,
-                        "更多",
-                        onClick = {
-                            activeMenu = if (activeMenu == PlayerPopupMenu.MORE) {
-                                PlayerPopupMenu.NONE
-                            } else {
-                                PlayerPopupMenu.MORE
-                            }
-                        },
-                    )
-                } else {
-                    PlayerMoreMenu(
-                        onShare = onShare, onCast = onCast, onSelectLine = onSelectLine,
-                        audioOnly = audioOnly, onToggleAudioOnly = onToggleAudioOnly,
-                        onReportVideo = onReportVideo, playbackEndMode = playbackEndMode,
-                        onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-                        onSubmitSponsor = onSubmitSponsor, onShowStats = { statsVisible = true },
-                    )
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .background(
-                        // 两行顶栏比单行高得多，第二行下方就是画面，单段渐变淡到那里已经几乎看不见，
-                        // 所以多给一段并留出淡出余量，让白色图标始终压在暗底上。
-                        if (portraitFullscreen) {
-                            Brush.verticalGradient(
-                                listOf(Color(0xE6000000), Color(0xB3000000), Color.Transparent),
-                            )
+            PlayerTopBar(
+                title = title,
+                items = topBarItems,
+                fullscreen = fullscreen,
+                portraitFullscreen = portraitFullscreen,
+                danmakuEnabled = danmakuEnabled,
+                audioOnly = audioOnly,
+                horizontalBarPad = horizontalBarPad,
+                portraitTopPad = portraitTopPad,
+                actions = PlayerTopBarActions(
+                    onBack = onBack,
+                    onWatchLater = onWatchLater,
+                    onDanmakuSettings = onDanmakuSettingsClick?.let { open ->
+                        {
+                            controlsVisible = false
+                            open()
+                        }
+                    },
+                    onToggleDanmaku = onToggleDanmaku,
+                    onShare = onShare,
+                    onCast = onCast?.let { cast ->
+                        {
+                            controlsVisible = false
+                            cast()
+                        }
+                    },
+                    onShowStats = {
+                        controlsVisible = false
+                        statsVisible = true
+                    },
+                    onHome = onHome,
+                    onToggleAudioOnly = onToggleAudioOnly,
+                    onEnterPip = onEnterPip,
+                    onOpenMoreMenu = {
+                        activeMenu = if (activeMenu == PlayerPopupMenu.MORE) {
+                            PlayerPopupMenu.NONE
                         } else {
-                            Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))
-                        },
-                    )
-                    .padding(
-                        PaddingValues(
-                            start = horizontalBarPad,
-                            end = horizontalBarPad,
-                            top = 8.dp + portraitTopPad,
-                            bottom = if (portraitFullscreen) 20.dp else 8.dp,
-                        ),
-                    ),
-            ) {
-                if (portraitFullscreen) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            content = leadingActions,
+                            PlayerPopupMenu.MORE
+                        }
+                    },
+                    portraitMoreMenu = {
+                        PlayerMoreMenu(
+                            onShare = onShare, onCast = onCast, onSelectLine = onSelectLine,
+                            audioOnly = audioOnly, onToggleAudioOnly = onToggleAudioOnly,
+                            onReportVideo = onReportVideo, playbackEndMode = playbackEndMode,
+                            onSelectPlaybackEndMode = onSelectPlaybackEndMode,
+                            onSubmitSponsor = onSubmitSponsor, onShowStats = { statsVisible = true },
+                            onOpenTopBarSettings = openTopBarSettings,
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            content = trailingActions,
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        leadingActions()
-                        trailingActions()
-                    }
-                }
-            }
+                    },
+                ),
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
 
         PlayerStateOverlay(errorMessage = errorMessage, isBuffering = isBuffering, inPipMode = inPipMode, onRetry = onRetry)
@@ -570,6 +509,7 @@ internal fun VideoPlayer(
                 audioOnly = audioOnly, onToggleAudioOnly = onToggleAudioOnly,
                 onReportVideo = onReportVideo, onSubmitSponsor = onSubmitSponsor,
                 onShowStats = { activeMenu = PlayerPopupMenu.NONE; statsVisible = true },
+                onOpenTopBarSettings = openTopBarSettings,
                 episodesMenuItems = episodesMenuItems, speedMenuItems = speedMenuItems,
                 qualityMenuItems = qualityMenuItems, subtitleMenuItems = subtitleMenuItems,
                 episodesEndMargin = episodesEndMargin, speedEndMargin = speedEndMargin,
@@ -589,6 +529,17 @@ internal fun VideoPlayer(
                 source = source,
                 inlineInStage = fullscreen,
                 onDismiss = { statsVisible = false },
+            )
+        }
+
+        if (topBarSettingsVisible && onToggleTopBarItem != null) {
+            PlayerTopBarSettingsDialog(
+                fullscreen = topBarLayoutFullscreen,
+                portrait = topBarLayoutPortrait,
+                onToggle = onToggleTopBarItem,
+                onMove = onMoveTopBarItem ?: { _, _, _ -> },
+                onDismiss = { topBarSettingsVisible = false },
+                inlineInStage = fullscreen,
             )
         }
     }

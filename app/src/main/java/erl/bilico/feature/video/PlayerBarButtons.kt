@@ -119,6 +119,7 @@ internal fun rememberPlayerMoreMenuItems(
     onReportVideo: (() -> Unit)? = null,
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: (() -> Unit)? = null,
+    onOpenTopBarSettings: (() -> Unit)? = null,
 ): List<CouiMenuItem> {
     val selectModeState by rememberUpdatedState(onSelectPlaybackEndMode)
     val shareState by rememberUpdatedState(onShare)
@@ -128,6 +129,7 @@ internal fun rememberPlayerMoreMenuItems(
     val reportVideoState by rememberUpdatedState(onReportVideo)
     val submitSponsorState by rememberUpdatedState(onSubmitSponsor)
     val statsState by rememberUpdatedState(onShowStats)
+    val topBarSettingsState by rememberUpdatedState(onOpenTopBarSettings)
     val hasPlaybackEnd = onSelectPlaybackEndMode != null
     val hasShare = onShare != null
     val hasCast = onCast != null
@@ -136,9 +138,11 @@ internal fun rememberPlayerMoreMenuItems(
     val hasReportVideo = onReportVideo != null
     val hasSubmitSponsor = onSubmitSponsor != null
     val hasStats = onShowStats != null
+    val hasTopBarSettings = onOpenTopBarSettings != null
     return remember(
         playbackEndMode, hasPlaybackEnd, hasShare, hasCast,
         hasSelectLine, audioOnly, hasToggleAudio, hasReportVideo, hasSubmitSponsor, hasStats,
+        hasTopBarSettings,
     ) {
         buildList {
             if (hasSelectLine) {
@@ -172,12 +176,15 @@ internal fun rememberPlayerMoreMenuItems(
             if (hasShare) add(CouiMenuItem(label = "分享", onClick = { shareState?.invoke() }, group = 1))
             if (hasSubmitSponsor) add(CouiMenuItem(label = "提交空降片段", onClick = { submitSponsorState?.invoke() }, group = 1))
             if (hasReportVideo) add(CouiMenuItem(label = "举报视频", onClick = { reportVideoState?.invoke() }, group = 1))
+            if (hasTopBarSettings) {
+                add(CouiMenuItem(label = "顶栏设置", onClick = { topBarSettingsState?.invoke() }, group = 2))
+            }
             if (hasStats) add(CouiMenuItem(label = "视频信息统计", onClick = { statsState?.invoke() }, group = 2))
         }
     }
 }
 
-/** 顶栏右端的三个点：投屏、切换线路、黑听、自动联播、分享、空降提交、举报与视频信息统计。 */
+/** 顶栏右端的三个点：投屏、切换线路、黑听、自动联播、分享、空降提交、举报、顶栏设置与视频信息统计。 */
 @Composable
 internal fun PlayerMoreMenu(
     onShare: (() -> Unit)?,
@@ -190,11 +197,13 @@ internal fun PlayerMoreMenu(
     onReportVideo: (() -> Unit)? = null,
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: (() -> Unit)? = null,
+    onOpenTopBarSettings: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val items = rememberPlayerMoreMenuItems(
         playbackEndMode, onSelectPlaybackEndMode, onShare, onCast,
         onSelectLine, audioOnly, onToggleAudioOnly, onReportVideo, onSubmitSponsor, onShowStats,
+        onOpenTopBarSettings,
     )
     Box {
         PlayerIconButton(COUIIcons.More, "更多", onClick = { expanded = true })
@@ -497,6 +506,7 @@ internal fun PlayerStagePopupMenus(
     onReportVideo: (() -> Unit)? = null,
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: () -> Unit,
+    onOpenTopBarSettings: (() -> Unit)? = null,
     episodesMenuItems: List<CouiMenuItem>,
     speedMenuItems: List<CouiMenuItem>,
     qualityMenuItems: List<CouiMenuItem>,
@@ -522,6 +532,7 @@ internal fun PlayerStagePopupMenus(
             onReportVideo = onReportVideo?.let { open -> { onHideControls(); open() } },
             onSubmitSponsor = onSubmitSponsor?.let { open -> { onHideControls(); open() } },
             onShowStats = onShowStats,
+            onOpenTopBarSettings = onOpenTopBarSettings?.let { open -> { onHideControls(); open() } },
         )
         CouiStagePopupMenu(
             show = activeMenu == PlayerPopupMenu.MORE,

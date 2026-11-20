@@ -85,6 +85,8 @@ internal fun BoxScope.VideoPlayerSlot(
     val sponsorSkipMode by container.settings.sponsorSkipMode.collectAsStateWithLifecycle()
     val sponsorCategories by container.settings.sponsorCategories.collectAsStateWithLifecycle()
     val playbackEndMode by container.settings.playbackEndMode.collectAsStateWithLifecycle()
+    val topBarLayoutFullscreen by container.settings.playerTopBar.fullscreen.collectAsStateWithLifecycle()
+    val topBarLayoutPortrait by container.settings.playerTopBar.portrait.collectAsStateWithLifecycle()
 
     val anyStageDialogOpen = fullscreen &&
         (danmakuSettingsDialogVisible || sponsorSubmitDialog != null ||
@@ -123,6 +125,10 @@ internal fun BoxScope.VideoPlayerSlot(
         speedLocked = speedLocked,
         onToggleSpeedLock = onToggleSpeedLock,
         onSelectSpeed = onSelectSpeed,
+        topBarLayoutFullscreen = topBarLayoutFullscreen,
+        topBarLayoutPortrait = topBarLayoutPortrait,
+        onToggleTopBarItem = container.settings.playerTopBar::setVisible,
+        onMoveTopBarItem = container.settings.playerTopBar::moveItem,
         onBack = { if (fullscreen) onFullscreenChange(false) else nav.pop() },
         onRetry = viewModel::load,
         modifier = Modifier

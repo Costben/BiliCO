@@ -116,6 +116,9 @@ class SettingsRepository(
     private val _fullscreenGestureHint = MutableStateFlow(true)
     val fullscreenGestureHint: StateFlow<Boolean> = _fullscreenGestureHint.asStateFlow()
 
+    /** 播放器顶栏的显示配置，全屏与竖屏各一份。 */
+    val playerTopBar = PlayerTopBarPreferences(context, scope)
+
     /** 信息流外观（封面比例等）。 */
     val feed = FeedPreferences(context, scope)
 
@@ -200,6 +203,7 @@ class SettingsRepository(
             _autoRotateMode.value = prefs[KEY_AUTO_ROTATE_MODE] ?: 1
             _gestureVolumeBrightness.value = prefs[KEY_GESTURE_VOL_BRIGHT] ?: true
             _fullscreenGestureHint.value = prefs[KEY_FS_GESTURE_HINT] ?: true
+            playerTopBar.restore()
             feed.restore()
             _sponsorBlockEnabled.value = prefs[KEY_SPONSOR_BLOCK_ENABLED] ?: true
             _sponsorSkipMode.value = (prefs[KEY_SPONSOR_SKIP_MODE] ?: 0).coerceIn(0, 2)
