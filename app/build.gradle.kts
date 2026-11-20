@@ -24,8 +24,8 @@ android {
         applicationId = "erl.bilico"
         minSdk = 26
         targetSdk = 37
-        versionCode = 123
-        versionName = "0.3.1"
+        versionCode = 124
+        versionName = "0.3.2-pre"
     }
 
     signingConfigs {
