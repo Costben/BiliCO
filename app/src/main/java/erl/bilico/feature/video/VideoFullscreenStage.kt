@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -44,6 +45,7 @@ import erl.bilico.ui.LocalNavEntry
 import erl.bilico.ui.LocalNavState
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.pageContainerColor
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -150,12 +152,6 @@ internal fun VideoFullscreenStage(
     val barFadePx = with(LocalDensity.current) { 56.dp.toPx() }
     // 只有真的收到顶栏那一条才画它。位置比的是高度而不是比例：
     // 播放中下限抬高，那时画出来的是「一条横栏压住视频上半截」，不是这个状态。
-    val barVisible by remember {
-        derivedStateOf {
-            val h = slotHeight.floatValue
-            h > 0f && h <= minSlotPx + 0.5f
-        }
-    }
     val barFading by remember {
         derivedStateOf {
             val h = slotHeight.floatValue
@@ -190,10 +186,13 @@ internal fun VideoFullscreenStage(
     val nav = LocalNavState.current
     val navEntry = LocalNavEntry.current
     val currentFullscreen by rememberUpdatedState(fullscreen)
-    SideEffect {
-        if (navEntry != null && navEntry.collapsedBarVisible != barVisible) {
-            navEntry.collapsedBarVisible = barVisible
-        }
+    // 槽位高度只在 measure 阶段写，不订阅任何组合状态，收到底那一刻不一定正好有重组。
+    // 所以这里直接盯住它，收到底就把「横栏已出现」上报给根节点，状态栏图标据此切深色。
+    LaunchedEffect(navEntry, minSlotPx) {
+        if (navEntry == null) return@LaunchedEffect
+        snapshotFlow { slotHeight.floatValue > 0f && slotHeight.floatValue <= minSlotPx + 0.5f }
+            .distinctUntilChanged()
+            .collect { collapsed -> navEntry.collapsedBarVisible = collapsed }
     }
     DisposableEffect(activity, isTop) {
         val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
