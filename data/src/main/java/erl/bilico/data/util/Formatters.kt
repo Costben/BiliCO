@@ -188,6 +188,10 @@ object Formatters {
         return String(bytes)
     }
 
+    /** 接口会用 `-` 这类占位表示数量未知，这种文本不该出现在界面上，返回空串让调用方跳过。 */
+    fun statLabelOrBlank(raw: String): String =
+        raw.trim().takeIf { label -> label.any { it.isDigit() } }.orEmpty()
+
     /** 将 `96.6万` / `1.2亿` / `2011` 等简写数字还原为近似数值，供过滤规则使用。 */
     fun parseStatCount(raw: String): Long {
         val text = raw.trim()

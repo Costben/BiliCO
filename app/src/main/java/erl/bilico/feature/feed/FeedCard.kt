@@ -39,11 +39,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import erl.bilico.data.model.FeedVideo
+import erl.bilico.data.settings.CoverAspect
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
-import erl.bilico.ui.components.StatLabel
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -60,6 +60,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun FeedCard(
     video: FeedVideo,
+    aspect: CoverAspect,
     coverWidthPx: Int,
     coverHeightPx: Int,
     modifier: Modifier = Modifier,
@@ -88,7 +89,7 @@ internal fun FeedCard(
         Box(
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(16f / 9f),
+                .aspectRatio(aspect.ratio),
         ) {
             AsyncImage(
                 model = coverUrl,
@@ -96,18 +97,35 @@ internal fun FeedCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-            if (video.durationText.isNotBlank()) {
-                Text(
-                    text = video.durationText,
+            // 底部一行：左边统计角标、右边时长。统计那侧是带权重的槽位，
+            // 数字再长也只会在自己槽位里截断，不会顶到时长上。
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(EdgeInset),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Box(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .clip(SquircleShape(4.dp))
-                        .background(Color(0xB3000000))
-                        .padding(horizontal = 5.dp, vertical = 2.dp),
-                    fontSize = 11.sp,
-                    color = Color.White,
-                )
+                        .weight(1f)
+                        .padding(end = ChipGap),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    CoverStats(video.playCountText, video.danmakuText)
+                }
+                if (video.durationText.isNotBlank()) {
+                    Text(
+                        text = video.durationText,
+                        modifier = Modifier
+                            .clip(CoverChipShape)
+                            .background(CoverChipBackground)
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                        fontSize = 10.sp,
+                        color = Color.White,
+                        maxLines = 1,
+                    )
+                }
             }
         }
 
@@ -140,18 +158,7 @@ internal fun FeedCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            // 三点菜单落在右下角、和播放量同一行，跟左侧头像差不多高。
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                StatLabel(COUIIcons.Play, video.playCountText)
-                if (video.danmakuText.isNotBlank()) {
-                    Spacer(Modifier.width(10.dp))
-                    StatLabel(COUIIcons.Messages, video.danmakuText)
-                }
-                Spacer(Modifier.weight(1f))
+                // 播放量搬进封面之后，三点菜单跟 UP 主同一行靠右，卡片少一行。
                 val cardMenuItems = rememberVideoCardMenuItems(
                     video = video,
                     onWatchLater = onWatchLater,
@@ -175,6 +182,52 @@ internal fun FeedCard(
             items = longPressItems,
             preciseClickState = pressState,
         )
+    }
+}
+
+/** 角标离封面边缘的留白。 */
+private val EdgeInset = 3.dp
+
+/** 统计角标和时长之间的最小间距，数字再长也至少留这么宽。 */
+private val ChipGap = 10.dp
+
+private val CoverChipShape = SquircleShape(4.dp)
+private val CoverChipBackground = Color(0x80000000)
+
+/** 封面左下角的统计角标：播放量与弹幕数放在同一枚半透明胶囊里，中间只留一点缝。 */
+@Composable
+private fun CoverStats(playText: String, danmakuText: String) {
+    if (playText.isBlank() && danmakuText.isBlank()) return
+    Row(
+        modifier = Modifier
+            .clip(CoverChipShape)
+            .background(CoverChipBackground)
+            .padding(horizontal = 4.dp, vertical = 1.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (playText.isNotBlank()) {
+            Icon(COUIIcons.Play, null, Modifier.size(10.dp), tint = Color.White)
+            Spacer(Modifier.width(2.dp))
+            Text(
+                text = playText,
+                fontSize = 10.sp,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (danmakuText.isNotBlank()) {
+            if (playText.isNotBlank()) Spacer(Modifier.width(6.dp))
+            Icon(COUIIcons.Messages, null, Modifier.size(10.dp), tint = Color.White)
+            Spacer(Modifier.width(2.dp))
+            Text(
+                text = danmakuText,
+                fontSize = 10.sp,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

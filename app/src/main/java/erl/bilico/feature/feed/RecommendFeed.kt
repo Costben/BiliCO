@@ -111,10 +111,13 @@ internal fun RecommendFeed(
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val titleHeightPx = with(density) { TitleRowHeight.toPx() }
 
+    val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
     val coverWidthPx = remember(screenWidthDp, density) {
         with(density) { ((screenWidthDp.dp - 34.dp) / 2f).roundToPx() }.coerceAtMost(600)
     }
-    val coverHeightPx = coverWidthPx * 9 / 16
+    val coverHeightPx = remember(coverWidthPx, coverAspect) {
+        (coverWidthPx / coverAspect.ratio).toInt()
+    }
 
     // 列表末尾的封面提前解码进内存缓存：滑到那儿时图已经在，不会当着面加载。
     val context = LocalContext.current
@@ -248,6 +251,7 @@ internal fun RecommendFeed(
                 }
                 FeedCard(
                     video = video,
+                    aspect = coverAspect,
                     coverWidthPx = coverWidthPx,
                     coverHeightPx = coverHeightPx,
                     modifier = Modifier.expandOrigin(origin),

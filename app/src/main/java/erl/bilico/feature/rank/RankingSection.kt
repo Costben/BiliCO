@@ -85,10 +85,13 @@ fun RankingSection(
     val pullState = rememberFullPagePullToRefreshState()
     val density = LocalDensity.current
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
     val coverWidthPx = remember(screenWidthDp, density) {
         with(density) { ((screenWidthDp.dp - 34.dp) / 2f).roundToPx() }.coerceAtMost(600)
     }
-    val coverHeightPx = coverWidthPx * 9 / 16
+    val coverHeightPx = remember(coverWidthPx, coverAspect) {
+        (coverWidthPx / coverAspect.ratio).toInt()
+    }
     val titleHeightPx = with(density) { TitleRowHeight.toPx() }
 
     // 只有换分区才回顶：重新进这一页时保留上次看到的位置。
@@ -180,6 +183,7 @@ fun RankingSection(
                 }
                 FeedCard(
                     video = video,
+                    aspect = coverAspect,
                     coverWidthPx = coverWidthPx,
                     coverHeightPx = coverHeightPx,
                     modifier = Modifier.expandOrigin(origin),
