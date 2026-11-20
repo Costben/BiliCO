@@ -372,6 +372,7 @@ fun DynamicDetailScreen(
                                                     onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
                                                     currentMid = currentMid,
                                                     onDelete = { commentViewModel.deleteComment(comment) },
+                                                    onClick = { replyThread.open(comment) },
                                                 )
                                             }
                                             }

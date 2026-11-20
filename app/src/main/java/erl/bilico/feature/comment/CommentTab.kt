@@ -190,6 +190,7 @@ fun CommentTab(
                                 .fillMaxWidth()
                                 .padding(top = 10.dp),
                             insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                            onClick = { threadController.open(comment) },
                         ) {
                             BiliCommentItem(
                                 comment = comment,
@@ -221,6 +222,7 @@ fun CommentTab(
                                 onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
                                 currentMid = currentMid,
                                 onDelete = { viewModel.deleteComment(comment) },
+                                onClick = { threadController.open(comment) },
                             )
                         }
                     }
