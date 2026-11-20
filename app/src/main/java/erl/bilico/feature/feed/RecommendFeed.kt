@@ -101,6 +101,7 @@ internal fun RecommendFeed(
     active: Boolean,
     onCollapse: (Float) -> Unit,
     refreshTick: Int,
+    primaryTapTick: Int = 0,
 ) {
     val viewModel: FeedViewModel = viewModel { FeedViewModel(container.feed, container.settings) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -188,6 +189,15 @@ internal fun RecommendFeed(
             listState.animateScrollToItem(0)
         }
     }
+
+    HandleFeedPrimaryTap(
+        primaryTapTick = primaryTapTick,
+        active = active,
+        isRefreshing = state.isRefreshing,
+        gridState = listState,
+        pullState = pullState,
+        onRefresh = { viewModel.refresh() },
+    )
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }

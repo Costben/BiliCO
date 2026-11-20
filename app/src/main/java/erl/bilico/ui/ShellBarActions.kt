@@ -198,6 +198,7 @@ internal fun FloatingBottomBar(
     tab: Int,
     onTab: (Int) -> Unit,
     onReselect: (Int) -> Unit,
+    onPrimaryReselect: () -> Unit = {},
     leftOrbVisible: Boolean = false,
     onLeftOrbClick: () -> Unit = {},
     orbVisible: Boolean = false,
@@ -209,8 +210,7 @@ internal fun FloatingBottomBar(
     onOrbStop: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    // 底栏 item 用的是 combinedClickable，没有双击回调：自己记上一次点在同一格的时刻，
-    // 判定窗口内再点一次就当双击，回顶刷新当前 tab。
+    // 首页「推荐」按钮单击即触发（未置顶回顶、已置顶刷新）；其余底栏 Tab 保持双击刷新判定。
     var lastTapTab by remember { mutableIntStateOf(-1) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
     val click: (Int) -> Unit = { index ->
@@ -219,6 +219,11 @@ internal fun FloatingBottomBar(
             index != tab -> {
                 lastTapTab = -1
                 onTab(index)
+            }
+
+            index == FEED_TAB_INDEX -> {
+                lastTapTab = -1
+                onPrimaryReselect()
             }
 
             lastTapTab == index && now - lastTapTime < BottomBarDoubleTapMillis -> {

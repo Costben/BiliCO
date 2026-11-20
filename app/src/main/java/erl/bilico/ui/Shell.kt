@@ -111,6 +111,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
     var dynamicCollapse by remember { mutableFloatStateOf(0f) }
     var dynamicFilterIndex by rememberSaveable { mutableIntStateOf(0) }
     var feedRefreshTick by remember { mutableIntStateOf(0) }
+    var feedPrimaryTapTick by remember { mutableIntStateOf(0) }
     var dynamicRefreshTick by remember { mutableIntStateOf(0) }
 
     val searchViewModel: SearchViewModel = viewModel { SearchViewModel(container.search) }
@@ -263,6 +264,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 onCollapse = { feedCollapse = it },
                                 pagerState = feedPager,
                                 refreshTick = feedRefreshTick,
+                                primaryTapTick = feedPrimaryTapTick,
                             )
 
                             1 -> DynamicScreen(
@@ -333,6 +335,9 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 1 -> dynamicRefreshTick++
                             }
                         }
+                    },
+                    onPrimaryReselect = {
+                        if (!feedPanelCovering) feedPrimaryTapTick++
                     },
                     orbVisible = if (enteringOverMain) settledOrbVisible else rawOrbVisible,
                     leftOrbVisible = tab == DYNAMIC_TAB_INDEX,

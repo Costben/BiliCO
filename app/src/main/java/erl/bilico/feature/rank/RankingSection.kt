@@ -57,6 +57,7 @@ import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.rememberExpandOrigin
 import io.github.suqi8.coui.kmp.basic.FullPagePullToRefresh
 import io.github.suqi8.coui.kmp.basic.Text
+import erl.bilico.feature.feed.HandleFeedPrimaryTap
 import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.rememberFullPagePullToRefreshState
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -74,6 +75,7 @@ fun RankingSection(
     active: Boolean,
     onCollapse: (Float) -> Unit,
     refreshTick: Int,
+    primaryTapTick: Int = 0,
 ) {
     val viewModel: RankingViewModel = viewModel { RankingViewModel(container.ranking) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -127,6 +129,15 @@ fun RankingSection(
             listState.animateScrollToItem(0)
         }
     }
+
+    HandleFeedPrimaryTap(
+        primaryTapTick = primaryTapTick,
+        active = active,
+        isRefreshing = state.isRefreshing,
+        gridState = listState,
+        pullState = pullState,
+        onRefresh = { viewModel.refresh() },
+    )
 
     FullPagePullToRefresh(
         isRefreshing = state.isRefreshing,

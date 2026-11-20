@@ -41,6 +41,7 @@ import erl.bilico.data.model.BangumiCard
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.feed.FeedSegmentRowHeight
+import erl.bilico.feature.feed.HandleFeedPrimaryTap
 import erl.bilico.ui.NavState
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.Route
@@ -72,6 +73,7 @@ fun BangumiRankSection(
     active: Boolean,
     onCollapse: (Float) -> Unit,
     refreshTick: Int,
+    primaryTapTick: Int = 0,
 ) {
     val viewModel: BangumiRankViewModel = viewModel { BangumiRankViewModel(container.pgc) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -109,6 +111,15 @@ fun BangumiRankSection(
             gridState.animateScrollToItem(0)
         }
     }
+
+    HandleFeedPrimaryTap(
+        primaryTapTick = primaryTapTick,
+        active = active,
+        isRefreshing = state.isRefreshing,
+        gridState = gridState,
+        pullState = pullState,
+        onRefresh = { viewModel.refresh() },
+    )
 
     FullPagePullToRefresh(
         isRefreshing = state.isRefreshing,

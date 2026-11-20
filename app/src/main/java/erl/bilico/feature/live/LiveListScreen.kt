@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.feed.FeedSegmentRowHeight
+import erl.bilico.feature.feed.HandleFeedPrimaryTap
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.TitleRowHeight
@@ -52,6 +53,7 @@ fun LiveListScreen(
     gridState: LazyGridState = rememberLazyGridState(),
     active: Boolean = true,
     onCollapse: ((Float) -> Unit)? = null,
+    primaryTapTick: Int = 0,
 ) {
     val viewModel: LiveListViewModel = viewModel { LiveListViewModel(container.live) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -87,6 +89,15 @@ fun LiveListScreen(
             gridState.animateScrollToItem(0)
         }
     }
+
+    HandleFeedPrimaryTap(
+        primaryTapTick = primaryTapTick,
+        active = active,
+        isRefreshing = state.isRefreshing,
+        gridState = gridState,
+        pullState = pullState,
+        onRefresh = { viewModel.refresh() },
+    )
 
     LaunchedEffect(gridState) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
