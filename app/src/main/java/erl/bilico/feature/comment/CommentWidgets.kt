@@ -204,7 +204,13 @@ internal fun BiliCommentItem(
                     mentions = comment.mentions,
                     badgeLabel = if (!isSubReply && comment.isTop) "TOP" else null,
                     selectable = !canManageOwn,
-                    modifier = Modifier.then(if (expandable && folded && !expanded) Modifier.clickable { expanded = !expanded } else Modifier),
+                    modifier = Modifier.then(
+                        if (onClick == null && expandable && folded && !expanded) {
+                            Modifier.clickable { expanded = !expanded }
+                        } else {
+                            Modifier
+                        },
+                    ),
                     style = COUITheme.textStyles.body1.copy(
                         fontSize = 15.sp,
                         lineHeight = 22.sp,
