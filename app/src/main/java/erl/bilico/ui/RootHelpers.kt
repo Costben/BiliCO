@@ -55,6 +55,7 @@ import erl.bilico.feature.video.findActivity
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.squircle.SquircleDefaults
 import io.github.suqi8.coui.kmp.squircle.addSquircleRect
+import io.github.suqi8.coui.kmp.utils.PredictiveBackMotionDefaults
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.pow
@@ -179,6 +180,7 @@ internal fun ExpandLayer(
     screenCorner: Dp,
     progress: () -> Float,
     fade: () -> Float,
+    offset: () -> Offset = { Offset.Zero },
     content: @Composable () -> Unit,
 ) {
     val origin = entry.activeOrigin
@@ -231,6 +233,7 @@ internal fun ExpandLayer(
                 }
                 val p = frameProgress(progress())
                 val pClamped = p.coerceIn(0f, 1f)
+                val dragOffset = offset()
                 val width: Float
                 val height: Float
                 val left: Float
@@ -263,8 +266,8 @@ internal fun ExpandLayer(
                     } else {
                         lerp(bounds.height, size.height, p)
                     }
-                    left = lerp(bounds.left, 0f, p)
-                    top = lerp(bounds.top, 0f, p)
+                    left = lerp(bounds.left, 0f, p) + dragOffset.x
+                    top = lerp(bounds.top, 0f, p) + dragOffset.y
                 }
                 val scale = if (size.width > 0f && width > 0f) width / size.width else 1f
                 transformOrigin = TransformOrigin(0f, 0f)
@@ -280,7 +283,7 @@ internal fun ExpandLayer(
                 val radius = lerp(origin.cornerRadius.toPx(), screenCorner.toPx(), pClamped) / scale
                 val originWeight = if (entry.minimizingToOrb) SquircleDefaults.WeightNormal else CardDefaults.Weight
                 val cornerWeight = lerp(originWeight, SquircleDefaults.WeightNormal, pClamped)
-                if (p < 1f) {
+                if (p < 1f || dragOffset != Offset.Zero) {
                     shape = ExpandShape(height / scale, radius, cornerWeight)
                     clip = true
                 } else {
@@ -405,18 +408,36 @@ internal fun rememberLayerPipelineWarmup(nav: NavState): LayerPipelineWarmup {
 private const val WarmupDelayMillis = 1500L
 private const val WarmupFrames = 3
 
+/** 跟手甩出后让页面偏移顺着甩出方向弹回原点。 */
+internal suspend fun NavEntry.returnFlingOffset(initialVelocity: Offset = Offset.Zero) {
+    offset.animateTo(
+        targetValue = Offset.Zero,
+        animationSpec = PredictiveBackMotionDefaults.flingReturnSpringSpec(),
+        initialVelocity = initialVelocity,
+    )
+}
+
 internal fun finishPredictivePop(
     nav: NavState,
     entry: NavEntry,
     lastProgress: Float,
     moved: Boolean,
+    offsetVelocity: Offset = Offset.Zero,
 ) {
-    if (entry.expand && !entry.minimizingToOrb) {
-        nav.pop(initialProgressVelocity = if (lastProgress <= 0.02f) -0.55f else -0.35f)
-    } else if (lastProgress <= 0.02f && moved) {
+    val flinging = entry.offset.value != Offset.Zero || offsetVelocity != Offset.Zero
+    if (entry.expand) {
+        nav.pop(
+            initialProgressVelocity = if (!entry.minimizingToOrb) {
+                if (lastProgress <= 0.02f) -0.55f else -0.35f
+            } else {
+                0f
+            },
+            initialOffsetVelocity = offsetVelocity,
+        )
+    } else if (lastProgress <= 0.02f && moved && !flinging) {
         nav.completePredictivePop(entry)
     } else {
-        nav.pop()
+        nav.pop(initialOffsetVelocity = offsetVelocity)
     }
 }
 

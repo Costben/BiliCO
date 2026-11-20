@@ -1,10 +1,12 @@
 package erl.bilico.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 
 class NavEntry(
     route: Route,
@@ -17,6 +19,9 @@ class NavEntry(
     var replaced by mutableStateOf(false)
     val progress = Animatable(initialProgress)
     val fade = Animatable(initialFade)
+
+    /** 预测性返回跟手时的页面偏移；松手后顺着甩出方向弹回原点。 */
+    val offset = Animatable(Offset.Zero, Offset.VectorConverter)
     var exiting by mutableStateOf(false)
 
     /** 返回手势把它拉出去的过程中为 true，还没真的出栈。 */

@@ -88,6 +88,10 @@ class SettingsRepository(
     private val _returnBounce = MutableStateFlow(true)
     val returnBounce: StateFlow<Boolean> = _returnBounce.asStateFlow()
 
+    /** 详情页预测性返回时是否跟随手指偏移，并顺着甩出方向回缩。 */
+    private val _predictiveBackFollow = MutableStateFlow(true)
+    val predictiveBackFollow: StateFlow<Boolean> = _predictiveBackFollow.asStateFlow()
+
     /** 长按倍速的倍数，按百分比存：200 = 2x。 */
     private val _longPressSpeed = MutableStateFlow(DEFAULT_LONG_PRESS_SPEED)
     val longPressSpeed: StateFlow<Int> = _longPressSpeed.asStateFlow()
@@ -192,6 +196,7 @@ class SettingsRepository(
             _autoPip.value = prefs[KEY_AUTO_PIP] ?: true
             _gestureHaptic.value = prefs[KEY_GESTURE_HAPTIC] ?: true
             _returnBounce.value = prefs[KEY_RETURN_BOUNCE] ?: true
+            _predictiveBackFollow.value = prefs[KEY_PREDICTIVE_BACK_FOLLOW] ?: true
             _longPressSpeed.value = (prefs[KEY_LONG_PRESS_SPEED] ?: DEFAULT_LONG_PRESS_SPEED)
                 .coerceIn(125, 400)
             val adjustable = prefs[KEY_ADJUSTABLE_LONG_PRESS_SPEED] ?: false
@@ -316,6 +321,11 @@ class SettingsRepository(
     fun setReturnBounce(enabled: Boolean) {
         _returnBounce.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_RETURN_BOUNCE] = enabled } }
+    }
+
+    fun setPredictiveBackFollow(enabled: Boolean) {
+        _predictiveBackFollow.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_PREDICTIVE_BACK_FOLLOW] = enabled } }
     }
 
     fun setInAppBackgroundPlay(enabled: Boolean) {
@@ -577,6 +587,7 @@ class SettingsRepository(
         val KEY_PLAYBACK_END_MODE = intPreferencesKey("playback_end_mode")
         val KEY_GESTURE_HAPTIC = booleanPreferencesKey("gesture_haptic")
         val KEY_RETURN_BOUNCE = booleanPreferencesKey("return_bounce")
+        val KEY_PREDICTIVE_BACK_FOLLOW = booleanPreferencesKey("predictive_back_follow")
         val KEY_AUTO_ROTATE_MODE = intPreferencesKey("auto_rotate_mode")
         val KEY_LONG_PRESS_SPEED = intPreferencesKey("long_press_speed")
         val KEY_ADJUSTABLE_LONG_PRESS_SPEED = booleanPreferencesKey("adjustable_long_press_speed")

@@ -69,6 +69,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val returnBounce by container.settings.returnBounce.collectAsStateWithLifecycle()
+    val predictiveBackFollow by container.settings.predictiveBackFollow.collectAsStateWithLifecycle()
     val quality by container.settings.defaultQuality.collectAsStateWithLifecycle()
     val cdnOption by container.settings.cdnOption.collectAsStateWithLifecycle()
     val feedSource by container.settings.feedSource.collectAsStateWithLifecycle()
@@ -140,6 +141,14 @@ fun SettingsScreen(
                     title = "返回动画回弹",
                     summary = "退回卡片时保留轻压回弹效果",
                     modifier = Modifier.testTag("settings_return_bounce"),
+                    cardListPosition = CardListPosition.Middle,
+                )
+                SwitchPreference(
+                    checked = predictiveBackFollow,
+                    onCheckedChange = container.settings::setPredictiveBackFollow,
+                    title = "返回跟手轨迹",
+                    summary = "侧滑返回时跟随手指偏移，缩回卡片或融合球时顺着甩出方向回缩",
+                    modifier = Modifier.testTag("settings_predictive_back_follow"),
                     cardListPosition = CardListPosition.Middle,
                 )
                 val selectedQuality = DefaultQuality.fromId(quality)

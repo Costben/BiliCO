@@ -5,9 +5,6 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.PredictiveBackHandler
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -92,12 +89,8 @@ import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.COUIPopupHost
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 private val BareBvid = Regex("BV[0-9A-Za-z]{10}")
 
@@ -144,6 +137,7 @@ internal fun BiliCoRoot(
     val context = LocalContext.current
     val inAppBackgroundPlay by container.settings.inAppBackgroundPlay.collectAsStateWithLifecycle()
     val returnBounce by container.settings.returnBounce.collectAsStateWithLifecycle()
+    val predictiveBackFollow by container.settings.predictiveBackFollow.collectAsStateWithLifecycle()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val dark = isDarkTheme(darkMode)
     SideEffect {
@@ -152,6 +146,7 @@ internal fun BiliCoRoot(
         nav.secondaryOrbOrigin = secondaryOrbOrigin
         nav.inAppBackgroundPlay = { inAppBackgroundPlay }
         nav.returnBounce = { returnBounce }
+        nav.predictiveBackFollow = { predictiveBackFollow }
         viewerHost.attach(scope)
     }
 
@@ -386,50 +381,6 @@ private fun UpdatePrompt(container: AppContainer) {
     )
 }
 
-/** 页面跟着手指往回收的返回动画；根页面不注册，交给系统播退回桌面的动画。 */
-@Composable
-fun BiliCoPredictiveBackHandler(nav: NavState, enabled: Boolean = true) {
-    PredictiveBackHandler(enabled = enabled && nav.stack.count { !it.exiting } > 1) { events ->
-        val entry = nav.stack.lastOrNull { !it.exiting }
-        if (entry == null || nav.stack.count { !it.exiting } <= 1) {
-            events.collect { }
-            return@PredictiveBackHandler
-        }
-
-        var lastProgress = 1f
-        var moved = false
-        entry.previewing = true
-        nav.preparePredictivePop(entry)
-        val cardCollapse = entry.expand && !entry.minimizingToOrb
-        try {
-            events.collect { event ->
-                val raw = event.progress
-                val value = if (cardCollapse) (1f - raw / (1f - LandedProgress)).coerceIn(0f, 1f) else (1f - raw).coerceIn(0f, 1f)
-                if (value < 0.98f) moved = true
-                lastProgress = value
-                entry.progress.snapTo(value)
-                if (entry.expand) entry.fade.snapTo(value)
-            }
-            finishPredictivePop(nav, entry, lastProgress, moved)
-        } catch (cancelled: CancellationException) {
-            val landed = if (cardCollapse) lastProgress <= 0.05f else lastProgress <= LandedProgress
-            if (landed && moved) {
-                finishPredictivePop(nav, entry, lastProgress, moved)
-                return@PredictiveBackHandler
-            }
-            // 松手太早：让页面顺着手指弹回去。
-            withContext(NonCancellable) {
-                coroutineScope {
-                    launch { entry.progress.animateTo(1f, ExpandCancelSpringSpec) }
-                    if (entry.expand) launch { entry.fade.animateTo(1f, tween(200, easing = LinearEasing)) }
-                }
-                nav.cancelPredictivePop(entry)
-            }
-            throw cancelled
-        }
-    }
-}
-
 @Composable
 private fun RouteLayer(
     entry: NavEntry,
@@ -539,7 +490,7 @@ private fun RouteLayer(
     ) {
         Box(layer.then(freezeLayout)) {
             if (entry.hasExpandOrigin || entry.route.isPlayback() || entry.route is Route.Opus) {
-                ExpandLayer(entry, screenCorner, progress, { entry.fade.value }) {
+                ExpandLayer(entry, screenCorner, progress, { entry.fade.value }, { entry.offset.value }) {
                     ExitSnapshotHost(exiting = entry.exiting, hasSurfaceView = entry.hasSurfaceView) {
                         RouteContent(entry.route, nav, container)
                     }

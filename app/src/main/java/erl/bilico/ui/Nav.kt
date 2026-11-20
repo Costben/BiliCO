@@ -21,6 +21,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.player.PlaybackBridge
 import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
+import io.github.suqi8.coui.kmp.utils.PredictiveBackMotionDefaults
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -210,6 +212,9 @@ class NavState {
     var inAppBackgroundPlay: () -> Boolean = { true }
     var returnBounce: () -> Boolean = { true }
 
+    /** 预测性返回时是否让页面跟随手指偏移；缩回卡片与缩进融合球都适用。 */
+    var predictiveBackFollow: () -> Boolean = { true }
+
     private var host: CoroutineScope? = null
     private var appContext: Context? = null
 
@@ -356,7 +361,7 @@ class NavState {
         stack[stack.lastIndex] = NavEntry(route)
     }
 
-    fun pop(initialProgressVelocity: Float = 0f) {
+    fun pop(initialProgressVelocity: Float = 0f, initialOffsetVelocity: Offset = Offset.Zero) {
         if (stack.count { !it.exiting } <= 1) return
         val entry = stack.lastOrNull { !it.exiting } ?: return
         val targetOrb = if (shouldMinimizeOnPop(entry)) minimizeTargetOrigin(entry) else null
@@ -389,7 +394,14 @@ class NavState {
             val expand = entry.expand
             val baseMillis = if (expand) ExpandExitMillis else RouteSlideMillis
             val remaining = entry.progress.value.coerceIn(0f, 1f)
-            val millis = (baseMillis * remaining).toInt().coerceAtLeast(1)
+            val baseRemaining = (baseMillis * remaining).toInt().coerceAtLeast(1)
+            val hasFlingOffset = entry.offset.value != Offset.Zero || initialOffsetVelocity != Offset.Zero
+            // 跟手甩出时至少留够回缩时间，避免偏移还没收回页面就落位。
+            val millis = if (expand && hasFlingOffset) {
+                maxOf(baseRemaining, PredictiveBackMotionDefaults.MIN_CARD_FLING_EXIT_MILLIS)
+            } else {
+                baseRemaining
+            }
             coroutineScope {
                 launch {
                     // 允许回弹时走桌面图标回弹弹簧，关闭或收进融合球时走平滑淡出。
@@ -412,6 +424,9 @@ class NavState {
                             animationSpec = tween(millis, easing = ExpandEasing),
                         )
                     }
+                }
+                if (hasFlingOffset) {
+                    launch { entry.returnFlingOffset(initialOffsetVelocity) }
                 }
             }
             if (minimize && entry.minimizingToOrb) {
@@ -499,6 +514,7 @@ class NavState {
         entry.orbOverrideOrigin = null
         entry.progress.snapTo(0f)
         entry.fade.snapTo(0f)
+        entry.offset.snapTo(Offset.Zero)
         minimizedEntry = entry
         stack.remove(entry)
     }
