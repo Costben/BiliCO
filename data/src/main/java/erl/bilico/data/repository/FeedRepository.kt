@@ -32,7 +32,15 @@ class FeedRepository(
         val officialType: Int,
     )
 
-    private val upProfileCache = ConcurrentHashMap<Long, FeedUpProfile>()
+    private val upProfileCache = object : LinkedHashMap<Long, FeedUpProfile>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, FeedUpProfile>?): Boolean =
+            size > MAX_PROFILE_CACHE_SIZE
+    }
+    private val upProfileLock = Any()
+    /** 正在请求中的 mid，下拉刷新与翻页同时触发补全时只让一个协程去要。 */
+    private val upProfilePending = ConcurrentHashMap.newKeySet<Long>()
+    /** 接口没返回头像的 mid → 冷却到期时间，避免每一页都重复请求同一批人。 */
+    private val upProfileUnavailable = ConcurrentHashMap<Long, Long>()
 
     /**
      * 首页推荐：根据设置选择「App 端推荐」或「网页端推荐」。
@@ -100,12 +108,34 @@ class FeedRepository(
     private fun applyCachedUpProfiles(videos: List<FeedVideo>): List<FeedVideo> =
         videos.map { video ->
             if (video.upFace.isNotBlank() || video.upMid <= 0L) return@map video
-            val profile = upProfileCache[video.upMid] ?: return@map video
+            val profile = cachedUpProfile(video.upMid) ?: return@map video
             video.copy(
                 upFace = profile.face,
                 officialType = if (video.officialType == -1) profile.officialType else video.officialType,
             )
         }
+
+    private fun cachedUpProfile(mid: Long): FeedUpProfile? = synchronized(upProfileLock) {
+        upProfileCache[mid]
+    }
+
+    private fun storeUpProfile(mid: Long, profile: FeedUpProfile) {
+        synchronized(upProfileLock) { upProfileCache[mid] = profile }
+    }
+
+    private fun isUpProfileCoolingDown(mid: Long): Boolean {
+        val retryAt = upProfileUnavailable[mid] ?: return false
+        if (System.currentTimeMillis() < retryAt) return true
+        upProfileUnavailable.remove(mid)
+        return false
+    }
+
+    private fun markUpProfileUnavailable(mids: Collection<Long>) {
+        if (mids.isEmpty()) return
+        if (upProfileUnavailable.size > MAX_PROFILE_CACHE_SIZE) upProfileUnavailable.clear()
+        val retryAt = System.currentTimeMillis() + UNAVAILABLE_RETRY_MS
+        mids.forEach { upProfileUnavailable[it] = retryAt }
+    }
 
     /**
      * App 端双列卡片（small_cover_v2）不下发 UP 主头像。
@@ -115,32 +145,40 @@ class FeedRepository(
         withContext(Dispatchers.IO) {
             val distinctMids = mids.asSequence().filter { it > 0L }.distinct().toList()
             if (distinctMids.isEmpty()) return@withContext emptyMap()
-            val missing = distinctMids.filter { !upProfileCache.containsKey(it) }
-            if (missing.isNotEmpty()) {
-                if (upProfileCache.size > MAX_PROFILE_CACHE_SIZE) {
-                    upProfileCache.clear()
-                }
-                missing.chunked(50).forEach { chunk ->
+            // 冷却期内或别人正在请求的直接跳过，只认领自己负责的那部分。
+            val claimed = distinctMids.filter {
+                cachedUpProfile(it) == null && !isUpProfileCoolingDown(it) && upProfilePending.add(it)
+            }
+            try {
+                claimed.chunked(PROFILE_BATCH_SIZE).forEach { chunk ->
                     val data = runCatching {
                         val response = api.liveMultipleUsers(uids = chunk)
                         if (response.code == 0) response.data.orEmpty() else emptyMap()
                     }.getOrNull().orEmpty()
+                    val resolved = HashSet<Long>()
                     data.forEach { (midKey, entry) ->
                         val info = entry.info ?: return@forEach
                         val mid = info.uid.takeIf { it > 0L } ?: midKey.toLongOrNull() ?: return@forEach
                         val face = Formatters.normalizeImageUrl(info.face)
                         if (face.isNotBlank()) {
-                            upProfileCache[mid] = FeedUpProfile(
-                                face = face,
-                                officialType = info.officialVerify?.resolvedType() ?: -1,
+                            storeUpProfile(
+                                mid,
+                                FeedUpProfile(
+                                    face = face,
+                                    officialType = info.officialVerify?.resolvedType() ?: -1,
+                                ),
                             )
+                            resolved += mid
                         }
                     }
+                    markUpProfileUnavailable(chunk.filterNot { it in resolved })
                 }
+            } finally {
+                upProfilePending.removeAll(claimed.toSet())
             }
             buildMap {
                 distinctMids.forEach { mid ->
-                    upProfileCache[mid]?.let { put(mid, it) }
+                    cachedUpProfile(mid)?.let { put(mid, it) }
                 }
             }
         }
@@ -333,5 +371,9 @@ class FeedRepository(
     private companion object {
         const val APP_BUILD = "8430300"
         const val MAX_PROFILE_CACHE_SIZE = 2000
+        /** 接口单次最多接受 50 个 uid。 */
+        const val PROFILE_BATCH_SIZE = 50
+        /** 接口没给头像的 UP 多久后再试一次。 */
+        const val UNAVAILABLE_RETRY_MS = 10 * 60 * 1000L
     }
 }
