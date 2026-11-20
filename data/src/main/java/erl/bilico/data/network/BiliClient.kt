@@ -8,7 +8,6 @@ import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import retrofit2.Retrofit
@@ -68,7 +67,11 @@ class BiliClient(
         .retryOnConnectionFailure(true)
         .build()
 
-    /** 图片加载专用客户端：提升单主机并发与 HTTP/2 连接池复用，避免信息流封面与头像排队空白。 */
+    /**
+     * 图片加载专用客户端：提升单主机并发与 HTTP/2 连接池复用，避免信息流封面与头像排队空白。
+     * 刻意不挂 [cookieStore]：图床不需要 Cookie，也不把登录态发给第三方图片域名；
+     * 与主客户端分开连接池后，图片不会挤占接口请求的并发额度。
+     */
     private val imageOkHttp: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(BiliHeaderInterceptor())
         .dispatcher(
@@ -78,7 +81,6 @@ class BiliClient(
             },
         )
         .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
-        .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
