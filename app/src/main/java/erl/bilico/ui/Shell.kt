@@ -334,6 +334,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                             }
                         }
                     },
+                    barBounds = if (feedPanelCovering) null else topBarBounds,
                     orbVisible = if (enteringOverMain) settledOrbVisible else rawOrbVisible,
                     leftOrbVisible = tab == DYNAMIC_TAB_INDEX,
                     onLeftOrbClick = {
