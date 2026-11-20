@@ -16,6 +16,7 @@ import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 class FeedRepository(
     private val api: BiliApi,
@@ -26,6 +27,13 @@ class FeedRepository(
     private val tokenRefresh: TokenRefreshHelper,
     private val settings: SettingsRepository,
 ) {
+    data class FeedUpProfile(
+        val face: String,
+        val officialType: Int,
+    )
+
+    private val upProfileCache = ConcurrentHashMap<Long, FeedUpProfile>()
+
     /**
      * 首页推荐：根据设置选择「App 端推荐」或「网页端推荐」。
      * App 端推荐附带每张卡片的「我不想看 / 反馈」动态理由，异常或空数据时自动回退 Web 端 `rcmd`。
@@ -82,10 +90,60 @@ class FeedRepository(
         if (response.code != 0) {
             error(response.message.ifBlank { "App推荐加载失败(${response.code})" })
         }
-        return response.data?.items.orEmpty()
+        val videos = response.data?.items.orEmpty()
             .filter { it.adInfo == null && (it.cardGoto == "av" || it.goto == "av") }
             .mapNotNull { it.toFeedVideo() }
+        // 仅同步套用已命中的内存缓存，未命中的头像交由调用方后台异步回填，避免阻塞推荐流首屏渲染。
+        return applyCachedUpProfiles(videos)
     }
+
+    private fun applyCachedUpProfiles(videos: List<FeedVideo>): List<FeedVideo> =
+        videos.map { video ->
+            if (video.upFace.isNotBlank() || video.upMid <= 0L) return@map video
+            val profile = upProfileCache[video.upMid] ?: return@map video
+            video.copy(
+                upFace = profile.face,
+                officialType = if (video.officialType == -1) profile.officialType else video.officialType,
+            )
+        }
+
+    /**
+     * App 端双列卡片（small_cover_v2）不下发 UP 主头像。
+     * 供 ViewModel 在卡片展示后异步批量拉取缺失的头像与认证角标，失败时静默兜底不影响推荐流。
+     */
+    suspend fun fetchMissingUpProfiles(mids: Collection<Long>): Map<Long, FeedUpProfile> =
+        withContext(Dispatchers.IO) {
+            val distinctMids = mids.asSequence().filter { it > 0L }.distinct().toList()
+            if (distinctMids.isEmpty()) return@withContext emptyMap()
+            val missing = distinctMids.filter { !upProfileCache.containsKey(it) }
+            if (missing.isNotEmpty()) {
+                if (upProfileCache.size > MAX_PROFILE_CACHE_SIZE) {
+                    upProfileCache.clear()
+                }
+                missing.chunked(50).forEach { chunk ->
+                    val data = runCatching {
+                        val response = api.liveMultipleUsers(uids = chunk)
+                        if (response.code == 0) response.data.orEmpty() else emptyMap()
+                    }.getOrNull().orEmpty()
+                    data.forEach { (midKey, entry) ->
+                        val info = entry.info ?: return@forEach
+                        val mid = info.uid.takeIf { it > 0L } ?: midKey.toLongOrNull() ?: return@forEach
+                        val face = Formatters.normalizeImageUrl(info.face)
+                        if (face.isNotBlank()) {
+                            upProfileCache[mid] = FeedUpProfile(
+                                face = face,
+                                officialType = info.officialVerify?.resolvedType() ?: -1,
+                            )
+                        }
+                    }
+                }
+            }
+            buildMap {
+                distinctMids.forEach { mid ->
+                    upProfileCache[mid]?.let { put(mid, it) }
+                }
+            }
+        }
 
     private suspend fun fetchWebRecommend(page: Int): List<FeedVideo> {
         val keys = wbi.getKeys()
@@ -274,5 +332,6 @@ class FeedRepository(
 
     private companion object {
         const val APP_BUILD = "8430300"
+        const val MAX_PROFILE_CACHE_SIZE = 2000
     }
 }

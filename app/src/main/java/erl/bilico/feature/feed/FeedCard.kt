@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +70,12 @@ internal fun FeedCard(
 ) {
     val coverUrl = remember(video.cover, coverWidthPx, coverHeightPx) {
         Formatters.sizedImageUrl(video.cover, coverWidthPx, coverHeightPx)
+    }
+    val density = LocalDensity.current
+    val avatarUrl = remember(video.upFace, density) {
+        val pixels = with(density) { 18.dp.roundToPx() }.coerceAtLeast(1)
+        val thumbnailPx = ((pixels + 31) / 32) * 32
+        Formatters.sizedImageUrl(video.upFace, thumbnailPx, thumbnailPx)
     }
     val context = LocalContext.current
     val scheme = COUITheme.colorScheme
@@ -147,7 +154,7 @@ internal fun FeedCard(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (video.upFace.isNotBlank()) {
-                    Avatar(video.upFace, 18.dp, officialType = video.officialType)
+                    Avatar(avatarUrl, 18.dp, officialType = video.officialType)
                     Spacer(Modifier.width(6.dp))
                 }
                 Text(

@@ -37,6 +37,7 @@ import erl.bilico.data.model.LiveContributionRankResponse
 import erl.bilico.data.model.LiveDanmakuInfoResponse
 import erl.bilico.data.model.LiveFollowingResponse
 import erl.bilico.data.model.LiveListResponse
+import erl.bilico.data.model.LiveMultipleUsersResponse
 import erl.bilico.data.model.LivePlayUrlResponse
 import erl.bilico.data.model.LiveRoomDetailResponse
 import erl.bilico.data.model.LiveRoomInfoResponse
@@ -86,6 +87,12 @@ interface BiliApi {
         @Header("buvid") buvid: String,
         @QueryMap params: Map<String, String>,
     ): AppFeedResponse
+
+    @GET("https://api.live.bilibili.com/user/v3/User/getMultiple")
+    suspend fun liveMultipleUsers(
+        @Query("uids[]") uids: List<Long>,
+        @Query("attributes[]") attributes: List<String> = listOf("info"),
+    ): LiveMultipleUsersResponse
 
     @GET("https://app.bilibili.com/x/feed/dislike")
     suspend fun appFeedDislike(@QueryMap params: Map<String, String>): BaseResponse

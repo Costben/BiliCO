@@ -118,3 +118,24 @@ data class AppFeedReason(
     val name: String = "",
     val toast: String = "",
 )
+
+@Serializable
+data class LiveMultipleUsersResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: Map<String, LiveMultipleUserEntry>? = null,
+)
+
+@Serializable
+data class LiveMultipleUserEntry(
+    val info: LiveMultipleUserInfo? = null,
+)
+
+@Serializable
+data class LiveMultipleUserInfo(
+    val uid: Long = 0,
+    val uname: String = "",
+    val face: String = "",
+    @SerialName("official_verify") val officialVerify: OfficialVerifyData? = null,
+)
+

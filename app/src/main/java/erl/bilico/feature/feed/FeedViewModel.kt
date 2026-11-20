@@ -91,6 +91,7 @@ class FeedViewModel(
                             )
                         }
                     }
+                    enrichUpProfilesAsync(list)
                 }
                 .onFailure { error ->
                     _state.update {
@@ -124,6 +125,7 @@ class FeedViewModel(
                                 isLoadingMore = false,
                             )
                         }
+                        enrichUpProfilesAsync(list)
                     }
                 }
                 .onFailure {
@@ -131,6 +133,32 @@ class FeedViewModel(
                     _state.update { it.copy(isLoadingMore = false) }
                 }
             inFlight = false
+        }
+    }
+
+    private fun enrichUpProfilesAsync(videos: List<FeedVideo>) {
+        val missingMids = videos.asSequence()
+            .filter { it.upFace.isBlank() && it.upMid > 0L }
+            .map { it.upMid }
+            .distinct()
+            .toList()
+        if (missingMids.isEmpty()) return
+        viewModelScope.launch {
+            val profiles = repository.fetchMissingUpProfiles(missingMids)
+            if (profiles.isEmpty()) return@launch
+            _state.update { current ->
+                var changed = false
+                val updated = current.items.map { video ->
+                    if (video.upFace.isNotBlank() || video.upMid <= 0L) return@map video
+                    val profile = profiles[video.upMid] ?: return@map video
+                    changed = true
+                    video.copy(
+                        upFace = profile.face,
+                        officialType = if (video.officialType == -1) profile.officialType else video.officialType,
+                    )
+                }
+                if (changed) current.copy(items = updated) else current
+            }
         }
     }
 
