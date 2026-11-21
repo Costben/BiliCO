@@ -248,7 +248,7 @@ internal fun ImageViewerOverlay(
                 origins = origins,
                 frame = frame,
                 onTap = { if (!frame.dismiss.exiting) chrome = !chrome },
-                onDismissRelease = { velocity ->
+                onDismissRelease = { velocity, imageSize, imageTopLeft ->
                     handleDismissRelease(
                         velocity = velocity,
                         dismiss = frame.dismiss,
@@ -257,6 +257,8 @@ internal fun ImageViewerOverlay(
                         url = urls.getOrNull(pagerState.currentPage),
                         density = density,
                         scope = scope,
+                        imageSize = imageSize,
+                        imageTopLeft = imageTopLeft,
                         onCloseImmediate = { host.closeImmediate(session) },
                     )
                 },

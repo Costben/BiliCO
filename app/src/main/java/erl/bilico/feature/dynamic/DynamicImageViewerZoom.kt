@@ -64,7 +64,7 @@ internal fun ZoomableImage(
     origins: ImageOrigins,
     frame: ViewerFrame,
     onTap: () -> Unit,
-    onDismissRelease: (Velocity) -> Unit,
+    onDismissRelease: (Velocity, ComposeSize, Offset) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -128,6 +128,16 @@ internal fun ZoomableImage(
     }
 
     fun restPosition(): Offset = Offset(0f, limit(1f).y)
+
+    /** 图片左上角在视觉图层坐标系里的位置：居中摆放后叠加当前平移量。 */
+    fun imageTopLeft(): Offset {
+        val rest = shown()
+        if (box == IntSize.Zero) return Offset.Zero
+        return Offset(
+            (box.width - rest.width) / 2f + offset.x,
+            (box.height - rest.height) / 2f + offset.y,
+        )
+    }
 
     fun zoomedOffset(from: Offset, by: Float, focus: Offset): Offset {
         val centre = Offset(box.width / 2f, box.height / 2f)
@@ -262,7 +272,13 @@ internal fun ZoomableImage(
                                     null
                                 }
                                 val thumb = liveThumb ?: keyUrl.takeIf { !frame.zoomed }?.let { frame.thumbs[it] }
-                                openFrame(p, thumb, frame.aspects[keyUrl] ?: thumb?.aspect)
+                                openFrame(
+                                    progress = p,
+                                    thumb = thumb,
+                                    aspect = frame.aspects[keyUrl] ?: thumb?.aspect,
+                                    imageSize = shown(),
+                                    imageTopLeft = imageTopLeft(),
+                                )
                             }
                         }
                     }
@@ -359,7 +375,7 @@ internal fun ZoomableImage(
                         },
                         onRelease = { velocity, taken ->
                             if (mode == GestureMode.DISMISS || (frame.dismiss.active && !frame.dismiss.exiting)) {
-                                currentOnDismissRelease(velocity)
+                                currentOnDismissRelease(velocity, shown(), imageTopLeft())
                             } else if (scale < 1f - ZoomEpsilon) {
                                 rebound()
                             } else if (taken) {

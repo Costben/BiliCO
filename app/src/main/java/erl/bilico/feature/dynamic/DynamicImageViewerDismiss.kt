@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size as ComposeSize
 import androidx.compose.ui.graphics.GraphicsLayerScope
@@ -74,6 +75,18 @@ internal enum class GestureMode {
     PAGER,
 }
 
+/**
+ * 长图的进出场映射：把图层坐标里的 [windowStart] 区域映射到屏幕坐标的 [destStart]，
+ * 中途同步过渡到 [windowEnd] → [destEnd]。长图铺满屏幕后整图比屏幕高，
+ * 只能拿「当前可见的那一块」当动画源，否则缩放整图会露出图片中段。
+ */
+internal class ViewerRectMapping(
+    val windowStart: Rect,
+    val windowEnd: Rect,
+    val destStart: Rect,
+    val destEnd: Rect,
+)
+
 /** 拖拽退出时的共享状态：支持任意方向拖动与甩出退出，取消时平滑回弹、退出时飞回原缩略图。 */
 @Stable
 internal class DragDismissState {
@@ -92,6 +105,7 @@ internal class DragDismissState {
     var exitHasThumb by mutableStateOf(false)
     var exitThumb: ThumbBounds? by mutableStateOf(null)
     var exitAspect: Float? by mutableStateOf(null)
+    var exitMapping: ViewerRectMapping? by mutableStateOf(null)
     var exitFlyTarget by mutableStateOf(Offset.Zero)
     var animJob: Job? = null
 
@@ -118,6 +132,7 @@ internal class DragDismissState {
 
     fun startDrag(focus: Offset) {
         animJob?.cancel()
+        exitMapping = null
         pivot = focus - Offset(boxSize.width / 2f, boxSize.height / 2f)
         dragOffset = Offset.Zero
         active = true
@@ -137,6 +152,7 @@ internal class DragDismissState {
         dragging = false
         active = false
         dragOffset = Offset.Zero
+        exitMapping = null
     }
 }
 
@@ -158,6 +174,8 @@ internal fun handleDismissRelease(
     url: String?,
     density: Float,
     scope: CoroutineScope,
+    imageSize: ComposeSize? = null,
+    imageTopLeft: Offset? = null,
     onCloseImmediate: () -> Unit,
 ) {
     if (dismiss.exiting) return
@@ -215,8 +233,12 @@ internal fun handleDismissRelease(
     val w = dismiss.boxSize.width.toFloat()
     val h = dismiss.boxSize.height.toFloat()
     val effectiveAspect = aspect ?: thumb?.rect?.let { if (it.height > 0f) it.width / it.height else null }
-    val rest = if (w > 0f && h > 0f && effectiveAspect != null) restSize(w, h, effectiveAspect) else null
-    val hasThumb = thumb != null && rest != null && rest.height <= h + 0.5f
+    val restFrame = if (w > 0f && h > 0f && effectiveAspect != null) restSize(w, h, effectiveAspect) else null
+    val longImage = restFrame != null && restFrame.height > h + 0.5f
+    // 长图整图比屏幕高，靠「当前可见区域 → 缩略图裁切区域」的矩形映射回缩；
+    // 拿不到图片实际落点时才退回淡出。
+    val hasThumb = thumb != null && restFrame != null &&
+        (!longImage || (imageSize != null && imageTopLeft != null))
 
     dismiss.exitStartScale = startScale
     dismiss.exitStartTranslation = startTranslation
@@ -237,6 +259,19 @@ internal fun handleDismissRelease(
             dismiss.exitThumb = thumb
             dismiss.exitAspect = effectiveAspect
             dismiss.exitHasThumb = true
+            dismiss.exitMapping = if (longImage && imageSize != null && imageTopLeft != null) {
+                longImageMapping(
+                    boxSize = dismiss.boxSize,
+                    imageSize = imageSize,
+                    imageTopLeft = imageTopLeft,
+                    imageAspect = effectiveAspect ?: (imageSize.width / imageSize.height),
+                    thumbRect = source,
+                    startScale = startScale,
+                    startTranslation = startTranslation,
+                )
+            } else {
+                null
+            }
             dismiss.exitTranslation.snapTo(startTranslation)
 
             coroutineScope {
@@ -267,6 +302,7 @@ internal fun handleDismissRelease(
             }
             val flyDistance = minOf(w, h).coerceAtLeast(1f) * 0.42f
             dismiss.exitHasThumb = false
+            dismiss.exitMapping = null
             dismiss.exitFlyTarget = startTranslation + dir * flyDistance
 
             coroutineScope {
@@ -300,6 +336,15 @@ internal fun GraphicsLayerScope.applyDismissDrag(d: DragDismissState) {
 
 internal fun GraphicsLayerScope.applyDismissExit(d: DragDismissState) {
     val p = d.exitProgress.value
+    val mapping = d.exitMapping
+    if (mapping != null && size.width > 0f && size.height > 0f) {
+        applyViewerMapping(
+            mapping = mapping,
+            progress = p,
+            radius = lerp(0f, d.exitThumb?.cornerRadius ?: 0f, p),
+        )
+        return
+    }
     if (!d.exitHasThumb || size.width <= 0f || size.height <= 0f) {
         val curScale = lerp(d.exitStartScale, d.exitStartScale * 0.78f, p)
         alpha = (1f - p).coerceIn(0f, 1f)
@@ -334,6 +379,80 @@ internal fun GraphicsLayerScope.applyDismissExit(d: DragDismissState) {
     clip = true
 }
 
+/**
+ * 长图进出场的矩形映射：把图层坐标里的窗口矩形按进度插值，并整体缩放平移到屏幕目标矩形。
+ * 缩略图用 `ContentScale.Crop` 居中裁切，所以终点窗口取图像的中心裁切块，落地时和缩略图对得上。
+ */
+internal fun longImageMapping(
+    boxSize: IntSize,
+    imageSize: ComposeSize,
+    imageTopLeft: Offset,
+    imageAspect: Float,
+    thumbRect: Rect,
+    startScale: Float,
+    startTranslation: Offset,
+): ViewerRectMapping {
+    val w = boxSize.width.toFloat().coerceAtLeast(1f)
+    val h = boxSize.height.toFloat().coerceAtLeast(1f)
+    val targetAspect = (thumbRect.width / thumbRect.height.coerceAtLeast(1f))
+        .takeIf { it > 0f } ?: imageAspect
+    val crop = if (imageAspect < targetAspect) {
+        val cropHeight = imageSize.width / targetAspect
+        Rect(0f, (imageSize.height - cropHeight) / 2f, imageSize.width, (imageSize.height + cropHeight) / 2f)
+    } else {
+        val cropWidth = imageSize.height * targetAspect
+        Rect((imageSize.width - cropWidth) / 2f, 0f, (imageSize.width + cropWidth) / 2f, imageSize.height)
+    }
+    val windowEnd = Rect(
+        imageTopLeft.x + crop.left,
+        imageTopLeft.y + crop.top,
+        imageTopLeft.x + crop.right,
+        imageTopLeft.y + crop.bottom,
+    )
+    val halfW = w * startScale / 2f
+    val halfH = h * startScale / 2f
+    val center = Offset(w / 2f + startTranslation.x, h / 2f + startTranslation.y)
+    return ViewerRectMapping(
+        windowStart = Rect(0f, 0f, w, h),
+        windowEnd = windowEnd,
+        destStart = Rect(center.x - halfW, center.y - halfH, center.x + halfW, center.y + halfH),
+        destEnd = thumbRect,
+    )
+}
+
+private fun GraphicsLayerScope.applyViewerMapping(
+    mapping: ViewerRectMapping,
+    progress: Float,
+    radius: Float,
+) {
+    val window = lerpRect(mapping.windowStart, mapping.windowEnd, progress)
+    val dest = lerpRect(mapping.destStart, mapping.destEnd, progress)
+    val scaleXNow = dest.width / window.width.coerceAtLeast(0.001f)
+    val scaleYNow = dest.height / window.height.coerceAtLeast(0.001f)
+    alpha = 1f
+    transformOrigin = TransformOrigin(0f, 0f)
+    scaleX = scaleXNow
+    scaleY = scaleYNow
+    translationX = dest.left - scaleXNow * window.left
+    translationY = dest.top - scaleYNow * window.top
+    val scaleAvg = ((scaleXNow + scaleYNow) / 2f).coerceAtLeast(0.001f)
+    shape = RectWindow(
+        left = window.left,
+        top = window.top,
+        width = window.width,
+        height = window.height,
+        radius = radius / scaleAvg,
+    )
+    clip = true
+}
+
+private fun lerpRect(from: Rect, to: Rect, t: Float): Rect = Rect(
+    lerp(from.left, to.left, t),
+    lerp(from.top, to.top, t),
+    lerp(from.right, to.right, t),
+    lerp(from.bottom, to.bottom, t),
+)
+
 internal fun GraphicsLayerScope.settle() {
     alpha = 1f
     scaleX = 1f
@@ -344,8 +463,14 @@ internal fun GraphicsLayerScope.settle() {
     clip = false
 }
 
-/** 把画面按缩略图框的中心裁切插值到整屏（或相反）；无缩略图或长图则淡入微缩。 */
-internal fun GraphicsLayerScope.openFrame(progress: Float, thumb: ThumbBounds?, aspect: Float?) {
+/** 把画面按缩略图框的中心裁切插值到整屏（或相反）；长图走矩形映射，其余淡入微缩。 */
+internal fun GraphicsLayerScope.openFrame(
+    progress: Float,
+    thumb: ThumbBounds?,
+    aspect: Float?,
+    imageSize: ComposeSize? = null,
+    imageTopLeft: Offset? = null,
+) {
     if (size.width <= 0f || size.height <= 0f) {
         settle()
         return
@@ -353,6 +478,30 @@ internal fun GraphicsLayerScope.openFrame(progress: Float, thumb: ThumbBounds?, 
     val source = thumb?.rect
     val rest = (aspect ?: source?.let { it.width / it.height })
         ?.let { restSize(size.width, size.height, it) }
+    val longImage = rest != null && rest.height > size.height + 0.5f
+    if (longImage && source != null && imageSize != null && imageTopLeft != null) {
+        val exit = longImageMapping(
+            boxSize = IntSize(size.width.toInt(), size.height.toInt()),
+            imageSize = imageSize,
+            imageTopLeft = imageTopLeft,
+            imageAspect = aspect ?: (imageSize.width / imageSize.height),
+            thumbRect = source,
+            startScale = 1f,
+            startTranslation = Offset.Zero,
+        )
+        // 进场方向与退场相反：缩略图的裁切块 → 当前可见的整屏。
+        applyViewerMapping(
+            mapping = ViewerRectMapping(
+                windowStart = exit.windowEnd,
+                windowEnd = exit.windowStart,
+                destStart = exit.destEnd,
+                destEnd = exit.destStart,
+            ),
+            progress = progress,
+            radius = lerp(thumb.cornerRadius, 0f, progress),
+        )
+        return
+    }
     if (source == null || rest == null || rest.height > size.height + 0.5f) {
         settle()
         alpha = progress
@@ -392,6 +541,23 @@ private class CenteredWindow(
         val top = (size.height - height) / 2f
         return Outline.Rounded(RoundRect(left, top, left + width, top + height, CornerRadius(radius)))
     }
+}
+
+/** 图层坐标里的任意矩形窗口；长图映射需要把窗口跟着内容一起平移，不能用居中版本。 */
+private class RectWindow(
+    private val left: Float,
+    private val top: Float,
+    private val width: Float,
+    private val height: Float,
+    private val radius: Float,
+) : Shape {
+    override fun createOutline(
+        size: ComposeSize,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline = Outline.Rounded(
+        RoundRect(left, top, left + width, top + height, CornerRadius(radius)),
+    )
 }
 
 private fun fitSize(boxWidth: Float, boxHeight: Float, aspect: Float): ComposeSize =
