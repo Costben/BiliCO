@@ -32,6 +32,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Close
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
 /**
@@ -57,6 +58,7 @@ internal fun SponsorAssistDialog(
         maxWidth = 440.dp,
     ) {
         val scheme = COUITheme.colorScheme
+        val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -74,7 +76,7 @@ internal fun SponsorAssistDialog(
                     color = scheme.onSurface,
                 )
                 HighlightedIconButton(
-                    onClick = onDismiss,
+                    onClick = dismiss,
                     modifier = Modifier.align(Alignment.CenterEnd),
                 ) {
                     Icon(COUIIcons.Close, "关闭", Modifier.size(24.dp))

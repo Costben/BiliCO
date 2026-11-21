@@ -5,20 +5,11 @@ import android.content.pm.ActivityInfo
 import android.os.Build
 import android.view.Surface
 import android.view.WindowManager
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
@@ -31,36 +22,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import erl.bilico.ui.BiliCoTheme
 import erl.bilico.ui.BlurEffectsEnabled
-import io.github.suqi8.coui.kmp.basic.GradientStrokeStyle
-import io.github.suqi8.coui.kmp.basic.InnerShadowStyle
-import io.github.suqi8.coui.kmp.basic.couiGlassSurface
-import io.github.suqi8.coui.kmp.basic.materialShadowEdge
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
-import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
-import io.github.suqi8.coui.kmp.layout.DialogDefaults
-import io.github.suqi8.coui.kmp.overlay.OverlayDialog
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import io.github.suqi8.coui.kmp.squircle.squircleSurface
-import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -488,85 +464,5 @@ internal fun rememberStableNavBarBottomDp(): Dp {
             ?.bottom
             ?: 0
         with(density) { bottomPx.toDp() }
-    }
-}
-
-/**
- * 播放器弹层宿主：竖屏时走标准 Dialog；全屏时直接嵌在横屏舞台里居中展示，
- * 避免 Dialog 自己再开一个窗口跟宿主抢方向。
- */
-@Composable
-internal fun PlayerModalHost(
-    inlineInStage: Boolean,
-    onDismiss: () -> Unit,
-    horizontalPadding: Dp = 24.dp,
-    cornerRadius: Dp = 28.dp,
-    maxWidth: Dp = 420.dp,
-    content: @Composable () -> Unit,
-) {
-    if (!inlineInStage) {
-        val colors = COUITheme.colorScheme
-        val textStyles = COUITheme.textStyles
-        val dimens = COUITheme.dimens
-        var show by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) { show = true }
-        OverlayDialog(
-            show = show,
-            outsideMargin = DpSize(16.dp, 8.dp),
-            maxWidth = maxWidth + 32.dp,
-            cornerRadius = cornerRadius,
-            onDismissRequest = onDismiss,
-        ) {
-            COUITheme(colors = colors, textStyles = textStyles, dimens = dimens) {
-                content()
-            }
-        }
-    } else {
-        BackHandler(onBack = onDismiss)
-        BiliCoTheme(darkMode = 2) {
-            val scheme = COUITheme.colorScheme
-            val dialogShape = SquircleShape(
-                cornerRadius = cornerRadius,
-                weight = DialogDefaults.CornerWeight,
-            )
-            val panelBg = DialogDefaults.backgroundColor()
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(scheme.windowDimming)
-                    .pointerInput(onDismiss) { detectTapGestures { onDismiss() } }
-                    .padding(horizontal = horizontalPadding, vertical = 16.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = maxWidth)
-                        .fillMaxWidth()
-                        .pointerInput(Unit) { detectTapGestures { } }
-                        .couiGlassSurface(
-                            backdrop = if (BlurEffectsEnabled) LocalBackdrop.current else null,
-                            shape = dialogShape,
-                            containerColor = panelBg,
-                            fallback = Modifier.squircleSurface(
-                                color = panelBg,
-                                cornerRadius = cornerRadius,
-                                weight = DialogDefaults.CornerWeight,
-                            ),
-                            blurRadius = DialogDefaults.blurRadius(),
-                            blendColors = DialogDefaults.blurColors(),
-                        )
-                        .materialShadowEdge(
-                            stroke = DialogDefaults.stroke(),
-                            cornerWeight = DialogDefaults.CornerWeight,
-                            cornerRadius = cornerRadius,
-                            edgeStyle = GradientStrokeStyle.EDGE_STYLE_2,
-                            shadowStyle = InnerShadowStyle.SHADOW_STYLE_0,
-                        )
-                        .clip(dialogShape),
-                ) {
-                    content()
-                }
-            }
-        }
     }
 }

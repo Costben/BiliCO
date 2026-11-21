@@ -2,6 +2,12 @@ package erl.bilico.feature.video
 
 import android.view.LayoutInflater
 import android.view.View
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -345,7 +351,13 @@ internal fun VideoPlayer(
             )
         }
 
-        if (showChrome) {
+        AnimatedVisibility(
+            visible = showChrome,
+            enter = fadeIn(tween(200, easing = ColorOSMoveEase)) +
+                slideInVertically(tween(200, easing = ColorOSMoveEase)) { -it / 3 },
+            exit = fadeOut(tween(150)) + slideOutVertically(tween(150)) { -it / 3 },
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
             PlayerTopBar(
                 title = title,
                 items = topBarItems,
@@ -405,7 +417,6 @@ internal fun VideoPlayer(
                         )
                     },
                 ),
-                modifier = Modifier.align(Alignment.TopCenter),
             )
         }
 
@@ -420,13 +431,20 @@ internal fun VideoPlayer(
             sponsorOverlay(bottomChromePad, horizontalBarPad)
         }
 
-        if (showChrome) {
+        AnimatedVisibility(
+            visible = showChrome,
+            enter = fadeIn(tween(200, easing = ColorOSMoveEase)) +
+                slideInVertically(tween(200, easing = ColorOSMoveEase)) { it / 3 },
+            exit = fadeOut(tween(150)) + slideOutVertically(tween(150)) { it / 3 },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                // 全屏发弹幕时软键盘会把底栏顶走，整条跟着键盘抬起来。
+                .imePadding(),
+        ) {
             Column(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    // 全屏发弹幕时软键盘会把底栏顶走，整条跟着键盘抬起来。
-                    .imePadding()
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
                     .padding(horizontal = horizontalBarPad, vertical = 6.dp),
             ) {

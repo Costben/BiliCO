@@ -37,6 +37,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.layout.DialogButtonBar
 import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalDismissState
 
 @Composable
 fun CastSheet(
@@ -60,6 +61,7 @@ fun CastSheet(
         onDismiss = onDismiss,
         maxWidth = 420.dp,
     ) {
+        val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -234,7 +236,7 @@ fun CastSheet(
                         if (state.activeDevice != null) controller.stopCast() else controller.scanDevices()
                     },
                 ),
-                positive = DialogButtonBarAction(text = "关闭", onClick = onDismiss),
+                positive = DialogButtonBarAction(text = "关闭", onClick = dismiss),
             )
         }
     }

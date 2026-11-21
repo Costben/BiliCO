@@ -5,6 +5,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.RectF
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,9 +24,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -31,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
@@ -155,7 +162,25 @@ internal fun DanmakuActionToolbar(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    BackHandler(onBack = onDismiss)
+    val progress = remember(hit) { Animatable(0f, visibilityThreshold = 0.0001f) }
+    var exiting by remember(hit) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    val requestDismiss: () -> Unit = remember(hit) {
+        {
+            if (!exiting) {
+                exiting = true
+                scope.launch {
+                    progress.animateTo(0f, tween(120, easing = CubicBezierEasing(0.3f, 0f, 1f, 1f)))
+                    currentOnDismiss()
+                }
+            }
+        }
+    }
+    LaunchedEffect(hit) {
+        progress.animateTo(1f, tween(180, easing = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)))
+    }
+    BackHandler(enabled = !exiting, onBack = requestDismiss)
     val density = LocalDensity.current
     val marginPx = remember(density) { with(density) { 12.dp.roundToPx() } }
     val gapPx = remember(density) { with(density) { 8.dp.roundToPx() } }
@@ -163,15 +188,28 @@ internal fun DanmakuActionToolbar(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures { onDismiss() }
-            },
+            .then(
+                if (exiting) {
+                    Modifier
+                } else {
+                    Modifier.pointerInput(requestDismiss) {
+                        detectTapGestures { requestDismiss() }
+                    }
+                },
+            ),
     ) {
         Layout(
             modifier = Modifier.fillMaxSize(),
             content = {
                 Row(
                     modifier = Modifier
+                        .graphicsLayer {
+                            val p = progress.value
+                            val s = if (exiting) 1f else 0.88f + 0.12f * p
+                            scaleX = s
+                            scaleY = s
+                            alpha = p
+                        }
                         .clip(SquircleShape(12.dp))
                         .background(Color(0xEB1C1C1E))
                         .border(1.dp, Color.White.copy(alpha = 0.16f), SquircleShape(12.dp))
@@ -180,7 +218,7 @@ internal fun DanmakuActionToolbar(
                 ) {
                     ToolbarAction("复制") {
                         actions.onCopy(hit.item)
-                        onDismiss()
+                        requestDismiss()
                     }
                     actions.onReport?.let { report ->
                         ToolbarDivider()
@@ -192,19 +230,19 @@ internal fun DanmakuActionToolbar(
                     ToolbarDivider()
                     ToolbarAction("+1") {
                         actions.onPlusOne(hit.item)
-                        onDismiss()
+                        requestDismiss()
                     }
                     actions.onAdvancedPlusOne?.let { advanced ->
                         ToolbarDivider()
                         ToolbarAction("@+1") {
                             advanced(hit.item)
-                            onDismiss()
+                            requestDismiss()
                         }
                     }
                     ToolbarDivider()
                     ToolbarAction("屏蔽") {
                         actions.onBlock(hit.item)
-                        onDismiss()
+                        requestDismiss()
                     }
                 }
             },

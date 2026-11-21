@@ -48,6 +48,7 @@ import io.github.suqi8.coui.kmp.basic.TextFieldMode
 import io.github.suqi8.coui.kmp.layout.DialogButtonBar
 import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import kotlinx.coroutines.launch
 
 sealed interface ReportTarget {
@@ -182,6 +183,7 @@ fun ReportDialog(
         onDismiss = { if (!submitting) onDismiss() },
         maxWidth = 420.dp,
     ) {
+        val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -376,7 +378,7 @@ fun ReportDialog(
             DialogButtonBar(
                 negative = DialogButtonBarAction(
                     text = "取消",
-                    onClick = { if (!submitting) onDismiss() },
+                    onClick = { if (!submitting) dismiss() },
                 ),
                 positive = DialogButtonBarAction(
                     text = if (submitting) "提交中..." else "提交举报",

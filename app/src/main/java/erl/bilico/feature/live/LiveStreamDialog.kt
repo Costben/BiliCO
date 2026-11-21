@@ -57,6 +57,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Music
 import io.github.suqi8.coui.kmp.icon.extended.Ok
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalDismissState
 
 /**
  * 照搬 PiliPlus `_showLiveStreamDialog`：按 protocol -> format -> codec -> url_info 四级展开切换线路。
@@ -76,6 +77,7 @@ internal fun LiveStreamDialog(
         onDismiss = onDismiss,
         maxWidth = 420.dp,
     ) {
+        val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -92,7 +94,7 @@ internal fun LiveStreamDialog(
                     color = scheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(text = "关闭", onClick = onDismiss)
+                TextButton(text = "关闭", onClick = dismiss)
             }
             if (streams.isEmpty()) {
                 Text(

@@ -45,6 +45,7 @@ import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Close
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -109,6 +110,7 @@ internal fun SponsorSubmitDialog(
         maxWidth = 440.dp,
     ) {
         val scheme = COUITheme.colorScheme
+        val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -129,7 +131,7 @@ internal fun SponsorSubmitDialog(
                     onClick = {
                         if (!submitting) {
                             syncDraft()
-                            onDismiss()
+                            dismiss()
                         }
                     },
                     modifier = Modifier.align(Alignment.CenterEnd),
