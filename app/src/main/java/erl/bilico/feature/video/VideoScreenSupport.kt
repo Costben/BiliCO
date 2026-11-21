@@ -5,10 +5,13 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.res.Configuration
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.OrientationEventListener
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -52,6 +55,8 @@ import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlin.math.atan2
+import kotlin.math.roundToInt
 
 /**
  * 手动/手势切换全屏后的重力感应冷却保护时长 (毫秒)
@@ -76,7 +81,8 @@ internal fun Context.findActivity(): Activity? {
 }
 
 /**
- * 物理横竖屏方向，带 500ms 持续确认防抖、双门限迟滞与前后台生命周期启停：
+ * 物理横竖屏方向，基于 `Sensor.TYPE_GRAVITY`（无陀螺仪时回退低通滤波的加速度计），
+ * 带 300ms 持续确认防抖、双门限迟滞与前后台生命周期启停：
  * - `0`：竖屏
  * - `+1`：逆时针横屏（听筒在左，约 270°，对应自绘顺时针旋转 `+90°`）
  * - `-1`：顺时针反向横屏（听筒在右，约 90°，对应自绘逆时针旋转 `-90°`）
@@ -93,14 +99,44 @@ internal fun rememberDeviceOrientationSide(mode: Int): Int {
     var pendingTarget by remember { mutableStateOf<Int?>(null) }
 
     DisposableEffect(context, lifecycleOwner, mode) {
-        val listener = object : OrientationEventListener(context) {
-            override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN) return
-                val delta = when (mode) {
-                    1 -> 30 // 迟钝防误触：60..120 / 240..300
-                    2 -> 38 // 标准：52..128 / 232..308
-                    else -> 45 // 灵敏：45..135 / 225..315
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+            ?: return@DisposableEffect onDispose {}
+        val gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        val sensor = gravitySensor ?: sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            ?: return@DisposableEffect onDispose {}
+        val useGravity = gravitySensor != null
+        val filtered = FloatArray(3)
+        var hasFiltered = false
+        var registered = false
+        val delta = when (mode) {
+            1 -> 30 // 迟钝防误触：60..120 / 240..300
+            2 -> 38 // 标准：52..128 / 232..308
+            else -> 45 // 灵敏：45..135 / 225..315
+        }
+
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val values = if (useGravity) {
+                    event.values
+                } else {
+                    if (!hasFiltered) {
+                        for (i in 0..2) filtered[i] = event.values[i]
+                        hasFiltered = true
+                    } else {
+                        for (i in 0..2) filtered[i] += 0.2f * (event.values[i] - filtered[i])
+                    }
+                    filtered
                 }
+                val x = -values[0]
+                val y = -values[1]
+                val z = -values[2]
+                val xySq = x * x + y * y
+                if (xySq <= 0f || !(xySq * 14f >= z * z)) return
+
+                var orientation = 90 - Math.toDegrees(atan2(-y.toDouble(), x.toDouble())).roundToInt()
+                while (orientation >= 360) orientation -= 360
+                while (orientation < 0) orientation += 360
+
                 val inStandardLandscape = orientation in (270 - delta)..(270 + delta)
                 val inReverseLandscape = orientation in (90 - delta)..(90 + delta)
                 val inPortrait = orientation in 0..(90 - delta - 10) ||
@@ -127,36 +163,49 @@ internal fun rememberDeviceOrientationSide(mode: Int): Int {
                         pendingTarget = null
                     }
                     pendingRunnable = run
-                    handler.postDelayed(run, 500L)
+                    handler.postDelayed(run, 300L)
                 }
             }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+
+        fun register() {
+            if (registered) return
+            hasFiltered = false
+            registered = sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI, handler)
+        }
+
+        fun unregister() {
+            if (!registered) return
+            registered = false
+            hasFiltered = false
+            sensorManager.unregisterListener(listener)
         }
 
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> {
-                    if (listener.canDetectOrientation()) listener.enable()
-                }
+                Lifecycle.Event.ON_RESUME -> register()
                 Lifecycle.Event.ON_PAUSE -> {
                     pendingRunnable?.let { handler.removeCallbacks(it) }
                     pendingRunnable = null
                     pendingTarget = null
-                    listener.disable()
+                    unregister()
                 }
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
-            listener.canDetectOrientation()
-        ) {
-            listener.enable()
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            register()
         }
 
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             pendingRunnable?.let { handler.removeCallbacks(it) }
-            listener.disable()
+            pendingRunnable = null
+            pendingTarget = null
+            unregister()
         }
     }
     return side
