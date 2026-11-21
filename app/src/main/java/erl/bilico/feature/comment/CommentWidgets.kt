@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.InlineTextContent
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
@@ -385,10 +386,21 @@ private fun CommentPicturesGrid(
         isSubReply -> 74.dp
         else -> 86.dp
     }
+    val gapDp = 6.dp
+    val maxGridWidth = cellDp * 3 + gapDp * 2
     val cellPx = remember(density, cellDp) { with(density) { (cellDp * 1.5f).roundToPx() } }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    // 固定 86dp 在窄屏评论栏内会超过正文宽度，按最大网格宽度封顶并在容器更窄时三列等分缩窄。
+    Column(
+        modifier = Modifier
+            .widthIn(max = maxGridWidth)
+            .fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(gapDp),
+    ) {
         pictures.take(9).chunked(3).forEachIndexed { rowIdx, rowPics ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(gapDp),
+            ) {
                 rowPics.forEachIndexed { colIdx, pic ->
                     val index = rowIdx * 3 + colIdx
                     val url = remember(pic.url, cellPx) {
@@ -402,7 +414,8 @@ private fun CommentPicturesGrid(
                     }
                     Box(
                         modifier = Modifier
-                            .size(cellDp)
+                            .weight(1f)
+                            .aspectRatio(1f)
                             .imageOrigin(url = keyUrl, cornerRadius = 6.dp, aspect = trueAspect, model = url)
                             .clip(SquircleShape(6.dp))
                             .clickable { onOpenImage(pictures, index) },
@@ -414,6 +427,9 @@ private fun CommentPicturesGrid(
                             contentScale = ContentScale.Crop,
                         )
                     }
+                }
+                repeat(3 - rowPics.size) {
+                    Spacer(Modifier.weight(1f))
                 }
             }
         }
