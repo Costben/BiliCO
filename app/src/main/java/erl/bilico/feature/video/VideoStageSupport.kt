@@ -54,6 +54,9 @@ internal val LocalStageScale = staticCompositionLocalOf<(Size) -> Float?> { { nu
  */
 internal val LocalStageOpaquePlayer = staticCompositionLocalOf { true }
 
+/** 全屏舞台向内部播放器提供的「返回主页」动作：若处于全屏或转屏中，先顺滑退回竖屏再回首页。 */
+internal val LocalStageReturnHome = staticCompositionLocalOf<(() -> Unit)?> { null }
+
 /** 竖屏视频收到底时留下的那条顶栏的高度。 */
 internal val CollapsedBarHeight = 52.dp
 

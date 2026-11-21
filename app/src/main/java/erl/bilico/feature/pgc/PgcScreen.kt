@@ -35,6 +35,7 @@ import erl.bilico.feature.video.DanmakuController
 import erl.bilico.feature.video.DanmakuOverlay
 import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.feature.video.FullscreenDanmakuComposer
+import erl.bilico.feature.video.LocalStageReturnHome
 import erl.bilico.feature.video.LocalPortraitSlotHeight
 import erl.bilico.feature.video.PlaybackAttempts
 import erl.bilico.feature.video.SubtitleController
@@ -366,6 +367,7 @@ fun PgcScreen(
         inPipMode = inPipMode,
         activity = activity,
         darkMode = darkMode,
+        onExitFullscreen = { applyFullscreen(false) },
         videoAspect = effectiveVideoAspect,
         portraitResizable = true,
         playing = isPlaying || isBuffering,
@@ -381,6 +383,7 @@ fun PgcScreen(
         playerContent = {
             val stageBackdrop = rememberLayerBackdrop()
             val anyStageDialogOpen = fullscreen && (danmakuSettingsDialogVisible || castDialogVisible)
+            val returnHome = LocalStageReturnHome.current ?: { nav.popToMain() }
             VideoPlayer(
                 player = player,
                 title = state.detail?.title.orEmpty(),
@@ -434,7 +437,7 @@ fun PgcScreen(
                 } else {
                     null
                 },
-                onHome = { nav.popToMain() },
+                onHome = returnHome,
                 onCast = if ((viewModel.currentEpisode?.epId ?: epId) > 0L || (viewModel.currentEpisode?.cid ?: 0L) > 0L) {
                     { castDialogVisible = true }
                 } else {
@@ -538,10 +541,11 @@ fun PgcScreen(
         },
         portraitCollapsedBar = {
             val slotHeight = LocalPortraitSlotHeight.current
+            val returnHome = LocalStageReturnHome.current ?: { nav.popToMain() }
             CollapsedVideoBar(
                 isPlaying = isPlaying,
                 onBack = { nav.pop() },
-                onHome = { nav.popToMain() },
+                onHome = returnHome,
                 onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                 onExpand = { slotHeight.floatValue = 0f },
                 playbackEndMode = playbackEndMode,

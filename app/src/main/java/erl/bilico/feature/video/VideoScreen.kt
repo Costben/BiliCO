@@ -409,6 +409,7 @@ fun VideoScreen(
         inPipMode = inPipMode,
         activity = activity,
         darkMode = darkMode,
+        onExitFullscreen = { applyFullscreen(false) },
         videoAspect = effectiveVideoAspect,
         portraitResizable = true,
         playing = playIntent,

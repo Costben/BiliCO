@@ -91,6 +91,7 @@ internal fun BoxScope.VideoPlayerSlot(
     val anyStageDialogOpen = fullscreen &&
         (danmakuSettingsDialogVisible || sponsorSubmitDialog != null ||
             castDialog != null || reportVideoDialog != null)
+    val returnHome = LocalStageReturnHome.current ?: { nav.popToMain() }
     val episodesMenuItems = rememberEpisodesMenuItems(
         detail = state.detail,
         selectedCid = state.selectedCid,
@@ -143,7 +144,7 @@ internal fun BoxScope.VideoPlayerSlot(
         selectedSubtitleKey = subtitleController.selectedTrackKey,
         onSelectSubtitle = subtitleController::selectTrack,
         onEnterPip = onEnterPip,
-        onHome = { nav.popToMain() },
+        onHome = returnHome,
         onWatchLater = viewModel::addToWatchLater,
         playbackEndMode = playbackEndMode,
         onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
@@ -267,11 +268,12 @@ internal fun VideoCollapsedBarSlot(
 ) {
     val context = LocalContext.current
     val slotHeight = LocalPortraitSlotHeight.current
+    val returnHome = LocalStageReturnHome.current ?: { nav.popToMain() }
     val playbackEndMode by container.settings.playbackEndMode.collectAsStateWithLifecycle()
     CollapsedVideoBar(
         isPlaying = isPlaying,
         onBack = { nav.pop() },
-        onHome = { nav.popToMain() },
+        onHome = returnHome,
         onPlayPause = {
             val p = player ?: return@CollapsedVideoBar
             if (p.isPlaying) p.pause() else p.play()

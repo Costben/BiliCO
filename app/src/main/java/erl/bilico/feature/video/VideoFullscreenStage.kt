@@ -104,6 +104,7 @@ internal fun VideoFullscreenStage(
     detailContent: @Composable BoxScope.() -> Unit,
     portraitOverlay: @Composable BoxScope.() -> Unit = {},
     portraitCollapsedBar: @Composable BoxScope.() -> Unit = {},
+    onExitFullscreen: () -> Unit = {},
     /** 竖屏视频的槽位可以上下滑动改高度（只有视频详情页开）。 */
     portraitResizable: Boolean = false,
     /** 正在播放：槽位收不到只剩顶栏，至少留一段能看的高度。 */
@@ -242,12 +243,29 @@ internal fun VideoFullscreenStage(
         }
     }
 
+    val currentOnExitFullscreen by rememberUpdatedState(onExitFullscreen)
+    val inStage by remember { derivedStateOf { fullscreen || progress.value > 0.0005f } }
+    var pendingReturnHome by remember { mutableStateOf(false) }
+    LaunchedEffect(pendingReturnHome, fullscreen, windowLandscape, inStage) {
+        if (pendingReturnHome && !fullscreen && !windowLandscape && !inStage) {
+            pendingReturnHome = false
+            nav?.popToMain()
+        }
+    }
+    val returnHome: () -> Unit = {
+        if (fullscreen || windowLandscape || inStage) {
+            pendingReturnHome = true
+            if (fullscreen) currentOnExitFullscreen()
+        } else {
+            nav?.popToMain()
+        }
+    }
+
     if (inPipMode) {
         Box(Modifier.fillMaxSize().background(Color.Black), content = playerContent)
         return
     }
 
-    val inStage by remember { derivedStateOf { fullscreen || progress.value > 0.0005f } }
     val pageSurface = pageContainerColor()
     val statusBarPx = rememberStableStatusBarHeightPx()
     // 横屏窗口里详情页仍按竖屏尺寸测量，退出全屏时不用重排，滚动位置也不会跳。
@@ -416,6 +434,7 @@ internal fun VideoFullscreenStage(
                         LocalStageOpaquePlayer provides !portraitStage,
                         LocalStageFrozenVideo provides frameHolder.frozen,
                         LocalStageFrameSource provides frameHolder.source,
+                        LocalStageReturnHome provides returnHome,
                     ) {
                         playerContent()
                         StageFrozenFrame(frameHolder)
@@ -428,7 +447,10 @@ internal fun VideoFullscreenStage(
                 modifier = Modifier.drawWithContent { if (!windowLandscape && !inStage) drawContent() },
                 content = {
                     if (!windowLandscape && !inStage) {
-                        CompositionLocalProvider(LocalPortraitSlotHeight provides slotHeight) {
+                        CompositionLocalProvider(
+                            LocalPortraitSlotHeight provides slotHeight,
+                            LocalStageReturnHome provides returnHome,
+                        ) {
                             portraitOverlay()
                             if (portraitResizable) {
                                 // 横栏不是「在/不在」两种状态，而是跟着槽位高度淡进淡出：
