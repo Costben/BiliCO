@@ -312,7 +312,7 @@ internal fun DynamicCard(
     }
 }
 
-/** 卡片底部的单个统计按钮：图标 22dp、计数 15sp，整块可点，按下是一颗胶囊。 */
+/** 卡片底部的单个统计按钮：图标 17dp、计数 14sp（与视频动态标题/转发正文一致），整块可点，按下是一颗胶囊。 */
 @Composable
 private fun DynamicStatAction(
     icon: ImageVector,
@@ -343,20 +343,20 @@ private fun DynamicStatAction(
             }
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             // 横向不留内边距：左边那组的图标正好压在正文左边缘上，右边那组贴到右边缘。
-            .padding(vertical = 8.dp)
+            .padding(vertical = 6.dp)
             .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(17.dp),
             tint = resolvedTint,
         )
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(5.dp))
         Text(
             text = Formatters.formatStat(count.toLong()),
-            fontSize = 15.sp,
+            fontSize = 14.sp,
             color = resolvedTint,
             maxLines = 1,
         )
