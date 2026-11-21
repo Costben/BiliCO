@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -248,13 +249,14 @@ internal fun ReplyDetailPage(
         pictures = pictures + uris.take(room)
     }
 
-    BackHandler(enabled = backEnabled) {
-        if (emotePanelOpen) {
-            emotePanelOpen = false
-        } else {
-            onClose()
-        }
+    // 表情面板打开时返回先收面板；其余情况走预测性返回，整页跟着手势往下退。
+    BackHandler(enabled = backEnabled && emotePanelOpen) {
+        emotePanelOpen = false
     }
+    val backFollow = rememberReplyDetailBackFollow(
+        enabled = backEnabled && !emotePanelOpen && imageViewer == null,
+        onClose = onClose,
+    )
 
     LaunchedEffect(comment.id) {
         listState.scrollToItem(0)
@@ -360,6 +362,10 @@ internal fun ReplyDetailPage(
         Box(
             modifier = modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    val follow = backFollow.value
+                    if (follow < 1f) translationY = (1f - follow) * size.height
+                }
                 .background(pageBg)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
