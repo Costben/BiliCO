@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.LaunchedEffect
@@ -291,13 +292,15 @@ private fun InfoContent(
                                 tint = COUITheme.colorScheme.onSurfaceSecondary,
                             )
                             Spacer(Modifier.width(DESC_ICON_GAP))
-                            Text(
-                                text = descText,
-                                style = descStyle,
-                                color = COUITheme.colorScheme.onSurfaceSecondary,
-                                maxLines = if (expanded) Int.MAX_VALUE else DESC_COLLAPSED_LINES,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            SelectionContainer {
+                                Text(
+                                    text = descText,
+                                    style = descStyle,
+                                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                                    maxLines = if (expanded) Int.MAX_VALUE else DESC_COLLAPSED_LINES,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }

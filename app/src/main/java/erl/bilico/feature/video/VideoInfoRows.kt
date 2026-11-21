@@ -124,6 +124,7 @@ internal fun UpRow(
                 videoAid = detail.aid,
                 videoBvid = detail.bvid,
                 videoTitle = detail.title,
+                videoDesc = detail.desc,
             )
         }
     }

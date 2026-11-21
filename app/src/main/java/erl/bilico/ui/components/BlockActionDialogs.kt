@@ -133,7 +133,7 @@ fun KeywordBlockDialog(
 
 /**
  * UP 主 / 用户通用操作菜单（视频页关注旁 3 个点 & 个人空间右上角 3 个点）：
- * 顺序：关键词屏蔽 -> 本地屏蔽该 UP 主 -> 屏蔽该 UP 主（服务器黑名单） -> 举报 UP 主 -> 举报视频（视频页）。
+ * 顺序：复制简介（视频页有简介时） -> 关键词屏蔽 -> 本地屏蔽该 UP 主 -> 屏蔽该 UP 主（服务器黑名单） -> 举报 UP 主 -> 举报视频（视频页）。
  */
 @Composable
 fun UserMoreMenu(
@@ -145,10 +145,13 @@ fun UserMoreMenu(
     videoAid: Long = 0L,
     videoBvid: String = "",
     videoTitle: String = "",
+    videoDesc: String = "",
 ) {
     if (mid <= 0L) return
     val container = LocalAppContainer.current ?: return
     val context = LocalContext.current
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val blocks by container.blocks.snapshot.collectAsState()
     var expanded by remember { mutableStateOf(false) }
@@ -208,10 +211,24 @@ fun UserMoreMenu(
             show = expanded,
             onDismiss = { expanded = false },
             items = buildList {
-                add(CouiMenuItem("关键词屏蔽", onClick = { showKeyword = true }))
+                val trimmedDesc = videoDesc.trim()
+                if (trimmedDesc.isNotEmpty()) {
+                    add(
+                        CouiMenuItem(
+                            label = "复制简介",
+                            group = 0,
+                            onClick = {
+                                clipboard.setText(AnnotatedString(trimmedDesc))
+                                Toast.makeText(context, "已复制简介", Toast.LENGTH_SHORT).show()
+                            },
+                        ),
+                    )
+                }
+                add(CouiMenuItem("关键词屏蔽", onClick = { showKeyword = true }, group = 1))
                 add(
                     CouiMenuItem(
                         label = if (isLocalBlocked) "取消本地屏蔽" else "本地屏蔽该 UP 主",
+                        group = 1,
                         onClick = {
                             if (isLocalBlocked) {
                                 container.blocks.unblockUserLocally(mid)
@@ -226,6 +243,7 @@ fun UserMoreMenu(
                 add(
                     CouiMenuItem(
                         label = if (isServerBlack) "取消屏蔽该 UP 主" else "屏蔽该 UP 主",
+                        group = 1,
                         onClick = {
                             scope.launch {
                                 container.blocks.toggleServerBlacklist(
@@ -246,9 +264,9 @@ fun UserMoreMenu(
                         },
                     ),
                 )
-                add(CouiMenuItem("举报 UP 主", onClick = { showMemberReport = true }, group = 1))
+                add(CouiMenuItem("举报 UP 主", onClick = { showMemberReport = true }, group = 2))
                 if (videoAid > 0L) {
-                    add(CouiMenuItem("举报视频", onClick = { showVideoReport = true }, group = 1))
+                    add(CouiMenuItem("举报视频", onClick = { showVideoReport = true }, group = 2))
                 }
             },
         )
