@@ -42,6 +42,7 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.navBottomPadding
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SearchResultContainer
 import io.github.suqi8.coui.kmp.basic.SearchResultContainerDefaults
@@ -152,6 +153,7 @@ internal fun SessionList(
     nav: NavState,
 ) {
     val listState = rememberLazyListState()
+    BindScrollToTop(listState)
     val itemCount by rememberUpdatedState(state.sessions.size)
     val transitionSpec = SearchResultContainerDefaults.transitionSpec(
         riseTrigger = SearchResultsRiseTrigger.OnlyAfterLoading,

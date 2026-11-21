@@ -32,6 +32,7 @@ import erl.bilico.player.PlaybackBridge
 import erl.bilico.ui.BiliCoRoot
 import erl.bilico.ui.BiliCoTheme
 import erl.bilico.ui.isDarkTheme
+import io.github.suqi8.coui.kmp.basic.ScrollToTopHost
 
 class MainActivity : ComponentActivity() {
 
@@ -111,8 +112,10 @@ class MainActivity : ComponentActivity() {
                     onDispose { }
                 }
                 CompositionLocalProvider(LocalInPipMode provides inPipMode) {
-                    BiliCoRoot(container, pendingVideoLink) { handled ->
-                        if (pendingVideoLink === handled) pendingVideoLink = null
+                    ScrollToTopHost {
+                        BiliCoRoot(container, pendingVideoLink) { handled ->
+                            if (pendingVideoLink === handled) pendingVideoLink = null
+                        }
                     }
                 }
             }

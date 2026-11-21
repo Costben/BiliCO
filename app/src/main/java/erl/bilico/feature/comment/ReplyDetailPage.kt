@@ -73,6 +73,7 @@ import erl.bilico.ui.components.LocalOpenBvid
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
@@ -102,6 +103,7 @@ internal fun ReplyDetailOverlay(
 ) {
     var displayedThread by remember { mutableStateOf<Pair<Comment, Long>?>(null) }
     val activeRoot = controller.root
+    BindScrollToTop(listState, enabled = activeRoot != null)
     if (activeRoot != null) {
         val pool = latestItems.ifEmpty { controller.itemsSnapshot }
         val synced = pool.firstOrNull { it.id == activeRoot.id } ?: activeRoot
@@ -163,6 +165,7 @@ internal fun ReplyDetailPage(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    BindScrollToTop(listState)
     val account by container.session.account.collectAsStateWithLifecycle()
     val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
     val currentMid = account?.mid ?: container.session.mid()

@@ -62,6 +62,7 @@ import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.FullPagePullToRefresh
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
@@ -232,6 +233,7 @@ private fun DynamicContent(
     onLike: (DynamicItemUi) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    BindScrollToTop(listState, enabled = active)
     val scope = rememberCoroutineScope()
     val pullState = rememberFullPagePullToRefreshState()
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }

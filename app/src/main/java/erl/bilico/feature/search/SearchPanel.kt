@@ -47,6 +47,7 @@ import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.ChipTabData
 import io.github.suqi8.coui.kmp.basic.SearchResultContainer
 import io.github.suqi8.coui.kmp.basic.SearchResultsTransitionState
@@ -169,6 +170,7 @@ internal fun SearchPanelBody(
 ) {
     val surfaceColor = pageContainerColor()
     val listState = rememberLazyListState()
+    BindScrollToTop(listState)
     val rowScrollState = remember(listState) { listState.asRowScrollState() }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current

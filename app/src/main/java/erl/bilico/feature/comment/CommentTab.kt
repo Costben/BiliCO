@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBarDefaults
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarDefaults
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
@@ -79,6 +80,7 @@ fun CommentTab(
     targetReplyId: Long = 0L,
     replyThreadController: ReplyThreadController? = null,
 ) {
+    BindScrollToTop(listState)
     val viewModel: CommentViewModel = viewModel(key = "comment-$type-$oid-$targetRootId-$targetReplyId") {
         CommentViewModel(container.comments, oid, type, targetRootId, targetReplyId)
     }

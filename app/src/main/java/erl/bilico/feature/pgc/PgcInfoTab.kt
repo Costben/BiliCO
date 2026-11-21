@@ -37,6 +37,7 @@ import erl.bilico.ui.components.COUISmoothCapsuleShape
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -96,6 +97,8 @@ private fun PgcInfoContent(
     modifier: Modifier = Modifier,
 ) {
     var descExpanded by rememberSaveable(detail.seasonId) { mutableStateOf(false) }
+
+    BindScrollToTop(listState)
 
     LazyColumn(
         state = listState,

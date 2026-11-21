@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +46,7 @@ import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.navBottomPadding
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -77,8 +79,11 @@ fun MeScreen(
     val scope = rememberCoroutineScope()
     var confirmLogout by remember { mutableStateOf(false) }
     var switchAccounts by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    BindScrollToTop(listState)
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().scrollEndHaptic(),
         contentPadding = PaddingValues(
             start = 12.dp,

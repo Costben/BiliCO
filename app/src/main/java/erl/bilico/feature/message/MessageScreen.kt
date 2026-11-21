@@ -54,6 +54,7 @@ import erl.bilico.ui.components.MailOutlineIcon
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.ChipTabData
 import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
 import io.github.suqi8.coui.kmp.basic.ChipTabGroup
@@ -63,6 +64,7 @@ import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.SearchResultContainer
 import io.github.suqi8.coui.kmp.basic.SearchResultContainerDefaults
 import io.github.suqi8.coui.kmp.basic.SearchResultsRiseTrigger
+import io.github.suqi8.coui.kmp.basic.ScrollToTopPage
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
@@ -133,25 +135,27 @@ fun MessageScreen(
                 .background(pageColor),
             beyondViewportPageCount = 1,
         ) { index ->
-            val kind = MESSAGE_TABS[index].kind
-            if (kind == MessageKind.SESSION) {
-                SessionList(
-                    state = state,
-                    loggedIn = account != null,
-                    contentTop = headerHeight + 8.dp,
-                    viewModel = viewModel,
-                    nav = nav,
-                )
-            } else {
-                MessageList(
-                    kind = kind,
-                    state = state.of(kind),
-                    loggedIn = account != null,
-                    contentTop = headerHeight + 8.dp,
-                    viewModel = viewModel,
-                    nav = nav,
-                    onNotice = { notice = it },
-                )
+            ScrollToTopPage(active = index == pagerState.settledPage) {
+                val kind = MESSAGE_TABS[index].kind
+                if (kind == MessageKind.SESSION) {
+                    SessionList(
+                        state = state,
+                        loggedIn = account != null,
+                        contentTop = headerHeight + 8.dp,
+                        viewModel = viewModel,
+                        nav = nav,
+                    )
+                } else {
+                    MessageList(
+                        kind = kind,
+                        state = state.of(kind),
+                        loggedIn = account != null,
+                        contentTop = headerHeight + 8.dp,
+                        viewModel = viewModel,
+                        nav = nav,
+                        onNotice = { notice = it },
+                    )
+                }
             }
         }
 
@@ -265,6 +269,7 @@ private fun MessageList(
     onNotice: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    BindScrollToTop(listState)
     val itemCount by rememberUpdatedState(state.items.size)
     val transitionSpec = SearchResultContainerDefaults.transitionSpec(
         riseTrigger = SearchResultsRiseTrigger.OnlyAfterLoading,

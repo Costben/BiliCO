@@ -65,6 +65,7 @@ import erl.bilico.ui.components.SecondaryPagerPage
 import erl.bilico.ui.components.StatLabel
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.pageContainerColor
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
@@ -259,6 +260,7 @@ fun HistoryScreen(
         HistoryTabList(
             loggedIn = loggedIn != null,
             tab = tab,
+            active = pageIndex == pagerState.currentPage,
             tabState = tabState,
             items = filteredItems,
             isFiltering = state.searchQuery.isNotBlank(),
@@ -306,6 +308,7 @@ fun HistoryScreen(
 private fun HistoryTabList(
     loggedIn: Boolean,
     tab: HistoryTab,
+    active: Boolean,
     tabState: HistoryTabState,
     items: List<HistoryItem>,
     isFiltering: Boolean,
@@ -320,6 +323,7 @@ private fun HistoryTabList(
     onOpenItem: (HistoryItem) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    BindScrollToTop(listState, enabled = active)
 
     LaunchedEffect(listState, items.size, isFiltering) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }

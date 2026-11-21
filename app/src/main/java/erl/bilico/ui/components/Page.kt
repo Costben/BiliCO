@@ -43,6 +43,7 @@ import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
 import io.github.suqi8.coui.kmp.basic.FullPagePullToRefresh
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
@@ -84,6 +85,8 @@ fun SecondaryPage(
     val defaultBottomPadding = 24.dp + navBottomPadding()
     val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
     val contentTop = glassBarContentTop(topBarHeight, 10.dp)
+
+    BindScrollToTop(listState)
 
     Box(modifier.fillMaxSize().background(pageColor)) {
         Box(
@@ -160,6 +163,8 @@ fun SecondaryGridPage(
     val pageColor = pageContainerColor()
     val backdrop = rememberLayerBackdrop()
     val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
+
+    BindScrollToTop(gridState)
 
     Box(modifier.fillMaxSize().background(pageColor)) {
         Box(

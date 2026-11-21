@@ -77,6 +77,7 @@ import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.rememberSearchResultsTransitionState
+import io.github.suqi8.coui.kmp.basic.scrollToTopOnTap
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -564,7 +565,7 @@ private fun MainTitleRow(
     Crossfade(
         targetState = tab,
         animationSpec = tween(MainTabFadeMillis),
-        modifier = modifier,
+        modifier = modifier.scrollToTopOnTap(),
         label = "mainTitleRow",
     ) { page ->
         if (page == 0) {

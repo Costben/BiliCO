@@ -61,6 +61,7 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.ExpandableSectionHeader
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.StatLabel
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.ExpandableList
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -213,6 +214,8 @@ private fun InfoContent(
     val accent = COUITheme.colorScheme.primary
     val descStyle = COUITheme.textStyles.body2
     val measurer = rememberTextMeasurer()
+
+    BindScrollToTop(listState)
 
     LazyColumn(
         state = listState,

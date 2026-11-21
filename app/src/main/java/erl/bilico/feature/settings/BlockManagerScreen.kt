@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -50,6 +51,7 @@ import erl.bilico.ui.components.SecondaryPagerPage
 import erl.bilico.ui.components.SectionTitle
 import erl.bilico.ui.components.SingleInputDialog
 import erl.bilico.ui.components.navBottomPadding
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
@@ -110,7 +112,10 @@ fun BlockManagerScreen(
             )
         },
     ) { pageIndex, contentTop ->
+        val listState = rememberLazyListState()
+        BindScrollToTop(listState, enabled = pageIndex == pagerState.currentPage)
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .scrollEndHaptic(),
