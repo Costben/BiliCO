@@ -380,6 +380,9 @@ fun LiveRoomScreen(
         )
     }
 
+    // 直播优先走 SurfaceView：避免 60fps 直播流在 TextureView GPU 合成链路里丢帧/抖动。
+    val useSurfaceView = true
+
     VideoFullscreenStage(
         fullscreen = fullscreen,
         landscapeSide = deviceSide,
@@ -387,9 +390,10 @@ fun LiveRoomScreen(
         activity = activity,
         darkMode = darkMode,
         videoAspect = videoAspect,
+        surfaceViewPlayer = useSurfaceView,
         playerContent = {
             val stageBackdrop = rememberLayerBackdrop()
-            val anyStageDialogOpen = fullscreen && (danmakuSettingsDialogVisible || castDialogVisible || lineDialogVisible || scDrawerVisible)
+            val anyStageDialogOpen = !useSurfaceView && fullscreen && (danmakuSettingsDialogVisible || castDialogVisible || lineDialogVisible || scDrawerVisible)
             VideoPlayer(
                 player = player,
                 title = state.detail?.title.orEmpty(),
@@ -399,6 +403,7 @@ fun LiveRoomScreen(
                 isBuffering = state.isPlaybackLoading || isBuffering,
                 errorMessage = state.playbackError ?: playerError,
                 qualityLabel = state.qualityLabel(),
+                hdrVideo = useSurfaceView,
                 speed = 1f,
                 fullscreen = fullscreen,
                 portraitFullscreen = fullscreen && fsController.portraitStage,
@@ -506,7 +511,7 @@ fun LiveRoomScreen(
             if (fullscreen) {
                 VideoMessageToast(message = liveMessage, inPipMode = inPipMode, inFullscreen = true)
                 CompositionLocalProvider(
-                    LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
+                    LocalBackdrop provides if (BlurEffectsEnabled && !useSurfaceView) stageBackdrop else null,
                 ) {
                     RenderLiveDialogs(inlineInStage = true)
                 }
