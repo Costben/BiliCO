@@ -130,10 +130,23 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
     private val liveBuffer = LiveDanmakuBuffer()
 
     private var loopRunning = false
+    private var idleSleeping = false
+    private var hadVisibleDanmaku = true
     private var lastFrameNanos = 0L
+    private var lastDrawNanos = 0L
     private var lastExternalMs = 0L
     private var renderTimeMs = -1.0
     private val highlightRect = RectF()
+    private val wakeRunnable = Runnable {
+        if (!idleSleeping) return@Runnable
+        idleSleeping = false
+        updateFrameRateVote()
+        if (isAttachedToWindow && playing && settings.enabled && placed.isNotEmpty() && !loopRunning) {
+            loopRunning = true
+            lastFrameNanos = 0L
+            Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
 
     init {
         setWillNotDraw(false)
@@ -153,7 +166,8 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             old.allowBottom != newSettings.allowBottom ||
             old.allowColorful != newSettings.allowColorful ||
             old.allowSpecial != newSettings.allowSpecial ||
-            old.mergeDuplicates != newSettings.mergeDuplicates
+            old.mergeDuplicates != newSettings.mergeDuplicates ||
+            old.weightFilterLevel != newSettings.weightFilterLevel
 
         val layoutChanged = filterChanged ||
             old.fontScale != newSettings.fontScale ||
@@ -175,7 +189,7 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             invalidate()
         }
 
-        if (old.enabled != newSettings.enabled) {
+        if (old.enabled != newSettings.enabled || old.cap60Fps != newSettings.cap60Fps) {
             updateFrameRateVote()
             syncLoopState()
             invalidate()
@@ -194,18 +208,28 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
     private fun updateFrameRateVote() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            requestedFrameRate = if (playing && settings.enabled) {
-                120f
-            } else {
-                REQUESTED_FRAME_RATE_CATEGORY_NO_PREFERENCE
+            requestedFrameRate = when {
+                !playing || !settings.enabled || idleSleeping -> REQUESTED_FRAME_RATE_CATEGORY_NO_PREFERENCE
+                settings.cap60Fps -> 60f
+                else -> 120f
             }
         }
     }
 
+    private fun cancelIdleWake() {
+        if (idleSleeping) {
+            idleSleeping = false
+            removeCallbacks(wakeRunnable)
+            updateFrameRateVote()
+        }
+    }
+
     private fun syncLoopState() {
+        cancelIdleWake()
         val shouldRun = isAttachedToWindow && playing && settings.enabled && placed.isNotEmpty()
         if (shouldRun && !loopRunning) {
             loopRunning = true
+            hadVisibleDanmaku = true
             lastFrameNanos = 0L
             Choreographer.getInstance().postFrameCallback(this)
         } else if (!shouldRun && loopRunning) {
@@ -213,6 +237,27 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             lastFrameNanos = 0L
             Choreographer.getInstance().removeFrameCallback(this)
         }
+    }
+
+    /** 检查当前时间点是否有可见弹幕；若无则返回下一条即将入场的延迟（ms，<=0 表示存在可见弹幕）。 */
+    private fun nextVisibleDelayMs(nowMs: Double, playSpeed: Double): Long {
+        if (selectedHit != null) return 0L
+        val scrollDuration = settings.scrollDurationMs.toDouble()
+        val fixedDuration = FIXED_DURATION_MS.toDouble()
+        val maxDuration = max(scrollDuration, fixedDuration)
+        val end = firstAfter(placed, nowMs.toLong() + 1L)
+        val minTime = (nowMs - maxDuration - FADE_MS).toLong()
+        for (index in end - 1 downTo 0) {
+            val entry = placed[index]
+            val startTime = entry.item.timeMs
+            if (startTime < minTime) break
+            val duration = if (entry.type == DanmakuType.SCROLL) scrollDuration else fixedDuration
+            val elapsed = nowMs - startTime.toDouble()
+            if (elapsed in 0.0..duration) return 0L
+        }
+        val nextStart = placed.getOrNull(end)?.item?.timeMs ?: return IDLE_MAX_SLEEP_MS
+        val wallWaitMs = ((nextStart - nowMs) / playSpeed).toLong()
+        return wallWaitMs.coerceIn(IDLE_MIN_SLEEP_MS, IDLE_MAX_SLEEP_MS)
     }
 
     override fun doFrame(frameTimeNanos: Long) {
@@ -236,7 +281,10 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             lastExternalMs = now
             external.nowMs = renderTimeMs.toLong()
             lastFrameNanos = frameTimeNanos
-            invalidate()
+            if (!settings.cap60Fps || frameTimeNanos - lastDrawNanos >= FRAME_60HZ_NS) {
+                lastDrawNanos = frameTimeNanos
+                invalidate()
+            }
             if (p.isPlaying && playing) {
                 Choreographer.getInstance().postFrameCallback(this)
             } else {
@@ -271,7 +319,33 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             }
         }
         lastFrameNanos = frameTimeNanos
-        invalidate()
+
+        // 空白区间休眠：画面没有任何可见弹幕时暂停 120Hz 空刷与高刷投票，按下一条弹幕时间定时唤醒。
+        val idleDelayMs = nextVisibleDelayMs(renderTimeMs, playSpeed)
+        if (idleDelayMs > 0L) {
+            if (hadVisibleDanmaku) {
+                hadVisibleDanmaku = false
+                invalidate()
+            }
+            if (isActuallyPlaying) {
+                loopRunning = false
+                lastFrameNanos = 0L
+                idleSleeping = true
+                updateFrameRateVote()
+                removeCallbacks(wakeRunnable)
+                postDelayed(wakeRunnable, idleDelayMs)
+            } else {
+                loopRunning = false
+                lastFrameNanos = 0L
+            }
+            return
+        }
+
+        hadVisibleDanmaku = true
+        if (!settings.cap60Fps || frameTimeNanos - lastDrawNanos >= FRAME_60HZ_NS) {
+            lastDrawNanos = frameTimeNanos
+            invalidate()
+        }
 
         if (isActuallyPlaying) {
             Choreographer.getInstance().postFrameCallback(this)
@@ -513,7 +587,7 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             )
         }
 
-        if (p.isPlaying && playing && !loopRunning) {
+        if (p.isPlaying && playing && !loopRunning && !idleSleeping) {
             syncLoopState()
         }
     }
@@ -558,6 +632,7 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
     }
 
     override fun onDetachedFromWindow() {
+        cancelIdleWake()
         loopRunning = false
         lastFrameNanos = 0L
         Choreographer.getInstance().removeFrameCallback(this)
@@ -583,6 +658,13 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
         /** 超前时每帧只压掉差距的这个比例，压到原地等待为止，永不倒退。 */
         const val DRIFT_SLOWDOWN_FACTOR = 0.1
+
+        /** 60Hz 上限模式下的最小重绘间隔（约 15ms，避免 120Hz VSync 逐帧重绘）。 */
+        const val FRAME_60HZ_NS = 15_000_000L
+
+        /** 空屏休眠单次等待下限/上限（兼顾省电与进度拖动后的快速唤醒）。 */
+        const val IDLE_MIN_SLEEP_MS = 60L
+        const val IDLE_MAX_SLEEP_MS = 400L
 
         const val MAX_SPRITE_CACHE_BYTES = 48 * 1024 * 1024
     }

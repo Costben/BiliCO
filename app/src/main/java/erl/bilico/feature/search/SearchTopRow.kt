@@ -25,6 +25,7 @@ import erl.bilico.ui.Route
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.components.SearchClearButton
 import erl.bilico.ui.pageContainerColor
+import erl.bilico.ui.unclippedShadowOpacity
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SearchFilterTopAppBar
@@ -157,8 +158,8 @@ internal fun SearchTopAppBar(
                     .fillMaxWidth()
                     .graphicsLayer {
                         translationY = -collapsed() * titleHeightPx / 2f
-                        alpha = 1f - collapsed()
-                    },
+                    }
+                    .unclippedShadowOpacity { 1f - collapsed() },
             ) {
                 TopAppBarSearchBar(
                     query = searchState.query,

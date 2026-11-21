@@ -2,8 +2,8 @@ package erl.bilico.feature.video
 
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
@@ -41,7 +41,7 @@ internal fun playbackMediaId(bvid: String, cid: Long, videoUrl: String): String 
     "$bvid/$cid/${videoUrl.hashCode()}"
 
 internal fun mediaSourceFor(
-    factory: OkHttpDataSource.Factory,
+    factory: DataSource.Factory,
     attempt: PlaybackAttempt,
     mediaId: String,
 ): MediaSource {
@@ -56,7 +56,7 @@ internal fun mediaSourceFor(
 }
 
 internal fun ExoPlayer.loadAttempt(
-    factory: OkHttpDataSource.Factory,
+    factory: DataSource.Factory,
     attempt: PlaybackAttempt,
     speed: Float,
     seekMs: Long,
@@ -114,7 +114,7 @@ internal class PlaybackAttempts(
     private val speed: () -> Float,
 ) {
     private var attempts: List<PlaybackAttempt> = emptyList()
-    private var factory: OkHttpDataSource.Factory? = null
+    private var factory: DataSource.Factory? = null
     private var index = 0
     private var mediaId: String = ""
 
@@ -122,7 +122,7 @@ internal class PlaybackAttempts(
 
     fun start(
         source: PlaybackSource,
-        factory: OkHttpDataSource.Factory,
+        factory: DataSource.Factory,
         seekMs: Long,
         mediaId: String,
     ) {
@@ -146,7 +146,7 @@ internal class PlaybackAttempts(
      * 播放器上已经装着同一份片源：只把候选表登记回来供换线用，不重新装载。
      * 缩进融合球再复原会把播放页重建一次，照着 [start] 再装一遍会从 0 重新播。
      */
-    fun adopt(source: PlaybackSource, factory: OkHttpDataSource.Factory, mediaId: String) {
+    fun adopt(source: PlaybackSource, factory: DataSource.Factory, mediaId: String) {
         this.factory = factory
         this.mediaId = mediaId
         attempts = source.streamAttempts()

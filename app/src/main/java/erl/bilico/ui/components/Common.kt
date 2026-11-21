@@ -1,8 +1,12 @@
 package erl.bilico.ui.components
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.request.bitmapConfig
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -112,8 +116,20 @@ fun CoverImage(
         Box(modifier.background(COUITheme.colorScheme.surfaceContainerHigh))
         return
     }
+    val context = LocalPlatformContext.current
+    val request = remember(context, url) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .apply {
+                // 非 PNG 封面图无透明通道，采用 RGB_565 可将单张位图内存减半并提升内存缓存命中量。
+                if (!url.contains(".png", ignoreCase = true)) {
+                    bitmapConfig(Bitmap.Config.RGB_565)
+                }
+            }
+            .build()
+    }
     AsyncImage(
-        model = url,
+        model = request,
         contentDescription = contentDescription,
         contentScale = ContentScale.Crop,
         modifier = modifier,

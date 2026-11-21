@@ -4,6 +4,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.InlineTextContent
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.foundation.text.appendInlineContent
@@ -32,8 +33,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import erl.bilico.data.model.EmoteImage
@@ -101,7 +104,9 @@ fun RichCommentText(
     val enableUserLinks = onOpenUser != null && mentions.isNotEmpty()
 
     val rawDisplay = content.ifBlank { if (emotes.isEmpty()) "[图片评论]" else "" }
-    val (annotated, inlineMap) = remember(
+    val fontSizeSp = if (style.fontSize.isSpecified) style.fontSize.value else 14f
+    val fixedLineHeightSp = if (style.lineHeight.isSpecified) style.lineHeight.value else Float.MAX_VALUE
+    val (annotated, inlineMap, hasTallEmote) = remember(
         rawDisplay,
         emotes,
         mentions,
@@ -113,6 +118,8 @@ fun RichCommentText(
         largePx,
         enableTimestamps,
         enableUserLinks,
+        fontSizeSp,
+        fixedLineHeightSp,
     ) {
         val openBvidAction: (String) -> Unit = { bvid ->
             val opener = currentOpenBvid
@@ -135,6 +142,7 @@ fun RichCommentText(
         val sortedMentionNames = mentions.keys.sortedByDescending { it.length }
         val inline = LinkedHashMap<String, InlineTextContent>()
         val builder = AnnotatedString.Builder()
+        var tallEmote = false
         if (!badgeLabel.isNullOrBlank()) {
             val badgeId = "comment-badge"
             inline[badgeId] = InlineTextContent(
@@ -205,21 +213,30 @@ fun RichCommentText(
                 val emote = emotes[token]
                 if (emote != null && emote.url.isNotBlank()) {
                     val id = "emote_${index++}"
+                    val isFullLarge = emote.large && !compactEmotes
                     val widthEm = when {
-                        emote.large && compactEmotes -> 1.56.em
-                        emote.large -> 2.48.em
-                        else -> 1.38.em
+                        isFullLarge -> 2.48.em
+                        emote.large -> 1.46.em
+                        else -> 1.36.em
                     }
                     val heightEm = when {
-                        emote.large && compactEmotes -> 1.44.em
-                        emote.large -> 2.32.em
-                        else -> 1.32.em
+                        isFullLarge -> 2.32.em
+                        emote.large -> 1.36.em
+                        else -> 1.30.em
+                    }
+                    if (isFullLarge || heightEm.value * fontSizeSp > fixedLineHeightSp) {
+                        tallEmote = true
                     }
                     val px = if (emote.large) largePx else smallPx
                     val sizedUrl = Formatters.sizedImageUrl(emote.url, px, px)
+                    val verticalAlign = if (isFullLarge) {
+                        PlaceholderVerticalAlign.TextBottom
+                    } else {
+                        PlaceholderVerticalAlign.TextCenter
+                    }
                     builder.appendInlineContent(id, token)
                     inline[id] = InlineTextContent(
-                        Placeholder(widthEm, heightEm, PlaceholderVerticalAlign.Center),
+                        Placeholder(widthEm, heightEm, verticalAlign),
                     ) {
                         AsyncImage(
                             model = sizedUrl,
@@ -227,7 +244,7 @@ fun RichCommentText(
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 1.dp),
+                                .padding(horizontal = 1.dp, vertical = if (isFullLarge) 2.dp else 0.dp),
                         )
                     }
                 } else {
@@ -239,13 +256,26 @@ fun RichCommentText(
                 builder.appendRichSegment(display.substring(cursor), prefixColor, openBvidAction, seekAction, mentions, sortedMentionNames, openUserAction)
             }
         }
-        builder.toAnnotatedString() to inline
+        Triple(builder.toAnnotatedString(), inline, tallEmote)
     }
 
-    if (selectable) {
-        SelectionContainer(modifier = modifier) {
+    // 包含高度超出固定行高的大表情时，必须绕开固定 lineHeight（以及 COUI Text 的 LocalTextStyle 合并），
+    // 否则 Android StaticLayout 会把行高锁死在 lineHeight，导致大表情上下穿插遮挡相邻文字与操作栏。
+    val renderText: @Composable (Modifier) -> Unit = { textMod ->
+        if (hasTallEmote) {
+            BasicText(
+                text = annotated,
+                modifier = textMod,
+                style = style.copy(color = color, lineHeight = TextUnit.Unspecified),
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis,
+                inlineContent = inlineMap,
+                onTextLayout = { if (onTextLayout != null) onTextLayout(it) },
+            )
+        } else {
             Text(
                 text = annotated,
+                modifier = textMod,
                 style = style,
                 color = color,
                 maxLines = maxLines,
@@ -254,17 +284,14 @@ fun RichCommentText(
                 onTextLayout = { if (onTextLayout != null) onTextLayout(it) },
             )
         }
+    }
+
+    if (selectable) {
+        SelectionContainer(modifier = modifier) {
+            renderText(Modifier)
+        }
     } else {
-        Text(
-            text = annotated,
-            modifier = modifier,
-            style = style,
-            color = color,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-            inlineContent = inlineMap,
-            onTextLayout = { if (onTextLayout != null) onTextLayout(it) },
-        )
+        renderText(modifier)
     }
 }
 

@@ -48,6 +48,10 @@ data class DanmakuSettings(
     val fontWeight: Int = 6,
     /** 100..200 (%)，对应 1.0x..2.0x 行高（默认 135 = 1.35x） */
     val lineHeight: Int = 135,
+    /** 智能云屏蔽权重门槛：0 = 不过滤，1..10 屏蔽低于该权重的弹幕 */
+    val weightFilterLevel: Int = 0,
+    /** 弹幕帧率上限 60Hz（开启后降低高刷屏弹幕渲染功耗） */
+    val cap60Fps: Boolean = false,
 ) {
     val areaFraction: Float
         get() = when (area) {

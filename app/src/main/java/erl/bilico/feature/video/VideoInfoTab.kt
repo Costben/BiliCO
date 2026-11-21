@@ -3,12 +3,11 @@ package erl.bilico.feature.video
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
@@ -36,6 +36,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -72,7 +79,6 @@ import io.github.suqi8.coui.kmp.icon.extended.Play
 import kotlinx.coroutines.delay
 import io.github.suqi8.coui.kmp.icon.extended.Share
 import io.github.suqi8.coui.kmp.icon.extended.Stopwatch
-import io.github.suqi8.coui.kmp.icon.extended.Store
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
@@ -329,7 +335,7 @@ private fun InfoContent(
                     onClick = onDislike,
                 )
                 VideoAction(
-                    icon = COUIIcons.Store,
+                    icon = if (coined > 0) CoinFilledIcon else CoinOutlineIcon,
                     label = if (coined > 0) "已投币" else "投币",
                     text = Formatters.formatStat(detail.coin),
                     active = coined > 0,
@@ -488,17 +494,18 @@ private fun InfoContent(
     }
 }
 
-/** 简介下面的标签：按接口给的顺序铺开，点击后以该标签为关键词进入搜索。 */
-@OptIn(ExperimentalLayoutApi::class)
+/** 简介下面的标签：单行排列，数量超出时支持左右滑动；点击后以该标签为关键词进入搜索。 */
 @Composable
 private fun VideoTagChips(
     tags: List<String>,
     onTagClick: (String) -> Unit,
 ) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         tags.forEach { tag ->
             Text(
@@ -515,6 +522,46 @@ private fun VideoTagChips(
             )
         }
     }
+}
+
+/** B 站风格投币描边图标（外圈硬币 + 内嵌「币」字形，与点赞/点踩线宽统一）。 */
+private val CoinOutlineIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "BiliCoinOutline",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).addPath(
+        pathData = addPathNodes(
+            "M12,2.75 A9.25,9.25 0 1,1 11.99,2.75 Z " +
+                "M8.2,8.4 H15.8 " +
+                "M12,8.4 V16.8 " +
+                "M8.6,15.6 V11.6 H15.4 V15.6",
+        ),
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = 1.85f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+    ).build()
+}
+
+/** B 站风格已投币实心图标（实心硬币内镂空「币」字形）。 */
+private val CoinFilledIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "BiliCoinFilled",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).addPath(
+        pathData = addPathNodes(
+            "M12,2 A10,10 0 1,0 12,22 A10,10 0 1,0 12,2 Z " +
+                "M8,7.4 H16 V9.1 H12.85 V10.7 H15.8 V16.2 H14.1 V12.35 H12.85 V17.2 H11.15 V12.35 H9.9 V16.2 H8.2 V10.7 H11.15 V9.1 H8 Z",
+        ),
+        fill = SolidColor(Color.Black),
+        pathFillType = PathFillType.EvenOdd,
+    ).build()
 }
 
 /** 折叠区块从收起转为展开且当前选集靠后时，等展开动画落位后滚到选中行。 */

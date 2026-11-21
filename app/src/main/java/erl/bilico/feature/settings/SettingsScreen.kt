@@ -38,6 +38,7 @@ import erl.bilico.feature.me.AccountSwitchDialog
 import erl.bilico.feature.video.DanmakuSettingsDialog
 import erl.bilico.feature.video.PlayerTopBarSettingsDialog
 import erl.bilico.feature.video.speedLabel
+import erl.bilico.player.PlaybackMediaCache
 import erl.bilico.ui.NavState
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.PreferenceDivider
@@ -58,7 +59,9 @@ import io.github.suqi8.coui.kmp.preference.ArrowPreference
 import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(
@@ -72,6 +75,8 @@ fun SettingsScreen(
     val predictiveBackFollow by container.settings.predictiveBackFollow.collectAsStateWithLifecycle()
     val quality by container.settings.defaultQuality.collectAsStateWithLifecycle()
     val cdnOption by container.settings.cdnOption.collectAsStateWithLifecycle()
+    val decoderMode by container.settings.decoderMode.collectAsStateWithLifecycle()
+    val preferSurfaceView by container.settings.preferSurfaceView.collectAsStateWithLifecycle()
     val feedSource by container.settings.feedSource.collectAsStateWithLifecycle()
     val inAppBackgroundPlay by container.settings.inAppBackgroundPlay.collectAsStateWithLifecycle()
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
@@ -181,6 +186,23 @@ fun SettingsScreen(
                     summary = CdnOption.fromId(cdnOption).label,
                     cardListPosition = CardListPosition.Middle,
                     onClick = { pickCdn = true },
+                )
+                OverlayDropdownPreference(
+                    items = DECODER_MODE_OPTIONS,
+                    selectedIndex = decoderMode.coerceIn(0, DECODER_MODE_OPTIONS.lastIndex),
+                    title = "视频解码策略",
+                    summary = "切换后将在下次起播生效，解码失败时自动回退",
+                    modifier = Modifier.testTag("settings_decoder_mode"),
+                    cardListPosition = CardListPosition.Middle,
+                    onSelectedIndexChange = container.settings::setDecoderMode,
+                )
+                SwitchPreference(
+                    checked = preferSurfaceView,
+                    onCheckedChange = container.settings::setPreferSurfaceView,
+                    title = "省电渲染（SurfaceView 优先）",
+                    summary = "普通 SDR 视频改用 SurfaceView 硬件直出，降低高码率播放 GPU 功耗",
+                    modifier = Modifier.testTag("settings_prefer_surface_view"),
+                    cardListPosition = CardListPosition.Middle,
                 )
                 SwitchPreference(
                     checked = inAppBackgroundPlay,
@@ -364,15 +386,18 @@ fun SettingsScreen(
                 weight = CardDefaults.GroupWeight,
             ) {
                 ArrowPreference(
-                    title = "清除图片缓存",
+                    title = "清除图片与播放缓存",
                     modifier = Modifier.testTag("settings_cache"),
-                    summary = if (cacheCleared > 0) "已清除" else "只清本地图片，不影响账号",
+                    summary = if (cacheCleared > 0) "已清除" else "清理本地图片与边播边存缓冲，不影响账号",
                     cardListPosition = CardListPosition.None,
                     onClick = {
                         scope.launch {
                             val loader = SingletonImageLoader.get(context)
                             loader.diskCache?.clear()
                             loader.memoryCache?.clear()
+                            withContext(Dispatchers.IO) {
+                                PlaybackMediaCache.clear(context)
+                            }
                             cacheCleared++
                         }
                     },
@@ -580,3 +605,4 @@ private val FEED_SOURCE_OPTIONS = listOf("App 端推荐", "网页端推荐")
 private val AUTO_ROTATE_OPTIONS = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
 private val LONG_PRESS_SPEED_OPTIONS = listOf(150, 200, 250, 300, 400)
 private val SPONSOR_SKIP_MODES = listOf("自动跳过", "手动提示", "仅标记片段")
+private val DECODER_MODE_OPTIONS = listOf("自动（默认 + 失败回退）", "硬解优先", "软解优先")

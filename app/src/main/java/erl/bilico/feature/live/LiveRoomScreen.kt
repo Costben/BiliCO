@@ -100,7 +100,9 @@ fun LiveRoomScreen(
 
     val activity = remember(context) { context.findActivity() }
     val scope = rememberCoroutineScope()
-    val player = rememberPlaybackPlayer("live-$roomId") { buildConfiguredExoPlayer(context) }
+    val player = rememberPlaybackPlayer("live-$roomId") {
+        buildConfiguredExoPlayer(context, container.settings.decoderMode.value)
+    }
     val playbackEntry = LocalNavEntry.current
     DisposableEffect(playbackEntry, roomId) {
         playbackEntry?.onDiscard = { releasePlaybackPlayer("live-$roomId") }

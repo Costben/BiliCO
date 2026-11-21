@@ -155,6 +155,11 @@ internal fun DanmakuSettingsDialog(
                         selected = settings.massiveMode,
                         onClick = { repository.setDanmakuMassiveMode(!settings.massiveMode) },
                     )
+                    FilterChip(
+                        label = "60Hz 省电",
+                        selected = settings.cap60Fps,
+                        onClick = { repository.setDanmakuCap60Fps(!settings.cap60Fps) },
+                    )
                 }
 
                 SectionHeader("显示区域")
@@ -226,6 +231,15 @@ internal fun DanmakuSettingsDialog(
                     },
                     valueRange = 100f..200f,
                     onCommit = repository::setDanmakuLineHeight,
+                )
+
+                SliderSettingRow(
+                    label = "智能云屏蔽等级",
+                    persistedValue = settings.weightFilterLevel,
+                    formatValueText = { v -> if (v <= 0) "关闭" else "≥ $v 级" },
+                    valueRange = 0f..10f,
+                    steps = 9,
+                    onCommit = repository::setDanmakuWeightFilterLevel,
                 )
             }
         }

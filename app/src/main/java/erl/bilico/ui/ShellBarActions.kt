@@ -33,9 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.ContentScale
@@ -71,6 +73,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Contacts
 import io.github.suqi8.coui.kmp.icon.extended.Email
 import io.github.suqi8.coui.kmp.icon.extended.Settings
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlin.math.ceil
 
 /** 顶栏左上角头像的直径。 */
 private val AvatarSize = 32.dp
@@ -181,8 +184,8 @@ internal fun PageTitleBar(
                     .padding(end = TopAppBarDefaults.ActionIconPadding)
                     .graphicsLayer {
                         translationY = -collapsed() * titleHeightPx / 2f
-                        alpha = 1f - collapsed()
-                    },
+                    }
+                    .unclippedShadowOpacity { 1f - collapsed() },
                 horizontalArrangement = Arrangement.spacedBy(
                     TopAppBarDefaults.ActionMenuItemSpacing,
                     Alignment.End,
@@ -190,6 +193,35 @@ internal fun PageTitleBar(
                 verticalAlignment = Alignment.CenterVertically,
                 content = actions,
             )
+        }
+    }
+}
+
+private val ChromeShadowOutsetDp = 56.dp
+
+/**
+ * 连同溢出组件布局边界的悬浮外阴影一起做透明度过渡。
+ *
+ * `graphicsLayer { alpha < 1f }` 即便 `clip = false`，在 `0f < alpha < 1f` 期间也会隐式分配一张
+ * 按节点布局边界（如 44dp 顶栏高度）裁切的离屏层，把右上角圆形玻璃按钮向下扩散的外阴影硬截成
+ * 半透明灰色矩形色块。用外扩 `56.dp` 阴影余量的 `saveLayer` 替代，静止态 `alpha >= 1f` 直接绘制零离屏开销。
+ */
+internal fun Modifier.unclippedShadowOpacity(alphaProvider: () -> Float): Modifier = drawWithCache {
+    val paint = Paint()
+    val outset = ceil(ChromeShadowOutsetDp.toPx())
+    val bounds = Rect(-outset, -outset, size.width + outset, size.height + outset)
+    onDrawWithContent {
+        val opacity = alphaProvider().coerceIn(0f, 1f)
+        if (opacity >= 0.999f) {
+            drawContent()
+        } else if (opacity > 0.001f) {
+            paint.alpha = opacity
+            drawContext.canvas.saveLayer(bounds, paint)
+            try {
+                drawContent()
+            } finally {
+                drawContext.canvas.restore()
+            }
         }
     }
 }
