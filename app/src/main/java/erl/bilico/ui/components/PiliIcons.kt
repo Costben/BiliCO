@@ -139,6 +139,14 @@ internal val MailOutlineIcon: ImageVector by lazy {
     )
 }
 
+/** 弹幕量统计图标：对齐 PiliPlus `StatType.danmaku` 使用的 Material `subtitles_outlined` 矢量。 */
+internal val DanmakuStatIcon: ImageVector by lazy {
+    icon(
+        name = "DanmakuStat",
+        path = "M20,4H4c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2zm0,14H4V6h16v12zM6,10h2v2H6zm0,4h8v2H6zm10,0h2v2h-2zm-6,-4h8v2h-8z",
+    )
+}
+
 /**
  * 全屏 / 退出全屏：字体里的 `open_in_full_rotate_45` 其实画的是水平双向箭头，
  * 拿来当全屏会读成「调整宽度」，所以这两个用 Material 的四角括号。

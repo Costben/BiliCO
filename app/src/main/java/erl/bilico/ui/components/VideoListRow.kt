@@ -32,7 +32,6 @@ import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -160,7 +159,7 @@ fun LibraryVideoBody(
                         StatLabel(COUIIcons.Play, video.playText)
                         Spacer(Modifier.width(10.dp))
                     }
-                    StatLabel(COUIIcons.Messages, video.danmakuText)
+                    StatLabel(DanmakuStatIcon, video.danmakuText)
                 }
             }
         }

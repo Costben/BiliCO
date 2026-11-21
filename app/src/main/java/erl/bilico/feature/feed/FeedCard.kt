@@ -45,13 +45,13 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
+import erl.bilico.ui.components.DanmakuStatIcon
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -225,7 +225,7 @@ private fun CoverStats(playText: String, danmakuText: String) {
         }
         if (danmakuText.isNotBlank()) {
             if (playText.isNotBlank()) Spacer(Modifier.width(6.dp))
-            Icon(COUIIcons.Messages, null, Modifier.size(10.dp), tint = Color.White)
+            Icon(DanmakuStatIcon, null, Modifier.size(10.dp), tint = Color.White)
             Spacer(Modifier.width(2.dp))
             Text(
                 text = danmakuText,

@@ -57,6 +57,7 @@ import erl.bilico.feature.comment.DislikeOutlineIcon
 import erl.bilico.feature.comment.LikeFilledIcon
 import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.feature.feed.rememberWatchLaterAction
+import erl.bilico.ui.components.DanmakuStatIcon
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.ExpandableSectionHeader
 import erl.bilico.ui.components.LoadingState
@@ -69,7 +70,6 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Favorites
 import io.github.suqi8.coui.kmp.icon.extended.Info
-import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import kotlinx.coroutines.delay
 import io.github.suqi8.coui.kmp.icon.extended.Share
@@ -261,7 +261,7 @@ private fun InfoContent(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     StatLabel(COUIIcons.Play, Formatters.formatStat(detail.view))
                     Spacer(Modifier.width(10.dp))
-                    StatLabel(COUIIcons.Messages, Formatters.formatStat(detail.danmaku))
+                    StatLabel(DanmakuStatIcon, Formatters.formatStat(detail.danmaku))
                     Spacer(Modifier.width(10.dp))
                     Text(
                         text = Formatters.formatDateTime(detail.pubdate),

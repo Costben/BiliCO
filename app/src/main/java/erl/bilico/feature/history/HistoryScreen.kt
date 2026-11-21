@@ -56,6 +56,7 @@ import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.CoverImage
+import erl.bilico.ui.components.DanmakuStatIcon
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
@@ -75,7 +76,6 @@ import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
@@ -526,7 +526,7 @@ private fun HistoryRow(
                         StatLabel(COUIIcons.Play, Formatters.formatStat(stat.view))
                         if (stat.danmaku > 0L) {
                             Spacer(Modifier.width(10.dp))
-                            StatLabel(COUIIcons.Messages, Formatters.formatStat(stat.danmaku))
+                            StatLabel(DanmakuStatIcon, Formatters.formatStat(stat.danmaku))
                         }
                     }
                 }

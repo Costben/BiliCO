@@ -47,13 +47,13 @@ import erl.bilico.feature.feed.MoreMenu
 import erl.bilico.feature.feed.rememberVideoCardMenuItems
 import erl.bilico.feature.feed.shareVideo
 import erl.bilico.ui.components.CoverImage
+import erl.bilico.ui.components.DanmakuStatIcon
 import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.nestedBlockColor
 import erl.bilico.ui.components.StatLabel
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Messages
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -282,7 +282,7 @@ internal fun RelatedVideoRow(
                     StatLabel(COUIIcons.Play, video.playCountText)
                     if (video.danmakuText.isNotBlank()) {
                         Spacer(Modifier.width(10.dp))
-                        StatLabel(COUIIcons.Messages, video.danmakuText)
+                        StatLabel(DanmakuStatIcon, video.danmakuText)
                     }
                     Spacer(Modifier.weight(1f))
                     val relatedMenuItems = rememberVideoCardMenuItems(
