@@ -282,8 +282,9 @@ internal fun VideoPlayer(
                         useController = false
                         this.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                            requestedFrameRate = 120f
-                            videoSurfaceView?.requestedFrameRate = 120f
+                            // 仅在有弹幕滚动时由 DanmakuSurfaceView 单独申请高刷；无弹幕看片放行 LTPO 按视频原生帧率降频省电。
+                            requestedFrameRate = View.REQUESTED_FRAME_RATE_CATEGORY_DEFAULT
+                            videoSurfaceView?.requestedFrameRate = View.REQUESTED_FRAME_RATE_CATEGORY_DEFAULT
                         }
                     }
                 },

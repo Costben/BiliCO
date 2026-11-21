@@ -18,6 +18,7 @@ data class DanmakuItem(
     val color: Int,
     val fontSize: Int,
     val midHash: String = "",
+    val weight: Int = 0,
     val senderName: String = "",
     val senderMedal: String = "",
     val emotes: Map<String, EmoteImage> = emptyMap(),

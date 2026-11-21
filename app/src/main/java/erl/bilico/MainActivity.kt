@@ -162,7 +162,8 @@ class MainActivity : ComponentActivity() {
             preferredRefreshRate = HIGH_REFRESH_RATE
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            window.decorView.requestedFrameRate = HIGH_REFRESH_RATE
+            // 放行 Android 15 自适应刷新率（ARR）：交互、滚动与开弹幕时冲上高刷，静态阅读或无弹幕看片时允许 LTPO 降频省电。
+            window.decorView.requestedFrameRate = android.view.View.REQUESTED_FRAME_RATE_CATEGORY_DEFAULT
         }
     }
 

@@ -53,6 +53,7 @@ import erl.bilico.feature.video.rememberVideoBarBackdrops
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
+import erl.bilico.player.PlaybackMediaCache
 import erl.bilico.player.buildConfiguredExoPlayer
 import erl.bilico.player.releasePlaybackPlayer
 import erl.bilico.player.rememberPlaybackPlayer
@@ -65,6 +66,7 @@ import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -112,7 +114,9 @@ fun PgcScreen(
 
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    val player = rememberPlaybackPlayer("pgc-$seasonId") { buildConfiguredExoPlayer(context) }
+    val player = rememberPlaybackPlayer("pgc-$seasonId") {
+        buildConfiguredExoPlayer(context, container.settings.decoderMode.value)
+    }
     // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
     val playbackEntry = LocalNavEntry.current
     DisposableEffect(playbackEntry, seasonId) {
@@ -248,8 +252,9 @@ fun PgcScreen(
         val headers = container.client.mediaRequestHeaders().toMutableMap().apply {
             put("Referer", referer)
         }
-        val dataSourceFactory = OkHttpDataSource.Factory(container.client.mediaClient())
+        val upstreamFactory = OkHttpDataSource.Factory(container.client.mediaClient())
             .setDefaultRequestProperties(headers)
+        val dataSourceFactory = PlaybackMediaCache.wrap(container.appContext, upstreamFactory)
         val resumeAt = viewModel.state.value.resumePositionMs
         val mediaId = playbackMediaId(currentEp?.bvid.orEmpty(), currentEp?.cid ?: 0L, source.videoUrl)
         // 页面被重建（最小化进融合球/复原）时播放器没换，重复装载会让番剧从 0 重新播。
@@ -279,14 +284,40 @@ fun PgcScreen(
         player.setPlaybackSpeed(effectiveSpeed)
     }
 
-    LaunchedEffect(player) {
-        while (true) {
+    // 暂停感知轮询：暂停态只同步一次并在用户拖动进度或缓冲就绪时响应，避免每 500ms 无效唤醒。
+    LaunchedEffect(player, isPlaying) {
+        fun syncOnce() {
             positionMs = player.currentPosition.coerceAtLeast(0L)
             durationMs = player.duration.coerceAtLeast(0L)
             playbackAttempts.rememberPosition(positionMs)
             viewModel.reportHeartbeat(positionMs / 1000, player.isPlaying)
             danmakuController.onPosition(positionMs)
+        }
+        syncOnce()
+        if (!isPlaying) {
+            val pausedSyncListener = object : Player.Listener {
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    syncOnce()
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    syncOnce()
+                }
+            }
+            player.addListener(pausedSyncListener)
+            try {
+                awaitCancellation()
+            } finally {
+                player.removeListener(pausedSyncListener)
+            }
+        }
+        while (true) {
             delay(500)
+            syncOnce()
         }
     }
 
@@ -357,8 +388,9 @@ fun PgcScreen(
         }
     }
 
-    // HDR 档位必须走 SurfaceView：TextureView 由 GPU 合成，HDR 画面会被当成 SDR 铺到屏幕上（发暗）。
-    val hdrSurface = state.source?.isHdr == true
+    // HDR 档位必须走 SurfaceView；开启「省电渲染」时普通 SDR 同样优先使用 SurfaceView（复用替身帧转场）。
+    val preferSurfaceView by container.settings.preferSurfaceView.collectAsStateWithLifecycle()
+    val hdrSurface = state.source?.isHdr == true || preferSurfaceView
 
     VideoFullscreenStage(
         fullscreen = fullscreen,

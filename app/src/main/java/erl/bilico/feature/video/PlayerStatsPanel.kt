@@ -52,6 +52,8 @@ import kotlin.math.roundToInt
 @Stable
 internal class PlayerStats {
     var bandwidthKbps by mutableLongStateOf(0L)
+    var videoDecoderName by mutableStateOf("")
+    var audioDecoderName by mutableStateOf("")
 }
 
 /** 监听当前播放器并持续收集 [PlayerStats]；换播放器时重新挂监听。 */
@@ -68,6 +70,38 @@ internal fun rememberPlayerStats(player: Player): PlayerStats {
             ) {
                 stats.bandwidthKbps = bitrateEstimate / 1000
             }
+
+            override fun onVideoDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                stats.videoDecoderName = decoderName
+            }
+
+            override fun onAudioDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                stats.audioDecoderName = decoderName
+            }
+
+            override fun onVideoDecoderReleased(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+            ) {
+                if (stats.videoDecoderName == decoderName) stats.videoDecoderName = ""
+            }
+
+            override fun onAudioDecoderReleased(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+            ) {
+                if (stats.audioDecoderName == decoderName) stats.audioDecoderName = ""
+            }
         }
         val exo = player as? ExoPlayer
         exo?.addAnalyticsListener(listener)
@@ -83,6 +117,8 @@ private data class StatsSnapshot(
     val frameRate: String,
     val videoCodec: String,
     val audioCodec: String,
+    val videoDecoder: String,
+    val audioDecoder: String,
     val videoBitrate: String,
     val audioBitrate: String,
     val renderedFrames: Long,
@@ -165,6 +201,8 @@ internal fun PlayerStatsDialog(
                     add("播放器" to snapshot.playerType)
                     add("视频编码" to snapshot.videoCodec)
                     add("音频编码" to snapshot.audioCodec)
+                    if (snapshot.videoDecoder.isNotBlank()) add("视频解码器" to snapshot.videoDecoder)
+                    if (snapshot.audioDecoder.isNotBlank()) add("音频解码器" to snapshot.audioDecoder)
                     add("视频码率" to snapshot.videoBitrate)
                     add("音频码率" to snapshot.audioBitrate)
                     add("已渲染帧" to snapshot.renderedFrames.toString())
@@ -236,6 +274,8 @@ private fun readSnapshot(
         },
         videoCodec = codecText(video),
         audioCodec = codecText(audio),
+        videoDecoder = stats.videoDecoderName,
+        audioDecoder = stats.audioDecoderName,
         videoBitrate = bitrateText(video?.bitrate ?: 0),
         audioBitrate = bitrateText(audio?.bitrate ?: 0),
         renderedFrames = rendered,

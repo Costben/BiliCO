@@ -31,7 +31,7 @@ class DanmakuRepository(
             buvid.ensure()
             val body = api.danmakuSegment(oid = cid, segmentIndex = index)
             val bytes = body.use { it.bytes() }
-            DanmakuProto.parse(bytes)
+            withContext(Dispatchers.Default) { DanmakuProto.parse(bytes) }
         }.getOrNull() ?: return@withContext emptyList()
 
         synchronized(cache) { cache[key] = items }

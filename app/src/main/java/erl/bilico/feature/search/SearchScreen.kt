@@ -81,7 +81,10 @@ fun SearchScreen(
     }
 
     LaunchedEffect(showingResults) {
-        if (!showingResults) sortMenuExpanded = false
+        if (!showingResults) {
+            viewModel.loadHot()
+            sortMenuExpanded = false
+        }
     }
 
     val submitSearch: (String) -> Unit = { raw ->

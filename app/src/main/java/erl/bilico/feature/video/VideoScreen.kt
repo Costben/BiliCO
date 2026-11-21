@@ -134,7 +134,13 @@ fun VideoScreen(
     val staysInOrb = isMinimized || playbackEntry?.minimizingToOrb == true
     // 缩进融合球时进度恒为 0、等不到「落位」，但球上的封面和播放状态要靠这一页的会话维持，
     // 所以最小化期间照旧保留播放器槽位与事件监听。
-    val player = if (stageReady || isMinimized) rememberPlaybackPlayer("video") { buildConfiguredExoPlayer(context) } else null
+    val player = if (stageReady || isMinimized) {
+        rememberPlaybackPlayer("video") {
+            buildConfiguredExoPlayer(context, container.settings.decoderMode.value)
+        }
+    } else {
+        null
+    }
     // 页面被弹出（最小化不算）时释放播放器：一台准备好的播放器会占住几十 MB 的加载缓冲。
     DisposableEffect(playbackEntry) {
         playbackEntry?.onDiscard = {
@@ -362,8 +368,9 @@ fun VideoScreen(
 
     val barBackdrops = rememberVideoBarBackdrops(pageContainerColor())
 
-    // HDR 档位必须走 SurfaceView：TextureView 由 GPU 合成，HDR 画面会被当成 SDR 铺到屏幕上（发暗）。
-    val hdrSurface = state.source?.isHdr == true
+    // HDR 档位必须走 SurfaceView；开启「省电渲染」时普通 SDR 视频同样优先使用 SurfaceView（复用替身帧转场）。
+    val preferSurfaceView by container.settings.preferSurfaceView.collectAsStateWithLifecycle()
+    val hdrSurface = state.source?.isHdr == true || preferSurfaceView
 
     val detailAid = state.detail?.aid ?: 0L
     val openSponsor = if (state.selectedCid > 0L) ({ sponsorSubmitVisible = true }) else null

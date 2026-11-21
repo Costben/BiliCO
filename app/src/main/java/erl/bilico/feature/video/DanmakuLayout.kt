@@ -38,6 +38,9 @@ internal fun filterAndMergeDanmaku(
         }
         val rgb = item.color and 0xFFFFFF
         if (!settings.allowColorful && rgb != 0xFFFFFF) continue
+        if (settings.weightFilterLevel > 0 && item.weight > 0 && !item.isSelf && item.weight < settings.weightFilterLevel) {
+            continue
+        }
         filtered.add(item)
     }
     if (!settings.mergeDuplicates || filtered.isEmpty()) {

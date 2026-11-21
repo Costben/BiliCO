@@ -1,0 +1,11 @@
+# 冷启动关键路径类，供 AGP / R8 执行 DEX 启动布局优化，减少首次启动 page fault 与 I/O。
+Lerl/bilico/BiliCoApplication;
+Lerl/bilico/MainActivity;
+Lerl/bilico/di/AppContainer;
+Lerl/bilico/ui/RootKt;
+Lerl/bilico/ui/NavState;
+Lerl/bilico/ui/ShellKt;
+Lerl/bilico/feature/feed/FeedScreenKt;
+Lerl/bilico/data/network/BiliClient;
+Lerl/bilico/data/settings/SettingsRepository;
+Lerl/bilico/data/session/SessionRepository;

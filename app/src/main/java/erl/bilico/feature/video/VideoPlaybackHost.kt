@@ -67,7 +67,8 @@ internal fun VideoPlaybackEffects(
     // 片源请求头与数据源只在这里构造：调用方只有拿到播放器才会组合进来，不进场就不碰 OkHttp。
     val headers = remember(bvid) { container.client.mediaRequestHeaders(bvid) }
     val dataSourceFactory = remember(headers) {
-        OkHttpDataSource.Factory(container.client.mediaClient()).setDefaultRequestProperties(headers)
+        val upstream = OkHttpDataSource.Factory(container.client.mediaClient()).setDefaultRequestProperties(headers)
+        erl.bilico.player.PlaybackMediaCache.wrap(container.appContext, upstream)
     }
 
     BindPlaybackSession(
@@ -162,9 +163,10 @@ internal fun VideoPlaybackEffects(
         if (isTop) player.setPlaybackSpeed(effectiveSpeed)
     }
 
-    LaunchedEffect(player, isActiveRoute) {
+    // 暂停感知轮询：暂停态只同步一次当前位置即挂起，避免静止画面每 500ms 无效唤醒协程与重组。
+    LaunchedEffect(player, isActiveRoute, isPlaying) {
         if (!isActiveRoute) return@LaunchedEffect
-        while (true) {
+        fun syncOnce() {
             val position = player.currentPosition.coerceAtLeast(0L)
             attempts?.rememberPosition(position)
             viewModel.reportHeartbeat(position / 1000, player.isPlaying)
@@ -181,7 +183,32 @@ internal fun VideoPlaybackEffects(
                 clock.durationMs = player.duration.coerceAtLeast(0L)
                 danmakuController.onPosition(position)
             }
+        }
+        syncOnce()
+        if (!isPlaying) {
+            val pausedSyncListener = object : Player.Listener {
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    syncOnce()
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    syncOnce()
+                }
+            }
+            player.addListener(pausedSyncListener)
+            try {
+                kotlinx.coroutines.awaitCancellation()
+            } finally {
+                player.removeListener(pausedSyncListener)
+            }
+        }
+        while (true) {
             delay(500)
+            syncOnce()
         }
     }
 }

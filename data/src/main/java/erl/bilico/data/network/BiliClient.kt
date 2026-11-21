@@ -3,6 +3,8 @@ package erl.bilico.data.network
 import android.content.Context
 import erl.bilico.data.session.CookieStore
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
@@ -10,6 +12,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.asResponseBody
+import okio.GzipSource
+import okio.buffer
+import okio.source
+import org.brotli.dec.BrotliInputStream
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
@@ -23,6 +30,41 @@ private val biliJson = Json {
     isLenient = true
     coerceInputValues = true
     explicitNulls = false
+}
+
+/** 复用现有 brotli 解码器为 B 站 JSON 接口启用 br/gzip 压缩，减少响应体积与射频唤醒时长。 */
+private class BrotliApiInterceptor : okhttp3.Interceptor {
+    override fun intercept(chain: okhttp3.Interceptor.Chain): Response {
+        val request = chain.request()
+        if (request.header("Accept-Encoding") != null || request.url.host !in BROTLI_API_HOSTS) {
+            return chain.proceed(request)
+        }
+        val response = chain.proceed(
+            request.newBuilder()
+                .header("Accept-Encoding", "br, gzip")
+                .build(),
+        )
+        val encoding = response.header("Content-Encoding")?.lowercase() ?: return response
+        val body = response.body
+        val decoded = when (encoding) {
+            "br" -> BrotliInputStream(body.byteStream()).source().buffer()
+            "gzip" -> GzipSource(body.source()).buffer()
+            else -> return response
+        }
+        return response.newBuilder()
+            .removeHeader("Content-Encoding")
+            .removeHeader("Content-Length")
+            .body(decoded.asResponseBody(body.contentType(), -1L))
+            .build()
+    }
+
+    private companion object {
+        val BROTLI_API_HOSTS = setOf(
+            "api.bilibili.com",
+            "api.live.bilibili.com",
+            "app.bilibili.com",
+        )
+    }
 }
 
 private class BiliHeaderInterceptor : okhttp3.Interceptor {
@@ -51,13 +93,14 @@ private class BiliHeaderInterceptor : okhttp3.Interceptor {
 /** 一个进程一套网络栈：Cookie 会话、WBI 密钥与所有仓库共享同一条 OkHttp。 */
 class BiliClient(
     context: Context,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
 ) {
     val cookieStore = CookieStore(context, scope)
 
     val okHttp: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieStore)
         .addInterceptor(BiliHeaderInterceptor())
+        .addInterceptor(BrotliApiInterceptor())
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .writeTimeout(20, TimeUnit.SECONDS)
@@ -95,6 +138,19 @@ class BiliClient(
     val wbi = WbiKeyManager(context, api = { api })
     val buvid = BuvidManager(cookies = cookieStore, api = { api })
 
+    /** 启动期异步预热图床 TCP+TLS 连接，避免首屏首批封面排队等握手。 */
+    fun warmupConnections() {
+        IMAGE_WARMUP_HOSTS.forEach { host ->
+            scope.launch(Dispatchers.IO) {
+                val req = Request.Builder()
+                    .url("https://$host")
+                    .head()
+                    .build()
+                runCatching { imageOkHttp.newCall(req).execute().close() }
+            }
+        }
+    }
+
     /** 给 ExoPlayer 使用同一套请求头，避免 CDN 403。 */
     fun mediaClient(): OkHttpClient = mediaOkHttp
 
@@ -125,5 +181,6 @@ class BiliClient(
 
     companion object {
         val json: Json = biliJson
+        private val IMAGE_WARMUP_HOSTS = listOf("i0.hdslb.com", "i1.hdslb.com", "i2.hdslb.com")
     }
 }
