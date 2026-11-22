@@ -36,6 +36,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -57,6 +59,87 @@ import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.launch
 
+/** 不同列数下的卡片排版密度参数，保证 1~4 列都清晰不拥挤。 */
+private data class FeedCardMetrics(
+    val edgeInset: Dp,
+    val chipGap: Dp,
+    val chipFontSize: TextUnit,
+    val chipIconSize: Dp,
+    val chipPaddingH: Dp,
+    val showDanmakuOnCover: Boolean,
+    val infoPadding: PaddingValues,
+    val titleFontSize: TextUnit,
+    val titleLineHeight: TextUnit,
+    val rowSpacer: Dp,
+    val showAvatar: Boolean,
+    val avatarSize: Dp,
+    val avatarGap: Dp,
+    val upFontSize: TextUnit,
+    val moreButtonSize: Dp,
+    val moreIconSize: Dp,
+) {
+    companion object {
+        fun forColumns(columns: Int): FeedCardMetrics = when {
+            columns >= 4 -> FeedCardMetrics(
+                edgeInset = 2.dp,
+                chipGap = 3.dp,
+                chipFontSize = 8.sp,
+                chipIconSize = 8.dp,
+                chipPaddingH = 3.dp,
+                showDanmakuOnCover = false,
+                infoPadding = PaddingValues(start = 5.dp, end = 2.dp, top = 5.dp, bottom = 4.dp),
+                titleFontSize = 11.sp,
+                titleLineHeight = 14.sp,
+                rowSpacer = 3.dp,
+                showAvatar = false,
+                avatarSize = 14.dp,
+                avatarGap = 4.dp,
+                upFontSize = 10.sp,
+                moreButtonSize = 16.dp,
+                moreIconSize = 14.dp,
+            )
+
+            columns == 3 -> FeedCardMetrics(
+                edgeInset = 2.dp,
+                chipGap = 5.dp,
+                chipFontSize = 9.sp,
+                chipIconSize = 9.dp,
+                chipPaddingH = 3.dp,
+                showDanmakuOnCover = false,
+                infoPadding = PaddingValues(start = 7.dp, end = 2.dp, top = 6.dp, bottom = 5.dp),
+                titleFontSize = 13.sp,
+                titleLineHeight = 17.sp,
+                rowSpacer = 4.dp,
+                showAvatar = true,
+                avatarSize = 14.dp,
+                avatarGap = 4.dp,
+                upFontSize = 11.sp,
+                moreButtonSize = 18.dp,
+                moreIconSize = 16.dp,
+            )
+
+            else -> FeedCardMetrics(
+                edgeInset = 3.dp,
+                chipGap = 10.dp,
+                chipFontSize = 10.sp,
+                chipIconSize = 10.dp,
+                chipPaddingH = 4.dp,
+                showDanmakuOnCover = true,
+                infoPadding = PaddingValues(start = 10.dp, end = 2.dp, top = 8.dp, bottom = 6.dp),
+                titleFontSize = 15.sp,
+                titleLineHeight = 21.sp,
+                rowSpacer = 6.dp,
+                showAvatar = true,
+                avatarSize = 18.dp,
+                avatarGap = 6.dp,
+                upFontSize = 12.sp,
+                moreButtonSize = 20.dp,
+                moreIconSize = 18.dp,
+            )
+        }
+    }
+}
+
 /** 推荐流与排行榜共用的视频卡片。 */
 @Composable
 internal fun FeedCard(
@@ -65,15 +148,17 @@ internal fun FeedCard(
     coverWidthPx: Int,
     coverHeightPx: Int,
     modifier: Modifier = Modifier,
+    columns: Int = 2,
     onOpen: () -> Unit,
     onWatchLater: () -> Unit,
 ) {
+    val metrics = remember(columns) { FeedCardMetrics.forColumns(columns) }
     val coverUrl = remember(video.cover, coverWidthPx, coverHeightPx) {
         Formatters.sizedImageUrl(video.cover, coverWidthPx, coverHeightPx)
     }
     val density = LocalDensity.current
-    val avatarUrl = remember(video.upFace, density) {
-        val pixels = with(density) { 18.dp.roundToPx() }.coerceAtLeast(1)
+    val avatarUrl = remember(video.upFace, density, metrics.avatarSize) {
+        val pixels = with(density) { metrics.avatarSize.roundToPx() }.coerceAtLeast(1)
         val thumbnailPx = ((pixels + 31) / 32) * 32
         Formatters.sizedImageUrl(video.upFace, thumbnailPx, thumbnailPx)
     }
@@ -110,16 +195,22 @@ internal fun FeedCard(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .padding(EdgeInset),
+                    .padding(metrics.edgeInset),
                 verticalAlignment = Alignment.Bottom,
             ) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(end = ChipGap),
+                        .padding(end = metrics.chipGap),
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    CoverStats(video.playCountText, video.danmakuText)
+                    CoverStats(
+                        playText = video.playCountText,
+                        danmakuText = if (metrics.showDanmakuOnCover) video.danmakuText else "",
+                        fontSize = metrics.chipFontSize,
+                        iconSize = metrics.chipIconSize,
+                        paddingHorizontal = metrics.chipPaddingH,
+                    )
                 }
                 if (video.durationText.isNotBlank()) {
                     Text(
@@ -127,8 +218,8 @@ internal fun FeedCard(
                         modifier = Modifier
                             .clip(CoverChipShape)
                             .background(CoverChipBackground)
-                            .padding(horizontal = 4.dp, vertical = 1.dp),
-                        fontSize = 10.sp,
+                            .padding(horizontal = metrics.chipPaddingH, vertical = 1.dp),
+                        fontSize = metrics.chipFontSize,
                         color = Color.White,
                         maxLines = 1,
                     )
@@ -137,12 +228,12 @@ internal fun FeedCard(
         }
 
         Column(
-            modifier = Modifier.padding(start = 10.dp, end = 2.dp, top = 8.dp, bottom = 6.dp),
+            modifier = Modifier.padding(metrics.infoPadding),
         ) {
             Text(
                 text = video.title,
-                fontSize = 15.sp,
-                lineHeight = 21.sp,
+                fontSize = metrics.titleFontSize,
+                lineHeight = metrics.titleLineHeight,
                 fontWeight = FontWeight.Medium,
                 color = scheme.onSurface,
                 minLines = 2,
@@ -150,16 +241,16 @@ internal fun FeedCard(
                 overflow = TextOverflow.Ellipsis,
             )
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(metrics.rowSpacer))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (video.upFace.isNotBlank()) {
-                    Avatar(avatarUrl, 18.dp, officialType = video.officialType)
-                    Spacer(Modifier.width(6.dp))
+                if (metrics.showAvatar && video.upFace.isNotBlank()) {
+                    Avatar(avatarUrl, metrics.avatarSize, officialType = video.officialType)
+                    Spacer(Modifier.width(metrics.avatarGap))
                 }
                 Text(
                     text = video.upName.ifBlank { "未知 UP" },
-                    fontSize = 12.sp,
+                    fontSize = metrics.upFontSize,
                     color = scheme.onSurfaceSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -174,6 +265,8 @@ internal fun FeedCard(
                     onWatchLater = onWatchLater,
                     onShare = { shareVideo(context, video) },
                     items = cardMenuItems,
+                    buttonSize = metrics.moreButtonSize,
+                    iconSize = metrics.moreIconSize,
                 )
             }
         }
@@ -192,32 +285,32 @@ internal fun FeedCard(
     }
 }
 
-/** 角标离封面边缘的留白。 */
-private val EdgeInset = 3.dp
-
-/** 统计角标和时长之间的最小间距，数字再长也至少留这么宽。 */
-private val ChipGap = 10.dp
-
 private val CoverChipShape = SquircleShape(4.dp)
 private val CoverChipBackground = Color(0x80000000)
 
 /** 封面左下角的统计角标：播放量与弹幕数放在同一枚半透明胶囊里，中间只留一点缝。 */
 @Composable
-private fun CoverStats(playText: String, danmakuText: String) {
+private fun CoverStats(
+    playText: String,
+    danmakuText: String,
+    fontSize: TextUnit,
+    iconSize: Dp,
+    paddingHorizontal: Dp,
+) {
     if (playText.isBlank() && danmakuText.isBlank()) return
     Row(
         modifier = Modifier
             .clip(CoverChipShape)
             .background(CoverChipBackground)
-            .padding(horizontal = 4.dp, vertical = 1.dp),
+            .padding(horizontal = paddingHorizontal, vertical = 1.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (playText.isNotBlank()) {
-            Icon(COUIIcons.Play, null, Modifier.size(10.dp), tint = Color.White)
+            Icon(COUIIcons.Play, null, Modifier.size(iconSize), tint = Color.White)
             Spacer(Modifier.width(2.dp))
             Text(
                 text = playText,
-                fontSize = 10.sp,
+                fontSize = fontSize,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -225,11 +318,11 @@ private fun CoverStats(playText: String, danmakuText: String) {
         }
         if (danmakuText.isNotBlank()) {
             if (playText.isNotBlank()) Spacer(Modifier.width(6.dp))
-            Icon(DanmakuStatIcon, null, Modifier.size(10.dp), tint = Color.White)
+            Icon(DanmakuStatIcon, null, Modifier.size(iconSize), tint = Color.White)
             Spacer(Modifier.width(2.dp))
             Text(
                 text = danmakuText,
-                fontSize = 10.sp,
+                fontSize = fontSize,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -334,6 +427,8 @@ internal fun MoreMenu(
     onWatchLater: () -> Unit,
     onShare: () -> Unit,
     items: List<CouiMenuItem>? = null,
+    buttonSize: Dp = 20.dp,
+    iconSize: Dp = 18.dp,
 ) {
     val scheme = COUITheme.colorScheme
     var expanded by remember { mutableStateOf(false) }
@@ -341,7 +436,7 @@ internal fun MoreMenu(
     Box {
         Box(
             modifier = Modifier
-                .size(20.dp)
+                .size(buttonSize)
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -354,7 +449,7 @@ internal fun MoreMenu(
             Icon(
                 imageVector = COUIIcons.More,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(iconSize),
                 tint = scheme.onSurfaceSecondary,
             )
         }

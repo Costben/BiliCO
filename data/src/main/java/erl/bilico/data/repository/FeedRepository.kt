@@ -12,9 +12,11 @@ import erl.bilico.data.network.WbiKeyManager
 import erl.bilico.data.network.WbiUtils
 import erl.bilico.data.session.CookieStore
 import erl.bilico.data.session.SessionRepository
+import erl.bilico.data.settings.FeedPreferences
 import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
@@ -42,67 +44,103 @@ class FeedRepository(
     /** 接口没返回头像的 mid → 冷却到期时间，避免每一页都重复请求同一批人。 */
     private val upProfileUnavailable = ConcurrentHashMap<Long, Long>()
 
+    @Volatile
+    private var appFeedCursorIdx: Long = 0L
+
     /**
      * 首页推荐：根据设置选择「App 端推荐」或「网页端推荐」。
      * App 端推荐附带每张卡片的「我不想看 / 反馈」动态理由，异常或空数据时自动回退 Web 端 `rcmd`。
+     * [count] 非空时按目标条数拉取（用于下拉刷新控制单次拉取数量）。
      */
-    suspend fun recommend(page: Int): Result<List<FeedVideo>> = withContext(Dispatchers.IO) {
+    suspend fun recommend(page: Int, count: Int? = null): Result<List<FeedVideo>> = withContext(Dispatchers.IO) {
         runCatching {
+            settings.loaded.first { it }
             buvid.ensure()
             if (settings.feedSource.value == 1) {
-                return@runCatching fetchWebRecommend(page)
+                return@runCatching fetchWebRecommend(page, count)
             }
-            val appItems = runCatching { fetchAppRecommend(page) }.getOrNull().orEmpty()
+            val appItems = runCatching { fetchAppRecommend(page, count) }.getOrNull().orEmpty()
             if (appItems.isNotEmpty()) return@runCatching appItems
-            fetchWebRecommend(page)
+            fetchWebRecommend(page, count)
         }
     }
 
-    private suspend fun fetchAppRecommend(page: Int): List<FeedVideo> {
+    private suspend fun fetchAppRecommend(page: Int, count: Int?): List<FeedVideo> {
         val accessKey = session.readTokens().first
-        val params = buildMap {
-            put("build", APP_BUILD)
-            put("c_locale", "zh_CN")
-            put("channel", "master")
-            put("column", "2")
-            put("device", "phone")
-            put("device_name", "android")
-            put("device_type", "0")
-            put("disable_rcmd", "0")
-            put("flush", "8")
-            put("fnval", "976")
-            put("fnver", "0")
-            put("force_host", "2")
-            put("fourk", "1")
-            put("guidance", "1")
-            put("https_url_req", "1")
-            put("idx", if (page <= 1) "0" else page.toString())
-            put("mobi_app", "android")
-            put("network", "wifi")
-            put("platform", "android")
-            put("player_net", "1")
-            put("pull", if (page <= 1) "true" else "false")
-            put("qn", "32")
-            put("recsys_mode", "0")
-            put("s_locale", "zh_CN")
-            put("splash_id", "")
-            put("voice_balance", "0")
-            put("ts", AppSignUtils.getTimestamp().toString())
-            if (!accessKey.isNullOrBlank()) put("access_key", accessKey)
+        val targetCount = count?.coerceIn(1, FeedPreferences.MAX_REFRESH_COUNT)
+        val maxRequests = if (targetCount == null) 1 else MAX_APP_BATCH_REQUESTS
+        val collected = ArrayList<FeedVideo>(targetCount ?: 12)
+        val seenBvids = HashSet<String>()
+        var cursorIdx = if (page <= 1) 0L else appFeedCursorIdx
+
+        for (attempt in 0 until maxRequests) {
+            val isInitialPull = page <= 1 && attempt == 0
+            val reqIdx = if (isInitialPull) {
+                "0"
+            } else {
+                cursorIdx.takeIf { it > 0L }?.toString() ?: (page + attempt).toString()
+            }
+            val params = buildMap {
+                put("build", APP_BUILD)
+                put("c_locale", "zh_CN")
+                put("channel", "master")
+                put("column", "2")
+                put("device", "phone")
+                put("device_name", "android")
+                put("device_type", "0")
+                put("disable_rcmd", "0")
+                put("flush", "8")
+                put("fnval", "976")
+                put("fnver", "0")
+                put("force_host", "2")
+                put("fourk", "1")
+                put("guidance", "1")
+                put("https_url_req", "1")
+                put("idx", reqIdx)
+                put("mobi_app", "android")
+                put("network", "wifi")
+                put("platform", "android")
+                put("player_net", "1")
+                put("pull", if (isInitialPull) "true" else "false")
+                put("qn", "32")
+                put("recsys_mode", "0")
+                put("s_locale", "zh_CN")
+                put("splash_id", "")
+                put("voice_balance", "0")
+                put("ts", AppSignUtils.getTimestamp().toString())
+                if (!accessKey.isNullOrBlank()) put("access_key", accessKey)
+            }
+            val signed = AppSignUtils.signForTvApi(params)
+            val response = api.appRecommend(
+                buvid = cookies.get("buvid3").orEmpty(),
+                params = signed,
+            )
+            if (response.code != 0) {
+                if (attempt == 0) {
+                    error(response.message.ifBlank { "App推荐加载失败(${response.code})" })
+                }
+                break
+            }
+            val rawItems = response.data?.items.orEmpty()
+            val nextIdx = rawItems.lastOrNull { it.idx > 0L }?.idx
+            if (nextIdx != null) cursorIdx = nextIdx
+
+            rawItems.asSequence()
+                .filter { it.adInfo == null && (it.cardGoto == "av" || it.goto == "av") }
+                .mapNotNull { it.toFeedVideo() }
+                .forEach { video ->
+                    if (seenBvids.add(video.bvid)) collected += video
+                }
+
+            if (targetCount == null || collected.size >= targetCount || rawItems.isEmpty()) {
+                break
+            }
         }
-        val signed = AppSignUtils.signForTvApi(params)
-        val response = api.appRecommend(
-            buvid = cookies.get("buvid3").orEmpty(),
-            params = signed,
-        )
-        if (response.code != 0) {
-            error(response.message.ifBlank { "App推荐加载失败(${response.code})" })
-        }
-        val videos = response.data?.items.orEmpty()
-            .filter { it.adInfo == null && (it.cardGoto == "av" || it.goto == "av") }
-            .mapNotNull { it.toFeedVideo() }
+        if (cursorIdx > 0L) appFeedCursorIdx = cursorIdx
+
+        val result = if (targetCount != null) collected.take(targetCount) else collected
         // 仅同步套用已命中的内存缓存，未命中的头像交由调用方后台异步回填，避免阻塞推荐流首屏渲染。
-        return applyCachedUpProfiles(videos)
+        return applyCachedUpProfiles(result)
     }
 
     private fun applyCachedUpProfiles(videos: List<FeedVideo>): List<FeedVideo> =
@@ -183,11 +221,12 @@ class FeedRepository(
             }
         }
 
-    private suspend fun fetchWebRecommend(page: Int): List<FeedVideo> {
+    private suspend fun fetchWebRecommend(page: Int, count: Int?): List<FeedVideo> {
         val keys = wbi.getKeys()
         val index = page.coerceAtLeast(1).toString()
+        val pageSize = (count ?: DEFAULT_WEB_PAGE_SIZE).coerceIn(1, FeedPreferences.MAX_REFRESH_COUNT)
         val params = mapOf(
-            "ps" to "20",
+            "ps" to pageSize.toString(),
             "fresh_idx" to index,
             "fresh_idx_1h" to index,
             "feed_version" to "V8",
@@ -202,6 +241,7 @@ class FeedRepository(
         return response.data?.item.orEmpty()
             .filter { it.goto == "av" || it.goto.isNullOrBlank() }
             .mapNotNull { it.toFeedVideo() }
+            .take(pageSize)
     }
 
     /** 提交推荐卡片「我不想看 / 反馈」到 B 站服务器（`app.bilibili.com/x/feed/dislike`）。 */
@@ -370,6 +410,8 @@ class FeedRepository(
 
     private companion object {
         const val APP_BUILD = "8430300"
+        const val DEFAULT_WEB_PAGE_SIZE = 20
+        const val MAX_APP_BATCH_REQUESTS = 5
         const val MAX_PROFILE_CACHE_SIZE = 2000
         /** 接口单次最多接受 50 个 uid。 */
         const val PROFILE_BATCH_SIZE = 50

@@ -64,6 +64,7 @@ data class AppFeedItem(
     @SerialName("card_goto") val cardGoto: String = "",
     val goto: String = "",
     val param: String = "",
+    @Serializable(with = FlexibleLongSerializer::class) val idx: Long = 0,
     val bvid: String = "",
     val title: String = "",
     val cover: String = "",

@@ -60,7 +60,7 @@ class FeedViewModel(
             )
         }
         viewModelScope.launch {
-            repository.recommend(1)
+            repository.recommend(1, count = settings.feed.refreshCount.value)
                 .onSuccess { list ->
                     nextPage = 2
                     _state.update { current ->

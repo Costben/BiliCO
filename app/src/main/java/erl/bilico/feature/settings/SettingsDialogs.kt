@@ -21,7 +21,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import erl.bilico.data.model.Account
 import erl.bilico.data.model.SponsorCategory
+import erl.bilico.data.repository.CdnOption
+import erl.bilico.data.session.StoredSession
+import erl.bilico.data.settings.DanmakuSettings
+import erl.bilico.data.settings.PlayerTopBarLayout
+import erl.bilico.di.AppContainer
+import erl.bilico.feature.me.AccountSwitchDialog
+import erl.bilico.feature.video.DanmakuSettingsDialog
+import erl.bilico.feature.video.PlayerTopBarSettingsDialog
+import erl.bilico.ui.NavState
+import erl.bilico.ui.Route
+import erl.bilico.ui.components.ConfirmDialog
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DropdownImpl
 import io.github.suqi8.coui.kmp.basic.DropdownItem
@@ -31,6 +43,7 @@ import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
+import kotlinx.coroutines.launch
 
 /** 单选弹窗：和 Cobo 的设置项同一套组件，胶囊高亮由 ListPopupColumn 自己铺。 */
 @Composable
@@ -143,5 +156,102 @@ internal fun SponsorCategoriesDialog(
                 positive = DialogButtonBarAction(text = "完成", onClick = { show = false }),
             )
         }
+    }
+}
+
+@Composable
+internal fun SettingsDialogsHost(
+    container: AppContainer,
+    nav: NavState,
+    cdnOption: String,
+    danmakuSettings: DanmakuSettings,
+    topBarLayoutFullscreen: PlayerTopBarLayout,
+    topBarLayoutPortrait: PlayerTopBarLayout,
+    sponsorCategories: Set<String>,
+    account: Account?,
+    sessions: List<StoredSession>,
+    pickCdn: Boolean,
+    showDanmakuSettings: Boolean,
+    showTopBarSettings: Boolean,
+    showSponsorCategories: Boolean,
+    switchAccounts: Boolean,
+    confirmLogout: Boolean,
+    onDismissCdn: () -> Unit,
+    onDismissDanmaku: () -> Unit,
+    onDismissTopBar: () -> Unit,
+    onDismissSponsorCategories: () -> Unit,
+    onDismissSwitchAccounts: () -> Unit,
+    onDismissLogout: () -> Unit,
+) {
+    if (pickCdn) {
+        OptionPicker(
+            title = "播放线路",
+            options = CdnOption.entries.map { it.label },
+            selectedIndex = CdnOption.entries.indexOfFirst { it.id == cdnOption }
+                .coerceAtLeast(0),
+            onPick = { index ->
+                container.settings.setCdnOption(CdnOption.entries[index].id)
+                onDismissCdn()
+            },
+            onDismiss = onDismissCdn,
+        )
+    }
+
+    if (showDanmakuSettings) {
+        DanmakuSettingsDialog(
+            settings = danmakuSettings,
+            repository = container.settings,
+            onDismiss = onDismissDanmaku,
+        )
+    }
+
+    if (showTopBarSettings) {
+        PlayerTopBarSettingsDialog(
+            fullscreen = topBarLayoutFullscreen,
+            portrait = topBarLayoutPortrait,
+            onToggle = container.settings.playerTopBar::setVisible,
+            onMove = container.settings.playerTopBar::moveItem,
+            onDismiss = onDismissTopBar,
+        )
+    }
+
+    if (showSponsorCategories) {
+        SponsorCategoriesDialog(
+            enabledIds = sponsorCategories,
+            onToggle = container.settings::setSponsorCategoryEnabled,
+            onDismiss = onDismissSponsorCategories,
+        )
+    }
+
+    if (switchAccounts) {
+        AccountSwitchDialog(
+            sessions = sessions,
+            activeMid = account?.mid,
+            onDismiss = onDismissSwitchAccounts,
+            onSwitch = { mid ->
+                onDismissSwitchAccounts()
+                container.scope.launch { container.session.switchAccount(mid) }
+            },
+            onRemove = { mid ->
+                container.scope.launch { container.session.removeAccount(mid) }
+            },
+            onAdd = {
+                onDismissSwitchAccounts()
+                nav.push(Route.Login)
+            },
+        )
+    }
+
+    if (confirmLogout) {
+        ConfirmDialog(
+            title = "退出登录",
+            message = "只退出当前账号。还有别的已保存账号时会自动换过去，没有的话需要重新扫码登录。",
+            confirmText = "退出",
+            onDismiss = onDismissLogout,
+            onConfirm = {
+                onDismissLogout()
+                container.scope.launch { container.session.logout() }
+            },
+        )
     }
 }

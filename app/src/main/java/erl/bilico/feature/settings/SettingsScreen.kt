@@ -1,18 +1,8 @@
 package erl.bilico.feature.settings
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -20,44 +10,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.SingletonImageLoader
 import erl.bilico.BuildConfig
-import erl.bilico.data.model.SponsorCategory
 import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.settings.CoverAspect
 import erl.bilico.data.settings.DefaultQuality
+import erl.bilico.data.settings.FeedPreferences
 import erl.bilico.di.AppContainer
-import erl.bilico.feature.me.AccountSwitchDialog
-import erl.bilico.feature.video.DanmakuSettingsDialog
-import erl.bilico.feature.video.PlayerTopBarSettingsDialog
-import erl.bilico.feature.video.speedLabel
 import erl.bilico.ui.NavState
-import erl.bilico.ui.components.ConfirmDialog
+import erl.bilico.ui.Route
 import erl.bilico.ui.components.PreferenceDivider
 import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.components.SectionTitle
-import erl.bilico.ui.Route
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DropdownEntry
-import io.github.suqi8.coui.kmp.basic.DropdownImpl
 import io.github.suqi8.coui.kmp.basic.DropdownItem
-import io.github.suqi8.coui.kmp.basic.ListPopupColumn
-import io.github.suqi8.coui.kmp.layout.DialogButtonBar
-import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
-import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
 import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
-import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 @Composable
@@ -84,6 +60,8 @@ fun SettingsScreen(
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
+    val feedColumns by container.settings.feed.columns.collectAsStateWithLifecycle()
+    val feedRefreshCount by container.settings.feed.refreshCount.collectAsStateWithLifecycle()
     val topBarLayoutFullscreen by container.settings.playerTopBar.fullscreen.collectAsStateWithLifecycle()
     val topBarLayoutPortrait by container.settings.playerTopBar.portrait.collectAsStateWithLifecycle()
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
@@ -133,6 +111,31 @@ fun SettingsScreen(
                     cardListPosition = CardListPosition.Middle,
                     onSelectedIndexChange = { index ->
                         container.settings.feed.setCoverAspect(CoverAspect.fromCode(index))
+                    },
+                )
+                OverlayDropdownPreference(
+                    items = FEED_COLUMN_OPTIONS,
+                    selectedIndex = (feedColumns - FeedPreferences.MIN_COLUMNS)
+                        .coerceIn(0, FEED_COLUMN_OPTIONS.lastIndex),
+                    title = "推荐列数",
+                    summary = "推荐页面每行显示的视频列数",
+                    modifier = Modifier.testTag("settings_feed_columns"),
+                    cardListPosition = CardListPosition.Middle,
+                    onSelectedIndexChange = { index ->
+                        container.settings.feed.setColumns(FeedPreferences.MIN_COLUMNS + index)
+                    },
+                )
+                OverlayDropdownPreference(
+                    items = FEED_REFRESH_COUNT_LABELS,
+                    selectedIndex = FeedPreferences.REFRESH_COUNT_OPTIONS
+                        .indexOf(feedRefreshCount)
+                        .let { if (it >= 0) it else DEFAULT_REFRESH_COUNT_INDEX },
+                    title = "下拉刷新数量",
+                    summary = "每次下拉刷新推荐流时拉取的视频数",
+                    modifier = Modifier.testTag("settings_feed_refresh_count"),
+                    cardListPosition = CardListPosition.Middle,
+                    onSelectedIndexChange = { index ->
+                        container.settings.feed.setRefreshCount(FeedPreferences.REFRESH_COUNT_OPTIONS[index])
                     },
                 )
                 SwitchPreference(
@@ -500,82 +503,39 @@ fun SettingsScreen(
         }
     }
 
-    if (pickCdn) {
-        OptionPicker(
-            title = "播放线路",
-            options = CdnOption.entries.map { it.label },
-            selectedIndex = CdnOption.entries.indexOfFirst { it.id == cdnOption }
-                .coerceAtLeast(0),
-            onPick = { index ->
-                container.settings.setCdnOption(CdnOption.entries[index].id)
-                pickCdn = false
-            },
-            onDismiss = { pickCdn = false },
-        )
-    }
-
-    if (showDanmakuSettings) {
-        DanmakuSettingsDialog(
-            settings = danmakuSettings,
-            repository = container.settings,
-            onDismiss = { showDanmakuSettings = false },
-        )
-    }
-
-    if (showTopBarSettings) {
-        PlayerTopBarSettingsDialog(
-            fullscreen = topBarLayoutFullscreen,
-            portrait = topBarLayoutPortrait,
-            onToggle = container.settings.playerTopBar::setVisible,
-            onMove = container.settings.playerTopBar::moveItem,
-            onDismiss = { showTopBarSettings = false },
-        )
-    }
-
-    if (showSponsorCategories) {
-        SponsorCategoriesDialog(
-            enabledIds = sponsorCategories,
-            onToggle = container.settings::setSponsorCategoryEnabled,
-            onDismiss = { showSponsorCategories = false },
-        )
-    }
-
-    if (switchAccounts) {
-        AccountSwitchDialog(
-            sessions = sessions,
-            activeMid = account?.mid,
-            onDismiss = { switchAccounts = false },
-            onSwitch = { mid ->
-                switchAccounts = false
-                container.scope.launch { container.session.switchAccount(mid) }
-            },
-            onRemove = { mid ->
-                container.scope.launch { container.session.removeAccount(mid) }
-            },
-            onAdd = {
-                switchAccounts = false
-                nav.push(Route.Login)
-            },
-        )
-    }
-
-    if (confirmLogout) {
-        ConfirmDialog(
-            title = "退出登录",
-            message = "只退出当前账号。还有别的已保存账号时会自动换过去，没有的话需要重新扫码登录。",
-            confirmText = "退出",
-            onDismiss = { confirmLogout = false },
-            onConfirm = {
-                confirmLogout = false
-                container.scope.launch { container.session.logout() }
-            },
-        )
-    }
+    SettingsDialogsHost(
+        container = container,
+        nav = nav,
+        cdnOption = cdnOption,
+        danmakuSettings = danmakuSettings,
+        topBarLayoutFullscreen = topBarLayoutFullscreen,
+        topBarLayoutPortrait = topBarLayoutPortrait,
+        sponsorCategories = sponsorCategories,
+        account = account,
+        sessions = sessions,
+        pickCdn = pickCdn,
+        showDanmakuSettings = showDanmakuSettings,
+        showTopBarSettings = showTopBarSettings,
+        showSponsorCategories = showSponsorCategories,
+        switchAccounts = switchAccounts,
+        confirmLogout = confirmLogout,
+        onDismissCdn = { pickCdn = false },
+        onDismissDanmaku = { showDanmakuSettings = false },
+        onDismissTopBar = { showTopBarSettings = false },
+        onDismissSponsorCategories = { showSponsorCategories = false },
+        onDismissSwitchAccounts = { switchAccounts = false },
+        onDismissLogout = { confirmLogout = false },
+    )
 }
 
 /** 下标即存储值：0 跟随系统，1 浅色，2 深色。 */
 private val DARK_MODE_OPTIONS = listOf("跟随系统", "浅色", "深色")
 private val COVER_ASPECT_OPTIONS = CoverAspect.entries.map { it.label }
+private val FEED_COLUMN_OPTIONS = (FeedPreferences.MIN_COLUMNS..FeedPreferences.MAX_COLUMNS).map { "${it} 列" }
+private val FEED_REFRESH_COUNT_LABELS = FeedPreferences.REFRESH_COUNT_OPTIONS.map { "${it} 个" }
+private val DEFAULT_REFRESH_COUNT_INDEX = FeedPreferences.REFRESH_COUNT_OPTIONS
+    .indexOf(FeedPreferences.DEFAULT_REFRESH_COUNT)
+    .coerceAtLeast(0)
 private val FEED_SOURCE_OPTIONS = listOf("App 端推荐", "网页端推荐")
 private val AUTO_ROTATE_OPTIONS = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
 private val LONG_PRESS_SPEED_OPTIONS = listOf(150, 200, 250, 300, 400)

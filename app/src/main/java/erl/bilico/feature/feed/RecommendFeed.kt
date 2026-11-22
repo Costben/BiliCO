@@ -69,21 +69,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
-/** 列表末尾还剩这么多项时就开始拉下一页（两列，提前约三行）。 */
-private const val FeedPrefetchDistance = 6
-
-/** 每次列表变化时，把末尾这么多张封面提前解码进内存缓存。 */
-private const val CoverPrefetchCount = 16
-
 /** 刷新拼接线的固定 key，重排时不会和视频卡片抢位置。 */
 private const val RefreshDividerKey = "feed-refresh-divider"
 
 /** 刷新换批时旧列表淡出、新列表淡入的时长。 */
 private const val SwapFadeOutMillis = 90
 private const val SwapFadeInMillis = 150
-
-/** 首屏大约能看到的卡片数，淡出的同时先把这些封面拉起来。 */
-private const val SwapCoverCount = 8
 
 /** 列表当前真正画出来的那一批；刷新结果要等淡出完才换进来。 */
 private data class ShownFeed(
@@ -114,8 +105,20 @@ internal fun RecommendFeed(
     val titleHeightPx = with(density) { TitleRowHeight.toPx() }
 
     val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
-    val coverWidthPx = remember(screenWidthDp, density) {
-        with(density) { ((screenWidthDp.dp - 34.dp) / 2f).roundToPx() }.coerceAtMost(600)
+    val columns by container.settings.feed.columns.collectAsStateWithLifecycle()
+    val gridSpacing = when {
+        columns >= 4 -> 6.dp
+        columns == 3 -> 8.dp
+        else -> 10.dp
+    }
+    val prefetchDistance = maxOf(6, columns * 3)
+    val coverPrefetchCount = maxOf(16, columns * 6)
+    val swapCoverCount = maxOf(8, columns * 4)
+    val coverWidthPx = remember(screenWidthDp, density, columns, gridSpacing) {
+        val totalGap = 24.dp + gridSpacing * (columns - 1)
+        val maxPx = if (columns <= 1) 1080 else 600
+        with(density) { ((screenWidthDp.dp - totalGap) / columns.toFloat()).roundToPx() }
+            .coerceIn(1, maxPx)
     }
     val coverHeightPx = remember(coverWidthPx, coverAspect) {
         (coverWidthPx / coverAspect.ratio).toInt()
@@ -123,8 +126,8 @@ internal fun RecommendFeed(
 
     // 列表末尾的封面提前解码进内存缓存：滑到那儿时图已经在，不会当着面加载。
     val context = LocalContext.current
-    LaunchedEffect(state.items.size, coverWidthPx) {
-        val tail = state.items.takeLast(CoverPrefetchCount)
+    LaunchedEffect(state.items.size, coverWidthPx, coverHeightPx, coverPrefetchCount) {
+        val tail = state.items.takeLast(coverPrefetchCount)
         if (tail.isEmpty()) return@LaunchedEffect
         val loader = SingletonImageLoader.get(context)
         tail.forEach { video ->
@@ -151,7 +154,7 @@ internal fun RecommendFeed(
             return@LaunchedEffect
         }
         val loader = SingletonImageLoader.get(context)
-        next.items.take(SwapCoverCount).forEach { video ->
+        next.items.take(swapCoverCount).forEach { video ->
             loader.enqueue(
                 ImageRequest.Builder(context)
                     .data(Formatters.sizedImageUrl(video.cover, coverWidthPx, coverHeightPx))
@@ -191,12 +194,12 @@ internal fun RecommendFeed(
         }
     }
 
-    LaunchedEffect(listState) {
+    LaunchedEffect(listState, prefetchDistance) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .distinctUntilChanged()
             .collect { lastVisible ->
                 val size = viewModel.state.value.items.size
-                if (lastVisible != null && size > 0 && lastVisible >= size - FeedPrefetchDistance) {
+                if (lastVisible != null && size > 0 && lastVisible >= size - prefetchDistance) {
                     viewModel.loadMore()
                 }
             }
@@ -214,7 +217,7 @@ internal fun RecommendFeed(
     ) {
         LazyVerticalGrid(
             state = listState,
-            columns = GridCells.Fixed(FeedColumns),
+            columns = GridCells.Fixed(columns),
             modifier = Modifier
                 .fillMaxSize()
                 .scrollEndHaptic()
@@ -225,8 +228,8 @@ internal fun RecommendFeed(
                 end = 12.dp,
                 bottom = 66.dp + navBottomPadding(),
             ),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+            verticalArrangement = Arrangement.spacedBy(gridSpacing),
         ) {
             if (shown.items.isEmpty()) {
                 item(key = "state", span = { GridItemSpan(maxLineSpan) }) {
@@ -257,6 +260,7 @@ internal fun RecommendFeed(
                     coverWidthPx = coverWidthPx,
                     coverHeightPx = coverHeightPx,
                     modifier = Modifier.expandOrigin(origin),
+                    columns = columns,
                     onOpen = { nav.push(Route.Video(video.bvid), origin) },
                     onWatchLater = rememberWatchLaterAction(container, video),
                 )
