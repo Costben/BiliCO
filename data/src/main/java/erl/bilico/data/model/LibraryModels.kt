@@ -26,6 +26,8 @@ data class FavFolder(
     val cover: String = "",
     @Serializable(with = FlexibleIntSerializer::class)
     val media_count: Int = 0,
+    @Serializable(with = FlexibleIntSerializer::class)
+    val fav_state: Int = 0,
 )
 
 @Serializable

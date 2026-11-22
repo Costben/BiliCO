@@ -293,6 +293,7 @@ private fun formatBuffer(ms: Long): String =
 
 private fun hostOf(url: String?): String {
     val uri = url?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return "未知"
+    if (uri.scheme == "file") return "本地缓存"
     val host = uri.host ?: return "未知"
     return if (uri.port > 0) "$host:${uri.port}" else host
 }

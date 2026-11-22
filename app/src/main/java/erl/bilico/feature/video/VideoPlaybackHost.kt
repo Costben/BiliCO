@@ -10,9 +10,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import erl.bilico.di.AppContainer
@@ -66,9 +68,12 @@ internal fun VideoPlaybackEffects(
     // 轮询协程不随 isTop 重启，读的是最新值。
     val currentIsTop by rememberUpdatedState(isTop)
     // 片源请求头与数据源只在这里构造：调用方只有拿到播放器才会组合进来，不进场就不碰 OkHttp。
+    val context = LocalContext.current
     val headers = remember(bvid) { container.client.mediaRequestHeaders(bvid) }
-    val dataSourceFactory = remember(headers) {
-        OkHttpDataSource.Factory(container.client.mediaClient()).setDefaultRequestProperties(headers)
+    val dataSourceFactory = remember(context, headers) {
+        val httpFactory = OkHttpDataSource.Factory(container.client.mediaClient())
+            .setDefaultRequestProperties(headers)
+        DefaultDataSource.Factory(context, httpFactory)
     }
 
     BindPlaybackSession(

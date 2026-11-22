@@ -57,4 +57,5 @@ internal object SettingsKeys {
     val KEY_IN_APP_UPDATE = booleanPreferencesKey("in_app_update")
     val KEY_UPDATE_CHECKED_AT = longPreferencesKey("update_checked_at")
     val KEY_SKIPPED_UPDATE = stringPreferencesKey("skipped_update_version")
+    val KEY_SHOW_VIDEO_DISLIKE = booleanPreferencesKey("show_video_dislike")
 }

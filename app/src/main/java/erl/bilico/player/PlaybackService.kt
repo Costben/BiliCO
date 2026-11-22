@@ -139,12 +139,16 @@ class PlaybackService : MediaSessionService() {
      */
     private fun attachArtwork(session: MediaSession?) {
         val source = PlaybackBridge.activeArtworkUrl
-        val url = Formatters.sizedImageUrl(source, 480, 270)
-        if (!url.startsWith("http") || source == loadedArtwork) return
+        if (source.isBlank() || source == loadedArtwork) return
+        val isLocal = source.startsWith("file://")
+        val url = if (isLocal) source else Formatters.sizedImageUrl(source, 480, 270)
+        if (!isLocal && !url.startsWith("http")) return
         artworkBytes = null
         loadedArtwork = source
         Thread {
-            val bytes = runCatching { download(url) }.getOrElse { error ->
+            val bytes = runCatching {
+                if (isLocal) java.io.File(java.net.URI(source)).readBytes() else download(url)
+            }.getOrElse { error ->
                 Log.w(TAG, "封面下载失败 ${error.message}")
                 null
             } ?: run {

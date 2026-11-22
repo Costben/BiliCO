@@ -25,11 +25,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.isHdr
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.ReplyThreadController
+import erl.bilico.feature.download.PgcDownloadDialog
 import erl.bilico.feature.video.CollapsedVideoBar
 import erl.bilico.feature.video.DanmakuController
 import erl.bilico.feature.video.DanmakuOverlay
@@ -76,16 +78,19 @@ fun PgcScreen(
     seasonId: Long,
     epId: Long = 0L,
     startPositionMs: Long = 0L,
+    offline: Boolean = false,
 ) {
-    val viewModel: PgcViewModel = viewModel(key = "pgc-$seasonId-$epId-$startPositionMs") {
+    val viewModel: PgcViewModel = viewModel(key = "pgc-$seasonId-$epId-$startPositionMs-$offline") {
         PgcViewModel(
             repository = container.pgc,
+            downloads = container.downloads,
             heartbeat = container.heartbeat,
             session = container.session,
             settings = container.settings,
             seasonId = seasonId,
             epId = epId,
             startPositionMs = startPositionMs,
+            offline = offline,
         )
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -151,6 +156,7 @@ fun PgcScreen(
     val barBackdrops = rememberVideoBarBackdrops(pageContainerColor())
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var castDialogVisible by remember { mutableStateOf(false) }
+    var downloadDialogVisible by remember { mutableStateOf(false) }
     var danmakuComposing by rememberSaveable { mutableStateOf(false) }
     var danmakuDraft by rememberSaveable { mutableStateOf("") }
     var speed by rememberSaveable {
@@ -232,12 +238,12 @@ fun PgcScreen(
         }
     }
 
-    LaunchedEffect(episode?.cid, episode?.aid, episode?.bvid) {
+    LaunchedEffect(episode?.cid, episode?.aid, episode?.bvid, state.offlineMode) {
         val ep = episode ?: return@LaunchedEffect
         if (ep.cid <= 0L) return@LaunchedEffect
         danmakuController.attach(ep.cid)
         danmakuController.onPosition(player.currentPosition)
-        subtitleController.attach(bvid = ep.bvid, aid = ep.aid, cid = ep.cid)
+        subtitleController.attach(bvid = ep.bvid, aid = ep.aid, cid = ep.cid, preferLocal = state.offlineMode)
     }
 
     LaunchedEffect(state.source) {
@@ -251,8 +257,9 @@ fun PgcScreen(
         val headers = container.client.mediaRequestHeaders().toMutableMap().apply {
             put("Referer", referer)
         }
-        val dataSourceFactory = OkHttpDataSource.Factory(container.client.mediaClient())
+        val httpFactory = OkHttpDataSource.Factory(container.client.mediaClient())
             .setDefaultRequestProperties(headers)
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
         val resumeAt = viewModel.state.value.resumePositionMs
         val mediaId = playbackMediaId(currentEp?.bvid.orEmpty(), currentEp?.cid ?: 0L, source.videoUrl)
         // 页面被重建（最小化进融合球/复原）时播放器没换，重复装载会让番剧从 0 重新播。
@@ -359,6 +366,17 @@ fun PgcScreen(
                 onDismiss = { castDialogVisible = false },
             )
         }
+        val detail = state.detail
+        if (downloadDialogVisible && detail != null) {
+            PgcDownloadDialog(
+                container = container, detail = detail, currentEpisode = currentEp,
+                activeQuality = state.activeQuality, initialQualities = state.source?.qualities.orEmpty(),
+                inlineInStage = inlineInStage,
+                onEnqueued = { if (it > 0) viewModel.showMessage("已加入离线缓存队列 ($it)") },
+                onOpenDownloads = { applyFullscreen(false); nav.push(Route.Downloads) },
+                onDismiss = { downloadDialogVisible = false },
+            )
+        }
     }
 
     // HDR 档位必须走 SurfaceView：TextureView 由 GPU 合成，HDR 画面会被当成 SDR 铺到屏幕上（发暗）。
@@ -385,7 +403,7 @@ fun PgcScreen(
         },
         playerContent = {
             val stageBackdrop = rememberLayerBackdrop()
-            val anyStageDialogOpen = fullscreen && (danmakuSettingsDialogVisible || castDialogVisible)
+            val anyStageDialogOpen = fullscreen && (danmakuSettingsDialogVisible || castDialogVisible || downloadDialogVisible)
             val returnHome = LocalStageReturnHome.current ?: { nav.popToMain() }
             VideoPlayer(
                 player = player,
@@ -448,6 +466,7 @@ fun PgcScreen(
                 } else {
                     null
                 },
+                onDownload = if (state.detail != null) ({ downloadDialogVisible = true }) else null,
                 playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
                 longPressSpeed = longPressSpeed,
@@ -532,6 +551,7 @@ fun PgcScreen(
                     viewModel.selectEpisode(index)
                 },
                 onSelectSeason = { id -> nav.push(Route.Pgc(id, 0L)) },
+                onDownload = if (state.detail != null) ({ downloadDialogVisible = true }) else null,
                 onSeekCommentMs = { ms ->
                     player.seekTo(ms)
                     if (!player.isPlaying) player.play()
@@ -560,6 +580,7 @@ fun PgcScreen(
                 } else {
                     null
                 },
+                onDownload = if (state.detail != null) ({ downloadDialogVisible = true }) else null,
                 backdrop = barBackdrops.barMaterial,
             )
         },

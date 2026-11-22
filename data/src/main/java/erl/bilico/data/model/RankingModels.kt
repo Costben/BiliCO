@@ -63,6 +63,21 @@ data class VideoRelationData(
 )
 
 @Serializable
+data class TripleResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: TripleData? = null,
+)
+
+@Serializable
+data class TripleData(
+    val like: Boolean = false,
+    val coin: Boolean = false,
+    val fav: Boolean = false,
+    val multiply: Int = 0,
+)
+
+@Serializable
 data class HasLikedResponse(
     val code: Int = 0,
     val message: String = "",

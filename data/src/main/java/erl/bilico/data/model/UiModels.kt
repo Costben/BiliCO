@@ -540,6 +540,7 @@ data class FavoriteFolder(
     /** 收藏夹里前几个视频的封面，用来拼列表左边那块四宫格。 */
     val coverUrls: List<String> = emptyList(),
     val countText: String,
+    val favorited: Boolean = false,
 )
 
 data class FollowingUser(

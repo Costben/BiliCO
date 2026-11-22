@@ -5,20 +5,93 @@ import erl.bilico.data.model.MessageEntry
 import erl.bilico.data.model.MessageJumpTarget
 import erl.bilico.data.model.MessageKind
 import erl.bilico.data.model.MessagePage
+import erl.bilico.data.model.MessageUnreadSummary
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BuvidManager
+import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.util.Formatters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
 /**
- * 消息中心：回复我的、@我的、收到的赞、系统通知。
+ * 消息中心：回复我的、@我的、收到的赞、系统通知与未读红点汇总。
  * 三类互动消息用 `id` + 时间戳双游标，系统通知用单一 cursor。
  */
 class MessageRepository(
     private val api: BiliApi,
     private val buvid: BuvidManager,
+    private val session: SessionRepository,
 ) {
+    private val _unread = MutableStateFlow(MessageUnreadSummary())
+    val unread: StateFlow<MessageUnreadSummary> = _unread.asStateFlow()
+
+    @Volatile
+    private var lastUnreadRefreshMs: Long = 0L
+
+    suspend fun refreshUnread(force: Boolean = false) {
+        if (!session.isLoggedIn()) {
+            lastUnreadRefreshMs = 0L
+            _unread.value = MessageUnreadSummary(initialized = true)
+            return
+        }
+        val now = System.currentTimeMillis()
+        if (!force && _unread.value.initialized && now - lastUnreadRefreshMs < UNREAD_THROTTLE_MS) {
+            return
+        }
+        withContext(Dispatchers.IO) {
+            runCatching {
+                buvid.ensure()
+                coroutineScope {
+                    val feedDeferred = async { runCatching { api.messageUnread(baseParams()) }.getOrNull() }
+                    val imDeferred = async {
+                        runCatching {
+                            api.imSingleUnread(
+                                mapOf(
+                                    "unread_type" to "0",
+                                    "show_unfollow_list" to "1",
+                                    "show_dustbin" to "0",
+                                    "build" to "0",
+                                    "mobi_app" to "web",
+                                )
+                            )
+                        }.getOrNull()
+                    }
+                    val feedData = feedDeferred.await()?.takeIf { it.code == 0 }?.data
+                    val imData = imDeferred.await()?.takeIf { it.code == 0 }?.data
+                    val cur = _unread.value
+                    lastUnreadRefreshMs = System.currentTimeMillis()
+                    _unread.value = MessageUnreadSummary(
+                        reply = feedData?.let { d ->
+                            d.reply.takeIf { it > 0 } ?: if (d.at == 0 && d.recvReply > 0) d.recvReply else 0
+                        } ?: cur.reply,
+                        at = feedData?.at?.coerceAtLeast(0) ?: cur.at,
+                        like = feedData?.let { maxOf(it.like, it.recvLike).coerceAtLeast(0) } ?: cur.like,
+                        system = feedData?.sysMsg?.coerceAtLeast(0) ?: cur.system,
+                        session = imData?.let { (it.followUnread + it.unfollowUnread).coerceAtLeast(0) } ?: cur.session,
+                        initialized = true,
+                    )
+                }
+            }
+        }
+    }
+
+    fun markKindViewed(kind: MessageKind) {
+        _unread.update { cur ->
+            when (kind) {
+                MessageKind.REPLY -> cur.copy(reply = 0)
+                MessageKind.AT -> cur.copy(at = 0)
+                MessageKind.LIKE -> cur.copy(like = 0)
+                MessageKind.SYSTEM -> cur.copy(system = 0)
+                MessageKind.SESSION -> cur
+            }
+        }
+    }
     suspend fun page(kind: MessageKind, cursor: MessageCursor?): Result<MessagePage> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -54,6 +127,7 @@ class MessageRepository(
                     .ifBlank { contentItem?.sourceContent.orEmpty() },
                 extra = item.counts.takeIf { it > 1 }?.let { "等 $it 条回复" }.orEmpty(),
                 timeText = Formatters.formatTimeAgo(item.replyTime),
+                timeSec = item.replyTime,
                 senderMid = user.mid,
                 target = contentItem?.let {
                     resolveMessageTarget(
@@ -73,7 +147,7 @@ class MessageRepository(
                 },
             )
         }
-        return MessagePage(items, data?.cursor, data?.cursor?.isEnd == true)
+        return MessagePage(items, data?.cursor, data?.cursor?.isEnd == true, lastViewAt = data?.lastViewAt ?: 0L)
     }
 
     private suspend fun at(cursor: MessageCursor?): MessagePage {
@@ -96,6 +170,7 @@ class MessageRepository(
                 content = contentItem?.sourceContent.orEmpty(),
                 extra = "",
                 timeText = Formatters.formatTimeAgo(item.atTime),
+                timeSec = item.atTime,
                 senderMid = user.mid,
                 target = contentItem?.let {
                     resolveMessageTarget(
@@ -115,7 +190,7 @@ class MessageRepository(
                 },
             )
         }
-        return MessagePage(items, data?.cursor, data?.cursor?.isEnd == true)
+        return MessagePage(items, data?.cursor, data?.cursor?.isEnd == true, lastViewAt = data?.lastViewAt ?: 0L)
     }
 
     private suspend fun like(cursor: MessageCursor?): MessagePage {
@@ -188,6 +263,7 @@ class MessageRepository(
                 content = content,
                 extra = extra,
                 timeText = Formatters.formatTimeAgo(item.likeTime),
+                timeSec = item.likeTime,
                 senderMid = first?.mid ?: 0L,
                 target = contentItem?.let {
                     resolveMessageTarget(
@@ -207,7 +283,13 @@ class MessageRepository(
                 },
             )
         }
-        return MessagePage(items, effectiveCursor, effectiveCursor?.isEnd == true || effectiveItems.isEmpty())
+        return MessagePage(
+            items = items,
+            cursor = effectiveCursor,
+            isEnd = effectiveCursor?.isEnd == true || effectiveItems.isEmpty(),
+            lastViewAt = response.data?.lastViewAt ?: 0L,
+            latestCount = latestBucket?.items?.size ?: 0,
+        )
     }
 
     private suspend fun system(cursor: MessageCursor?): MessagePage {
@@ -402,6 +484,7 @@ class MessageRepository(
 
     private companion object {
         const val PAGE_SIZE = 20
+        const val UNREAD_THROTTLE_MS = 20_000L
         val BVID_REGEX = Regex("""(?<![A-Za-z0-9])(BV[0-9A-Za-z]{10})(?![A-Za-z0-9])""")
         val OPUS_REGEX = Regex("""(?:t\.bilibili\.com/|/opus/|/dynamic/|bilibili://(?:following|opus|dynamic)/(?:detail/)?)(\d+)""")
         val AVID_REGEX = Regex("""(?:/video/av|bilibili://video/)(\d+)""", RegexOption.IGNORE_CASE)

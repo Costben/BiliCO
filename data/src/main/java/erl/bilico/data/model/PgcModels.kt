@@ -232,6 +232,7 @@ data class MessageReplyResponse(
 @Serializable
 data class MessageReplyData(
     val cursor: MessageCursor? = null,
+    @SerialName("last_view_at") val lastViewAt: Long = 0,
     val items: List<MessageReplyItem>? = null,
 )
 
@@ -276,6 +277,7 @@ data class MessageAtResponse(
 @Serializable
 data class MessageAtData(
     val cursor: MessageCursor? = null,
+    @SerialName("last_view_at") val lastViewAt: Long = 0,
     val items: List<MessageAtItem>? = null,
 )
 
@@ -313,8 +315,39 @@ data class MessageLikeResponse(
 
 @Serializable
 data class MessageLikeData(
+    @SerialName("last_view_at") val lastViewAt: Long = 0,
     val latest: MessageLikeBucket? = null,
     val total: MessageLikeBucket? = null,
+)
+
+@Serializable
+data class MessageUnreadResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: MessageUnreadData? = null,
+)
+
+@Serializable
+data class MessageUnreadData(
+    val reply: Int = 0,
+    @SerialName("recv_reply") val recvReply: Int = 0,
+    val at: Int = 0,
+    val like: Int = 0,
+    @SerialName("recv_like") val recvLike: Int = 0,
+    @SerialName("sys_msg") val sysMsg: Int = 0,
+)
+
+@Serializable
+data class ImSingleUnreadResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: ImSingleUnreadData? = null,
+)
+
+@Serializable
+data class ImSingleUnreadData(
+    @SerialName("follow_unread") val followUnread: Int = 0,
+    @SerialName("unfollow_unread") val unfollowUnread: Int = 0,
 )
 
 @Serializable
@@ -421,6 +454,7 @@ data class MessageEntry(
     val content: String,
     val extra: String,
     val timeText: String,
+    val timeSec: Long = 0L,
     val senderMid: Long = 0L,
     val target: MessageJumpTarget? = null,
 )
@@ -429,4 +463,35 @@ data class MessagePage(
     val items: List<MessageEntry>,
     val cursor: MessageCursor?,
     val isEnd: Boolean,
+    val lastViewAt: Long = 0L,
+    val latestCount: Int = 0,
 )
+
+data class MessageUnreadSummary(
+    val reply: Int = 0,
+    val at: Int = 0,
+    val like: Int = 0,
+    val system: Int = 0,
+    val session: Int = 0,
+    val initialized: Boolean = false,
+) {
+    val total: Int get() = reply + at + like + system + session
+
+    fun countOf(kind: MessageKind): Int = when (kind) {
+        MessageKind.SESSION -> session
+        MessageKind.REPLY -> reply
+        MessageKind.AT -> at
+        MessageKind.LIKE -> like
+        MessageKind.SYSTEM -> system
+    }
+
+    /** 入口默认页优先级：回复我的 > 提及我的 > 收到的赞 > 我的私信 > 系统消息；无未读时默认我的私信。 */
+    fun preferredInitialKind(): MessageKind = when {
+        reply > 0 -> MessageKind.REPLY
+        at > 0 -> MessageKind.AT
+        like > 0 -> MessageKind.LIKE
+        session > 0 -> MessageKind.SESSION
+        system > 0 -> MessageKind.SYSTEM
+        else -> MessageKind.SESSION
+    }
+}

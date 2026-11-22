@@ -150,6 +150,7 @@ sealed interface Route {
         val cid: Long = 0L,
         val commentRootId: Long = 0L,
         val commentTargetId: Long = 0L,
+        val offline: Boolean = false,
     ) : Route
     data class LiveRoom(val roomId: Long) : Route
     data class Space(val mid: Long) : Route
@@ -157,11 +158,17 @@ sealed interface Route {
     data object Favorites : Route
     data class FavoriteFolder(val mediaId: Long, val title: String) : Route
     data object WatchLater : Route
+    data object Downloads : Route
     data object Following : Route
     data object Settings : Route
     data object BlockManager : Route
     data object About : Route
-    data class Pgc(val seasonId: Long, val epId: Long = 0L, val startSec: Long = 0L) : Route
+    data class Pgc(
+        val seasonId: Long,
+        val epId: Long = 0L,
+        val startSec: Long = 0L,
+        val offline: Boolean = false,
+    ) : Route
     data object Messages : Route
     data object BangumiFollow : Route
     data object Login : Route

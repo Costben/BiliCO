@@ -1,8 +1,19 @@
 package erl.bilico.feature.video
 
+import android.os.SystemClock
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,9 +35,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick as semanticsOnClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextMeasurer
@@ -115,6 +142,29 @@ internal fun UpRow(
         }
         Spacer(Modifier.width(10.dp))
         FollowButton(following = following, onClick = onFollow)
+    }
+}
+
+private fun upMetaText(followers: Long?, pubdate: Long): String = buildList {
+    if (followers != null && followers > 0L) add("${Formatters.formatStat(followers)}粉丝")
+    Formatters.formatTimeAgo(pubdate).takeIf { it.isNotBlank() }?.let(::add)
+}.joinToString("  ")
+
+/** 视频标题与右上角更多操作按钮（从 UP 主行下移至此，避免挤压长 UP 主名字）。 */
+@Composable
+internal fun VideoTitleRow(detail: VideoDetail, expanded: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = detail.title,
+            modifier = Modifier.weight(1f),
+            style = COUITheme.textStyles.title3,
+            fontWeight = FontWeight.Bold,
+            maxLines = if (expanded) Int.MAX_VALUE else TITLE_COLLAPSED_LINES,
+            overflow = TextOverflow.Ellipsis,
+        )
         if (detail.upMid > 0L) {
             Spacer(Modifier.width(6.dp))
             erl.bilico.ui.components.UserMoreMenu(
@@ -129,11 +179,6 @@ internal fun UpRow(
         }
     }
 }
-
-private fun upMetaText(followers: Long?, pubdate: Long): String = buildList {
-    if (followers != null && followers > 0L) add("${Formatters.formatStat(followers)}粉丝")
-    Formatters.formatTimeAgo(pubdate).takeIf { it.isNotBlank() }?.let(::add)
-}.joinToString("  ")
 
 @Composable
 private fun FollowButton(following: Boolean, onClick: () -> Unit) {
@@ -308,20 +353,97 @@ internal fun VideoAction(
     active: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
-    val tint = if (active) {
-        COUITheme.colorScheme.primary
+    val scheme = COUITheme.colorScheme
+    val tint = if (active) scheme.primary else scheme.onSurfaceSecondary
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val interactionSource = remember { MutableInteractionSource() }
+    val holdProgress = remember { Animatable(0f) }
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
+
+    val clickModifier = if (onLongClick != null) {
+        Modifier
+            .indication(interactionSource, LocalIndication.current)
+            .semantics {
+                role = Role.Button
+                semanticsOnClick(label = label) {
+                    currentOnClick()
+                    true
+                }
+            }
+            .pointerInput(interactionSource) {
+                val touchSlop = viewConfiguration.touchSlop
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val press = PressInteraction.Press(down.position)
+                    interactionSource.tryEmit(press)
+                    val startMs = SystemClock.uptimeMillis()
+                    var tripleFired = false
+                    val holdJob = scope.launch {
+                        delay(TRIPLE_HOLD_DELAY_MS)
+                        holdProgress.animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(durationMillis = TRIPLE_HOLD_FILL_MS, easing = LinearEasing),
+                        )
+                        tripleFired = true
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        currentOnLongClick?.invoke()
+                    }
+                    var movedTooFar = false
+                    var released = false
+                    while (!released && !movedTooFar) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id }
+                        if (change == null || !change.pressed) {
+                            released = change != null && change.changedToUpIgnoreConsumed()
+                            break
+                        }
+                        if ((change.position - down.position).getDistance() > touchSlop) {
+                            movedTooFar = true
+                        }
+                    }
+                    holdJob.cancel()
+                    scope.launch { holdProgress.snapTo(0f) }
+                    interactionSource.tryEmit(
+                        if (released && !movedTooFar) PressInteraction.Release(press)
+                        else PressInteraction.Cancel(press),
+                    )
+                    if (released && !movedTooFar && !tripleFired &&
+                        SystemClock.uptimeMillis() - startMs < TAP_MAX_MS
+                    ) {
+                        currentOnClick()
+                    }
+                }
+            }
     } else {
-        COUITheme.colorScheme.onSurfaceSecondary
+        Modifier.clickable(onClick = onClick)
     }
+
     Column(
         modifier = modifier
             .clip(SquircleShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 6.dp),
+            .then(clickModifier)
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, label, Modifier.size(22.dp), tint = tint)
+        Box(contentAlignment = Alignment.Center) {
+            if (onLongClick != null && holdProgress.value > 0f) {
+                val ringColor = scheme.primary
+                Canvas(Modifier.size(30.dp)) {
+                    drawArc(
+                        color = ringColor,
+                        startAngle = -90f,
+                        sweepAngle = 360f * holdProgress.value,
+                        useCenter = false,
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                    )
+                }
+            }
+            Icon(icon, label, Modifier.size(22.dp), tint = tint)
+        }
         Spacer(Modifier.height(3.dp))
         Text(text, fontSize = 11.sp, color = tint, maxLines = 1)
     }
@@ -409,3 +531,7 @@ private fun SelectableEpisodeRow(
         }
     }
 }
+
+private const val TRIPLE_HOLD_DELAY_MS = 180L
+private const val TRIPLE_HOLD_FILL_MS = 1320
+private const val TAP_MAX_MS = 450L

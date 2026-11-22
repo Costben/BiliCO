@@ -1,5 +1,6 @@
 package erl.bilico.data.repository
 
+import erl.bilico.data.model.TripleData
 import erl.bilico.data.model.UpCardSummary
 import erl.bilico.data.model.VideoRelationData
 import erl.bilico.data.network.BiliApi
@@ -88,13 +89,34 @@ class InteractionRepository(
         )
     }
 
-    suspend fun favorite(aid: Long, mediaId: Long): Result<Unit> = post {
+    suspend fun triple(aid: Long): Result<TripleData> = withContext(Dispatchers.IO) {
+        runCatching {
+            buvid.ensure()
+            require(csrf().isNotBlank()) { "登录后可用" }
+            val response = api.tripleVideo(
+                mapOf(
+                    "aid" to aid.toString(),
+                    "csrf" to csrf(),
+                )
+            )
+            if (response.code != 0) {
+                error(response.message.ifBlank { "一键三连失败(${response.code})" })
+            }
+            response.data ?: TripleData(like = true, coin = true, fav = true, multiply = 2)
+        }
+    }
+
+    suspend fun favorite(
+        aid: Long,
+        addMediaIds: List<Long>,
+        delMediaIds: List<Long>,
+    ): Result<Unit> = post {
         api.favoriteResource(
             mapOf(
                 "rid" to aid.toString(),
                 "type" to "2",
-                "add_media_ids" to mediaId.toString(),
-                "del_media_ids" to "",
+                "add_media_ids" to addMediaIds.joinToString(","),
+                "del_media_ids" to delMediaIds.joinToString(","),
                 "csrf" to csrf(),
             )
         )

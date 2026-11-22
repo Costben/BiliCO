@@ -125,6 +125,7 @@ internal fun VideoPlayer(
     onWatchLater: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onCast: (() -> Unit)? = null,
+    onDownload: (() -> Unit)? = null,
     onReportVideo: (() -> Unit)? = null,
     playbackEndMode: PlaybackEndMode = PlaybackEndMode.AUTO_NEXT,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)? = null,
@@ -419,7 +420,7 @@ internal fun VideoPlayer(
                     },
                     portraitMoreMenu = {
                         PlayerMoreMenu(
-                            onShare = onShare, onCast = onCast, onSelectLine = onSelectLine,
+                            onShare = onShare, onCast = onCast, onDownload = onDownload, onSelectLine = onSelectLine,
                             audioOnly = audioOnly, onToggleAudioOnly = onToggleAudioOnly,
                             onReportVideo = onReportVideo, playbackEndMode = playbackEndMode,
                             onSelectPlaybackEndMode = onSelectPlaybackEndMode,
@@ -552,7 +553,7 @@ internal fun VideoPlayer(
                 menuBackdrop = menuBackdrop, horizontalBarPad = horizontalBarPad,
                 onHideControls = { controlsVisible = false }, playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = onSelectPlaybackEndMode,
-                onShare = onShare, onCast = onCast, onSelectLine = onSelectLine,
+                onShare = onShare, onCast = onCast, onDownload = onDownload, onSelectLine = onSelectLine,
                 audioOnly = audioOnly, onToggleAudioOnly = onToggleAudioOnly,
                 onReportVideo = onReportVideo, onSubmitSponsor = onSubmitSponsor,
                 onShowStats = { activeMenu = PlayerPopupMenu.NONE; statsVisible = true },

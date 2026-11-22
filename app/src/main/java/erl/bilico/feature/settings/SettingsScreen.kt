@@ -20,6 +20,7 @@ import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.settings.CoverAspect
 import erl.bilico.data.settings.DefaultQuality
 import erl.bilico.data.settings.FeedPreferences
+import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
@@ -60,6 +61,7 @@ fun SettingsScreen(
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val playerConicLight by container.settings.playerConicLight.collectAsStateWithLifecycle()
+    val showVideoDislike by container.settings.showVideoDislike.collectAsStateWithLifecycle()
     val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
     val feedColumns by container.settings.feed.columns.collectAsStateWithLifecycle()
     val feedRefreshCount by container.settings.feed.refreshCount.collectAsStateWithLifecycle()
@@ -76,6 +78,8 @@ fun SettingsScreen(
     val inAppUpdate by container.settings.inAppUpdate.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
     val sessions by container.session.sessions.collectAsStateWithLifecycle()
+    val downloadTasks by container.downloads.tasks.collectAsStateWithLifecycle()
+    val downloadBytes by container.downloads.totalCachedBytes.collectAsStateWithLifecycle()
 
     var pickCdn by remember { mutableStateOf(false) }
     var showDanmakuSettings by remember { mutableStateOf(false) }
@@ -258,6 +262,14 @@ fun SettingsScreen(
                     cardListPosition = CardListPosition.Middle,
                 )
                 SwitchPreference(
+                    checked = showVideoDislike,
+                    onCheckedChange = container.settings::setShowVideoDislike,
+                    title = "显示点踩按钮",
+                    summary = "在视频详情页操作栏显示点踩",
+                    modifier = Modifier.testTag("settings_show_video_dislike"),
+                    cardListPosition = CardListPosition.Middle,
+                )
+                SwitchPreference(
                     checked = gestureHaptic,
                     onCheckedChange = container.settings::setGestureHaptic,
                     title = "手势震动",
@@ -375,11 +387,25 @@ fun SettingsScreen(
                 insideMargin = PaddingValues(0.dp),
                 weight = CardDefaults.GroupWeight,
             ) {
+                val doneCount = remember(downloadTasks) { downloadTasks.count { it.isCompleted } }
+                val activeCount = remember(downloadTasks) { downloadTasks.count { it.isActive } }
+                ArrowPreference(
+                    title = "离线缓存",
+                    modifier = Modifier.testTag("settings_downloads"),
+                    summary = when {
+                        activeCount > 0 -> "$activeCount 个下载中 · 占用 ${Formatters.formatFileSize(downloadBytes)}"
+                        doneCount > 0 -> "已缓存 $doneCount 个视频 · 占用 ${Formatters.formatFileSize(downloadBytes)}"
+                        else -> "暂无缓存视频"
+                    },
+                    cardListPosition = CardListPosition.Head,
+                    onClick = { nav.push(Route.Downloads) },
+                )
+                PreferenceDivider()
                 ArrowPreference(
                     title = "清除图片缓存",
                     modifier = Modifier.testTag("settings_cache"),
                     summary = if (cacheCleared > 0) "已清除" else "只清本地图片，不影响账号",
-                    cardListPosition = CardListPosition.None,
+                    cardListPosition = CardListPosition.Tail,
                     onClick = {
                         scope.launch {
                             val loader = SingletonImageLoader.get(context)

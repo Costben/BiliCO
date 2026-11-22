@@ -39,6 +39,7 @@ import erl.bilico.data.model.MessageKind
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.Route
@@ -89,10 +90,21 @@ fun MessageScreen(
         MessageViewModel(container.messages, container.im, container.session)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState { MESSAGE_TABS.size }
+    val initialPageIndex = remember {
+        MESSAGE_TABS.indexOfFirst { it.kind == viewModel.initialKind }.coerceAtLeast(0)
+    }
+    val pagerState = rememberPagerState(initialPage = initialPageIndex) { MESSAGE_TABS.size }
     val scope = rememberCoroutineScope()
     val pageColor = pageContainerColor()
     val layerBackdrop = rememberLayerBackdrop()
+    val isTop = LocalRouteIsTop.current
+    var wasOnTop by remember { mutableStateOf(isTop) }
+    LaunchedEffect(isTop) {
+        if (isTop && !wasOnTop) {
+            viewModel.refreshOnReturn()
+        }
+        wasOnTop = isTop
+    }
 
     var menuExpanded by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -104,8 +116,16 @@ fun MessageScreen(
         }
     }
 
-    val chipTabItems = remember(MESSAGE_TABS) {
-        MESSAGE_TABS.map { tab -> ChipTabData(label = tab.label, icon = tab.iconVector) }
+    val chipTabItems = remember(state.unread) {
+        MESSAGE_TABS.map { tab ->
+            val unreadCount = state.unread.countOf(tab.kind)
+            ChipTabData(
+                label = tab.label,
+                icon = tab.iconVector,
+                showRedDot = unreadCount > 0,
+                count = unreadCount.takeIf { it > 0 },
+            )
+        }
     }
 
     // 滑停一页就补拉这一类；点标签走的是同一个入口。
@@ -338,6 +358,7 @@ private fun MessageList(
                 val canOpen = entry.target != null || entry.senderMid > 0L
                 MessageRow(
                     entry = entry,
+                    highlighted = entry.key in state.highlightedKeys,
                     onClick = if (canOpen) {
                         {
                             viewModel.openEntry(

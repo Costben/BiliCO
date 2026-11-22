@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.VideoDetail
-import erl.bilico.data.repository.CdnOption
+import erl.bilico.data.repository.DownloadRepository
 import erl.bilico.data.repository.HeartbeatReporter
 import erl.bilico.data.repository.InteractionRepository
 import erl.bilico.data.repository.VideoRepository
@@ -41,10 +41,12 @@ data class VideoUiState(
     val upOfficialType: Int = -1,
     val upOfficialDesc: String = "",
     val interactionBusy: Boolean = false,
+    val offlineMode: Boolean = false,
 )
 
 class VideoViewModel(
     private val repository: VideoRepository,
+    private val downloads: DownloadRepository,
     private val heartbeat: HeartbeatReporter,
     private val interactions: InteractionRepository,
     private val session: SessionRepository,
@@ -52,15 +54,21 @@ class VideoViewModel(
     bvid: String,
     startPositionMs: Long = 0L,
     initialCid: Long = 0L,
+    offline: Boolean = false,
 ) : ViewModel() {
 
     // 一个播放页只留一份 ViewModel，连播换下一条时原地换参数，不再按 bvid 新建。
     private var bvid: String = bvid
     private var initialCid: Long = initialCid
     private var startPositionMs: Long = startPositionMs.coerceAtLeast(0L)
+    private var offline: Boolean = offline
 
-    private val _state = MutableStateFlow(VideoUiState(resumePositionMs = this.startPositionMs))
+    private val _state = MutableStateFlow(
+        VideoUiState(resumePositionMs = this.startPositionMs, offlineMode = offline),
+    )
     val state: StateFlow<VideoUiState> = _state.asStateFlow()
+
+    private val interactionDelegate = VideoInteractionDelegate(interactions, session, viewModelScope, _state)
 
     /** 当前这份状态属于哪一条视频，界面据此判断是不是还没切过来。 */
     val currentBvid: String get() = bvid
@@ -83,16 +91,20 @@ class VideoViewModel(
         bvid: String,
         startPositionMs: Long = 0L,
         initialCid: Long = 0L,
+        offline: Boolean = false,
         cachedState: VideoUiState? = null,
     ) {
         val start = startPositionMs.coerceAtLeast(0L)
-        if (bvid == this.bvid && initialCid == this.initialCid && start == this.startPositionMs && cachedState == null) {
+        if (bvid == this.bvid && initialCid == this.initialCid &&
+            start == this.startPositionMs && offline == this.offline && cachedState == null
+        ) {
             return
         }
-        if (bvid == this.bvid && _state.value.detail != null && cachedState == null) return
+        if (bvid == this.bvid && offline == this.offline && _state.value.detail != null && cachedState == null) return
         this.bvid = bvid
         this.initialCid = initialCid
         this.startPositionMs = start
+        this.offline = offline
         loadJob?.cancel()
         playbackJob?.cancel()
         startTs = 0L
@@ -108,6 +120,7 @@ class VideoViewModel(
                 playbackError = null,
                 resumePositionMs = start,
                 message = null,
+                offlineMode = offline,
             )
             val targetCid = cachedState.selectedCid.takeIf { it > 0L } ?: cachedDetail.cid
             loadPlayback(
@@ -118,7 +131,7 @@ class VideoViewModel(
             )
             return
         }
-        _state.value = VideoUiState(resumePositionMs = start)
+        _state.value = VideoUiState(resumePositionMs = start, offlineMode = offline)
         load()
     }
 
@@ -126,34 +139,39 @@ class VideoViewModel(
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            repository.detail(bvid)
-                .onSuccess { detail ->
-                    val targetCid = initialCid.takeIf { cid -> cid > 0L && detail.pages.any { it.cid == cid } }
-                        ?: detail.cid
-                    val index = detail.pages.indexOfFirst { it.cid == targetCid }.coerceAtLeast(0)
-                    _state.update {
-                        it.copy(
-                            detail = detail,
-                            isLoading = false,
-                            selectedCid = targetCid,
-                            selectedPartIndex = index,
-                        )
-                    }
-                    loadRelation(detail.aid, detail.upMid)
-                    loadUpFollowers(detail.upMid)
-                    loadRelated()
-                    loadPlayback(
-                        qn = settings.defaultQuality.value,
-                        cid = targetCid,
-                        notifyDowngrade = false,
-                    )
-                }
-                .onFailure { error ->
-                    _state.update {
-                        it.copy(isLoading = false, error = error.message ?: "视频加载失败")
-                    }
-                }
+            val resolved = resolveVideoDetail(bvid, offline, repository, downloads)
+            if (resolved.detail != null) {
+                applyLoadedDetail(resolved.detail, fromOffline = resolved.fromOffline)
+                resolved.notice?.let { msg -> _state.update { it.copy(message = msg) } }
+            } else {
+                _state.update { it.copy(isLoading = false, error = resolved.error) }
+            }
         }
+    }
+
+    private fun applyLoadedDetail(detail: VideoDetail, fromOffline: Boolean) {
+        val targetCid = initialCid.takeIf { cid -> cid > 0L && detail.pages.any { it.cid == cid } }
+            ?: detail.cid
+        val index = detail.pages.indexOfFirst { it.cid == targetCid }.coerceAtLeast(0)
+        _state.update {
+            it.copy(
+                detail = detail,
+                isLoading = false,
+                selectedCid = targetCid,
+                selectedPartIndex = index,
+                offlineMode = fromOffline,
+            )
+        }
+        if (!fromOffline) {
+            interactionDelegate.loadRelation(detail.aid, detail.upMid)
+            interactionDelegate.loadUpFollowers(detail.upMid)
+            loadRelated()
+        }
+        loadPlayback(
+            qn = settings.defaultQuality.value,
+            cid = targetCid,
+            notifyDowngrade = false,
+        )
     }
 
     fun selectPart(index: Int, positionMs: Long) {
@@ -313,163 +331,17 @@ class VideoViewModel(
 
     // ---------- 互动 ----------
 
-    fun toggleLike() {
-        val detail = _state.value.detail ?: return
-        if (!requireLogin()) return
-        val target = !_state.value.liked
-        interact {
-            interactions.like(detail.aid, target).onSuccess {
-                _state.update { state ->
-                    val current = state.detail ?: return@update state
-                    val delta = if (target) 1L else -1L
-                    state.copy(
-                        liked = target,
-                        // 点赞与点踩互斥，点上赞就把踩收回去。
-                        disliked = if (target) false else state.disliked,
-                        detail = current.copy(like = (current.like + delta).coerceAtLeast(0L)),
-                    )
-                }
-            }
-        }
-    }
-
-    fun toggleDislike() {
-        val detail = _state.value.detail ?: return
-        if (!requireLogin()) return
-        val target = !_state.value.disliked
-        interact {
-            interactions.dislike(detail.aid, target).onSuccess {
-                _state.update { state ->
-                    val current = state.detail ?: return@update state
-                    val wasLiked = state.liked
-                    state.copy(
-                        disliked = target,
-                        liked = if (target) false else state.liked,
-                        detail = if (target && wasLiked) {
-                            current.copy(like = (current.like - 1L).coerceAtLeast(0L))
-                        } else {
-                            current
-                        },
-                    )
-                }
-            }
-        }
-    }
-
-    fun coin(count: Int) {
-        val detail = _state.value.detail ?: return
-        if (!requireLogin()) return
-        val awarded = _state.value.coined
-        if (awarded >= 2) {
-            _state.update { it.copy(message = "已经投过币了") }
-            return
-        }
-        val add = (count.coerceIn(1, 2) - awarded).coerceIn(1, 2)
-        interact {
-            interactions.coin(detail.aid, add).onSuccess {
-                _state.update { state ->
-                    val current = state.detail ?: return@update state
-                    state.copy(
-                        coined = (state.coined + add).coerceAtMost(2),
-                        detail = current.copy(coin = current.coin + add),
-                        message = "投币成功",
-                    )
-                }
-            }
-        }
-    }
-
-    fun favorite(mediaId: Long) {
-        val detail = _state.value.detail ?: return
-        if (!requireLogin()) return
-        interact {
-            interactions.favorite(detail.aid, mediaId).onSuccess {
-                _state.update { state ->
-                    val current = state.detail ?: return@update state
-                    state.copy(
-                        favorited = true,
-                        detail = current.copy(favorite = current.favorite + 1),
-                        message = "已收藏",
-                    )
-                }
-            }
-        }
-    }
-
-    fun addToWatchLater() {
-        val detail = _state.value.detail ?: return
-        if (!requireLogin()) return
-        interact {
-            interactions.addToWatchLater(detail.aid).onSuccess {
-                _state.update { it.copy(message = "已加入稍后再看") }
-            }
-        }
-    }
-
-    fun toggleFollow() {
-        val detail = _state.value.detail ?: return
-        if (!requireLogin()) return
-        if (detail.upMid <= 0L) return
-        val target = !_state.value.following
-        interact {
-            interactions.follow(detail.upMid, target).onSuccess {
-                _state.update {
-                    it.copy(following = target, message = if (target) "已关注" else "已取消关注")
-                }
-            }
-        }
-    }
-
-    private fun loadRelation(aid: Long, upMid: Long) {
-        if (!session.isLoggedIn()) return
-        viewModelScope.launch {
-            interactions.relation(aid).onSuccess { relation ->
-                _state.update {
-                    it.copy(
-                        liked = relation.like,
-                        coined = relation.coin,
-                        favorited = relation.favorite,
-                    )
-                }
-            }
-            if (upMid > 0L) {
-                val following = interactions.isFollowing(upMid)
-                _state.update { it.copy(following = following) }
-            }
-        }
-    }
-
-    private fun loadUpFollowers(mid: Long) {
-        if (mid <= 0L) return
-        viewModelScope.launch {
-            interactions.upCardSummary(mid)?.let { card ->
-                _state.update {
-                    it.copy(
-                        upFollowers = card.followers,
-                        upOfficialType = card.officialType,
-                        upOfficialDesc = card.officialDesc,
-                    )
-                }
-            }
-        }
-    }
-
-    private fun requireLogin(): Boolean {
-        if (session.isLoggedIn()) return true
-        _state.update { it.copy(message = "登录后可用") }
-        return false
-    }
-
-    private fun interact(block: suspend () -> Result<Unit>) {
-        if (_state.value.interactionBusy) return
-        _state.update { it.copy(interactionBusy = true) }
-        viewModelScope.launch {
-            block().onFailure { error ->
-                _state.update { it.copy(message = error.message ?: "操作失败") }
-            }
-            _state.update { it.copy(interactionBusy = false) }
-        }
-    }
+    fun toggleLike() = interactionDelegate.toggleLike()
+    fun toggleDislike() = interactionDelegate.toggleDislike()
+    fun coin(count: Int) = interactionDelegate.coin(count)
+    fun favorite(
+        addMediaIds: List<Long>,
+        delMediaIds: List<Long>,
+        nowFavorited: Boolean,
+    ) = interactionDelegate.favorite(addMediaIds, delMediaIds, nowFavorited)
+    fun triple() = interactionDelegate.triple()
+    fun addToWatchLater() = interactionDelegate.addToWatchLater()
+    fun toggleFollow() = interactionDelegate.toggleFollow()
 
     private fun loadPlayback(
         qn: Int,
@@ -488,30 +360,28 @@ class VideoViewModel(
             )
         }
         playbackJob = viewModelScope.launch {
-            repository.playback(bvid, cid, qn, CdnOption.fromId(settings.cdnOption.value))
-                .onSuccess { source ->
-                    val downgraded = qn > source.quality && qn >= 80 && notifyDowngrade
-                    _state.update {
-                        it.copy(
-                            source = source,
-                            isPlaybackLoading = false,
-                            activeQuality = source.quality,
-                            message = if (downgraded) {
-                                "该清晰度不可用，已使用 ${qualityLabel(source, source.quality)}"
-                            } else {
-                                it.message
-                            },
-                        )
-                    }
+            val resolved = resolveVideoPlayback(
+                bvid = bvid,
+                cid = cid,
+                qn = qn,
+                offlineMode = _state.value.offlineMode,
+                notifyDowngrade = notifyDowngrade,
+                cdnOptionId = settings.cdnOption.value,
+                repository = repository,
+                downloads = downloads,
+            )
+            if (resolved.source != null) {
+                _state.update {
+                    it.copy(
+                        source = resolved.source,
+                        isPlaybackLoading = false,
+                        activeQuality = resolved.source.quality,
+                        message = resolved.notice ?: it.message,
+                    )
                 }
-                .onFailure { error ->
-                    _state.update {
-                        it.copy(
-                            isPlaybackLoading = false,
-                            playbackError = error.message ?: "播放地址获取失败",
-                        )
-                    }
-                }
+            } else {
+                _state.update { it.copy(isPlaybackLoading = false, playbackError = resolved.error) }
+            }
         }
     }
 
@@ -521,10 +391,6 @@ class VideoViewModel(
                 .onSuccess { items -> _state.update { it.copy(related = items) } }
         }
     }
-
-    private fun qualityLabel(source: PlaybackSource, qn: Int): String =
-        source.qualities.firstOrNull { it.quality == qn }?.label?.takeIf { it.isNotBlank() }
-            ?: "${qn}P"
 
     private companion object {
         const val DEFAULT_QUALITY = 80

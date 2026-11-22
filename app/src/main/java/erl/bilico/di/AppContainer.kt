@@ -8,6 +8,7 @@ import erl.bilico.data.repository.ArticleRepository
 import erl.bilico.data.repository.BlockRepository
 import erl.bilico.data.repository.CommentRepository
 import erl.bilico.data.repository.DanmakuRepository
+import erl.bilico.data.repository.DownloadRepository
 import erl.bilico.data.repository.DynamicRepository
 import erl.bilico.data.repository.FavoriteRepository
 import erl.bilico.data.repository.FeedRepository
@@ -29,6 +30,7 @@ import erl.bilico.data.repository.VideoRepository
 import erl.bilico.data.repository.WatchLaterRepository
 import erl.bilico.data.session.SessionRepository
 import erl.bilico.data.settings.SettingsRepository
+import erl.bilico.download.DownloadService
 import erl.bilico.feature.cast.DlnaCastController
 import erl.bilico.update.AppUpdateManager
 import kotlinx.coroutines.CoroutineScope
@@ -94,7 +96,7 @@ class AppContainer(context: Context) {
 
     val interactions = InteractionRepository(client.api, client.buvid, session)
 
-    val messages = MessageRepository(client.api, client.buvid)
+    val messages = MessageRepository(client.api, client.buvid, session)
 
     val im = ImRepository(client.api, space, session)
 
@@ -107,6 +109,21 @@ class AppContainer(context: Context) {
     val reports = ReportRepository(client.api, client.buvid, client.cookieStore, session)
 
     val dlna = DlnaCastController(appContext, scope, client, video, pgc, settings)
+
+    val downloads = DownloadRepository(
+        context = appContext,
+        scope = scope,
+        client = client,
+        videoRepository = video,
+        pgcRepository = pgc,
+        danmakuRepository = danmaku,
+        subtitleRepository = subtitles,
+        settings = settings,
+    ).apply {
+        onActiveDownloadsChanged = { hasActive ->
+            DownloadService.syncState(appContext, hasActive)
+        }
+    }
 }
 
 val LocalAppContainer = staticCompositionLocalOf<AppContainer?> { null }

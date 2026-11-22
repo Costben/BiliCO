@@ -27,12 +27,20 @@ class SubtitleRepository(
     private val buvid: BuvidManager,
     private val okHttp: OkHttpClient,
 ) {
+    /** 本地离线字幕与章节信息钩子。 */
+    @Volatile
+    var localInfoLoader: ((cid: Long) -> PlayerAuxiliaryInfo?)? = null
+
     suspend fun fetchPlayerInfo(
         bvid: String = "",
         aid: Long = 0L,
         cid: Long,
+        preferLocal: Boolean = false,
     ): Result<PlayerAuxiliaryInfo> = withContext(Dispatchers.IO) {
-        runCatching {
+        if (preferLocal) {
+            localInfoLoader?.invoke(cid)?.let { return@withContext Result.success(it) }
+        }
+        val online = runCatching {
             require(cid > 0L && (bvid.isNotBlank() || aid > 0L)) { "缺少视频标识" }
             buvid.ensure()
             val baseParams = buildMap {
@@ -74,10 +82,17 @@ class SubtitleRepository(
                 chapters = chapters,
             )
         }
+        if (online.isSuccess) return@withContext online
+        localInfoLoader?.invoke(cid)?.let { return@withContext Result.success(it) }
+        online
     }
 
     suspend fun fetchCues(url: String): Result<List<SubtitleCue>> = withContext(Dispatchers.IO) {
         runCatching {
+            if (url.startsWith("file://")) {
+                val raw = java.io.File(java.net.URI(url)).readText()
+                return@runCatching parseSubtitleBody(raw)
+            }
             val normalized = normalizeSubtitleUrl(url)
             require(normalized.isNotBlank()) { "字幕地址为空" }
             val request = Request.Builder().url(normalized).get().build()
@@ -87,6 +102,18 @@ class SubtitleRepository(
             }
             parseSubtitleBody(raw)
         }
+    }
+
+    suspend fun fetchRawSubtitle(url: String): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalized = normalizeSubtitleUrl(url)
+            if (normalized.isBlank()) return@runCatching null
+            val request = Request.Builder().url(normalized).get().build()
+            okHttp.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@runCatching null
+                resp.body.string()
+            }
+        }.getOrNull()
     }
 
     private fun toSubtitleTrack(item: SubtitleRawItem): SubtitleTrack? {

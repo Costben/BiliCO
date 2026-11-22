@@ -6,6 +6,7 @@ import erl.bilico.data.model.BangumiDetail
 import erl.bilico.data.model.BangumiEpisode
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.repository.CdnOption
+import erl.bilico.data.repository.DownloadRepository
 import erl.bilico.data.repository.HeartbeatReporter
 import erl.bilico.data.repository.PgcRepository
 import erl.bilico.data.session.SessionRepository
@@ -32,19 +33,24 @@ data class PgcUiState(
     val followed: Boolean = false,
     val followBusy: Boolean = false,
     val message: String? = null,
+    val offlineMode: Boolean = false,
 )
 
 class PgcViewModel(
     private val repository: PgcRepository,
+    private val downloads: DownloadRepository,
     private val heartbeat: HeartbeatReporter,
     private val session: SessionRepository,
     private val settings: SettingsRepository,
     private val seasonId: Long,
     private val epId: Long,
     private val startPositionMs: Long = 0L,
+    private val offline: Boolean = false,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(PgcUiState(resumePositionMs = startPositionMs.coerceAtLeast(0L)))
+    private val _state = MutableStateFlow(
+        PgcUiState(resumePositionMs = startPositionMs.coerceAtLeast(0L), offlineMode = offline),
+    )
     val state: StateFlow<PgcUiState> = _state.asStateFlow()
 
     private var playbackJob: Job? = null
@@ -61,57 +67,73 @@ class PgcViewModel(
     fun load() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            repository.detail(seasonId, epId)
-                .onSuccess { detail ->
-                    if (detail.episodes.isEmpty()) {
-                        _state.update {
-                            it.copy(isLoading = false, error = "没有可播放的剧集")
-                        }
-                        return@onSuccess
-                    }
-                    val targetEp = if (epId > 0L) epId else detail.lastEpId
-                    val index = if (targetEp > 0L) {
-                        detail.episodes.indexOfFirst { it.epId == targetEp }.coerceAtLeast(0)
-                    } else {
-                        0
-                    }
-                    val chosenEp = detail.episodes[index]
-                    val serverResumeMs = if (startPositionMs <= 0L &&
-                        chosenEp.epId == detail.lastEpId &&
-                        detail.lastTimeSec >= 3L &&
-                        (chosenEp.durationSec <= 0L || detail.lastTimeSec < chosenEp.durationSec - 5L)
-                    ) {
-                        detail.lastTimeSec * 1000L
-                    } else {
-                        0L
-                    }
-                    val resumeMs = if (startPositionMs > 0L) startPositionMs else serverResumeMs
-                    _state.update {
-                        it.copy(
-                            detail = detail,
-                            isLoading = false,
-                            selectedEpIndex = index,
-                            followed = detail.followed,
-                            message = if (serverResumeMs > 0L) {
-                                "已从上次进度 ${erl.bilico.data.util.Formatters.formatDuration(serverResumeMs / 1000)} 继续播放"
-                            } else {
-                                it.message
-                            },
-                        )
-                    }
-                    loadPlayback(
-                        episode = chosenEp,
-                        qn = settings.defaultQuality.value,
-                        notifyDowngrade = false,
-                        positionMs = resumeMs,
-                    )
+            if (offline) {
+                val localDetail = downloads.buildOfflineBangumiDetail(seasonId)
+                if (localDetail != null && localDetail.episodes.isNotEmpty()) {
+                    applyLoadedDetail(localDetail, fromOffline = true)
+                } else {
+                    _state.update { it.copy(isLoading = false, error = "未找到本地缓存剧集") }
                 }
+                return@launch
+            }
+            repository.detail(seasonId, epId)
+                .onSuccess { detail -> applyLoadedDetail(detail, fromOffline = false) }
                 .onFailure { error ->
-                    _state.update {
-                        it.copy(isLoading = false, error = error.message ?: "番剧加载失败")
+                    val localDetail = downloads.buildOfflineBangumiDetail(seasonId)
+                    if (localDetail != null && localDetail.episodes.isNotEmpty()) {
+                        applyLoadedDetail(localDetail, fromOffline = true)
+                        _state.update { it.copy(message = "当前离线，正在播放本地缓存") }
+                    } else {
+                        _state.update {
+                            it.copy(isLoading = false, error = error.message ?: "番剧加载失败")
+                        }
                     }
                 }
         }
+    }
+
+    private fun applyLoadedDetail(detail: BangumiDetail, fromOffline: Boolean) {
+        if (detail.episodes.isEmpty()) {
+            _state.update { it.copy(isLoading = false, error = "没有可播放的剧集") }
+            return
+        }
+        val targetEp = if (epId > 0L) epId else detail.lastEpId
+        val index = if (targetEp > 0L) {
+            detail.episodes.indexOfFirst { it.epId == targetEp }.coerceAtLeast(0)
+        } else {
+            0
+        }
+        val chosenEp = detail.episodes[index]
+        val serverResumeMs = if (!fromOffline && startPositionMs <= 0L &&
+            chosenEp.epId == detail.lastEpId &&
+            detail.lastTimeSec >= 3L &&
+            (chosenEp.durationSec <= 0L || detail.lastTimeSec < chosenEp.durationSec - 5L)
+        ) {
+            detail.lastTimeSec * 1000L
+        } else {
+            0L
+        }
+        val resumeMs = if (startPositionMs > 0L) startPositionMs else serverResumeMs
+        _state.update {
+            it.copy(
+                detail = detail,
+                isLoading = false,
+                selectedEpIndex = index,
+                followed = detail.followed,
+                offlineMode = fromOffline,
+                message = if (serverResumeMs > 0L) {
+                    "已从上次进度 ${erl.bilico.data.util.Formatters.formatDuration(serverResumeMs / 1000)} 继续播放"
+                } else {
+                    it.message
+                },
+            )
+        }
+        loadPlayback(
+            episode = chosenEp,
+            qn = settings.defaultQuality.value,
+            notifyDowngrade = false,
+            positionMs = resumeMs,
+        )
     }
 
     fun selectEpisode(index: Int) {
@@ -246,6 +268,10 @@ class PgcViewModel(
         _state.update { it.copy(message = null) }
     }
 
+    fun showMessage(text: String) {
+        _state.update { it.copy(message = text) }
+    }
+
     private fun loadPlayback(
         episode: BangumiEpisode,
         qn: Int,
@@ -267,6 +293,24 @@ class PgcViewModel(
             )
         }
         playbackJob = viewModelScope.launch {
+            if (_state.value.offlineMode) {
+                val localSource = downloads.findCompletedBangumi(detail.seasonId, episode.epId)
+                    ?.let(downloads::buildOfflinePlaybackSource)
+                if (localSource != null) {
+                    _state.update {
+                        it.copy(
+                            source = localSource,
+                            isPlaybackLoading = false,
+                            activeQuality = localSource.quality,
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(isPlaybackLoading = false, playbackError = "这一话尚未离线缓存")
+                    }
+                }
+                return@launch
+            }
             repository.playback(
                 epId = episode.epId,
                 cid = episode.cid,
@@ -292,11 +336,24 @@ class PgcViewModel(
                     }
                 }
                 .onFailure { error ->
-                    _state.update {
-                        it.copy(
-                            isPlaybackLoading = false,
-                            playbackError = error.message ?: "播放地址获取失败",
-                        )
+                    val fallbackSource = downloads.findCompletedBangumi(detail.seasonId, episode.epId)
+                        ?.let(downloads::buildOfflinePlaybackSource)
+                    if (fallbackSource != null) {
+                        _state.update {
+                            it.copy(
+                                source = fallbackSource,
+                                isPlaybackLoading = false,
+                                activeQuality = fallbackSource.quality,
+                                message = "网络不可用，已切换为本地缓存",
+                            )
+                        }
+                    } else {
+                        _state.update {
+                            it.copy(
+                                isPlaybackLoading = false,
+                                playbackError = error.message ?: "播放地址获取失败",
+                            )
+                        }
                     }
                 }
         }

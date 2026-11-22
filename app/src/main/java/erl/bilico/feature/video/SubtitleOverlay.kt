@@ -64,19 +64,20 @@ internal class SubtitleController(
         bvid: String = "",
         aid: Long = 0L,
         cid: Long,
+        preferLocal: Boolean = false,
         onAuxiliaryLoaded: ((PlayerAuxiliaryInfo) -> Unit)? = null,
     ) {
         if (cid <= 0L) {
             clear()
             return
         }
-        val key = "$bvid|$aid|$cid"
+        val key = "$bvid|$aid|$cid|$preferLocal"
         if (key == attachedKey) return
         clear()
         attachedKey = key
 
         attachJob = scope.launch {
-            repository.fetchPlayerInfo(bvid = bvid, aid = aid, cid = cid)
+            repository.fetchPlayerInfo(bvid = bvid, aid = aid, cid = cid, preferLocal = preferLocal)
                 .onSuccess { info ->
                     tracks = info.subtitles
                     chapters = info.chapters

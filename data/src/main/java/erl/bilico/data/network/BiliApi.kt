@@ -16,12 +16,14 @@ import erl.bilico.data.model.EmotePanelResponse
 import erl.bilico.data.model.MessageAtResponse
 import erl.bilico.data.model.MessageLikeResponse
 import erl.bilico.data.model.MessageReplyResponse
+import erl.bilico.data.model.MessageUnreadResponse
 import erl.bilico.data.model.PgcRankResponse
 import erl.bilico.data.model.PgcSeasonResponse
 import erl.bilico.data.model.RankingResponse
 import erl.bilico.data.model.RelatedResponse
 import erl.bilico.data.model.SendDanmakuResponse
 import erl.bilico.data.model.SystemNoticeResponse
+import erl.bilico.data.model.TripleResponse
 import erl.bilico.data.model.UserRelationResponse
 import erl.bilico.data.model.VideoRelationResponse
 import erl.bilico.data.model.FavFolderResponse
@@ -33,6 +35,7 @@ import erl.bilico.data.model.VoteInfoResponse
 import erl.bilico.data.model.ImFetchMsgsResponse
 import erl.bilico.data.model.ImSendMsgResponse
 import erl.bilico.data.model.ImSessionListResponse
+import erl.bilico.data.model.ImSingleUnreadResponse
 import erl.bilico.data.model.LiveContributionRankResponse
 import erl.bilico.data.model.LiveDanmakuInfoResponse
 import erl.bilico.data.model.LiveFollowingResponse
@@ -301,6 +304,8 @@ interface BiliApi {
     @GET("x/v3/fav/folder/created/list-all")
     suspend fun favFolders(
         @Query("up_mid") mid: Long,
+        @Query("rid") rid: Long? = null,
+        @Query("type") type: Int? = null,
         @Query("web_location") webLocation: String = "333.1387",
     ): FavFolderResponse
 
@@ -373,6 +378,10 @@ interface BiliApi {
     suspend fun likeVideo(@FieldMap fields: Map<String, String>): BaseResponse
 
     @FormUrlEncoded
+    @POST("x/web-interface/archive/like/triple")
+    suspend fun tripleVideo(@FieldMap fields: Map<String, String>): TripleResponse
+
+    @FormUrlEncoded
     @POST("x/web-interface/coin/add")
     suspend fun coinVideo(@FieldMap fields: Map<String, String>): BaseResponse
 
@@ -437,6 +446,12 @@ interface BiliApi {
     suspend fun reportComment(@FieldMap fields: Map<String, String>): BaseResponse
 
     // ---------- 消息 ----------
+
+    @GET("https://api.bilibili.com/x/msgfeed/unread")
+    suspend fun messageUnread(@QueryMap params: Map<String, String>): MessageUnreadResponse
+
+    @GET("https://api.vc.bilibili.com/session_svr/v1/session_svr/single_unread")
+    suspend fun imSingleUnread(@QueryMap params: Map<String, String>): ImSingleUnreadResponse
 
     @GET("https://api.bilibili.com/x/msgfeed/reply")
     suspend fun messageReply(@QueryMap params: Map<String, String>): MessageReplyResponse

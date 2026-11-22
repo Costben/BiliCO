@@ -48,6 +48,7 @@ import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.DanmakuStatIcon
+import erl.bilico.ui.components.OfficialVerifyBadge
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -245,17 +246,31 @@ internal fun FeedCard(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (metrics.showAvatar && video.upFace.isNotBlank()) {
-                    Avatar(avatarUrl, metrics.avatarSize, officialType = video.officialType)
+                    Avatar(avatarUrl, metrics.avatarSize)
                     Spacer(Modifier.width(metrics.avatarGap))
                 }
-                Text(
-                    text = video.upName.ifBlank { "未知 UP" },
-                    fontSize = metrics.upFontSize,
-                    color = scheme.onSurfaceSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
                     modifier = Modifier.weight(1f),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = video.upName.ifBlank { "未知 UP" },
+                        fontSize = metrics.upFontSize,
+                        color = scheme.onSurfaceSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (video.officialType == 0 || video.officialType == 1) {
+                        val idBadgeSize = with(LocalDensity.current) { metrics.upFontSize.toDp() }
+                        Spacer(Modifier.width(3.dp))
+                        OfficialVerifyBadge(
+                            type = video.officialType,
+                            size = idBadgeSize,
+                            ringColor = Color.Transparent,
+                        )
+                    }
+                }
                 // 播放量搬进封面之后，三点菜单跟 UP 主同一行靠右，卡片少一行。
                 val cardMenuItems = rememberVideoCardMenuItems(
                     video = video,
@@ -342,6 +357,20 @@ internal fun rememberVideoCardMenuItems(
     var showDislike by remember(video.bvid) { mutableStateOf(false) }
     var showReport by remember(video.bvid) { mutableStateOf(false) }
     var showKeyword by remember(video.bvid) { mutableStateOf(false) }
+    var showDownload by remember(video.bvid) { mutableStateOf(false) }
+
+    if (showDownload && container != null) {
+        erl.bilico.feature.download.FeedVideoDownloadDialog(
+            container = container,
+            bvid = video.bvid,
+            onEnqueued = { count ->
+                if (count > 0) {
+                    Toast.makeText(context, "已加入离线缓存队列 ($count)", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDismiss = { showDownload = false },
+        )
+    }
 
     if (showDislike) {
         erl.bilico.ui.components.FeedDislikeDialog(
@@ -377,6 +406,9 @@ internal fun rememberVideoCardMenuItems(
     return remember(video, onWatchLater, container, context, scope) {
         buildList {
             add(CouiMenuItem("稍后再看", onWatchLater))
+            if (container != null) {
+                add(CouiMenuItem("离线缓存", { showDownload = true }))
+            }
             add(CouiMenuItem("分享", { shareVideo(context, video) }))
             if (container != null) {
                 add(CouiMenuItem("我不想看", onClick = { showDislike = true }, group = 1))

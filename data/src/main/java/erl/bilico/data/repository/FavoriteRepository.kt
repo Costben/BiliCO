@@ -14,10 +14,15 @@ class FavoriteRepository(
     private val buvid: BuvidManager,
     private val session: SessionRepository,
 ) {
-    suspend fun folders(mid: Long): Result<List<FavoriteFolder>> = withContext(Dispatchers.IO) {
+    suspend fun folders(mid: Long, aid: Long? = null): Result<List<FavoriteFolder>> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
-            val response = api.favFolders(mid)
+            val targetAid = aid?.takeIf { it > 0L }
+            val response = api.favFolders(
+                mid = mid,
+                rid = targetAid,
+                type = if (targetAid != null) 2 else null,
+            )
             if (response.code != 0) error(response.message.ifBlank { "收藏夹加载失败(${response.code})" })
             response.data?.list.orEmpty().mapNotNull { folder ->
                 val mediaId = folder.id.takeIf { it > 0L } ?: folder.fid
@@ -27,6 +32,7 @@ class FavoriteRepository(
                     title = Formatters.decodeHtmlEntities(folder.title),
                     cover = Formatters.normalizeImageUrl(folder.cover),
                     countText = "${Formatters.formatStat(folder.media_count.toLong())}个内容",
+                    favorited = folder.fav_state == 1,
                 )
             }
         }

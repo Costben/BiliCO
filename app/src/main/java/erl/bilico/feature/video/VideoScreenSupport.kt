@@ -301,7 +301,7 @@ internal fun VideoScreenDialogs(
     onSelectCoin: (Int) -> Unit,
     onDismissCoin: () -> Unit,
     favoriteFolders: List<FavoriteFolder>?,
-    onSelectFavorite: (Long) -> Unit,
+    onConfirmFavorite: (addMediaIds: List<Long>, delMediaIds: List<Long>, nowFavorited: Boolean) -> Unit,
     onDismissFavorite: () -> Unit,
     danmakuSettingsDialogVisible: Boolean = false,
     danmakuSettings: DanmakuSettings? = null,
@@ -314,6 +314,7 @@ internal fun VideoScreenDialogs(
     onDismissChapter: () -> Unit = {},
     sponsorSubmitDialog: (@Composable (inlineInStage: Boolean) -> Unit)? = null,
     castDialog: (@Composable (inlineInStage: Boolean) -> Unit)? = null,
+    downloadDialog: (@Composable (inlineInStage: Boolean) -> Unit)? = null,
     reportVideoDialog: (@Composable (inlineInStage: Boolean) -> Unit)? = null,
     inlineInStage: Boolean = false,
 ) {
@@ -338,7 +339,7 @@ internal fun VideoScreenDialogs(
         favoriteFolders?.let { folders ->
             FavoriteFolderDialog(
                 folders = folders,
-                onSelect = onSelectFavorite,
+                onConfirm = onConfirmFavorite,
                 onDismiss = onDismissFavorite,
             )
         }
@@ -356,6 +357,7 @@ internal fun VideoScreenDialogs(
 
     sponsorSubmitDialog?.invoke(inlineInStage)
     castDialog?.invoke(inlineInStage)
+    downloadDialog?.invoke(inlineInStage)
     reportVideoDialog?.invoke(inlineInStage)
 }
 

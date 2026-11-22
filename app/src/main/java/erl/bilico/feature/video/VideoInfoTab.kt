@@ -57,10 +57,18 @@ import erl.bilico.feature.comment.DislikeOutlineIcon
 import erl.bilico.feature.comment.LikeFilledIcon
 import erl.bilico.feature.comment.LikeOutlineIcon
 import erl.bilico.feature.feed.rememberWatchLaterAction
+import erl.bilico.ui.components.CoinFilledIcon
+import erl.bilico.ui.components.CoinOutlineIcon
 import erl.bilico.ui.components.DanmakuStatIcon
+import erl.bilico.ui.components.DownloadFilledIcon
+import erl.bilico.ui.components.DownloadOutlineIcon
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.ExpandableSectionHeader
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.ShareOutlineIcon
+import erl.bilico.ui.components.WatchLaterOutlineIcon
+import erl.bilico.ui.components.StarFilledIcon
+import erl.bilico.ui.components.StarOutlineIcon
 import erl.bilico.ui.components.StatLabel
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.ExpandableList
@@ -68,13 +76,12 @@ import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Favorites
+import io.github.suqi8.coui.kmp.icon.extended.Download
 import io.github.suqi8.coui.kmp.icon.extended.Info
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import kotlinx.coroutines.delay
 import io.github.suqi8.coui.kmp.icon.extended.Share
 import io.github.suqi8.coui.kmp.icon.extended.Stopwatch
-import io.github.suqi8.coui.kmp.icon.extended.Store
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
@@ -100,12 +107,16 @@ internal fun VideoInfoTab(
     upOfficialType: Int = -1,
     upOfficialDesc: String = "",
     onLike: () -> Unit,
+    onTriple: (() -> Unit)? = null,
     onDislike: () -> Unit,
+    showDislike: Boolean = true,
     onCoin: () -> Unit,
     onFavorite: () -> Unit,
     onWatchLater: () -> Unit,
     onFollow: () -> Unit,
     onShare: () -> Unit,
+    onDownload: (() -> Unit)? = null,
+    downloaded: Boolean = false,
     listState: LazyListState = rememberLazyListState(),
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
@@ -143,12 +154,16 @@ internal fun VideoInfoTab(
             upOfficialType = upOfficialType,
             upOfficialDesc = upOfficialDesc,
             onLike = onLike,
+            onTriple = onTriple,
             onDislike = onDislike,
+            showDislike = showDislike,
             onCoin = onCoin,
             onFavorite = onFavorite,
             onWatchLater = onWatchLater,
             onFollow = onFollow,
             onShare = onShare,
+            onDownload = onDownload,
+            downloaded = downloaded,
             listState = listState,
             topInset = topInset,
             bottomInset = bottomInset,
@@ -181,12 +196,16 @@ private fun InfoContent(
     upOfficialType: Int = -1,
     upOfficialDesc: String = "",
     onLike: () -> Unit,
+    onTriple: (() -> Unit)? = null,
     onDislike: () -> Unit,
+    showDislike: Boolean = true,
     onCoin: () -> Unit,
     onFavorite: () -> Unit,
     onWatchLater: () -> Unit,
     onFollow: () -> Unit,
     onShare: () -> Unit,
+    onDownload: (() -> Unit)? = null,
+    downloaded: Boolean = false,
     listState: LazyListState,
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
@@ -249,13 +268,7 @@ private fun InfoContent(
                     .clickable { expanded = !expanded }
                     .animateContentSize(),
             ) {
-                Text(
-                    text = detail.title,
-                    style = COUITheme.textStyles.title3,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = if (expanded) Int.MAX_VALUE else TITLE_COLLAPSED_LINES,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                VideoTitleRow(detail = detail, expanded = expanded)
 
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -326,41 +339,60 @@ private fun InfoContent(
                     text = Formatters.formatStat(detail.like),
                     active = liked,
                     onClick = onLike,
+                    onLongClick = onTriple,
+                    modifier = Modifier.weight(1f),
                 )
+                if (showDislike) {
+                    VideoAction(
+                        icon = if (disliked) DislikeFilledIcon else DislikeOutlineIcon,
+                        label = if (disliked) "取消点踩" else "点踩",
+                        text = "点踩",
+                        active = disliked,
+                        onClick = onDislike,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 VideoAction(
-                    icon = if (disliked) DislikeFilledIcon else DislikeOutlineIcon,
-                    label = if (disliked) "取消点踩" else "点踩",
-                    text = "点踩",
-                    active = disliked,
-                    onClick = onDislike,
-                )
-                VideoAction(
-                    icon = COUIIcons.Store,
+                    icon = if (coined > 0) CoinFilledIcon else CoinOutlineIcon,
                     label = if (coined > 0) "已投币" else "投币",
                     text = Formatters.formatStat(detail.coin),
                     active = coined > 0,
                     onClick = onCoin,
+                    modifier = Modifier.weight(1f),
                 )
                 VideoAction(
-                    icon = COUIIcons.Favorites,
+                    icon = if (favorited) StarFilledIcon else StarOutlineIcon,
                     label = if (favorited) "取消收藏" else "收藏",
                     text = Formatters.formatStat(detail.favorite),
                     active = favorited,
                     onClick = onFavorite,
+                    modifier = Modifier.weight(1f),
                 )
                 VideoAction(
-                    icon = COUIIcons.Stopwatch,
+                    icon = WatchLaterOutlineIcon,
                     label = "稍后再看",
                     text = "再看",
                     active = false,
                     onClick = onWatchLater,
+                    modifier = Modifier.weight(1f),
                 )
+                if (onDownload != null) {
+                    VideoAction(
+                        icon = if (downloaded) DownloadFilledIcon else DownloadOutlineIcon,
+                        label = "离线缓存",
+                        text = if (downloaded) "已缓存" else "缓存",
+                        active = downloaded,
+                        onClick = onDownload,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 VideoAction(
-                    icon = COUIIcons.Share,
+                    icon = ShareOutlineIcon,
                     label = "分享",
                     text = "分享",
                     active = false,
                     onClick = onShare,
+                    modifier = Modifier.weight(1f),
                 )
             }
         }

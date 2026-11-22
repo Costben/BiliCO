@@ -204,4 +204,16 @@ object Formatters {
             else -> num.toLong()
         }
     }
+
+    fun formatFileSize(bytes: Long): String {
+        val safe = bytes.coerceAtLeast(0L)
+        return when {
+            safe < 1024L -> "$safe B"
+            safe < 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f KB", safe / 1024.0)
+            safe < 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB", safe / (1024.0 * 1024.0))
+            else -> String.format(java.util.Locale.US, "%.2f GB", safe / (1024.0 * 1024.0 * 1024.0))
+        }
+    }
+
+    fun formatSpeed(bytesPerSec: Long): String = "${formatFileSize(bytesPerSec.coerceAtLeast(0L))}/s"
 }

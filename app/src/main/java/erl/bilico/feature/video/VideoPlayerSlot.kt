@@ -66,6 +66,8 @@ internal fun BoxScope.VideoPlayerSlot(
     onSubmitSponsor: (() -> Unit)?,
     castDialog: (@Composable (Boolean) -> Unit)? = null,
     onCast: (() -> Unit)? = null,
+    downloadDialog: (@Composable (Boolean) -> Unit)? = null,
+    onDownload: (() -> Unit)? = null,
     reportVideoDialog: (@Composable (Boolean) -> Unit)? = null,
     onReportVideo: (() -> Unit)? = null,
     onFullscreenChange: (Boolean) -> Unit,
@@ -91,7 +93,7 @@ internal fun BoxScope.VideoPlayerSlot(
 
     val anyStageDialogOpen = fullscreen &&
         (danmakuSettingsDialogVisible || sponsorSubmitDialog != null ||
-            castDialog != null || reportVideoDialog != null)
+            castDialog != null || downloadDialog != null || reportVideoDialog != null)
     val returnHome = LocalStageReturnHome.current ?: { nav.popToMain() }
     val episodesMenuItems = rememberEpisodesMenuItems(
         detail = state.detail,
@@ -153,6 +155,7 @@ internal fun BoxScope.VideoPlayerSlot(
         onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
         onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
         onCast = onCast,
+        onDownload = onDownload,
         onReportVideo = onReportVideo,
         longPressSpeed = longPressSpeed,
         longPressSpeedMode = resolveLongPressSpeedMode(
@@ -235,7 +238,7 @@ internal fun BoxScope.VideoPlayerSlot(
                 onSelectCoin = {},
                 onDismissCoin = {},
                 favoriteFolders = null,
-                onSelectFavorite = {},
+                onConfirmFavorite = { _, _, _ -> },
                 onDismissFavorite = {},
                 danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
                 danmakuSettings = danmakuSettings,
@@ -243,6 +246,7 @@ internal fun BoxScope.VideoPlayerSlot(
                 onDismissDanmakuSettings = onDismissDanmakuSettings,
                 sponsorSubmitDialog = sponsorSubmitDialog,
                 castDialog = castDialog,
+                downloadDialog = downloadDialog,
                 reportVideoDialog = reportVideoDialog,
                 inlineInStage = true,
             )
@@ -267,6 +271,7 @@ internal fun VideoCollapsedBarSlot(
     state: VideoUiState,
     backdrop: LayerBackdrop?,
     onCast: (() -> Unit)? = null,
+    onDownload: (() -> Unit)? = null,
     onReportVideo: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -286,6 +291,7 @@ internal fun VideoCollapsedBarSlot(
         onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
         onShare = { shareVideo(context, state.detail?.title.orEmpty(), bvid) },
         onCast = onCast,
+        onDownload = onDownload,
         onReportVideo = onReportVideo,
         backdrop = backdrop,
     )

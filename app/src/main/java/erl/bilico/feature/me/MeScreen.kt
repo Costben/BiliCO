@@ -2,7 +2,11 @@ package erl.bilico.feature.me
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.overscroll
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +50,16 @@ import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.ConfirmDialog
+import erl.bilico.ui.components.MeBangumiIcon
+import erl.bilico.ui.components.MeDownloadsIcon
+import erl.bilico.ui.components.MeFavoritesIcon
+import erl.bilico.ui.components.MeFollowIcon
+import erl.bilico.ui.components.MeHistoryIcon
+import erl.bilico.ui.components.MeLogoutIcon
+import erl.bilico.ui.components.MeMessageIcon
+import erl.bilico.ui.components.MeSettingsIcon
+import erl.bilico.ui.components.MeSwitchAccountIcon
+import erl.bilico.ui.components.MeWatchLaterIcon
 import erl.bilico.ui.components.navBottomPadding
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
@@ -51,16 +67,6 @@ import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Album
-import io.github.suqi8.coui.kmp.icon.extended.Contacts
-import io.github.suqi8.coui.kmp.icon.extended.Email
-import io.github.suqi8.coui.kmp.icon.extended.Favorites
-import io.github.suqi8.coui.kmp.icon.extended.ListView
-import io.github.suqi8.coui.kmp.icon.extended.Playlist
-import io.github.suqi8.coui.kmp.icon.extended.Replace
-import io.github.suqi8.coui.kmp.icon.extended.Settings
-import io.github.suqi8.coui.kmp.icon.extended.Unlock
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -75,43 +81,61 @@ fun MeScreen(
 ) {
     val account by container.session.account.collectAsStateWithLifecycle()
     val sessions by container.session.sessions.collectAsStateWithLifecycle()
+    val unread by container.messages.unread.collectAsStateWithLifecycle()
+    val downloadTasks by container.downloads.tasks.collectAsStateWithLifecycle()
+    val activeDownloadCount = remember(downloadTasks) { downloadTasks.count { it.isActive } }
+    val completedDownloadCount = remember(downloadTasks) { downloadTasks.count { it.isCompleted } }
     val current = account
     val scope = rememberCoroutineScope()
     var confirmLogout by remember { mutableStateOf(false) }
     var switchAccounts by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val fallbackOverscroll = rememberOverscrollEffect()
+    val fallbackScrollState = rememberScrollableState { 0f }
+    val fitsInViewport = !listState.canScrollForward && !listState.canScrollBackward
     BindScrollToTop(listState)
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize().scrollEndHaptic(),
-        contentPadding = PaddingValues(
-            start = 12.dp,
-            top = topInset + 12.dp,
-            end = 12.dp,
-            bottom = 66.dp + navBottomPadding(),
-        ),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .overscroll(fallbackOverscroll)
+            .scrollable(
+                state = fallbackScrollState,
+                orientation = Orientation.Vertical,
+                enabled = fitsInViewport,
+                overscrollEffect = fallbackOverscroll,
+            ),
     ) {
-        if (current == null) {
-            // 登录态为空但名册里还有号时，切换入口不能跟着消失，否则只剩扫码一条路。
-            if (sessions.isNotEmpty()) {
-                item(key = "account-switch") {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        cornerRadius = CardDefaults.GroupCornerRadius,
-                        insideMargin = PaddingValues(0.dp),
-                        weight = CardDefaults.GroupWeight,
-                    ) {
-                        EntryRow(
-                            title = "切换账号",
-                            icon = COUIIcons.Replace,
-                            position = CardListPosition.None,
-                            onClick = { switchAccounts = true },
-                        )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().scrollEndHaptic(),
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                top = topInset + 12.dp,
+                end = 12.dp,
+                bottom = 112.dp + navBottomPadding(),
+            ),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (current == null) {
+                // 登录态为空但名册里还有号时，切换入口不能跟着消失，否则只剩扫码一条路。
+                if (sessions.isNotEmpty()) {
+                    item(key = "account-switch") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            cornerRadius = CardDefaults.GroupCornerRadius,
+                            insideMargin = PaddingValues(0.dp),
+                            weight = CardDefaults.GroupWeight,
+                        ) {
+                            EntryRow(
+                                title = "切换账号",
+                                icon = MeSwitchAccountIcon,
+                                position = CardListPosition.None,
+                                onClick = { switchAccounts = true },
+                            )
+                        }
                     }
                 }
-            }
             item(key = "login") {
                 LoginSection(
                     container = container,
@@ -131,43 +155,56 @@ fun MeScreen(
             ) {
                 EntryRow(
                     title = "历史记录",
-                    icon = COUIIcons.ListView,
+                    icon = MeHistoryIcon,
                     position = CardListPosition.Head,
                     onClick = { nav.push(Route.History) },
                 )
                 EntryRow(
                     title = "消息",
-                    icon = COUIIcons.Email,
+                    icon = MeMessageIcon,
                     position = CardListPosition.Middle,
+                    statusText = unread.total.takeIf { it > 0 }?.toString(),
+                    showRedDot = unread.total > 0,
                     onClick = { nav.push(Route.Messages) },
                 )
                 EntryRow(
                     title = "收藏夹",
-                    icon = COUIIcons.Favorites,
+                    icon = MeFavoritesIcon,
                     position = CardListPosition.Middle,
                     onClick = { nav.push(Route.Favorites) },
                 )
                 EntryRow(
                     title = "稍后再看",
-                    icon = COUIIcons.Playlist,
+                    icon = MeWatchLaterIcon,
                     position = CardListPosition.Middle,
                     onClick = { nav.push(Route.WatchLater) },
                 )
                 EntryRow(
+                    title = "离线缓存",
+                    summary = when {
+                        activeDownloadCount > 0 -> "$activeDownloadCount 个任务下载中"
+                        completedDownloadCount > 0 -> "已缓存 $completedDownloadCount 个"
+                        else -> null
+                    },
+                    icon = MeDownloadsIcon,
+                    position = CardListPosition.Middle,
+                    onClick = { nav.push(Route.Downloads) },
+                )
+                EntryRow(
                     title = "追番",
-                    icon = COUIIcons.Album,
+                    icon = MeBangumiIcon,
                     position = CardListPosition.Middle,
                     onClick = { nav.push(Route.BangumiFollow) },
                 )
                 EntryRow(
                     title = "关注",
-                    icon = COUIIcons.Contacts,
+                    icon = MeFollowIcon,
                     position = CardListPosition.Middle,
                     onClick = { nav.push(Route.Following) },
                 )
                 EntryRow(
                     title = "设置",
-                    icon = COUIIcons.Settings,
+                    icon = MeSettingsIcon,
                     position = CardListPosition.Tail,
                     onClick = { nav.push(Route.Settings) },
                 )
@@ -184,18 +221,19 @@ fun MeScreen(
                 ) {
                     EntryRow(
                         title = "切换账号",
-                        icon = COUIIcons.Replace,
+                        icon = MeSwitchAccountIcon,
                         position = CardListPosition.Head,
                         onClick = { switchAccounts = true },
                     )
                     EntryRow(
                         title = "退出登录",
-                        icon = COUIIcons.Unlock,
+                        icon = MeLogoutIcon,
                         position = CardListPosition.Tail,
                         onClick = { confirmLogout = true },
                     )
                 }
             }
+        }
         }
     }
 
@@ -238,10 +276,16 @@ private fun EntryRow(
     title: String,
     icon: ImageVector,
     position: CardListPosition,
+    summary: String? = null,
+    statusText: String? = null,
+    showRedDot: Boolean = false,
     onClick: () -> Unit,
 ) {
     ArrowPreference(
         title = title,
+        summary = summary,
+        statusText = statusText,
+        showRedDot = showRedDot,
         cardListPosition = position,
         startAction = {
             Icon(

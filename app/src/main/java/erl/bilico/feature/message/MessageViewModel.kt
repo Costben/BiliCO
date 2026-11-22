@@ -7,6 +7,7 @@ import erl.bilico.data.model.MessageCursor
 import erl.bilico.data.model.MessageEntry
 import erl.bilico.data.model.MessageJumpTarget
 import erl.bilico.data.model.MessageKind
+import erl.bilico.data.model.MessageUnreadSummary
 import erl.bilico.data.repository.ImRepository
 import erl.bilico.data.repository.MessageRepository
 import erl.bilico.data.session.SessionRepository
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
 /** 单个通知消息分类的一页内容；各分类各自独立，左右滑动互不打断。 */
 data class MessageKindState(
     val items: List<MessageEntry> = emptyList(),
+    val highlightedKeys: Set<String> = emptySet(),
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val isEnd: Boolean = false,
@@ -29,6 +31,7 @@ data class MessageKindState(
 
 data class MessageUiState(
     val kinds: Map<MessageKind, MessageKindState> = emptyMap(),
+    val unread: MessageUnreadSummary = MessageUnreadSummary(),
     // 私信会话
     val sessions: List<ImSessionUi> = emptyList(),
     val isSessionsLoading: Boolean = false,
@@ -47,15 +50,39 @@ class MessageViewModel(
     private val session: SessionRepository,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(MessageUiState())
+    private val initialUnread = repository.unread.value
+    val initialKind: MessageKind = initialUnread.preferredInitialKind()
+
+    private val _state = MutableStateFlow(MessageUiState(unread = initialUnread))
     val state: StateFlow<MessageUiState> = _state.asStateFlow()
+
+    private val pendingHighlightCounts = mutableMapOf(
+        MessageKind.REPLY to initialUnread.reply,
+        MessageKind.AT to initialUnread.at,
+        MessageKind.LIKE to initialUnread.like,
+        MessageKind.SYSTEM to initialUnread.system,
+    )
 
     private val cursors = mutableMapOf<MessageKind, MessageCursor?>()
     private val loading = mutableSetOf<MessageKind>()
     private var resolvingJump = false
 
     init {
-        ensureLoaded(MessageKind.SESSION)
+        viewModelScope.launch {
+            repository.unread.collect { summary ->
+                _state.update { it.copy(unread = summary) }
+            }
+        }
+        ensureLoaded(initialKind)
+    }
+
+    fun refreshOnReturn() {
+        viewModelScope.launch {
+            repository.refreshUnread(force = true)
+            if (_state.value.sessionsLoaded) {
+                loadSessions(firstPage = true)
+            }
+        }
     }
 
     /** 点击回复、@、点赞通知条目后跳转到对应的视频、动态、专栏或用户主页。 */
@@ -172,9 +199,23 @@ class MessageViewModel(
             repository.page(kind, pageCursor)
                 .onSuccess { page ->
                     cursors[kind] = page.cursor
+                    val highlightCount = if (firstPage) {
+                        (pendingHighlightCounts.remove(kind) ?: 0).coerceAtLeast(0)
+                    } else {
+                        0
+                    }
+                    val newHighlights = if (highlightCount > 0) {
+                        page.items.take(highlightCount).mapTo(LinkedHashSet()) { it.key }
+                    } else {
+                        emptySet()
+                    }
+                    if (firstPage) {
+                        repository.markKindViewed(kind)
+                    }
                     update(kind) { state ->
                         state.copy(
                             items = if (firstPage) page.items else state.items + page.items,
+                            highlightedKeys = if (firstPage) newHighlights else state.highlightedKeys,
                             isLoading = false,
                             isLoadingMore = false,
                             loaded = true,

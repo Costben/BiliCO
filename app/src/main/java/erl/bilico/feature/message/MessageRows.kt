@@ -1,6 +1,7 @@
 package erl.bilico.feature.message
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -42,6 +45,7 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.navBottomPadding
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SearchResultContainer
@@ -50,6 +54,7 @@ import io.github.suqi8.coui.kmp.basic.SearchResultsRiseTrigger
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.rememberSearchResultsTransitionState
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -57,15 +62,36 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 @Composable
 internal fun MessageRow(
     entry: MessageEntry,
+    highlighted: Boolean = false,
     onClick: (() -> Unit)?,
     onOpenUser: (() -> Unit)?,
 ) {
     val avatarUrl = remember(entry.avatar) { Formatters.sizedImageUrl(entry.avatar, 132, 132) }
+    val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
+    val cardColors = if (highlighted) {
+        val tintBg = COUITheme.colorScheme.primary
+            .copy(alpha = if (isDark) 0.16f else 0.08f)
+            .compositeOver(COUITheme.colorScheme.surfaceContainer)
+        CardDefaults.defaultColors(color = tintBg)
+    } else {
+        CardDefaults.defaultColors()
+    }
+    val borderModifier = if (highlighted) {
+        Modifier.border(
+            width = 1.dp,
+            color = COUITheme.colorScheme.primary.copy(alpha = if (isDark) 0.36f else 0.24f),
+            shape = SquircleShape(CardDefaults.CornerRadius),
+        )
+    } else {
+        Modifier
+    }
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .then(borderModifier)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         insideMargin = PaddingValues(12.dp),
+        colors = cardColors,
     ) {
         Row {
             if (avatarUrl.isNullOrBlank()) {
@@ -100,15 +126,24 @@ internal fun MessageRow(
                         text = entry.name.ifBlank { "未知用户" },
                         modifier = Modifier.weight(1f),
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = if (highlighted) FontWeight.SemiBold else FontWeight.Medium,
                         color = COUITheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (highlighted) {
+                        Box(
+                            modifier = Modifier
+                                .padding(end = 5.dp)
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(COUITheme.colorScheme.primary),
+                        )
+                    }
                     Text(
                         text = entry.timeText,
                         fontSize = 11.sp,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
+                        color = if (highlighted) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurfaceSecondary,
                     )
                 }
                 if (entry.title.isNotBlank()) {

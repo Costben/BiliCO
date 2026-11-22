@@ -47,6 +47,7 @@ import erl.bilico.data.settings.SettingsKeys.KEY_PREDICTIVE_BACK_FOLLOW
 import erl.bilico.data.settings.SettingsKeys.KEY_QUALITY
 import erl.bilico.data.settings.SettingsKeys.KEY_RETURN_BOUNCE
 import erl.bilico.data.settings.SettingsKeys.KEY_SEARCH_HISTORY
+import erl.bilico.data.settings.SettingsKeys.KEY_SHOW_VIDEO_DISLIKE
 import erl.bilico.data.settings.SettingsKeys.KEY_SKIPPED_UPDATE
 import erl.bilico.data.settings.SettingsKeys.KEY_SPEED_LOCKED
 import erl.bilico.data.settings.SettingsKeys.KEY_SPONSOR_BLOCK_ENABLED
@@ -127,6 +128,10 @@ class SettingsRepository(
 
     private val _gestureHaptic = MutableStateFlow(true)
     val gestureHaptic: StateFlow<Boolean> = _gestureHaptic.asStateFlow()
+
+    /** 是否在视频详情页操作栏显示「点踩」按钮。 */
+    private val _showVideoDislike = MutableStateFlow(true)
+    val showVideoDislike: StateFlow<Boolean> = _showVideoDislike.asStateFlow()
 
     /** 卡片展开后退回列表时是否保留轻压回弹效果。 */
     private val _returnBounce = MutableStateFlow(true)
@@ -272,6 +277,7 @@ class SettingsRepository(
             _inAppUpdate.value = prefs[KEY_IN_APP_UPDATE] ?: true
             _updateCheckedAt.value = prefs[KEY_UPDATE_CHECKED_AT] ?: 0L
             _skippedUpdateVersion.value = prefs[KEY_SKIPPED_UPDATE] ?: ""
+            _showVideoDislike.value = prefs[KEY_SHOW_VIDEO_DISLIKE] ?: true
             _loaded.value = true
         }
     }
@@ -370,6 +376,11 @@ class SettingsRepository(
     fun setGestureHaptic(enabled: Boolean) {
         _gestureHaptic.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_GESTURE_HAPTIC] = enabled } }
+    }
+
+    fun setShowVideoDislike(show: Boolean) {
+        _showVideoDislike.value = show
+        scope.launch { context.biliDataStore.edit { it[KEY_SHOW_VIDEO_DISLIKE] = show } }
     }
 
     fun setReturnBounce(enabled: Boolean) {

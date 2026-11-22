@@ -20,8 +20,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import erl.bilico.ui.FeedAvatar
+import erl.bilico.ui.MessagesActionButton
 import erl.bilico.ui.NavState
-import erl.bilico.ui.Route
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.components.SearchClearButton
 import erl.bilico.ui.pageContainerColor
@@ -32,7 +32,6 @@ import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Email
 import io.github.suqi8.coui.kmp.icon.extended.Sort
 
 /**
@@ -99,17 +98,10 @@ internal fun FeedTitleRow(
             }
         },
         extraActions = {
-            HighlightedIconButton(
-                onClick = { nav.push(Route.Messages) },
+            MessagesActionButton(
+                nav = nav,
                 enabled = !searchExpanded,
-                modifier = Modifier.couiTopAppBarActionItem(),
-            ) {
-                Icon(
-                    imageVector = COUIIcons.Email,
-                    contentDescription = "消息",
-                    modifier = Modifier.size(24.dp),
-                )
-            }
+            )
         },
         modifier = modifier,
     )
