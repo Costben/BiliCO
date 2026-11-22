@@ -17,6 +17,7 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import erl.bilico.data.model.FeedVideo
 import erl.bilico.di.AppContainer
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.PlaybackBridge
@@ -60,6 +61,8 @@ internal fun VideoPlaybackEffects(
     onError: (PlaybackException) -> Unit,
     onClearError: () -> Unit,
     onVideoAspectChanged: (Float) -> Unit,
+    onPromptAutoNextRecommend: ((FeedVideo) -> Unit)? = null,
+    onCancelAutoNext: (() -> Unit)? = null,
 ) {
     val backgroundPlay by container.settings.backgroundPlay.collectAsStateWithLifecycle()
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
@@ -103,8 +106,12 @@ internal fun VideoPlaybackEffects(
                     viewModel = viewModel,
                     nav = nav,
                     state = state,
+                    bvid = bvid,
+                    blocks = container.blocks.snapshot.value,
+                    onPromptAutoNextRecommend = onPromptAutoNextRecommend,
                 )
             },
+            onPlaybackLeaveEnded = onCancelAutoNext,
         )
     }
 

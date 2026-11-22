@@ -44,9 +44,11 @@ import androidx.media3.common.VideoSize
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import erl.bilico.data.model.FavoriteFolder
+import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.VideoChapter
+import erl.bilico.data.repository.BlockSnapshot
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.di.AppContainer
@@ -454,6 +456,7 @@ internal fun BindPlayerEvents(
     onError: (PlaybackException) -> Unit,
     onVideoAspectChanged: (Float) -> Unit = {},
     onPlaybackEnded: (() -> Unit)? = null,
+    onPlaybackLeaveEnded: (() -> Unit)? = null,
 ) {
     // 监听器只注册一次，回调要用最新值，否则换线时会读到首次组合时的空候选表。
     val currentOnPlaying by rememberUpdatedState(onPlayingChanged)
@@ -462,6 +465,7 @@ internal fun BindPlayerEvents(
     val currentOnError by rememberUpdatedState(onError)
     val currentOnAspect by rememberUpdatedState(onVideoAspectChanged)
     val currentOnEnded by rememberUpdatedState(onPlaybackEnded)
+    val currentOnLeaveEnded by rememberUpdatedState(onPlaybackLeaveEnded)
     val currentViewModel by rememberUpdatedState(viewModel)
 
     DisposableEffect(player) {
@@ -481,6 +485,7 @@ internal fun BindPlayerEvents(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 currentOnPlaying(playing)
+                if (playing) currentOnLeaveEnded?.invoke()
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -505,6 +510,7 @@ internal fun BindPlayerEvents(
                     val ended = currentOnEnded
                     if (ended != null) ended() else currentViewModel.playNextPart()
                 }
+                if (playbackState != Player.STATE_ENDED) currentOnLeaveEnded?.invoke()
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -548,6 +554,9 @@ internal fun handleVideoPlaybackEnded(
     viewModel: VideoViewModel,
     nav: NavState,
     state: VideoUiState,
+    bvid: String = viewModel.currentBvid,
+    blocks: BlockSnapshot = BlockSnapshot(),
+    onPromptAutoNextRecommend: ((FeedVideo) -> Unit)? = null,
 ) {
     // 播完了就把这条的续播点清掉：留着的话再进来会直接在片尾。
     player.currentMediaItem?.mediaId?.let(PlaybackPositions::forget)
@@ -574,7 +583,12 @@ internal fun handleVideoPlaybackEnded(
                 if (queued != null) {
                     nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
                 } else {
-                    state.related.firstOrNull()?.let { next ->
+                    val next = state.related.firstOrNull { candidate ->
+                        candidate.bvid != bvid && blocks.shouldShowFeedVideo(candidate, isRelated = true)
+                    } ?: return
+                    if (onPromptAutoNextRecommend != null) {
+                        onPromptAutoNextRecommend(next)
+                    } else {
                         nav.replaceTop(Route.Video(next.bvid, 0L))
                     }
                 }

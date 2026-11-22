@@ -179,6 +179,9 @@ class SettingsRepository(
     /** 信息流外观（封面比例等）。 */
     val feed = FeedPreferences(context, scope)
 
+    /** 自动连播下一条推荐视频时的弹窗与倒计时设置。 */
+    val autoNext = AutoNextPreferences(context, scope)
+
     /** 空降助手（SponsorBlock）总开关与跳过模式：0 自动跳过，1 手动跳过，2 仅进度条标记。 */
     private val _sponsorBlockEnabled = MutableStateFlow(true)
     val sponsorBlockEnabled: StateFlow<Boolean> = _sponsorBlockEnabled.asStateFlow()
@@ -264,6 +267,7 @@ class SettingsRepository(
             _playerConicLight.value = prefs[KEY_PLAYER_CONIC_LIGHT] ?: true
             playerTopBar.restore()
             feed.restore()
+            autoNext.restore()
             _sponsorBlockEnabled.value = prefs[KEY_SPONSOR_BLOCK_ENABLED] ?: true
             _sponsorSkipMode.value = (prefs[KEY_SPONSOR_SKIP_MODE] ?: 0).coerceIn(0, 2)
             _sponsorCategories.value = prefs[KEY_SPONSOR_CATEGORIES]

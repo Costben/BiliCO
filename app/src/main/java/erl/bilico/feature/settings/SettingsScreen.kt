@@ -62,6 +62,8 @@ fun SettingsScreen(
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
     val playerConicLight by container.settings.playerConicLight.collectAsStateWithLifecycle()
     val showVideoDislike by container.settings.showVideoDislike.collectAsStateWithLifecycle()
+    val autoNextRecommendPopup by container.settings.autoNext.recommendPopup.collectAsStateWithLifecycle()
+    val autoNextCountdownSec by container.settings.autoNext.countdownSeconds.collectAsStateWithLifecycle()
     val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
     val feedColumns by container.settings.feed.columns.collectAsStateWithLifecycle()
     val feedRefreshCount by container.settings.feed.refreshCount.collectAsStateWithLifecycle()
@@ -277,6 +279,17 @@ fun SettingsScreen(
                     cardListPosition = CardListPosition.Tail,
                 )
             }
+        }
+
+        item(key = "auto-next-title") { SectionTitle("自动连播") }
+
+        item(key = "auto-next") {
+            AutoNextSettingsCard(
+                recommendPopup = autoNextRecommendPopup,
+                countdownSeconds = autoNextCountdownSec,
+                onRecommendPopupChange = container.settings.autoNext::setRecommendPopup,
+                onCountdownSecondsChange = container.settings.autoNext::setCountdownSeconds,
+            )
         }
 
         item(key = "sponsor-title") { SectionTitle("空降助手") }

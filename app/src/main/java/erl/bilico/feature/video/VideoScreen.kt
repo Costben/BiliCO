@@ -59,16 +59,9 @@ fun VideoScreen(
     // ViewModelStore 上永不释放，切十几条就把 Java 堆吃满闪退。
     val viewModel: VideoViewModel = viewModel(key = "video") {
         VideoViewModel(
-            repository = container.video,
-            downloads = container.downloads,
-            heartbeat = container.heartbeat,
-            interactions = container.interactions,
-            session = container.session,
-            settings = container.settings,
-            bvid = bvid,
-            startPositionMs = startPositionMs,
-            initialCid = initialCid,
-            offline = offline,
+            container.video, container.downloads, container.heartbeat,
+            container.interactions, container.session, container.settings,
+            bvid, startPositionMs, initialCid, offline,
         )
     }
     val currentState by viewModel.state.collectAsStateWithLifecycle()
@@ -268,39 +261,33 @@ fun VideoScreen(
     }
 
     val playbackAttempts = remember(player) { player?.let { PlaybackAttempts(it) { effectiveSpeed } } }
+    val (autoNextController, promptAutoNext) = rememberAutoNextRecommendController(
+        bvid, isTop, inPipMode, container, nav,
+    )
 
     if (player != null) {
         VideoPlaybackEffects(
-            player = player,
-            bvid = bvid,
-            isTop = isTop,
-            isActiveRoute = isActiveRoute,
-            isPlaying = isPlaying,
-            state = state,
-            viewModel = viewModel,
-            container = container,
-            nav = nav,
-            clock = clock,
-            attempts = playbackAttempts,
-            effectiveSpeed = effectiveSpeed,
-            danmakuController = danmakuController,
-            sponsorController = sponsorController,
-            onPlayingChanged = { isPlaying = it },
-            onBufferingChanged = { isBuffering = it },
+            player = player, bvid = bvid, isTop = isTop, isActiveRoute = isActiveRoute,
+            isPlaying = isPlaying, state = state, viewModel = viewModel,
+            container = container, nav = nav, clock = clock,
+            attempts = playbackAttempts, effectiveSpeed = effectiveSpeed,
+            danmakuController = danmakuController, sponsorController = sponsorController,
+            onPlayingChanged = { isPlaying = it }, onBufferingChanged = { isBuffering = it },
             onPlayIntentChanged = { playIntent = it },
             onError = { error ->
                 Log.w("BiliPlayer", describePlaybackError(error), error)
                 // 线路坏了先换一条，候选表走完才把错误抛给界面。
                 if (playbackAttempts?.next() != true) playerError = describePlaybackError(error)
             },
-            onClearError = { playerError = null },
-            onVideoAspectChanged = { playerVideoAspect = it },
+            onClearError = { playerError = null }, onVideoAspectChanged = { playerVideoAspect = it },
+            onPromptAutoNextRecommend = promptAutoNext, onCancelAutoNext = autoNextController::cancel,
         )
     }
 
     var routeInitialized by remember { mutableStateOf(false) }
     LaunchedEffect(bvid, startPositionMs, initialCid) {
         nav.playQueue.sync(bvid)
+        autoNextController.cancel()
         if (!routeInitialized) {
             routeInitialized = true
             return@LaunchedEffect
@@ -408,11 +395,13 @@ fun VideoScreen(
     )
 
     val selectPart: (Int) -> Unit = { index ->
+        autoNextController.cancel()
         val currentPos = player?.currentPosition ?: 0L
         viewModel.flushHeartbeat(currentPos / 1000, container.scope)
         viewModel.selectPart(index, currentPos)
     }
     val selectEpisode: (VideoEpisode) -> Unit = { episode ->
+        autoNextController.cancel()
         val partIndex = state.detail?.pages?.indexOfFirst { it.cid == episode.cid } ?: -1
         if (episode.bvid == bvid && partIndex >= 0) selectPart(partIndex)
         else if (fullscreen) nav.replaceTop(Route.Video(episode.bvid, 0L, episode.cid))
@@ -480,6 +469,8 @@ fun VideoScreen(
                     reportVideoDialog = renderReportVideo, onReportVideo = openReportVideo,
                     onFullscreenChange = applyFullscreen,
                     onEnterPip = if (PlaybackBridge.canEnterPip(activity)) { { PlaybackBridge.enterPipNow(activity) } } else null,
+                    autoNextController = autoNextController,
+                    showAutoNextInPlayer = fullscreen || playbackEntry?.collapsedBarVisible != true,
                 )
             }
         },
@@ -544,6 +535,9 @@ fun VideoScreen(
         },
         portraitOverlay = {
             VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = false)
+            if (!fullscreen && playbackEntry?.collapsedBarVisible == true) {
+                PortraitCollapsedAutoNextOverlay(autoNextController, nav)
+            }
         },
         portraitCollapsedBar = {
             VideoCollapsedBarSlot(

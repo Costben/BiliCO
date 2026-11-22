@@ -145,6 +145,7 @@ internal fun VideoPlayer(
     onSubmitSponsor: (() -> Unit)? = null,
     onJumpSponsorSegment: ((SponsorSegment) -> Unit)? = null,
     sponsorOverlay: @Composable BoxScope.(bottomPad: Dp, startPad: Dp) -> Unit = { _, _ -> },
+    autoNextOverlay: @Composable BoxScope.(bottomPad: Dp, endPad: Dp) -> Unit = { _, _ -> },
     subtitleOverlay: @Composable (controlsVisible: Boolean) -> Unit = {},
     overlay: @Composable () -> Unit = {},
     danmakuComposer: (@Composable (onFocusChange: (Boolean) -> Unit) -> Unit)? = null,
@@ -441,6 +442,7 @@ internal fun VideoPlayer(
                 else -> 76.dp
             }
             sponsorOverlay(bottomChromePad, horizontalBarPad)
+            autoNextOverlay(bottomChromePad, horizontalBarPad)
         }
 
         AnimatedVisibility(

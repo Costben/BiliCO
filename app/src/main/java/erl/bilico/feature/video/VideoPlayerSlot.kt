@@ -17,6 +17,7 @@ import erl.bilico.data.model.VideoEpisode
 import erl.bilico.di.AppContainer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
+import erl.bilico.ui.Route
 import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -72,6 +73,8 @@ internal fun BoxScope.VideoPlayerSlot(
     onReportVideo: (() -> Unit)? = null,
     onFullscreenChange: (Boolean) -> Unit,
     onEnterPip: (() -> Unit)?,
+    autoNextController: AutoNextRecommendController? = null,
+    showAutoNextInPlayer: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -184,6 +187,24 @@ internal fun BoxScope.VideoPlayerSlot(
                     onDismissPrompt = { sponsorController.dismissPromptSegment() },
                     onJumpPoi = { sponsorController.jumpToPoi(player) },
                     onDismissPoi = { sponsorController.dismissPoi() },
+                )
+            }
+        },
+        autoNextOverlay = { bottomPad, endPad ->
+            if (showAutoNextInPlayer && autoNextController != null) {
+                AutoNextRecommendOverlay(
+                    video = autoNextController.target,
+                    remainingSeconds = autoNextController.remainingSeconds,
+                    totalSeconds = autoNextController.totalSeconds,
+                    fullscreen = fullscreen,
+                    bottomPad = bottomPad,
+                    endPad = endPad,
+                    onPlayNow = {
+                        autoNextController.consumeTarget()?.let { next ->
+                            nav.replaceTop(Route.Video(next.bvid, 0L))
+                        }
+                    },
+                    onDismiss = autoNextController::cancel,
                 )
             }
         },
