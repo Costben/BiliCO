@@ -1,6 +1,7 @@
 package erl.bilico.feature.video
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,32 +12,62 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.settings.PlayerTopBarItem
-import erl.bilico.ui.components.NavHomeOutlineIcon
-import erl.bilico.ui.components.PiliGlyph
-import erl.bilico.ui.components.PiliIcon
-import erl.bilico.ui.components.PipIcon
-import erl.bilico.ui.components.SkipSegmentIcon
+import erl.bilico.ui.components.TopBarAudioOnlyIcon
+import erl.bilico.ui.components.TopBarBackIcon
+import erl.bilico.ui.components.TopBarCastIcon
+import erl.bilico.ui.components.TopBarDmOffIcon
+import erl.bilico.ui.components.TopBarDmOnIcon
+import erl.bilico.ui.components.TopBarDmSettingsIcon
+import erl.bilico.ui.components.TopBarHomeIcon
+import erl.bilico.ui.components.TopBarMoreIcon
+import erl.bilico.ui.components.TopBarPipIcon
+import erl.bilico.ui.components.TopBarShareIcon
+import erl.bilico.ui.components.TopBarSponsorIcon
+import erl.bilico.ui.components.TopBarStatsIcon
+import erl.bilico.ui.components.TopBarWatchLaterIcon
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Back
-import io.github.suqi8.coui.kmp.icon.extended.Info
-import io.github.suqi8.coui.kmp.icon.extended.More
-import io.github.suqi8.coui.kmp.icon.extended.Music
 import io.github.suqi8.coui.kmp.icon.extended.Notes
-import io.github.suqi8.coui.kmp.icon.extended.ScreenMirroring
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 每个顶栏按钮的图形，设置页里也用它做行首图标。 */
+/** 播放器顶栏图标按钮：统一 40dp 触摸区与 20dp 居中线性图标，确保右上角各图标大小一致。 */
+@Composable
+internal fun PlayerTopBarIconButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    tint: Color = Color.White,
+) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.size(20.dp),
+            tint = tint,
+        )
+    }
+}
+
+/** 每个顶栏按钮的图形，设置页里也用它做行首图标；全套统一 1.80dp 线性与同等视觉占框。 */
 @Composable
 internal fun PlayerTopBarItemIcon(
     item: PlayerTopBarItem,
@@ -44,21 +75,22 @@ internal fun PlayerTopBarItemIcon(
     size: Dp = 20.dp,
     tint: Color = Color.White,
 ) {
-    when (item) {
-        PlayerTopBarItem.BACK -> Icon(COUIIcons.Back, null, modifier.size(size), tint)
-        PlayerTopBarItem.TITLE -> Icon(COUIIcons.Notes, null, modifier.size(size), tint)
-        PlayerTopBarItem.WATCH_LATER -> PiliIcon(PiliGlyph.WatchLater, null, modifier, size, tint)
-        PlayerTopBarItem.DANMAKU_SETTINGS -> PiliIcon(PiliGlyph.DmSettings, null, modifier, size, tint)
-        PlayerTopBarItem.DANMAKU_TOGGLE -> PiliIcon(PiliGlyph.DmOn, null, modifier, size, tint)
-        PlayerTopBarItem.CAST -> Icon(COUIIcons.ScreenMirroring, null, modifier.size(size), tint)
-        PlayerTopBarItem.SHARE -> PiliIcon(PiliGlyph.Share, null, modifier, size, tint)
-        PlayerTopBarItem.HOME -> Icon(NavHomeOutlineIcon, null, modifier.size(size), tint)
-        PlayerTopBarItem.AUDIO_ONLY -> Icon(COUIIcons.Music, null, modifier.size(size), tint)
-        PlayerTopBarItem.PIP -> Icon(PipIcon, null, modifier.size(size), tint)
-        PlayerTopBarItem.STATS -> Icon(COUIIcons.Info, null, modifier.size(size), tint)
-        PlayerTopBarItem.SPONSOR -> Icon(SkipSegmentIcon, null, modifier.size(size), tint)
-        PlayerTopBarItem.MORE -> Icon(COUIIcons.More, null, modifier.size(size), tint)
+    val vector = when (item) {
+        PlayerTopBarItem.BACK -> TopBarBackIcon
+        PlayerTopBarItem.TITLE -> COUIIcons.Notes
+        PlayerTopBarItem.WATCH_LATER -> TopBarWatchLaterIcon
+        PlayerTopBarItem.DANMAKU_SETTINGS -> TopBarDmSettingsIcon
+        PlayerTopBarItem.DANMAKU_TOGGLE -> TopBarDmOnIcon
+        PlayerTopBarItem.CAST -> TopBarCastIcon
+        PlayerTopBarItem.SHARE -> TopBarShareIcon
+        PlayerTopBarItem.HOME -> TopBarHomeIcon
+        PlayerTopBarItem.AUDIO_ONLY -> TopBarAudioOnlyIcon
+        PlayerTopBarItem.PIP -> TopBarPipIcon
+        PlayerTopBarItem.STATS -> TopBarStatsIcon
+        PlayerTopBarItem.SPONSOR -> TopBarSponsorIcon
+        PlayerTopBarItem.MORE -> TopBarMoreIcon
     }
+    Icon(vector, null, modifier.size(size), tint)
 }
 
 /** 顶栏按钮的回调集合，[PlayerTopBar] 内部逐个按条目取用。 */
@@ -165,7 +197,7 @@ private fun RowScope.Item(
     actions: PlayerTopBarActions,
 ) {
     when (item) {
-        PlayerTopBarItem.BACK -> PlayerIconButton(COUIIcons.Back, "返回", actions.onBack)
+        PlayerTopBarItem.BACK -> PlayerTopBarIconButton(TopBarBackIcon, "返回", actions.onBack)
         PlayerTopBarItem.TITLE -> Text(
             text = title,
             modifier = Modifier
@@ -177,49 +209,49 @@ private fun RowScope.Item(
             overflow = TextOverflow.Ellipsis,
         )
         PlayerTopBarItem.WATCH_LATER -> actions.onWatchLater?.let {
-            PlayerGlyphButton(PiliGlyph.WatchLater, "稍后再看", it)
+            PlayerTopBarIconButton(TopBarWatchLaterIcon, "稍后再看", it)
         }
         // 弹幕的两个按钮只在全屏出现：竖屏的弹幕设置和开关在下方「发弹幕」输入框里。
         PlayerTopBarItem.DANMAKU_SETTINGS -> if (fullscreen) actions.onDanmakuSettings?.let {
-            PlayerGlyphButton(PiliGlyph.DmSettings, "弹幕设置", it)
+            PlayerTopBarIconButton(TopBarDmSettingsIcon, "弹幕设置", it)
         }
         PlayerTopBarItem.DANMAKU_TOGGLE -> if (fullscreen) {
-            PlayerGlyphButton(
-                glyph = if (danmakuEnabled) PiliGlyph.DmOn else PiliGlyph.DmOff,
+            PlayerTopBarIconButton(
+                icon = if (danmakuEnabled) TopBarDmOnIcon else TopBarDmOffIcon,
                 label = if (danmakuEnabled) "关闭弹幕" else "开启弹幕",
                 onClick = actions.onToggleDanmaku,
                 tint = if (danmakuEnabled) Color.White else Color.White.copy(alpha = 0.45f),
             )
         }
         PlayerTopBarItem.CAST -> actions.onCast?.let {
-            PlayerIconButton(COUIIcons.ScreenMirroring, "投屏", it)
+            PlayerTopBarIconButton(TopBarCastIcon, "投屏", it)
         }
         PlayerTopBarItem.SHARE -> actions.onShare?.let {
-            PlayerGlyphButton(PiliGlyph.Share, "分享", it)
+            PlayerTopBarIconButton(TopBarShareIcon, "分享", it)
         }
         PlayerTopBarItem.HOME -> actions.onHome?.let {
-            PlayerIconButton(NavHomeOutlineIcon, "首页", it)
+            PlayerTopBarIconButton(TopBarHomeIcon, "首页", it)
         }
         PlayerTopBarItem.AUDIO_ONLY -> actions.onToggleAudioOnly?.let {
-            PlayerIconButton(
-                icon = COUIIcons.Music,
+            PlayerTopBarIconButton(
+                icon = TopBarAudioOnlyIcon,
                 label = if (audioOnly) "退出黑听" else "黑听（仅听音频）",
                 onClick = it,
                 tint = if (audioOnly) COUITheme.colorScheme.primary else Color.White,
             )
         }
         PlayerTopBarItem.PIP -> actions.onEnterPip?.let {
-            PlayerIconButton(PipIcon, "小窗", it)
+            PlayerTopBarIconButton(TopBarPipIcon, "小窗", it)
         }
         PlayerTopBarItem.STATS -> actions.onShowStats?.let {
-            PlayerIconButton(COUIIcons.Info, "视频信息统计", it)
+            PlayerTopBarIconButton(TopBarStatsIcon, "视频信息统计", it)
         }
         PlayerTopBarItem.SPONSOR -> actions.onOpenSponsor?.let {
-            PlayerIconButton(SkipSegmentIcon, "空降助手", it)
+            PlayerTopBarIconButton(TopBarSponsorIcon, "空降助手", it)
         }
         // 「顶栏设置」和「视频信息统计」挂在更多菜单下面。
         PlayerTopBarItem.MORE -> if (fullscreen) {
-            PlayerIconButton(COUIIcons.More, "更多", actions.onOpenMoreMenu)
+            PlayerTopBarIconButton(TopBarMoreIcon, "更多", actions.onOpenMoreMenu)
         } else {
             actions.portraitMoreMenu()
         }
