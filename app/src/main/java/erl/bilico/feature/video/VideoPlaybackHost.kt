@@ -29,6 +29,7 @@ import kotlinx.coroutines.delay
 internal class VideoPlaybackClock {
     var positionMs by mutableLongStateOf(0L)
     var durationMs by mutableLongStateOf(0L)
+    var bufferedMs by mutableLongStateOf(0L)
 }
 
 /**
@@ -179,6 +180,7 @@ internal fun VideoPlaybackEffects(
             if (currentIsTop) {
                 clock.positionMs = position
                 clock.durationMs = player.duration.coerceAtLeast(0L)
+                clock.bufferedMs = player.bufferedPosition.coerceAtLeast(0L)
                 danmakuController.onPosition(position)
             }
             delay(500)

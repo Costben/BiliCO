@@ -59,6 +59,7 @@ fun SettingsScreen(
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
+    val playerConicLight by container.settings.playerConicLight.collectAsStateWithLifecycle()
     val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
     val feedColumns by container.settings.feed.columns.collectAsStateWithLifecycle()
     val feedRefreshCount by container.settings.feed.refreshCount.collectAsStateWithLifecycle()
@@ -247,6 +248,14 @@ fun SettingsScreen(
                     modifier = Modifier.testTag("settings_player_top_bar"),
                     cardListPosition = CardListPosition.Middle,
                     onClick = { showTopBarSettings = true },
+                )
+                SwitchPreference(
+                    checked = playerConicLight,
+                    onCheckedChange = container.settings::setPlayerConicLight,
+                    title = "进度条光感",
+                    summary = "播放或拖动视频进度条时显示锥形光效",
+                    modifier = Modifier.testTag("settings_player_conic_light"),
+                    cardListPosition = CardListPosition.Middle,
                 )
                 SwitchPreference(
                     checked = gestureHaptic,

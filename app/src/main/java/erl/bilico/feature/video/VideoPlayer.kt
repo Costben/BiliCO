@@ -81,6 +81,7 @@ internal fun VideoPlayer(
     isPlaying: Boolean,
     positionMs: Long,
     durationMs: Long,
+    bufferedMs: Long = 0L,
     isBuffering: Boolean,
     errorMessage: String?,
     qualityLabel: String?,
@@ -96,6 +97,7 @@ internal fun VideoPlayer(
     hapticEnabled: Boolean = true,
     volumeBrightnessEnabled: Boolean = true,
     fullscreenHintEnabled: Boolean = true,
+    conicLightEnabled: Boolean = true,
     qualities: List<QualityOption> = emptyList(),
     activeQuality: Int = 0,
     onSelectQuality: (Int) -> Unit = {},
@@ -160,8 +162,9 @@ internal fun VideoPlayer(
     var speedEndMargin by remember { mutableStateOf(120.dp) }
     var qualityEndMargin by remember { mutableStateOf(64.dp) }
     var subtitleEndMargin by remember { mutableStateOf(176.dp) }
-    // 正在输入弹幕：这时不能让控件条按 4.5 秒自动收，否则键盘还在、框先没了。
+    // 正在输入弹幕或拖动进度条：这时不能让控件条按 4.5 秒自动收。
     var composerFocused by remember { mutableStateOf(false) }
+    var scrubbingPositionMs by remember { mutableStateOf<Long?>(null) }
     var prevFullscreen by remember { mutableStateOf(fullscreen) }
 
     LaunchedEffect(fullscreen) {
@@ -180,10 +183,18 @@ internal fun VideoPlayer(
     }
     danmakuInteraction.selectedHit = selectedDanmaku
 
-    LaunchedEffect(controlsVisible, activeMenu, composerFocused, isPlaying, isBuffering, errorMessage) {
+    LaunchedEffect(
+        controlsVisible,
+        activeMenu,
+        composerFocused,
+        scrubbingPositionMs != null,
+        isPlaying,
+        isBuffering,
+        errorMessage,
+    ) {
         if (
             controlsVisible && activeMenu == PlayerPopupMenu.NONE && !composerFocused &&
-            isPlaying && !isBuffering && errorMessage == null
+            scrubbingPositionMs == null && isPlaying && !isBuffering && errorMessage == null
         ) {
             delay(4500)
             controlsVisible = false
@@ -463,8 +474,15 @@ internal fun VideoPlayer(
                     PlayerProgress(
                         positionMs = positionMs,
                         durationMs = durationMs,
+                        bufferedMs = bufferedMs,
+                        isPlaying = isPlaying,
+                        isBuffering = isBuffering,
+                        conicLightEnabled = conicLightEnabled,
+                        holdToSpeedUp = longPressSpeed?.active == true,
+                        hapticEnabled = hapticEnabled,
                         sponsorSegments = sponsorSegments,
                         chapters = chapters,
+                        onScrubPositionChange = { scrubbingPositionMs = it },
                         onSeek = onSeek,
                     )
                 }
@@ -484,7 +502,7 @@ internal fun VideoPlayer(
                     } else {
                         Column(modifier = Modifier.padding(start = 2.dp)) {
                             Text(
-                                text = Formatters.formatDuration(positionMs / 1000),
+                                text = Formatters.formatDuration((scrubbingPositionMs ?: positionMs) / 1000),
                                 style = COUITheme.textStyles.footnote2,
                                 color = Color.White,
                                 lineHeight = 15.sp,
@@ -552,42 +570,23 @@ internal fun VideoPlayer(
             DanmakuActionToolbar(activeHit, danmakuActions, { selectedDanmaku = null }, Modifier.fillMaxSize())
         }
 
-        if (statsVisible) {
-            PlayerStatsDialog(
-                player = player,
-                source = source,
-                inlineInStage = fullscreen,
-                onDismiss = { statsVisible = false },
-            )
-        }
-
-        if (sponsorAssistVisible) {
-            SponsorAssistDialog(
-                segments = sponsorSegments,
-                inlineInStage = fullscreen,
-                onJump = { segment ->
-                    sponsorAssistVisible = false
-                    onJumpSponsorSegment?.invoke(segment)
-                },
-                onSubmit = onSubmitSponsor?.let { submit ->
-                    {
-                        sponsorAssistVisible = false
-                        submit()
-                    }
-                },
-                onDismiss = { sponsorAssistVisible = false },
-            )
-        }
-
-        if (topBarSettingsVisible && onToggleTopBarItem != null) {
-            PlayerTopBarSettingsDialog(
-                fullscreen = topBarLayoutFullscreen,
-                portrait = topBarLayoutPortrait,
-                onToggle = onToggleTopBarItem,
-                onMove = onMoveTopBarItem ?: { _, _, _ -> },
-                onDismiss = { topBarSettingsVisible = false },
-                inlineInStage = fullscreen,
-            )
-        }
+        PlayerStageDialogs(
+            player = player,
+            source = source,
+            fullscreen = fullscreen,
+            statsVisible = statsVisible,
+            onDismissStats = { statsVisible = false },
+            sponsorAssistVisible = sponsorAssistVisible,
+            sponsorSegments = sponsorSegments,
+            onJumpSponsorSegment = onJumpSponsorSegment,
+            onSubmitSponsor = onSubmitSponsor,
+            onDismissSponsorAssist = { sponsorAssistVisible = false },
+            topBarSettingsVisible = topBarSettingsVisible,
+            topBarLayoutFullscreen = topBarLayoutFullscreen,
+            topBarLayoutPortrait = topBarLayoutPortrait,
+            onToggleTopBarItem = onToggleTopBarItem,
+            onMoveTopBarItem = onMoveTopBarItem,
+            onDismissTopBarSettings = { topBarSettingsVisible = false },
+        )
     }
 }

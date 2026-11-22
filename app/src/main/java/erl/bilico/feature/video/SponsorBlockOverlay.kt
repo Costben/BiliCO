@@ -3,8 +3,6 @@ package erl.bilico.feature.video
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -19,9 +17,10 @@ import androidx.compose.foundation.shape.CircleShape
 import erl.bilico.ui.components.COUISmoothCapsuleShape
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,8 +31,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -41,79 +39,102 @@ import erl.bilico.data.model.SponsorActionType
 import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.util.Formatters
+import io.github.suqi8.coui.kmp.basic.IntentSlider
+import io.github.suqi8.coui.kmp.basic.IntentSliderPlaybackState
+import io.github.suqi8.coui.kmp.basic.IntentSliderSize
+import io.github.suqi8.coui.kmp.basic.SliderDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlin.math.roundToLong
 
 /**
- * 播放器进度条：在 3dp 细条上叠加空降助手（SponsorBlock）彩色片段标尺。
+ * 播放器进度条：基于 COUI 17 [IntentSlider]（可选锥形光感 / 标准模式），
+ * 并按需叠加空降助手（SponsorBlock）彩色片段与章节刻度。
  */
 @Composable
 internal fun PlayerProgress(
     positionMs: Long,
     durationMs: Long,
+    bufferedMs: Long = 0L,
+    isPlaying: Boolean = false,
+    isBuffering: Boolean = false,
+    conicLightEnabled: Boolean = true,
+    holdToSpeedUp: Boolean = false,
+    hapticEnabled: Boolean = true,
     sponsorSegments: List<SponsorSegment> = emptyList(),
     chapters: List<VideoChapter> = emptyList(),
+    onScrubPositionChange: (Long?) -> Unit = {},
     onSeek: (Long) -> Unit,
 ) {
-    var dragging by remember { mutableStateOf(false) }
-    var dragValue by remember { mutableFloatStateOf(0f) }
-    var widthPx by remember { mutableIntStateOf(1) }
-    val max = durationMs.coerceAtLeast(1L).toFloat()
-    val value = (if (dragging) dragValue else positionMs.toFloat()).coerceIn(0f, max)
-    val fraction = if (durationMs > 0L) (value / max).coerceIn(0f, 1f) else 0f
+    var isScrubbing by remember { mutableStateOf(false) }
+    var scrubPositionMs by remember { mutableLongStateOf(0L) }
+    var dragHorizontalOffsetPx by remember { mutableFloatStateOf(0f) }
+
     val enabled = durationMs > 0L
+    val effectiveDuration = durationMs.coerceAtLeast(1L)
+    val displayPos = (if (isScrubbing) scrubPositionMs else positionMs).coerceIn(0L, effectiveDuration)
+    val playbackState = when {
+        durationMs <= 0L -> IntentSliderPlaybackState.LoadingInitial
+        isBuffering -> IntentSliderPlaybackState.LoadingBuffering
+        isPlaying -> IntentSliderPlaybackState.Playing
+        else -> IntentSliderPlaybackState.Paused
+    }
+    val trackPadding = 6.dp
+
+    LaunchedEffect(enabled) {
+        if (!enabled && isScrubbing) {
+            isScrubbing = false
+            onScrubPositionChange(null)
+        }
+    }
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(22.dp)
-            .onSizeChanged { widthPx = it.width }
-            .pointerInput(enabled, max) {
-                if (!enabled) return@pointerInput
-                detectTapGestures { offset ->
-                    onSeek(((offset.x / widthPx.coerceAtLeast(1)) * max).toLong())
-                }
-            }
-            .pointerInput(enabled, max) {
-                if (!enabled) return@pointerInput
-                fun fractionAt(x: Float) = (x / widthPx.coerceAtLeast(1)).coerceIn(0f, 1f)
-                detectHorizontalDragGestures(
-                    onDragStart = { offset ->
-                        dragging = true
-                        dragValue = fractionAt(offset.x) * max
-                    },
-                    onHorizontalDrag = { change, _ ->
-                        dragValue = fractionAt(change.position.x) * max
-                    },
-                    onDragEnd = {
-                        dragging = false
-                        onSeek(dragValue.toLong())
-                    },
-                    onDragCancel = { dragging = false },
-                )
-            },
+        modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clip(SquircleShape(1.5.dp))
-                .background(Color.White.copy(alpha = 0.24f)),
-        )
-        Box(
-            Modifier
-                .fillMaxWidth(fraction)
-                .height(3.dp)
-                .clip(SquircleShape(1.5.dp))
-                .background(Color.White),
+        IntentSlider(
+            value = displayPos.toFloat(),
+            onValueChange = { next ->
+                val target = next.roundToLong().coerceIn(0L, effectiveDuration)
+                isScrubbing = true
+                scrubPositionMs = target
+                onScrubPositionChange(target)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled,
+            showThumb = true,
+            followSystemTheme = false,
+            conicLight = conicLightEnabled,
+            holdToSpeedUp = holdToSpeedUp,
+            playbackState = playbackState,
+            valueRange = 0f..effectiveDuration.toFloat(),
+            secondaryValue = bufferedMs.coerceIn(0L, effectiveDuration).toFloat(),
+            onValueChangeFinished = {
+                if (isScrubbing) {
+                    onSeek(scrubPositionMs)
+                    isScrubbing = false
+                }
+                onScrubPositionChange(null)
+            },
+            onDragHorizontalOffsetChange = { dragHorizontalOffsetPx = it },
+            size = IntentSliderSize.Default,
+            horizontalPadding = trackPadding,
+            hapticEffect = if (hapticEnabled) {
+                SliderDefaults.SliderHapticEffect.Step
+            } else {
+                SliderDefaults.SliderHapticEffect.None
+            },
         )
         if (durationMs > 0L && (sponsorSegments.isNotEmpty() || chapters.size > 1)) {
+            val max = effectiveDuration.toFloat()
+            val trackHeight = IntentSliderSize.Default.trackHeight
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(3.dp)
-                    .clip(SquircleShape(1.5.dp)),
+                    .padding(horizontal = trackPadding)
+                    .height(trackHeight)
+                    .graphicsLayer { translationX = dragHorizontalOffsetPx }
+                    .clip(SquircleShape(trackHeight / 2)),
             ) {
                 val trackW = size.width
                 val trackH = size.height
@@ -153,19 +174,6 @@ internal fun PlayerProgress(
                     }
                 }
             }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(fraction)
-                .height(3.dp),
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            Box(
-                Modifier
-                    .size(if (dragging) 11.dp else 9.dp)
-                    .clip(CircleShape)
-                    .background(Color.White),
-            )
         }
     }
 }

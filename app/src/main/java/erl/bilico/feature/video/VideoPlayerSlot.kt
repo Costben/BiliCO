@@ -81,6 +81,7 @@ internal fun BoxScope.VideoPlayerSlot(
     val swipeDownLockLongPressSpeed by container.settings.swipeDownLockLongPressSpeed.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
+    val playerConicLight by container.settings.playerConicLight.collectAsStateWithLifecycle()
     val sponsorBlockEnabled by container.settings.sponsorBlockEnabled.collectAsStateWithLifecycle()
     val sponsorSkipMode by container.settings.sponsorSkipMode.collectAsStateWithLifecycle()
     val sponsorCategories by container.settings.sponsorCategories.collectAsStateWithLifecycle()
@@ -105,6 +106,7 @@ internal fun BoxScope.VideoPlayerSlot(
         isPlaying = isPlaying,
         positionMs = clock.positionMs,
         durationMs = clock.durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
+        bufferedMs = clock.bufferedMs,
         isBuffering = state.isPlaybackLoading || isBuffering,
         errorMessage = state.playbackError ?: playerError,
         qualityLabel = state.qualityLabel(),
@@ -120,6 +122,7 @@ internal fun BoxScope.VideoPlayerSlot(
         hapticEnabled = gestureHaptic,
         volumeBrightnessEnabled = gestureVolBright,
         fullscreenHintEnabled = fullscreenGestureHint,
+        conicLightEnabled = playerConicLight,
         qualities = state.source?.qualities.orEmpty(),
         activeQuality = state.activeQuality,
         onSelectQuality = { qn -> viewModel.selectQuality(qn, player.currentPosition) },

@@ -103,6 +103,7 @@ fun PgcScreen(
     val autoRotateMode by container.settings.autoRotateMode.collectAsStateWithLifecycle()
     val gestureVolBright by container.settings.gestureVolumeBrightness.collectAsStateWithLifecycle()
     val fullscreenGestureHint by container.settings.fullscreenGestureHint.collectAsStateWithLifecycle()
+    val playerConicLight by container.settings.playerConicLight.collectAsStateWithLifecycle()
     val speedLocked by container.settings.speedLocked.collectAsStateWithLifecycle()
     val lockedSpeed by container.settings.lockedSpeed.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
@@ -163,6 +164,7 @@ fun PgcScreen(
 
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
+    var bufferedMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
@@ -284,6 +286,7 @@ fun PgcScreen(
         while (true) {
             positionMs = player.currentPosition.coerceAtLeast(0L)
             durationMs = player.duration.coerceAtLeast(0L)
+            bufferedMs = player.bufferedPosition.coerceAtLeast(0L)
             playbackAttempts.rememberPosition(positionMs)
             viewModel.reportHeartbeat(positionMs / 1000, player.isPlaying)
             danmakuController.onPosition(positionMs)
@@ -390,6 +393,7 @@ fun PgcScreen(
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
+                bufferedMs = bufferedMs,
                 isBuffering = state.isPlaybackLoading || isBuffering,
                 errorMessage = state.playbackError ?: playerError,
                 qualityLabel = state.qualityLabel(),
@@ -407,6 +411,7 @@ fun PgcScreen(
                 hapticEnabled = gestureHaptic,
                 volumeBrightnessEnabled = gestureVolBright,
                 fullscreenHintEnabled = fullscreenGestureHint,
+                conicLightEnabled = playerConicLight,
                 qualities = state.source?.qualities.orEmpty(),
                 activeQuality = state.activeQuality,
                 onSelectQuality = { qn -> viewModel.selectQuality(qn, player.currentPosition) },

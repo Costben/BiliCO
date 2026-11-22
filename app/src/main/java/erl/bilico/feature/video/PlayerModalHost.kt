@@ -28,6 +28,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.Player
+import erl.bilico.data.model.PlaybackSource
+import erl.bilico.data.model.SponsorSegment
+import erl.bilico.data.settings.PlayerTopBarLayout
+import erl.bilico.data.settings.PlayerTopBarMode
 import erl.bilico.ui.BiliCoTheme
 import erl.bilico.ui.BlurEffectsEnabled
 import io.github.suqi8.coui.kmp.basic.GradientStrokeStyle
@@ -175,5 +180,63 @@ internal fun PlayerModalHost(
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun PlayerStageDialogs(
+    player: Player,
+    source: PlaybackSource?,
+    fullscreen: Boolean,
+    statsVisible: Boolean,
+    onDismissStats: () -> Unit,
+    sponsorAssistVisible: Boolean,
+    sponsorSegments: List<SponsorSegment>,
+    onJumpSponsorSegment: ((SponsorSegment) -> Unit)?,
+    onSubmitSponsor: (() -> Unit)?,
+    onDismissSponsorAssist: () -> Unit,
+    topBarSettingsVisible: Boolean,
+    topBarLayoutFullscreen: PlayerTopBarLayout,
+    topBarLayoutPortrait: PlayerTopBarLayout,
+    onToggleTopBarItem: ((PlayerTopBarMode, String, Boolean) -> Unit)?,
+    onMoveTopBarItem: ((PlayerTopBarMode, Int, Int) -> Unit)?,
+    onDismissTopBarSettings: () -> Unit,
+) {
+    if (statsVisible) {
+        PlayerStatsDialog(
+            player = player,
+            source = source,
+            inlineInStage = fullscreen,
+            onDismiss = onDismissStats,
+        )
+    }
+
+    if (sponsorAssistVisible) {
+        SponsorAssistDialog(
+            segments = sponsorSegments,
+            inlineInStage = fullscreen,
+            onJump = { segment ->
+                onDismissSponsorAssist()
+                onJumpSponsorSegment?.invoke(segment)
+            },
+            onSubmit = onSubmitSponsor?.let { submit ->
+                {
+                    onDismissSponsorAssist()
+                    submit()
+                }
+            },
+            onDismiss = onDismissSponsorAssist,
+        )
+    }
+
+    if (topBarSettingsVisible && onToggleTopBarItem != null) {
+        PlayerTopBarSettingsDialog(
+            fullscreen = topBarLayoutFullscreen,
+            portrait = topBarLayoutPortrait,
+            onToggle = onToggleTopBarItem,
+            onMove = onMoveTopBarItem ?: { _, _, _ -> },
+            onDismiss = onDismissTopBarSettings,
+            inlineInStage = fullscreen,
+        )
     }
 }
