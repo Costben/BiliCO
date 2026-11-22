@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,7 +40,13 @@ fun OfficialVerifyBadge(
             .size(size)
             .clip(CircleShape)
             .background(badgeColor)
-            .border(width = (size * 0.1f).coerceAtLeast(1.dp), color = ringColor, shape = CircleShape),
+            .then(
+                if (ringColor != Color.Transparent) {
+                    Modifier.border(width = (size * 0.1f).coerceAtLeast(1.dp), color = ringColor, shape = CircleShape)
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.size(size * 0.62f)) {
@@ -75,19 +80,22 @@ fun OfficialVerifyLabel(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
             .background(tint.copy(alpha = 0.12f))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         if (type == 0 || type == 1) {
-            OfficialVerifyBadge(type = type, size = 13.dp)
+            OfficialVerifyBadge(
+                type = type,
+                size = 13.dp,
+                modifier = Modifier.padding(top = 1.dp),
+            )
         }
         Text(
             text = text,
             fontSize = 11.sp,
+            lineHeight = 15.sp,
             color = tint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
