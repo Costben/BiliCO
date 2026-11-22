@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,6 +95,12 @@ fun MeScreen(
     val fallbackScrollState = rememberScrollableState { 0f }
     val fitsInViewport = !listState.canScrollForward && !listState.canScrollBackward
     BindScrollToTop(listState)
+
+    LaunchedEffect(current?.mid) {
+        if (current != null) {
+            container.memberProfile.fetchEditableProfile()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -351,6 +358,16 @@ private fun ProfileCard(account: Account) {
                     fontSize = 12.sp,
                     color = COUITheme.colorScheme.onSurfaceSecondary,
                 )
+                if (account.sign.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = account.sign,
+                        fontSize = 12.sp,
+                        color = COUITheme.colorScheme.onSurfaceSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

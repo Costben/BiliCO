@@ -17,6 +17,7 @@ import erl.bilico.data.repository.ImRepository
 import erl.bilico.data.repository.HistoryRepository
 import erl.bilico.data.repository.InteractionRepository
 import erl.bilico.data.repository.LiveRepository
+import erl.bilico.data.repository.MemberProfileRepository
 import erl.bilico.data.repository.MessageRepository
 import erl.bilico.data.repository.PgcRepository
 import erl.bilico.data.repository.RankingRepository
@@ -81,6 +82,8 @@ class AppContainer(context: Context) {
     val search = SearchRepository(client.api, client.wbi, client.buvid)
 
     val space = SpaceRepository(client.api, client.wbi, client.buvid)
+
+    val memberProfile = MemberProfileRepository(client.api, client.buvid, session)
 
     val favorites = FavoriteRepository(client.api, client.buvid, session)
 

@@ -215,6 +215,19 @@ data class Account(
     val face: String,
     /** 大会员在有效期内。取流时用它决定清晰度菜单要不要列出会员档位。 */
     val vip: Boolean = false,
+    val sign: String = "",
+)
+
+/** 个人中心可编辑资料模型，由 `x/member/web/account` 与当前账号状态合成。 */
+data class EditableAccountProfile(
+    val mid: Long,
+    val uname: String,
+    val userid: String,
+    val face: String,
+    val sign: String,
+    val sex: String,
+    val birthday: String,
+    val nickFree: Boolean,
 )
 
 enum class DynamicKind {

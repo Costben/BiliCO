@@ -24,6 +24,7 @@ import erl.bilico.data.model.RelatedResponse
 import erl.bilico.data.model.SendDanmakuResponse
 import erl.bilico.data.model.SystemNoticeResponse
 import erl.bilico.data.model.TripleResponse
+import erl.bilico.data.model.UpdateFaceResponse
 import erl.bilico.data.model.UserRelationResponse
 import erl.bilico.data.model.VideoRelationResponse
 import erl.bilico.data.model.FavFolderResponse
@@ -45,6 +46,7 @@ import erl.bilico.data.model.LivePlayUrlResponse
 import erl.bilico.data.model.LiveRoomDetailResponse
 import erl.bilico.data.model.LiveRoomInfoResponse
 import erl.bilico.data.model.LiveSuperChatResponse
+import erl.bilico.data.model.MemberAccountResponse
 import erl.bilico.data.model.MemberCardResponse
 import erl.bilico.data.model.MemberReportResponse
 import erl.bilico.data.model.NavResponse
@@ -483,6 +485,44 @@ interface BiliApi {
     @FormUrlEncoded
     @POST("https://api.vc.bilibili.com/vote_svr/v1/vote_svr/do_vote")
     suspend fun doVote(@FieldMap fields: Map<String, String>): BaseResponse
+
+    // ---------- 个人资料编辑 ----------
+
+    @Headers(
+        "Origin: https://account.bilibili.com",
+        "Referer: https://account.bilibili.com/account/setting",
+    )
+    @GET("x/member/web/account")
+    suspend fun memberAccount(): MemberAccountResponse
+
+    @Headers(
+        "Origin: https://account.bilibili.com",
+        "Referer: https://account.bilibili.com/account/setting",
+    )
+    @FormUrlEncoded
+    @POST("x/member/web/update")
+    suspend fun updateMemberProfile(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @Headers(
+        "Origin: https://account.bilibili.com",
+        "Referer: https://account.bilibili.com/account/setting",
+    )
+    @FormUrlEncoded
+    @POST("x/member/web/sign/update")
+    suspend fun updateMemberSign(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @Headers(
+        "Origin: https://account.bilibili.com",
+        "Referer: https://account.bilibili.com/account/face",
+    )
+    @Multipart
+    @POST("x/member/web/face/update")
+    suspend fun updateMemberFace(
+        @Query("csrf") csrf: String,
+        @Part("dopost") dopost: RequestBody,
+        @Part("Displayrank") displayRank: RequestBody,
+        @Part face: MultipartBody.Part,
+    ): UpdateFaceResponse
 }
 
 interface PassportApi {

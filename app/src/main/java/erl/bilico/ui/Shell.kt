@@ -1,5 +1,6 @@
 package erl.bilico.ui
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -63,10 +64,9 @@ import erl.bilico.feature.dynamic.DynamicScreen
 import erl.bilico.feature.feed.FEED_SEGMENTS
 import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.me.MeScreen
-import erl.bilico.feature.search.FeedTitleRow
+import erl.bilico.feature.me.ProfileEditHost
 import erl.bilico.feature.search.HomeSearchOverlay
 import erl.bilico.feature.search.SearchSortMenuHost
-import erl.bilico.feature.search.SearchUiState
 import erl.bilico.feature.search.SearchViewModel
 import erl.bilico.feature.search.showingResults
 import io.github.suqi8.coui.kmp.anim.COUIInEase
@@ -74,17 +74,14 @@ import io.github.suqi8.coui.kmp.anim.COUIOutEase
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformBottomBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.TabRowWithContour
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.rememberSearchResultsTransitionState
-import io.github.suqi8.coui.kmp.basic.scrollToTopOnTap
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.abs
 
 /** 底栏切页的交叉淡入时长。 */
-private const val MainTabFadeMillis = 220
+internal const val MainTabFadeMillis = 220
 
 /** 搜索整屏面板淡入淡出时长（与 Cobo COUI `SearchPanelFadeMillis` 一致）。 */
 private const val SearchPanelFadeMillis = 220
@@ -93,7 +90,7 @@ private const val SearchPanelFadeMillis = 220
 internal val TitleRowHeight = 44.dp
 
 /** 底栏三格：推荐、动态、我的。直播收进推荐页顶部的分段胶囊里。 */
-private val tabTitles = listOf("推荐", "动态", "我的")
+internal val tabTitles = listOf("推荐", "动态", "我的")
 
 /**
  * 分段胶囊轨道左右各留的边距，和下面卡片列表的 12dp 缩进对齐。
@@ -194,6 +191,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val topBarHeight = pinnedHeight(TitleRowHeight)
     val account by container.session.account.collectAsStateWithLifecycle()
     var dynamicComposerOpen by remember { mutableStateOf(false) }
+    var editProfileOpen by remember { mutableStateOf(false) }
     var segment by rememberSaveable { mutableIntStateOf(0) }
     val feedPager = rememberPagerState(initialPage = segment, pageCount = { FEED_SEGMENTS.size })
     val dynamicPager = rememberPagerState(initialPage = dynamicFilterIndex, pageCount = { DynamicFilters.size })
@@ -414,6 +412,10 @@ fun MainShell(nav: NavState, container: AppContainer) {
                     showingResults = searchTransition.filtersVisible,
                     onTabChange = searchViewModel::setTab,
                     onSortMenuOpen = { sortMenuExpanded = true },
+                    onEditProfile = {
+                        if (account == null) Toast.makeText(context, "登录后可用", Toast.LENGTH_SHORT).show()
+                        else editProfileOpen = true
+                    },
                     panelAlpha = { panelAlpha.value },
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -440,6 +442,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
             onDismissComposer = { dynamicComposerOpen = false },
             onPublished = { dynamicRefreshTick++ },
         )
+        ProfileEditHost(open = editProfileOpen, container = container, nav = nav, onDismiss = { editProfileOpen = false })
     }
 
     val inHomeSearchResults =
@@ -539,59 +542,6 @@ private fun MainBarUnderlay(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun MainTitleRow(
-    tab: Int,
-    nav: NavState,
-    collapsed: () -> Float,
-    avatarUrl: String?,
-    onAvatarClick: () -> Unit,
-    searchState: SearchUiState,
-    onQueryChange: (String) -> Unit,
-    searchExpanded: Boolean,
-    onSearchOpen: () -> Unit,
-    onSearchCancel: () -> Unit,
-    onSearchSubmit: (String) -> Unit,
-    showingResults: Boolean,
-    onTabChange: (Int) -> Unit,
-    onSortMenuOpen: () -> Unit,
-    panelAlpha: () -> Float,
-    modifier: Modifier = Modifier,
-) {
-    Crossfade(
-        targetState = tab,
-        animationSpec = tween(MainTabFadeMillis),
-        modifier = modifier.scrollToTopOnTap(),
-        label = "mainTitleRow",
-    ) { page ->
-        if (page == 0) {
-            FeedTitleRow(
-                searchState = searchState,
-                onQueryChange = onQueryChange,
-                searchExpanded = searchExpanded,
-                onSearchOpen = onSearchOpen,
-                onSearchCancel = onSearchCancel,
-                onSearchSubmit = onSearchSubmit,
-                avatarUrl = avatarUrl,
-                onAvatarClick = onAvatarClick,
-                nav = nav,
-                collapsed = collapsed,
-                showingResults = showingResults,
-                onTabChange = onTabChange,
-                onSortMenuOpen = onSortMenuOpen,
-                panelAlpha = panelAlpha,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else {
-            PageTitleBar(
-                title = tabTitles.getOrElse(page) { "" },
-                collapsed = collapsed,
-                actions = { TabActions(page, nav, onSearch = {}) },
-            )
         }
     }
 }

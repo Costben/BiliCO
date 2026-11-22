@@ -62,3 +62,34 @@ data class QrPollData(
     val code: Int = -1,
     val message: String = "",
 )
+
+@Serializable
+data class MemberAccountResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: MemberAccountData? = null,
+)
+
+@Serializable
+data class MemberAccountData(
+    val mid: Long = 0,
+    val uname: String = "",
+    val userid: String = "",
+    val sign: String = "",
+    val birthday: String = "",
+    val sex: String = "",
+    @SerialName("nick_free") val nickFree: Boolean = false,
+    val rank: String = "",
+)
+
+@Serializable
+data class UpdateFaceResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: UpdateFaceData? = null,
+)
+
+@Serializable
+data class UpdateFaceData(
+    val url: String = "",
+)

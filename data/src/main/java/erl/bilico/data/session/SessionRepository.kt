@@ -176,11 +176,13 @@ class SessionRepository(
             val response = api.nav()
             val data = response.data
             if (response.code == 0 && data != null && data.isLogin && data.mid > 0L) {
+                val prevSign = _account.value?.takeIf { it.mid == data.mid }?.sign.orEmpty()
                 val account = Account(
                     mid = data.mid,
                     name = data.uname,
                     face = data.face,
                     vip = data.vipStatus == 1,
+                    sign = prevSign,
                 )
                 _account.value = account
                 runCatching { persistAccount(account) }
@@ -190,6 +192,23 @@ class SessionRepository(
                 _account.value
             }
         }.getOrNull()
+    }
+
+    /** 资料修改成功后立即同步内存与本地名册缓存，不等下一次 nav 轮询。 */
+    suspend fun applyUpdatedProfile(
+        name: String? = null,
+        face: String? = null,
+        sign: String? = null,
+    ) {
+        val current = _account.value ?: return
+        val updated = current.copy(
+            name = name?.takeIf { it.isNotBlank() } ?: current.name,
+            face = face?.takeIf { it.isNotBlank() } ?: current.face,
+            sign = sign ?: current.sign,
+        )
+        _account.value = updated
+        runCatching { persistAccount(updated) }
+        upsertCurrentSession(updated)
     }
 
     /**

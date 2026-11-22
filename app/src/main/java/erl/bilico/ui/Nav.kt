@@ -173,6 +173,7 @@ sealed interface Route {
     data object BangumiFollow : Route
     data object Login : Route
     data object WebLogin : Route
+    data object WebProfileEdit : Route
     data class EmoteManager(val url: String) : Route
     data object Update : Route
     data class Article(
@@ -200,6 +201,7 @@ fun Route.supportsOrbOverlay(): Boolean =
             this !is Route.Chat &&
             this !is Route.Login &&
             this !is Route.WebLogin &&
+            this !is Route.WebProfileEdit &&
             this !is Route.EmoteManager
         )
 

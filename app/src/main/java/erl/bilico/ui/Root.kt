@@ -76,6 +76,7 @@ import erl.bilico.feature.live.LocalLiveRepository
 import erl.bilico.feature.login.LoginScreen
 import erl.bilico.feature.login.WebLoginScreen
 import erl.bilico.feature.me.MeScreen
+import erl.bilico.feature.me.WebProfileEditScreen
 import erl.bilico.feature.message.MessageScreen
 import erl.bilico.feature.pgc.BangumiFollowScreen
 import erl.bilico.feature.pgc.PgcScreen
@@ -576,6 +577,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
         Route.BangumiFollow -> BangumiFollowScreen(container, nav)
         Route.Login -> LoginScreen(container, nav)
         Route.WebLogin -> WebLoginScreen(container, nav)
+        Route.WebProfileEdit -> WebProfileEditScreen(container, nav)
         is Route.EmoteManager -> EmoteManagerScreen(container, nav, route.url)
         Route.Update -> UpdateScreen(container, nav)
         is Route.Article -> ArticleScreen(
