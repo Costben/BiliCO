@@ -1,6 +1,10 @@
 package erl.bilico.feature.video
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -81,6 +85,7 @@ import erl.bilico.ui.components.StatLabel
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Copy
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -175,6 +180,43 @@ internal fun VideoTitleRow(detail: VideoDetail, expanded: Boolean) {
                 videoBvid = detail.bvid,
                 videoTitle = detail.title,
                 videoDesc = detail.desc,
+            )
+        }
+    }
+}
+
+/** 播放量行与简介之间的 BV 号行，点击直接复制 BV 号。 */
+@Composable
+internal fun VideoBvidRow(bvid: String) {
+    val context = LocalContext.current
+    val metaColor = COUITheme.colorScheme.onSurfaceSecondary
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(SquircleShape(4.dp))
+                .clickable {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("bvid", bvid))
+                    Toast.makeText(context, "已复制 $bvid", Toast.LENGTH_SHORT).show()
+                }
+                .padding(vertical = 1.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = bvid,
+                style = COUITheme.textStyles.footnote2,
+                color = metaColor,
+                maxLines = 1,
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                imageVector = COUIIcons.Copy,
+                contentDescription = "复制 $bvid",
+                modifier = Modifier.size(12.dp),
+                tint = metaColor,
             )
         }
     }

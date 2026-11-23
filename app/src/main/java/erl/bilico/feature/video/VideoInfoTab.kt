@@ -284,6 +284,11 @@ private fun InfoContent(
                     )
                 }
 
+                if (detail.bvid.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    VideoBvidRow(bvid = detail.bvid)
+                }
+
                 if (desc.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
