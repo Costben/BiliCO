@@ -16,17 +16,23 @@ data class RankingTab(
     val label: String,
 )
 
+/** B 站 2025 分区改版后旧版 rid（1/3/4/36/188/160/181/119/129）已停更于 2025-04，改用新版 tid_v2 实时榜。 */
 val RANKING_SECTIONS = listOf(
     RankingTab(0, "全站"),
-    RankingTab(1, "动画"),
-    RankingTab(3, "音乐"),
-    RankingTab(4, "游戏"),
-    RankingTab(36, "知识"),
-    RankingTab(188, "科技"),
-    RankingTab(160, "生活"),
-    RankingTab(181, "影视"),
-    RankingTab(119, "鬼畜"),
-    RankingTab(129, "舞蹈"),
+    RankingTab(1005, "动画"),
+    RankingTab(1003, "音乐"),
+    RankingTab(1008, "游戏"),
+    RankingTab(1010, "知识"),
+    RankingTab(1012, "科技数码"),
+    RankingTab(1020, "美食"),
+    RankingTab(1013, "汽车"),
+    RankingTab(1014, "时尚美妆"),
+    RankingTab(1018, "体育运动"),
+    RankingTab(1024, "动物"),
+    RankingTab(1002, "娱乐"),
+    RankingTab(1001, "影视"),
+    RankingTab(1007, "鬼畜"),
+    RankingTab(1004, "舞蹈"),
 )
 
 data class RankingUiState(
