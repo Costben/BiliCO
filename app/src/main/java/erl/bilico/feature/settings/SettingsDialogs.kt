@@ -26,6 +26,7 @@ import erl.bilico.data.model.SponsorCategory
 import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.session.StoredSession
 import erl.bilico.data.settings.DanmakuSettings
+import erl.bilico.data.settings.HomeTabsLayout
 import erl.bilico.data.settings.PlayerTopBarLayout
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.me.AccountSwitchDialog
@@ -167,18 +168,21 @@ internal fun SettingsDialogsHost(
     danmakuSettings: DanmakuSettings,
     topBarLayoutFullscreen: PlayerTopBarLayout,
     topBarLayoutPortrait: PlayerTopBarLayout,
+    homeTabsLayout: HomeTabsLayout,
     sponsorCategories: Set<String>,
     account: Account?,
     sessions: List<StoredSession>,
     pickCdn: Boolean,
     showDanmakuSettings: Boolean,
     showTopBarSettings: Boolean,
+    showHomeTabsSettings: Boolean,
     showSponsorCategories: Boolean,
     switchAccounts: Boolean,
     confirmLogout: Boolean,
     onDismissCdn: () -> Unit,
     onDismissDanmaku: () -> Unit,
     onDismissTopBar: () -> Unit,
+    onDismissHomeTabs: () -> Unit,
     onDismissSponsorCategories: () -> Unit,
     onDismissSwitchAccounts: () -> Unit,
     onDismissLogout: () -> Unit,
@@ -212,6 +216,16 @@ internal fun SettingsDialogsHost(
             onToggle = container.settings.playerTopBar::setVisible,
             onMove = container.settings.playerTopBar::moveItem,
             onDismiss = onDismissTopBar,
+        )
+    }
+
+    if (showHomeTabsSettings) {
+        HomeTabsSettingsDialog(
+            layout = homeTabsLayout,
+            onToggle = container.settings.feed::setHomeTabVisible,
+            onMove = container.settings.feed::moveHomeTab,
+            onReset = container.settings.feed::resetHomeTabs,
+            onDismiss = onDismissHomeTabs,
         )
     }
 

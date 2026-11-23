@@ -357,10 +357,13 @@ interface BiliApi {
     @POST("pgc/web/follow/del")
     suspend fun unfollowBangumi(@FieldMap fields: Map<String, String>): BaseResponse
 
-    // ---------- 排行榜 ----------
+    // ---------- 排行榜与热门 ----------
 
     @GET("x/web-interface/ranking/v2")
     suspend fun ranking(@QueryMap params: Map<String, String>): RankingResponse
+
+    @GET("x/web-interface/popular")
+    suspend fun popular(@QueryMap params: Map<String, String>): RankingResponse
 
     // ---------- 相关推荐 ----------
 

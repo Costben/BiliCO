@@ -11,24 +11,28 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import erl.bilico.data.settings.HomeTabType
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.live.LiveListScreen
 import erl.bilico.feature.pgc.BangumiRankSection
+import erl.bilico.feature.pgc.CinemaRankSection
 import erl.bilico.feature.rank.RankingSection
 import erl.bilico.ui.NavState
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
- * 推荐 tab 的四段：推荐流、排行榜、番剧、直播。左右滑动翻页，胶囊点击也一样翻。
+ * 推荐 tab 的顶部分类页：默认推荐、热门、排行榜、番剧、影视、直播，支持在设置里开关与排序。
+ * 左右滑动翻页，胶囊点击也一样翻。
  *
  * 分段胶囊不在这里画：它要跟着标题行折进顶栏，得画在顶栏那一层才不会被玻璃盖住，
- * 所以 [segment] 与 [onSegment] 都由外壳持有。
+ * 所以 [segment]、[tabs] 与 [onSegment] 都由外壳持有。
  */
 @Composable
 fun FeedScreen(
     container: AppContainer,
     nav: NavState,
     topInset: Dp,
+    tabs: List<HomeTabType>,
     segment: Int,
     onSegment: (Int) -> Unit,
     onCollapse: (Float) -> Unit,
@@ -36,18 +40,21 @@ fun FeedScreen(
     refreshTick: Int,
 ) {
     val recommendState = rememberLazyGridState()
+    val hotState = rememberLazyGridState()
     val rankingState = rememberLazyGridState()
     val bangumiState = rememberLazyGridState()
+    val cinemaState = rememberLazyGridState()
     val liveState = rememberLazyGridState()
     val segmentTop = topInset + 8.dp
 
     // 点胶囊翻页；滑完一页再把选中态写回去。
     // 回写必须等翻页停稳：动画途中 currentPage 会先经过中间那页，写回去会把动画打断在半路。
-    LaunchedEffect(segment) {
-        if (pagerState.settledPage != segment) pagerState.animateScrollToPage(segment)
+    LaunchedEffect(segment, tabs.size) {
+        val target = segment.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
+        if (pagerState.settledPage != target) pagerState.animateScrollToPage(target)
     }
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }
+    LaunchedEffect(pagerState, tabs.size) {
+        snapshotFlow { pagerState.settledPage.coerceIn(0, (tabs.size - 1).coerceAtLeast(0)) }
             .distinctUntilChanged()
             .collect(onSegment)
     }
@@ -57,45 +64,67 @@ fun FeedScreen(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
             beyondViewportPageCount = 0,
-            key = { FEED_SEGMENTS[it] },
+            key = { tabs[it].id },
         ) { page ->
-            when (page) {
-                0 -> RecommendFeed(
+            val tab = tabs.getOrNull(page) ?: return@HorizontalPager
+            val active = segment == page
+            when (tab) {
+                HomeTabType.RECOMMEND -> RecommendFeed(
                     container = container,
                     nav = nav,
                     topInset = segmentTop,
                     listState = recommendState,
-                    active = segment == 0,
+                    active = active,
                     onCollapse = onCollapse,
                     refreshTick = refreshTick,
                 )
 
-                1 -> RankingSection(
+                HomeTabType.HOT -> HotFeedSection(
+                    container = container,
+                    nav = nav,
+                    topInset = segmentTop,
+                    listState = hotState,
+                    active = active,
+                    onCollapse = onCollapse,
+                    refreshTick = refreshTick,
+                )
+
+                HomeTabType.RANKING -> RankingSection(
                     container = container,
                     nav = nav,
                     topInset = segmentTop,
                     listState = rankingState,
-                    active = segment == 1,
+                    active = active,
                     onCollapse = onCollapse,
                     refreshTick = refreshTick,
                 )
 
-                2 -> BangumiRankSection(
+                HomeTabType.BANGUMI -> BangumiRankSection(
                     container = container,
                     nav = nav,
                     topInset = segmentTop,
                     gridState = bangumiState,
-                    active = segment == 2,
+                    active = active,
                     onCollapse = onCollapse,
                     refreshTick = refreshTick,
                 )
 
-                3 -> LiveListScreen(
+                HomeTabType.CINEMA -> CinemaRankSection(
+                    container = container,
+                    nav = nav,
+                    topInset = segmentTop,
+                    gridState = cinemaState,
+                    active = active,
+                    onCollapse = onCollapse,
+                    refreshTick = refreshTick,
+                )
+
+                HomeTabType.LIVE -> LiveListScreen(
                     container = container,
                     nav = nav,
                     topInset = segmentTop,
                     gridState = liveState,
-                    active = segment == 3,
+                    active = active,
                     onCollapse = onCollapse,
                     refreshTick = refreshTick,
                 )
@@ -107,8 +136,5 @@ fun FeedScreen(
 /** 分类胶囊占掉的一条高度；列表和下拉刷新都要把它让出来。 */
 internal val FeedSegmentRowHeight = 44.dp
 
-/** 推荐与排行榜的列数：竖屏一律两列，和番剧榜对齐。 */
+/** 热门与排行榜的列数：竖屏一律两列，和番剧榜对齐。 */
 internal const val FeedColumns = 2
-
-/** 推荐 tab 的四个分段标题；直播原先占一个底栏格子，现在收在这里。 */
-internal val FEED_SEGMENTS = listOf("推荐", "排行榜", "番剧", "直播")

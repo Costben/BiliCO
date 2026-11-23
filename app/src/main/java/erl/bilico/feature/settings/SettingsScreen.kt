@@ -67,6 +67,7 @@ fun SettingsScreen(
     val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
     val feedColumns by container.settings.feed.columns.collectAsStateWithLifecycle()
     val feedRefreshCount by container.settings.feed.refreshCount.collectAsStateWithLifecycle()
+    val homeTabsLayout by container.settings.feed.homeTabs.collectAsStateWithLifecycle()
     val topBarLayoutFullscreen by container.settings.playerTopBar.fullscreen.collectAsStateWithLifecycle()
     val topBarLayoutPortrait by container.settings.playerTopBar.portrait.collectAsStateWithLifecycle()
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
@@ -86,6 +87,7 @@ fun SettingsScreen(
     var pickCdn by remember { mutableStateOf(false) }
     var showDanmakuSettings by remember { mutableStateOf(false) }
     var showTopBarSettings by remember { mutableStateOf(false) }
+    var showHomeTabsSettings by remember { mutableStateOf(false) }
     var showSponsorCategories by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var switchAccounts by remember { mutableStateOf(false) }
@@ -144,6 +146,13 @@ fun SettingsScreen(
                     onSelectedIndexChange = { index ->
                         container.settings.feed.setRefreshCount(FeedPreferences.REFRESH_COUNT_OPTIONS[index])
                     },
+                )
+                ArrowPreference(
+                    title = "首页分类",
+                    summary = homeTabsLayout.visibleTabs().joinToString(" · ") { it.label },
+                    modifier = Modifier.testTag("settings_home_tabs"),
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { showHomeTabsSettings = true },
                 )
                 SwitchPreference(
                     checked = returnBounce,
@@ -558,18 +567,21 @@ fun SettingsScreen(
         danmakuSettings = danmakuSettings,
         topBarLayoutFullscreen = topBarLayoutFullscreen,
         topBarLayoutPortrait = topBarLayoutPortrait,
+        homeTabsLayout = homeTabsLayout,
         sponsorCategories = sponsorCategories,
         account = account,
         sessions = sessions,
         pickCdn = pickCdn,
         showDanmakuSettings = showDanmakuSettings,
         showTopBarSettings = showTopBarSettings,
+        showHomeTabsSettings = showHomeTabsSettings,
         showSponsorCategories = showSponsorCategories,
         switchAccounts = switchAccounts,
         confirmLogout = confirmLogout,
         onDismissCdn = { pickCdn = false },
         onDismissDanmaku = { showDanmakuSettings = false },
         onDismissTopBar = { showTopBarSettings = false },
+        onDismissHomeTabs = { showHomeTabsSettings = false },
         onDismissSponsorCategories = { showSponsorCategories = false },
         onDismissSwitchAccounts = { switchAccounts = false },
         onDismissLogout = { confirmLogout = false },
@@ -581,9 +593,7 @@ private val DARK_MODE_OPTIONS = listOf("跟随系统", "浅色", "深色")
 private val COVER_ASPECT_OPTIONS = CoverAspect.entries.map { it.label }
 private val FEED_COLUMN_OPTIONS = (FeedPreferences.MIN_COLUMNS..FeedPreferences.MAX_COLUMNS).map { "${it} 列" }
 private val FEED_REFRESH_COUNT_LABELS = FeedPreferences.REFRESH_COUNT_OPTIONS.map { "${it} 个" }
-private val DEFAULT_REFRESH_COUNT_INDEX = FeedPreferences.REFRESH_COUNT_OPTIONS
-    .indexOf(FeedPreferences.DEFAULT_REFRESH_COUNT)
-    .coerceAtLeast(0)
+private val DEFAULT_REFRESH_COUNT_INDEX = FeedPreferences.REFRESH_COUNT_OPTIONS.indexOf(FeedPreferences.DEFAULT_REFRESH_COUNT).coerceAtLeast(0)
 private val FEED_SOURCE_OPTIONS = listOf("App 端推荐", "网页端推荐")
 private val AUTO_ROTATE_OPTIONS = listOf("关闭", "迟钝 (防误触, ±15°)", "标准 (±25°)", "灵敏 (±35°)")
 private val LONG_PRESS_SPEED_OPTIONS = listOf(150, 200, 250, 300, 400)

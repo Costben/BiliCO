@@ -14,6 +14,7 @@ data class RankingResponse(
 data class RankingData(
     val note: String = "",
     val list: List<RankingItem>? = null,
+    @SerialName("no_more") val noMore: Boolean = false,
 )
 
 @Serializable

@@ -61,7 +61,6 @@ import erl.bilico.player.PlaybackBridge
 import erl.bilico.feature.dynamic.DynamicFilters
 import erl.bilico.feature.dynamic.DynamicPublishOverlay
 import erl.bilico.feature.dynamic.DynamicScreen
-import erl.bilico.feature.feed.FEED_SEGMENTS
 import erl.bilico.feature.feed.FeedScreen
 import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.me.ProfileEditHost
@@ -192,8 +191,17 @@ fun MainShell(nav: NavState, container: AppContainer) {
     val account by container.session.account.collectAsStateWithLifecycle()
     var dynamicComposerOpen by remember { mutableStateOf(false) }
     var editProfileOpen by remember { mutableStateOf(false) }
+    val homeTabsLayout by container.settings.feed.homeTabs.collectAsStateWithLifecycle()
+    val feedTabs = remember(homeTabsLayout) { homeTabsLayout.visibleTabs() }
+    val feedTabLabels = remember(feedTabs) { feedTabs.map { it.label } }
     var segment by rememberSaveable { mutableIntStateOf(0) }
-    val feedPager = rememberPagerState(initialPage = segment, pageCount = { FEED_SEGMENTS.size })
+    LaunchedEffect(feedTabs.size) {
+        if (segment >= feedTabs.size) segment = (feedTabs.size - 1).coerceAtLeast(0)
+    }
+    val feedPager = rememberPagerState(
+        initialPage = segment.coerceIn(0, (feedTabs.size - 1).coerceAtLeast(0)),
+        pageCount = { feedTabs.size },
+    )
     val dynamicPager = rememberPagerState(initialPage = dynamicFilterIndex, pageCount = { DynamicFilters.size })
 
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
@@ -257,6 +265,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 container = container,
                                 nav = nav,
                                 topInset = topBarHeight,
+                                tabs = feedTabs,
                                 segment = segment,
                                 onSegment = { segment = it },
                                 onCollapse = { feedCollapse = it },
@@ -295,6 +304,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 MainBarUnderlay(
                     tab = tab,
                     collapsed = collapsed,
+                    feedTabLabels = feedTabLabels,
                     feedPager = feedPager,
                     onSegment = { segment = it },
                     dynamicPager = dynamicPager,
@@ -458,6 +468,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
 private fun MainBarUnderlay(
     tab: Int,
     collapsed: () -> Float,
+    feedTabLabels: List<String>,
     feedPager: PagerState,
     onSegment: (Int) -> Unit,
     dynamicPager: PagerState,
@@ -495,7 +506,7 @@ private fun MainBarUnderlay(
         }
 
         val capsuleLabels = when (tab) {
-            0 -> FEED_SEGMENTS
+            0 -> feedTabLabels
             1 -> DynamicFilters.map { it.second }
             else -> null
         }
