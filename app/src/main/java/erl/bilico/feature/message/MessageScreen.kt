@@ -98,7 +98,8 @@ fun MessageScreen(
     val pageColor = pageContainerColor()
     val layerBackdrop = rememberLayerBackdrop()
     val isTop = LocalRouteIsTop.current
-    var wasOnTop by remember { mutableStateOf(isTop) }
+    // 初值给 false：消息页被重新压到栈顶时也要刷新一次，否则复用旧 ViewModel 会一直显示旧会话列表。
+    var wasOnTop by remember { mutableStateOf(false) }
     LaunchedEffect(isTop) {
         if (isTop && !wasOnTop) {
             viewModel.refreshOnReturn()

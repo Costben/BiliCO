@@ -482,6 +482,11 @@ interface BiliApi {
     @POST("https://api.vc.bilibili.com/web_im/v1/web_im/send_msg")
     suspend fun imSendMsg(@FieldMap params: Map<String, String>): ImSendMsgResponse
 
+    /** 把会话已读位置推进到 `ack_seqno`，服务端的私信未读数随之下降。 */
+    @FormUrlEncoded
+    @POST("https://api.vc.bilibili.com/session_svr/v1/session_svr/update_ack")
+    suspend fun imUpdateAck(@FieldMap params: Map<String, String>): BaseResponse
+
     @GET("https://api.vc.bilibili.com/vote_svr/v1/vote_svr/vote_info")
     suspend fun voteInfo(@Query("vote_id") voteId: Long): VoteInfoResponse
 

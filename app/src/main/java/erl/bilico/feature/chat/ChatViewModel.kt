@@ -9,6 +9,7 @@ import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.ImMessageUi
 import erl.bilico.data.repository.CommentRepository
 import erl.bilico.data.repository.ImRepository
+import erl.bilico.data.repository.MessageRepository
 import erl.bilico.data.session.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,30 +38,40 @@ class ChatViewModel(
     private val imRepository: ImRepository,
     private val commentRepository: CommentRepository,
     private val session: SessionRepository,
+    private val messageRepository: MessageRepository,
     private val talkerId: Long,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
+    private var ackedSeqno = 0L
+
     init {
         loadMessages()
         loadEmotes(force = false)
     }
 
-    fun loadMessages() {
-        _state.update { it.copy(isLoading = true, error = null) }
+    /** 重新进入已加载过的会话时静默拉一次，避免整页闪成加载态。 */
+    fun refreshOnEnter() {
+        if (_state.value.isLoading) return
+        loadMessages(silent = _state.value.messages.isNotEmpty())
+    }
+
+    fun loadMessages(silent: Boolean = false) {
+        _state.update { if (silent) it.copy(error = null) else it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
             imRepository.messages(talkerId)
-                .onSuccess { (msgs, hasMore) ->
+                .onSuccess { page ->
                     _state.update {
                         it.copy(
-                            messages = msgs,
+                            messages = page.messages,
                             isLoading = false,
-                            hasMore = hasMore,
+                            hasMore = page.hasMore,
                             error = null,
                         )
                     }
+                    markRead(page.maxSeqno)
                 }
                 .onFailure { error ->
                     _state.update {
@@ -70,6 +81,17 @@ class ChatViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    /** 进会话即把已读位置推到最新；成功后立刻刷新全局未读数，红点才会当场消失。 */
+    private fun markRead(seqno: Long) {
+        if (seqno <= 0L || seqno <= ackedSeqno) return
+        viewModelScope.launch {
+            imRepository.markSessionRead(talkerId, seqno).onSuccess {
+                ackedSeqno = seqno
+                messageRepository.refreshUnread(force = true)
+            }
         }
     }
 

@@ -2,6 +2,7 @@ package erl.bilico.data.repository
 
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.ImContentParser
+import erl.bilico.data.model.ImMessagePage
 import erl.bilico.data.model.ImMessageUi
 import erl.bilico.data.model.ImSessionUi
 import erl.bilico.data.model.UploadedPicture
@@ -90,7 +91,7 @@ class ImRepository(
             }
         }
 
-    suspend fun messages(talkerId: Long, endSeqno: Long = 0L): Result<Pair<List<ImMessageUi>, Boolean>> =
+    suspend fun messages(talkerId: Long, endSeqno: Long = 0L): Result<ImMessagePage> =
         withContext(Dispatchers.IO) {
             runCatching {
                 if (!session.isLoggedIn()) error("请先登录查看私信")
@@ -142,7 +143,33 @@ class ImRepository(
                     )
                 }.sortedBy { it.timestamp } // 按时间正序排列以便对话流展示
 
-                list to (data.hasMore == 1)
+                ImMessagePage(
+                    messages = list,
+                    hasMore = data.hasMore == 1,
+                    maxSeqno = data.maxSeqno,
+                )
+            }
+        }
+
+    /** 打开会话后把已读位置推到最新一条；未读数由服务端在下次刷新时归零。 */
+    suspend fun markSessionRead(talkerId: Long, ackSeqno: Long): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                if (talkerId <= 0L || ackSeqno <= 0L || !session.isLoggedIn()) return@runCatching
+                val csrf = session.csrf()
+                if (csrf.isBlank()) return@runCatching
+                val resp = api.imUpdateAck(
+                    mapOf(
+                        "talker_id" to talkerId.toString(),
+                        "session_type" to "1",
+                        "ack_seqno" to ackSeqno.toString(),
+                        "csrf" to csrf,
+                        "csrf_token" to csrf,
+                    )
+                )
+                if (resp.code != 0) {
+                    error(resp.message.ifBlank { "标记已读失败(${resp.code})" })
+                }
             }
         }
 

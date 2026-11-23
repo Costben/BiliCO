@@ -80,7 +80,8 @@ class MessageViewModel(
         viewModelScope.launch {
             repository.refreshUnread(force = true)
             if (_state.value.sessionsLoaded) {
-                loadSessions(firstPage = true)
+                // 返回消息页时静默替换会话列表：不置加载态，列表不闪。
+                loadSessions(firstPage = true, silent = true)
             }
         }
     }
@@ -237,7 +238,7 @@ class MessageViewModel(
         }
     }
 
-    private fun loadSessions(firstPage: Boolean) {
+    private fun loadSessions(firstPage: Boolean, silent: Boolean = false) {
         val kind = MessageKind.SESSION
         if (!loading.add(kind)) return
         if (!session.isLoggedIn()) {
@@ -246,7 +247,7 @@ class MessageViewModel(
             return
         }
         if (firstPage) {
-            _state.update { it.copy(isSessionsLoading = true, sessionsError = null) }
+            if (!silent) _state.update { it.copy(isSessionsLoading = true, sessionsError = null) }
         } else {
             _state.update { it.copy(isSessionsLoadingMore = true) }
         }
@@ -268,11 +269,19 @@ class MessageViewModel(
                 }
                 .onFailure { error ->
                     _state.update {
-                        it.copy(
-                            isSessionsLoading = false,
-                            isSessionsLoadingMore = false,
-                            sessionsError = if (firstPage) error.message ?: "私信加载失败" else it.sessionsError,
-                        )
+                        if (silent) {
+                            it.copy(isSessionsLoading = false, isSessionsLoadingMore = false)
+                        } else {
+                            it.copy(
+                                isSessionsLoading = false,
+                                isSessionsLoadingMore = false,
+                                sessionsError = if (firstPage) {
+                                    error.message ?: "私信加载失败"
+                                } else {
+                                    it.sessionsError
+                                },
+                            )
+                        }
                     }
                 }
             loading -= kind

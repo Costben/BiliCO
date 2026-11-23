@@ -148,6 +148,13 @@ data class ImMessageUi(
     val emotes: Map<String, EmoteImage> = emptyMap(),
 )
 
+/** 一页聊天记录：消息本体、是否还有更早的，以及已读回执要用的最新序号。 */
+data class ImMessagePage(
+    val messages: List<ImMessageUi>,
+    val hasMore: Boolean,
+    val maxSeqno: Long,
+)
+
 data class ImParsedImage(
     val url: String,
     val width: Int = 0,
