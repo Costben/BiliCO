@@ -160,9 +160,9 @@ fun CommentTab(
                     state = listState,
                     modifier = Modifier.fillMaxSize().scrollEndHaptic(),
                     contentPadding = PaddingValues(
-                        start = 16.dp,
+                        start = 12.dp,
                         top = topGap + topInset,
-                        end = 16.dp,
+                        end = 12.dp,
                         bottom = 88.dp + bottomInset,
                     ),
                 ) {
@@ -191,7 +191,7 @@ fun CommentTab(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 10.dp),
-                            insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                            insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                             onClick = { threadController.open(comment) },
                         ) {
                             BiliCommentItem(

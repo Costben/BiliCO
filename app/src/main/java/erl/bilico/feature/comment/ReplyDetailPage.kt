@@ -385,16 +385,16 @@ internal fun ReplyDetailPage(
                     .background(pageBg)
                     .scrollEndHaptic(),
                 contentPadding = PaddingValues(
-                    start = 16.dp,
+                    start = 12.dp,
                     top = topInset + REPLY_TOP_BAR_HEIGHT + 12.dp,
-                    end = 16.dp,
+                    end = 12.dp,
                     bottom = listBottomPadding,
                 ),
             ) {
                 item(key = "root_comment") {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                     ) {
                         BiliCommentItem(
                             comment = detailState.rootComment,
@@ -457,7 +457,7 @@ internal fun ReplyDetailPage(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 10.dp),
-                            insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                            insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                         ) {
                             BiliCommentItem(
                                 comment = displayReply,

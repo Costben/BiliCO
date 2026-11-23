@@ -20,9 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.InlineTextContent
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,9 +33,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.Comment
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.util.Formatters
+import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.LoadingImage
@@ -60,11 +56,11 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 private const val FOLDED_COMMENT_LINES = 8
 
 /**
- * 标准评论卡片：严格参照目标样式还原——
- * - 左栏圆形头像，右栏顶部左侧为「完整不截断用户名 + 实心几何 LV 徽章」与第二行「日期 · IP属地」；
- * - 右上角为装扮角色立绘 + 方折数码号码牌（NO. / 032469）；
+ * 标准评论卡片：参照 PD plus 布局收紧横向冗余——
+ * - 左栏圆形头像，右栏顶部左侧为「单行不换行用户名（超长省略）+ 实心几何 LV 徽章」与第二行单行「日期 · IP属地」；
+ * - 右上角仅保留装扮角色立绘 + 方折数码号码牌（NO. / 032469），不放更多按钮挤压昵称；
  * - 中部为高对比度评论正文与带图评论缩略图（支持点击看大图）；
- * - 底部操作栏左侧为左弯回复图标 +「回复」，右侧为点踩与点赞图标 + 计数；
+ * - 底部操作栏左侧为左弯回复图标 +「回复」，右侧为点踩、点赞图标 + 计数与更多菜单按钮；
  * - 下方圆角灰底卡片展示子回复预览与「共N条回复」。
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -89,7 +85,7 @@ internal fun BiliCommentItem(
     // 不可折叠时整段正文始终铺满，点击正文也不再翻转展开态。
     val unfolded = !expandable || expanded
     val density = LocalDensity.current
-    val avatarDp = if (isSubReply) 32.dp else 38.dp
+    val avatarDp = if (isSubReply) 32.dp else 36.dp
     val avatarPx = with(density) { avatarDp.roundToPx() }
     val openUser = remember(comment.mid, onOpenUser) {
         { if (comment.mid > 0L) onOpenUser(comment.mid) }
@@ -149,7 +145,7 @@ internal fun BiliCommentItem(
                 )
             }
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -181,19 +177,16 @@ internal fun BiliCommentItem(
                                 lineHeight = 15.sp,
                             ),
                             color = metaColor,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
 
                 comment.sailing?.let { sailing ->
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(6.dp))
                     CommentSailingBadge(sailing = sailing, isDark = isDark)
-                }
-                if (menuItems.isNotEmpty()) {
-                    CommentMoreButton(
-                        menuItems = menuItems,
-                        modifier = Modifier.padding(start = 4.dp),
-                    )
                 }
             }
 
@@ -258,6 +251,7 @@ internal fun BiliCommentItem(
                 disliked = comment.disliked,
                 likeCount = comment.like,
                 metaColor = metaColor,
+                menuItems = menuItems,
                 onReply = onReply,
                 onDislike = onDislike,
                 onLike = onLike,
@@ -437,68 +431,12 @@ private fun CommentPicturesGrid(
 }
 
 @Composable
-private fun UserNameWithBadges(
-    userName: String,
-    level: Int,
-    isUp: Boolean,
-    nameColor: Color,
-    onClick: () -> Unit,
-) {
-    val density = LocalDensity.current
-    val lvWidthSp = with(density) { 24.dp.toSp() }
-    val lvHeightSp = with(density) { 12.dp.toSp() }
-    val upWidthSp = with(density) { 21.dp.toSp() }
-
-    val (annotated, inlineContent) = remember(userName, level, isUp, lvWidthSp, lvHeightSp, upWidthSp) {
-        val inline = LinkedHashMap<String, InlineTextContent>()
-        val builder = AnnotatedString.Builder()
-        builder.append(userName)
-        if (level > 0) {
-            builder.append(" ")
-            builder.appendInlineContent("lv_badge", "LV$level")
-            inline["lv_badge"] = InlineTextContent(
-                Placeholder(lvWidthSp, lvHeightSp, PlaceholderVerticalAlign.Center),
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    BiliLevelBadge(level = level)
-                }
-            }
-        }
-        if (isUp) {
-            builder.append(" ")
-            builder.appendInlineContent("up_badge", "UP")
-            inline["up_badge"] = InlineTextContent(
-                Placeholder(upWidthSp, lvHeightSp, PlaceholderVerticalAlign.Center),
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    BiliUpBadge()
-                }
-            }
-        }
-        builder.toAnnotatedString() to inline
-    }
-
-    Text(
-        text = annotated,
-        modifier = Modifier.clickable(onClick = onClick),
-        style = COUITheme.textStyles.body2.copy(
-            fontSize = 13.5.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.Medium,
-        ),
-        color = nameColor,
-        softWrap = true,
-        overflow = TextOverflow.Visible,
-        inlineContent = inlineContent,
-    )
-}
-
-@Composable
 private fun CommentActionBar(
     liked: Boolean,
     disliked: Boolean,
     likeCount: Int,
     metaColor: Color,
+    menuItems: List<CouiMenuItem>,
     onReply: () -> Unit,
     onDislike: () -> Unit,
     onLike: () -> Unit,
@@ -576,6 +514,16 @@ private fun CommentActionBar(
                     color = if (liked) activeColor else metaColor,
                 )
             }
+        }
+
+        if (menuItems.isNotEmpty()) {
+            Spacer(Modifier.width(10.dp))
+            CommentMoreButton(
+                menuItems = menuItems,
+                tint = metaColor,
+                boxSize = 22.dp,
+                iconSize = 15.dp,
+            )
         }
     }
 }

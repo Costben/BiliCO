@@ -1,10 +1,14 @@
 package erl.bilico.feature.comment
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -32,17 +36,23 @@ import erl.bilico.ui.components.unifiedStrokeIcon
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import erl.bilico.data.model.CommentSailing
 import erl.bilico.data.util.Formatters
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 右上角装扮立绘 + 号码牌：
  * B 站 `cardbg.image` 统一为 `972×162`（6:1）透明横图，角色立绘固定位于水平 `[0.68, 0.83]` 槽位。
- * 用 `44dp×36dp` 视窗配合显式 `Layout` 精准对齐原图立绘中心（`0.758 * 216dp`），
+ * 用 `38dp×32dp` 视窗配合显式 `Layout` 精准对齐原图立绘中心（`0.758 * 192dp`），
  * 右侧紧邻绘制两行方折数码字体（`· NO.` 与 `032469`）。
  */
 @Composable
@@ -51,9 +61,9 @@ internal fun CommentSailingBadge(
     isDark: Boolean,
 ) {
     val density = LocalDensity.current
-    val fullBannerWidthDp = 216.dp
-    val bannerHeightDp = 36.dp
-    val cropWidthDp = 44.dp
+    val fullBannerWidthDp = 192.dp
+    val bannerHeightDp = 32.dp
+    val cropWidthDp = 38.dp
     val requestWidthPx = with(density) { fullBannerWidthDp.roundToPx() }
     val sizedBannerUrl = remember(sailing.imageUrl, requestWidthPx) {
         Formatters.widthImageUrl(sailing.imageUrl, requestWidthPx)
@@ -428,3 +438,89 @@ private fun commentVector(name: String, path: String): ImageVector =
         pathData = addPathNodes(path),
         fill = SolidColor(Color.Black),
     ).build()
+
+/**
+ * 评论区单行昵称 + 等级/UP 徽章：
+ * 默认 13.5sp；当昵称在剩余宽度内放不下时自动微调字号至刚好完整显示（下限 10sp，避免过小），不换行。
+ */
+@Composable
+internal fun UserNameWithBadges(
+    userName: String,
+    level: Int,
+    isUp: Boolean,
+    nameColor: Color,
+    onClick: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val baseStyle = COUITheme.textStyles.body2.copy(
+        fontSize = 13.5.sp,
+        lineHeight = 18.sp,
+        fontWeight = FontWeight.Medium,
+    )
+    val badgesWidthPx = with(density) {
+        ((if (level > 0) 28.dp else 0.dp) + (if (isUp) 25.dp else 0.dp)).roundToPx()
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val maxTextWidthPx = (constraints.maxWidth - badgesWidthPx - 2).coerceAtLeast(0)
+        val fittedFontSp = remember(userName, baseStyle, maxTextWidthPx) {
+            if (maxTextWidthPx <= 0 || userName.isEmpty()) {
+                13.5f
+            } else {
+                val fitsAt = { sizeSp: Float ->
+                    !textMeasurer.measure(
+                        text = userName,
+                        style = baseStyle.copy(fontSize = sizeSp.sp),
+                        overflow = TextOverflow.Clip,
+                        softWrap = false,
+                        maxLines = 1,
+                        constraints = Constraints(maxWidth = maxTextWidthPx),
+                    ).hasVisualOverflow
+                }
+                val maxSp = 13.5f
+                val minSp = 10.0f
+                when {
+                    fitsAt(maxSp) -> maxSp
+                    !fitsAt(minSp) -> minSp
+                    else -> {
+                        var lo = minSp
+                        var hi = maxSp
+                        repeat(7) {
+                            val mid = (lo + hi) * 0.5f
+                            if (fitsAt(mid)) lo = mid else hi = mid
+                        }
+                        lo
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = userName,
+                modifier = Modifier.weight(1f, fill = false),
+                style = baseStyle.copy(fontSize = fittedFontSp.sp),
+                color = nameColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (level > 0) {
+                Spacer(Modifier.width(4.dp))
+                BiliLevelBadge(level = level)
+            }
+            if (isUp) {
+                Spacer(Modifier.width(4.dp))
+                BiliUpBadge()
+            }
+        }
+    }
+}

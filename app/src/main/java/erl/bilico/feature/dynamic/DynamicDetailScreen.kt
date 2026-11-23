@@ -298,7 +298,7 @@ fun DynamicDetailScreen(
                             item(key = "comment-section") {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    insideMargin = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                                    insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                 ) {
                                     val totalComments = maxOf(commentState.total, currentItem.commentCount)
                                     Row(

@@ -15,11 +15,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.Comment
 import erl.bilico.ui.components.ConfirmDialog
@@ -120,12 +122,15 @@ internal fun rememberCommentMenuItems(
 internal fun CommentMoreButton(
     menuItems: List<CouiMenuItem>,
     modifier: Modifier = Modifier,
+    tint: Color = COUITheme.colorScheme.onSurfaceSecondary,
+    boxSize: Dp = 24.dp,
+    iconSize: Dp = 18.dp,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier) {
         Box(
             modifier = Modifier
-                .size(24.dp)
+                .size(boxSize)
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -138,8 +143,8 @@ internal fun CommentMoreButton(
             Icon(
                 imageVector = COUIIcons.More,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = COUITheme.colorScheme.onSurfaceSecondary,
+                modifier = Modifier.size(iconSize),
+                tint = tint,
             )
         }
 
