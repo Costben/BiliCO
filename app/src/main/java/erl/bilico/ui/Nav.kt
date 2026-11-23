@@ -175,6 +175,7 @@ sealed interface Route {
     data object WebLogin : Route
     data object WebProfileEdit : Route
     data class EmoteManager(val url: String) : Route
+    data class WebPage(val url: String, val title: String = "网页") : Route
     data object Update : Route
     data class Article(
         val cvId: Long,
@@ -202,7 +203,8 @@ fun Route.supportsOrbOverlay(): Boolean =
             this !is Route.Login &&
             this !is Route.WebLogin &&
             this !is Route.WebProfileEdit &&
-            this !is Route.EmoteManager
+            this !is Route.EmoteManager &&
+            this !is Route.WebPage
         )
 
 val LocalNavState = staticCompositionLocalOf<NavState?> { null }

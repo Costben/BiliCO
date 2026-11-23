@@ -99,7 +99,7 @@ internal fun rememberArticleRichText(
                         LinkAnnotation.Url(
                             url = link,
                             styles = TextLinkStyles(
-                                style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+                                style = SpanStyle(color = linkColor),
                             ),
                             linkInteractionListener = listener,
                         ),

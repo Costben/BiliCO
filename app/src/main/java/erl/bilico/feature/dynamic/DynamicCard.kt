@@ -57,7 +57,7 @@ import erl.bilico.ui.attachToRow
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.LoadingImage
-import erl.bilico.ui.components.RichCommentText
+import erl.bilico.ui.components.RichDynamicText
 import erl.bilico.ui.expandOrigin
 import erl.bilico.ui.rememberExpandOrigin
 import io.github.suqi8.coui.kmp.basic.CapsuleOutlineShape
@@ -173,9 +173,10 @@ internal fun DynamicCard(
         val pendingImages = item.pendingImages
         val content = if (pendingImages) item.content.withoutImagePlaceholders() else item.content
 
-        if (content.isNotBlank() || item.emotes.isNotEmpty()) {
-            RichCommentText(
-                content = content,
+        if (content.isNotBlank() || item.richNodes.isNotEmpty() || item.emotes.isNotEmpty()) {
+            RichDynamicText(
+                richNodes = item.richNodes,
+                fallbackContent = content,
                 emotes = item.emotes,
                 modifier = Modifier.padding(top = 8.dp),
                 style = COUITheme.textStyles.body1.copy(
@@ -183,8 +184,10 @@ internal fun DynamicCard(
                     lineHeight = 22.sp,
                 ),
                 color = COUITheme.colorScheme.onSurface,
-                prefixColor = linkBlue,
+                linkColor = linkBlue,
                 maxLines = if (isDetail) Int.MAX_VALUE else 8,
+                onOpenUser = onOpenUser,
+                stripImagePlaceholders = pendingImages,
             )
         }
 
@@ -516,9 +519,10 @@ private fun ForwardBox(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (item.content.isNotBlank() || item.emotes.isNotEmpty()) {
-            RichCommentText(
-                content = item.content,
+        if (item.content.isNotBlank() || item.richNodes.isNotEmpty() || item.emotes.isNotEmpty()) {
+            RichDynamicText(
+                richNodes = item.richNodes,
+                fallbackContent = item.content,
                 emotes = item.emotes,
                 modifier = Modifier.padding(top = 6.dp),
                 style = COUITheme.textStyles.body2.copy(
@@ -526,8 +530,9 @@ private fun ForwardBox(
                     lineHeight = 20.5.sp,
                 ),
                 color = COUITheme.colorScheme.onSurface,
-                prefixColor = linkBlue,
+                linkColor = linkBlue,
                 maxLines = if (isDetail) Int.MAX_VALUE else 6,
+                onOpenUser = onOpenUser,
             )
         }
         item.vote?.let { vote ->

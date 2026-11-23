@@ -28,7 +28,6 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
@@ -43,6 +42,12 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 评论正文内点击 B 站视频超链接时打开对应 BV 号视频。 */
 val LocalOpenBvid = compositionLocalOf<((String) -> Unit)?> { null }
+
+/** 正文内点击普通网页或互动抽奖链接时在应用内 WebView 打开。 */
+val LocalOpenUrl = compositionLocalOf<((String, String?) -> Unit)?> { null }
+
+/** 正文内点击 `#话题#` 时跳转搜索对应话题。 */
+val LocalOpenTopic = compositionLocalOf<((String) -> Unit)?> { null }
 
 /** 评论正文内点击时间戳（如 `02: 24`）时跳转播放进度（毫秒）。 */
 val LocalCommentSeek = compositionLocalOf<((Long) -> Unit)?> { null }
@@ -92,8 +97,12 @@ fun RichCommentText(
     val largePx = with(density) { (if (compactEmotes) 26.dp else 42.dp).roundToPx() }
     val uriHandler = LocalUriHandler.current
     val openBvidCallback = LocalOpenBvid.current
+    val openUrlCallback = LocalOpenUrl.current
+    val openTopicCallback = LocalOpenTopic.current
     val commentSeekCallback = LocalCommentSeek.current
     val currentOpenBvid by rememberUpdatedState(openBvidCallback)
+    val currentOpenUrl by rememberUpdatedState(openUrlCallback)
+    val currentOpenTopic by rememberUpdatedState(openTopicCallback)
     val currentSeek by rememberUpdatedState(commentSeekCallback)
     val currentUriHandler by rememberUpdatedState(uriHandler)
     val currentOpenUser by rememberUpdatedState(onOpenUser)
@@ -114,13 +123,26 @@ fun RichCommentText(
         enableTimestamps,
         enableUserLinks,
     ) {
+        val openUrlAction: (String, String?) -> Unit = { url, title ->
+            val opener = currentOpenUrl
+            if (opener != null) {
+                opener(url, title)
+            } else {
+                runCatching { currentUriHandler.openUri(url) }
+            }
+        }
         val openBvidAction: (String) -> Unit = { bvid ->
             val opener = currentOpenBvid
             if (opener != null) {
                 opener(bvid)
             } else {
-                runCatching { currentUriHandler.openUri("https://www.bilibili.com/video/$bvid") }
+                openUrlAction("https://www.bilibili.com/video/$bvid", null)
             }
+        }
+        val openTopicAction: ((String) -> Unit)? = if (currentOpenTopic != null) {
+            { topic -> currentOpenTopic?.invoke(topic) }
+        } else {
+            null
         }
         val seekAction: ((Long) -> Unit)? = if (enableTimestamps) {
             { ms -> currentSeek?.invoke(ms) }
@@ -178,6 +200,7 @@ fun RichCommentText(
                 fontWeight = FontWeight.Medium,
                 mentions = mentions,
                 onOpenUser = openUserAction,
+                onOpenTopic = openTopicAction,
             )
             builder.append(": ")
             rawDisplay.substring(replyPrefix.bodyStartIndex)
@@ -185,7 +208,18 @@ fun RichCommentText(
             rawDisplay
         }
         if (emotes.isEmpty()) {
-            builder.appendRichSegment(display, prefixColor, openBvidAction, seekAction, mentions, sortedMentionNames, openUserAction)
+            builder.appendRichSegment(
+                segment = display,
+                mentionColor = prefixColor,
+                onOpenBvid = openBvidAction,
+                onOpenUrl = openUrlAction,
+                onOpenTopic = openTopicAction,
+                onSeekTimeMs = seekAction,
+                mentions = mentions,
+                mentionNames = sortedMentionNames,
+                onOpenUser = openUserAction,
+                inline = inline,
+            )
         } else {
             var cursor = 0
             var index = 0
@@ -195,10 +229,13 @@ fun RichCommentText(
                         segment = display.substring(cursor, match.range.first),
                         mentionColor = prefixColor,
                         onOpenBvid = openBvidAction,
+                        onOpenUrl = openUrlAction,
+                        onOpenTopic = openTopicAction,
                         onSeekTimeMs = seekAction,
                         mentions = mentions,
                         mentionNames = sortedMentionNames,
                         onOpenUser = openUserAction,
+                        inline = inline,
                     )
                 }
                 val token = match.value
@@ -231,12 +268,34 @@ fun RichCommentText(
                         )
                     }
                 } else {
-                    builder.appendRichSegment(token, prefixColor, openBvidAction, seekAction, mentions, sortedMentionNames, openUserAction)
+                    builder.appendRichSegment(
+                        segment = token,
+                        mentionColor = prefixColor,
+                        onOpenBvid = openBvidAction,
+                        onOpenUrl = openUrlAction,
+                        onOpenTopic = openTopicAction,
+                        onSeekTimeMs = seekAction,
+                        mentions = mentions,
+                        mentionNames = sortedMentionNames,
+                        onOpenUser = openUserAction,
+                        inline = inline,
+                    )
                 }
                 cursor = match.range.last + 1
             }
             if (cursor < display.length) {
-                builder.appendRichSegment(display.substring(cursor), prefixColor, openBvidAction, seekAction, mentions, sortedMentionNames, openUserAction)
+                builder.appendRichSegment(
+                    segment = display.substring(cursor),
+                    mentionColor = prefixColor,
+                    onOpenBvid = openBvidAction,
+                    onOpenUrl = openUrlAction,
+                    onOpenTopic = openTopicAction,
+                    onSeekTimeMs = seekAction,
+                    mentions = mentions,
+                    mentionNames = sortedMentionNames,
+                    onOpenUser = openUserAction,
+                    inline = inline,
+                )
             }
         }
         builder.toAnnotatedString() to inline
@@ -318,10 +377,12 @@ private fun AnnotatedString.Builder.appendMentionToken(
     fontWeight: FontWeight?,
     mentions: Map<String, Long>,
     onOpenUser: ((Long) -> Unit)?,
+    onOpenTopic: ((String) -> Unit)? = null,
 ) {
     val targetMid = if (token.startsWith("@")) resolveMentionMid(token, mentions) else null
-    if (targetMid != null && targetMid > 0L && onOpenUser != null) {
-        withLink(
+    val topicQuery = if (token.startsWith("#") && token.endsWith("#")) token.trim('#').trim() else ""
+    when {
+        targetMid != null && targetMid > 0L && onOpenUser != null -> withLink(
             LinkAnnotation.Clickable(
                 tag = "user:$targetMid",
                 styles = TextLinkStyles(style = SpanStyle(color = mentionColor, fontWeight = fontWeight)),
@@ -330,24 +391,37 @@ private fun AnnotatedString.Builder.appendMentionToken(
         ) {
             append(token)
         }
-    } else {
-        withStyle(SpanStyle(color = mentionColor, fontWeight = fontWeight)) {
+
+        topicQuery.isNotEmpty() && onOpenTopic != null -> withLink(
+            LinkAnnotation.Clickable(
+                tag = "topic:$topicQuery",
+                styles = TextLinkStyles(style = SpanStyle(color = mentionColor, fontWeight = fontWeight)),
+                linkInteractionListener = { onOpenTopic(topicQuery) },
+            ),
+        ) {
+            append(token)
+        }
+
+        else -> withStyle(SpanStyle(color = mentionColor, fontWeight = fontWeight)) {
             append(token)
         }
     }
 }
 
-private fun AnnotatedString.Builder.appendRichSegment(
+internal fun AnnotatedString.Builder.appendRichSegment(
     segment: String,
     mentionColor: Color,
     onOpenBvid: (String) -> Unit,
+    onOpenUrl: (String, String?) -> Unit,
+    onOpenTopic: ((String) -> Unit)?,
     onSeekTimeMs: ((Long) -> Unit)?,
     mentions: Map<String, Long>,
     mentionNames: List<String>,
     onOpenUser: ((Long) -> Unit)?,
+    inline: MutableMap<String, InlineTextContent>,
 ) {
     val urlStyles = TextLinkStyles(
-        style = SpanStyle(color = mentionColor, textDecoration = TextDecoration.Underline),
+        style = SpanStyle(color = mentionColor),
     )
     val timestampStyles = TextLinkStyles(
         style = SpanStyle(color = mentionColor, fontWeight = FontWeight.Medium),
@@ -384,15 +458,15 @@ private fun AnnotatedString.Builder.appendRichSegment(
             RichTokenKind.BiliShort -> {
                 val consumedEnd = trimmedUrlEnd(segment, range)
                 val url = segment.substring(range.first, consumedEnd)
-                withLink(
-                    LinkAnnotation.Clickable(
-                        tag = "short:$url",
-                        styles = urlStyles,
-                        linkInteractionListener = { onOpenBvid(url) },
-                    ),
-                ) {
-                    append(url)
-                }
+                appendIconLink(
+                    inline = inline,
+                    inlineKey = "url_icon_${inline.size}",
+                    icon = InlineLinkIcon,
+                    label = "网页链接",
+                    tag = "short:$url",
+                    color = mentionColor,
+                    onClick = { onOpenBvid(url) },
+                )
                 cursor = consumedEnd
             }
 
@@ -413,9 +487,15 @@ private fun AnnotatedString.Builder.appendRichSegment(
             RichTokenKind.GenericUrl -> {
                 val consumedEnd = trimmedUrlEnd(segment, range)
                 val url = segment.substring(range.first, consumedEnd)
-                withLink(LinkAnnotation.Url(url = url, styles = urlStyles)) {
-                    append(url)
-                }
+                appendIconLink(
+                    inline = inline,
+                    inlineKey = "url_icon_${inline.size}",
+                    icon = InlineLinkIcon,
+                    label = "网页链接",
+                    tag = "url:$url",
+                    color = mentionColor,
+                    onClick = { onOpenUrl(url, "网页") },
+                )
                 cursor = consumedEnd
             }
 
@@ -446,6 +526,7 @@ private fun AnnotatedString.Builder.appendRichSegment(
                     fontWeight = if (token.startsWith("@")) FontWeight.Medium else null,
                     mentions = mentions,
                     onOpenUser = onOpenUser,
+                    onOpenTopic = onOpenTopic,
                 )
                 cursor = range.last + 1
             }

@@ -15,6 +15,7 @@ import erl.bilico.data.model.DynamicLockedUi
 import erl.bilico.data.model.DynamicMajor
 import erl.bilico.data.model.DynamicModules
 import erl.bilico.data.model.DynamicRichTextNode
+import erl.bilico.data.model.DynamicTextNode
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.LiveMajor
@@ -55,6 +56,7 @@ data class DynamicFeedPage(
 /** 长文型 opus 的正文与内嵌图片：feed 卡片给不了，要 opus/detail 才有。 */
 data class DynamicOpusContent(
     val text: String,
+    val richNodes: List<DynamicTextNode> = emptyList(),
     val images: List<DynamicImage>,
 )
 
@@ -179,6 +181,7 @@ class DynamicRepository(
         val blocks = opusContent(item.dynamicId).getOrNull() ?: return item
         return item.copy(
             content = blocks.text.ifBlank { item.content },
+            richNodes = blocks.richNodes.ifEmpty { item.richNodes },
             images = blocks.images.ifEmpty { item.images },
             kind = if (blocks.images.isNotEmpty()) DynamicKind.IMAGES else item.kind,
         )
@@ -204,10 +207,11 @@ class DynamicRepository(
                 if (response.code != 0) {
                     error(response.message.ifBlank { "正文加载失败(${response.code})" })
                 }
-                val blocks = response.data?.item?.modules.decodeOpusParagraphs()
+                val blocks = response.data?.item?.modules.decodeOpusParagraphs(dynamicId = id)
                 require(blocks.text.isNotBlank() || blocks.images.isNotEmpty()) { "正文为空" }
                 DynamicOpusContent(
                     text = blocks.text,
+                    richNodes = blocks.richNodes,
                     images = blocks.images
                         .filter { it.displayUrl.isNotBlank() }
                         .take(9)
@@ -330,7 +334,8 @@ class DynamicRepository(
         // 长文型 opus（专栏搬过来的图文）正文和图片只存在于 `module_content.paragraphs`：
         // 文字段是正文，图片段是内嵌大图。feed 卡片给的 desc 里只有一串「[图片]」占位，
         // opus/detail 才带真正的段落，所以这里两种载体都收。
-        val blocks = this.modules.decodeOpusParagraphs()
+        val selfId = idStr.ifBlank { basic?.ridStr.orEmpty() }
+        val blocks = this.modules.decodeOpusParagraphs(dynamicId = selfId)
         // 图文动态的正文在 major.opus.summary.text，desc 通常为空；
         // itemOpusStyle 下整条卡片只有 summary 这一个载体。
         val opusSummary = major?.opus?.summary?.text.orEmpty().trim()
@@ -338,8 +343,11 @@ class DynamicRepository(
         val opusTitle = major?.opus?.title.orEmpty().trim()
         val resolvedTitle = opusTitle.ifBlank { articleTitle }
         val articleDesc = major?.article?.desc.orEmpty().trim()
-        val rawNodes = content?.desc?.richTextNodes.orEmpty() +
-            major?.opus?.summary?.richTextNodes.orEmpty()
+        val descNodes = content?.desc?.richTextNodes.orEmpty()
+        val opusNodes = major?.opus?.summary?.richTextNodes.orEmpty()
+        val rawNodes = descNodes + opusNodes
+        val chosenRichNodes = descNodes.ifEmpty { opusNodes }.toDynamicTextNodes(dynamicId = selfId)
+            .ifEmpty { blocks.richNodes }
         val nodesFallbackText = if (rawNodes.isNotEmpty()) {
             rawNodes.joinToString("") { it.text.ifBlank { it.origText } }.trim()
         } else {
@@ -370,7 +378,6 @@ class DynamicRepository(
         val vote = extractDynamicVote(content, rawNodes)
 
         val articleId = major?.article?.id ?: 0L
-        val selfId = idStr.ifBlank { basic?.ridStr.orEmpty() }
         val article = if (articleId > 0L || selfId.isNotBlank()) {
             DynamicArticleCard(
                 articleId = articleId,
@@ -434,6 +441,7 @@ class DynamicRepository(
             pubAction = author?.pubAction.orEmpty(),
             title = resolvedTitle,
             content = text,
+            richNodes = chosenRichNodes,
             emotes = emotes,
             images = images,
             video = video,

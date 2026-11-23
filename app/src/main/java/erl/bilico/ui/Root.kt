@@ -92,7 +92,10 @@ import erl.bilico.feature.video.VideoScreen
 import erl.bilico.feature.watchlater.WatchLaterScreen
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
+import erl.bilico.ui.components.InAppWebScreen
 import erl.bilico.ui.components.LocalOpenBvid
+import erl.bilico.ui.components.LocalOpenTopic
+import erl.bilico.ui.components.LocalOpenUrl
 import erl.bilico.update.AppUpdater
 import erl.bilico.update.UpdateCheckInterval
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -124,6 +127,8 @@ private fun openVideoTarget(
         val bvid = container.video.resolveShortLink(value)
         if (bvid != null) {
             nav.push(Route.Video(bvid))
+        } else if (value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)) {
+            nav.push(Route.WebPage(value))
         } else {
             runCatching {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(value)))
@@ -251,6 +256,17 @@ internal fun BiliCoRoot(
         LocalImageOrigins provides origins,
         LocalImageViewerHost provides viewerHost,
         LocalOpenBvid provides { target -> openVideoTarget(target, nav, container, context, scope) },
+        LocalOpenUrl provides { url, title ->
+            val trimmed = url.trim()
+            val normalized = if (trimmed.startsWith("//")) "https:$trimmed" else trimmed
+            if (normalized.startsWith("http://", ignoreCase = true) || normalized.startsWith("https://", ignoreCase = true)) {
+                nav.push(Route.WebPage(normalized, title ?: "网页"))
+            }
+        },
+        LocalOpenTopic provides { topic ->
+            val query = topic.trim()
+            if (query.isNotEmpty()) nav.push(Route.Search(query))
+        },
         LocalLiveRepository provides container.live,
         LocalAppContainer provides container,
     ) {
@@ -579,6 +595,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
         Route.WebLogin -> WebLoginScreen(container, nav)
         Route.WebProfileEdit -> WebProfileEditScreen(container, nav)
         is Route.EmoteManager -> EmoteManagerScreen(container, nav, route.url)
+        is Route.WebPage -> InAppWebScreen(container, nav, route.url, route.title)
         Route.Update -> UpdateScreen(container, nav)
         is Route.Article -> ArticleScreen(
             container = container,

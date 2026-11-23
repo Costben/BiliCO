@@ -312,6 +312,7 @@ data class DynamicItemUi(
     val pubAction: String = "",
     val title: String = "",
     val content: String,
+    val richNodes: List<DynamicTextNode> = emptyList(),
     val emotes: Map<String, EmoteImage> = emptyMap(),
     val images: List<DynamicImage> = emptyList(),
     val video: DynamicVideoCard? = null,
@@ -336,6 +337,24 @@ data class DynamicItemUi(
     val chargeLocked: Boolean = false,
     val locked: DynamicLockedUi? = null,
     val pendingLocked: Boolean = false,
+)
+
+/** 动态正文富文本节点类型，保留抽奖、网页、视频、艾特、话题等跳转语义。 */
+enum class DynamicTextNodeKind {
+    TEXT,
+    AT,
+    TOPIC,
+    LOTTERY,
+    WEB,
+    VIDEO,
+    EMOJI,
+    LINK,
+}
+
+data class DynamicTextNode(
+    val kind: DynamicTextNodeKind,
+    val text: String,
+    val target: String = "",
 )
 
 /** 充电专属动态的锁定面板，文案与按钮都来自接口的 `module_blocked`。 */
