@@ -48,12 +48,15 @@ import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
+import erl.bilico.ui.components.FollowCapsuleButton
 import erl.bilico.ui.components.LibraryVideoRow
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.OfficialVerifyLabel
 import erl.bilico.ui.components.PageTabRow
 import erl.bilico.ui.components.SearchClearButton
 import erl.bilico.ui.components.SecondaryPage
+import erl.bilico.ui.components.UserMoreMenu
+import erl.bilico.ui.nestedBlockColor
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
@@ -77,7 +80,7 @@ fun SpaceScreen(
     mid: Long,
 ) {
     val viewModel: SpaceViewModel = viewModel(key = "space-$mid") {
-        SpaceViewModel(container.space, container.dynamic, mid)
+        SpaceViewModel(container.space, container.dynamic, container.interactions, container.session, mid)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
@@ -168,6 +171,17 @@ fun SpaceScreen(
                                 )
                             }
                         },
+                        extraActions = {
+                            val profile = state.profile
+                            if (profile != null && profile.mid > 0L && profile.mid != currentMid) {
+                                UserMoreMenu(
+                                    mid = profile.mid,
+                                    name = profile.name,
+                                    face = profile.face,
+                                    highlighted = true,
+                                )
+                            }
+                        },
                     )
                 }
             }
@@ -183,8 +197,20 @@ fun SpaceScreen(
                 }
             }
         } else {
-            val showMoreMenu = profile.mid > 0L && profile.mid != (account?.mid ?: 0L)
-            item(key = "profile") { ProfileCard(profile, showMoreMenu = showMoreMenu) }
+            val isSelf = profile.mid > 0L && profile.mid == currentMid
+            item(key = "profile") {
+                ProfileCard(
+                    profile = profile,
+                    showFollow = !isSelf,
+                    following = state.following,
+                    followBusy = state.isFollowBusy,
+                    onFollow = {
+                        viewModel.toggleFollow { _, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                )
+            }
         }
 
         item(key = "space-tabs") {
@@ -279,8 +305,15 @@ fun SpaceScreen(
 }
 
 @Composable
-private fun ProfileCard(profile: SpaceProfile, showMoreMenu: Boolean) {
+private fun ProfileCard(
+    profile: SpaceProfile,
+    showFollow: Boolean,
+    following: Boolean,
+    followBusy: Boolean,
+    onFollow: () -> Unit,
+) {
     val avatarUrl = remember(profile.face) { Formatters.sizedImageUrl(profile.face, 192, 192) }
+    val hasVerify = profile.officialType == 0 || profile.officialType == 1 || profile.officialDesc.isNotBlank()
     Card(
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -295,60 +328,57 @@ private fun ProfileCard(profile: SpaceProfile, showMoreMenu: Boolean) {
             ) {
                 Avatar(url = avatarUrl, size = 64.dp, officialType = profile.officialType)
                 Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = profile.name,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = COUITheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ProfileStatColumn(
+                        label = "粉丝",
+                        value = profile.followersText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ProfileStatColumn(
+                        label = "关注",
+                        value = profile.followingText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (profile.likesText.isNotBlank()) {
+                        ProfileLikeColumn(
+                            value = profile.likesText,
                             modifier = Modifier.weight(1f),
                         )
-                        if (showMoreMenu) {
-                            Spacer(Modifier.width(4.dp))
-                            erl.bilico.ui.components.UserMoreMenu(
-                                mid = profile.mid,
-                                name = profile.name,
-                                face = profile.face,
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        ProfileStatItem("粉丝", profile.followersText)
-                        ProfileStatItem("关注", profile.followingText)
-                    }
-                    if (profile.likesText.isNotBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = profile.likesText,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = COUITheme.colorScheme.onSurface,
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Icon(
-                                imageVector = LikeFilledIcon,
-                                contentDescription = "获赞",
-                                modifier = Modifier.size(13.dp),
-                                tint = COUITheme.colorScheme.onSurfaceSecondary,
-                            )
-                        }
                     }
                 }
             }
 
-            if (profile.officialType == 0 || profile.officialType == 1 || profile.officialDesc.isNotBlank()) {
-                Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = profile.name,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = COUITheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (showFollow) {
+                    Spacer(Modifier.width(10.dp))
+                    FollowCapsuleButton(
+                        following = following,
+                        onClick = onFollow,
+                        enabled = !followBusy,
+                        followedBackground = nestedBlockColor(),
+                    )
+                }
+            }
+
+            if (hasVerify) {
+                Spacer(Modifier.height(8.dp))
                 OfficialVerifyLabel(
                     type = profile.officialType,
                     desc = profile.officialDesc,
@@ -356,7 +386,7 @@ private fun ProfileCard(profile: SpaceProfile, showMoreMenu: Boolean) {
             }
 
             if (profile.sign.isNotBlank()) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
                 SelectionContainer {
                     Text(
                         text = profile.sign,
@@ -371,19 +401,63 @@ private fun ProfileCard(profile: SpaceProfile, showMoreMenu: Boolean) {
 }
 
 @Composable
-private fun ProfileStatItem(label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun ProfileStatColumn(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Text(
             text = value,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
             color = COUITheme.colorScheme.onSurface,
+            maxLines = 1,
         )
-        Spacer(Modifier.width(3.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             text = label,
             fontSize = 11.sp,
             color = COUITheme.colorScheme.onSurfaceSecondary,
+            maxLines = 1,
         )
+    }
+}
+
+@Composable
+private fun ProfileLikeColumn(
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = value,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            color = COUITheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(2.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "获赞",
+                fontSize = 11.sp,
+                color = COUITheme.colorScheme.onSurfaceSecondary,
+                maxLines = 1,
+            )
+            Spacer(Modifier.width(2.dp))
+            Icon(
+                imageVector = LikeFilledIcon,
+                contentDescription = "获赞",
+                modifier = Modifier.size(11.dp),
+                tint = COUITheme.colorScheme.onSurfaceSecondary,
+            )
+        }
     }
 }

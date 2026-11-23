@@ -6,7 +6,9 @@ import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.LibraryVideo
 import erl.bilico.data.model.SpaceProfile
 import erl.bilico.data.repository.DynamicRepository
+import erl.bilico.data.repository.InteractionRepository
 import erl.bilico.data.repository.SpaceRepository
+import erl.bilico.data.session.SessionRepository
 import erl.bilico.feature.dynamic.DynamicEnricher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +37,9 @@ data class SpaceUiState(
     val isDynamicsEnd: Boolean = false,
     val dynamicsOffset: String = "",
     val dynamicsError: String? = null,
+    // 关注
+    val following: Boolean = false,
+    val isFollowBusy: Boolean = false,
     // 搜索
     val isSearchActive: Boolean = false,
     val searchKeyword: String = "",
@@ -58,6 +63,8 @@ data class SpaceUiState(
 class SpaceViewModel(
     private val spaceRepository: SpaceRepository,
     private val dynamicRepository: DynamicRepository,
+    private val interactions: InteractionRepository,
+    private val session: SessionRepository,
     private val mid: Long,
 ) : ViewModel() {
 
@@ -88,6 +95,41 @@ class SpaceViewModel(
         }
         loadProfile()
         loadVideos(firstPage = true)
+        loadFollowing()
+    }
+
+    /** 只有登录且看的是别人时才需要关注状态；自己或未登录直接跳过。 */
+    private fun loadFollowing() {
+        if (mid <= 0L || mid == session.mid() || !session.isLoggedIn()) return
+        viewModelScope.launch {
+            val following = interactions.isFollowing(mid)
+            _state.update { it.copy(following = following) }
+        }
+    }
+
+    fun toggleFollow(
+        onResult: (ok: Boolean, message: String) -> Unit = { _, _ -> },
+    ) {
+        val current = _state.value
+        if (mid <= 0L || current.isFollowBusy) return
+        if (!session.isLoggedIn()) {
+            onResult(false, "登录后可用")
+            return
+        }
+        if (mid == session.mid()) return
+        val target = !current.following
+        _state.update { it.copy(isFollowBusy = true) }
+        viewModelScope.launch {
+            interactions.follow(mid, target)
+                .onSuccess {
+                    _state.update { it.copy(following = target, isFollowBusy = false) }
+                    onResult(true, if (target) "已关注" else "已取消关注")
+                }
+                .onFailure { error ->
+                    _state.update { it.copy(isFollowBusy = false) }
+                    onResult(false, error.message ?: "操作失败")
+                }
+        }
     }
 
     fun deleteDynamic(

@@ -256,6 +256,29 @@ fun BackIconButton(onClick: () -> Unit) {
     }
 }
 
+/** UP 主关注胶囊：未关注为主色实心，已关注为浅底次要文字；视频页与个人空间共用。 */
+@Composable
+fun FollowCapsuleButton(
+    following: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    followedBackground: Color = COUITheme.colorScheme.surfaceContainer,
+) {
+    val scheme = COUITheme.colorScheme
+    Text(
+        text = if (following) "已关注" else "关注",
+        modifier = modifier
+            .clip(COUISmoothCapsuleShape)
+            .background(if (following) followedBackground else scheme.primary)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        style = COUITheme.textStyles.footnote1,
+        fontWeight = FontWeight.Medium,
+        color = if (following) scheme.onSurfaceSecondary else scheme.onPrimary,
+    )
+}
+
 /** 顶栏胶囊文字按钮：高度与 [BackIconButton] 同为 40dp，材质深度一致。 */
 @Composable
 fun TopBarTextButton(

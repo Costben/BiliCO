@@ -43,6 +43,7 @@ import erl.bilico.di.LocalAppContainer
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Help
 import io.github.suqi8.coui.kmp.icon.extended.More
@@ -142,6 +143,8 @@ fun UserMoreMenu(
     face: String,
     modifier: Modifier = Modifier,
     buttonSize: Dp = 28.dp,
+    /** 顶栏版本：使用 COUI 的玻璃圆形动作按钮，尺寸与搜索按钮一致。 */
+    highlighted: Boolean = false,
     videoAid: Long = 0L,
     videoBvid: String = "",
     videoTitle: String = "",
@@ -192,20 +195,33 @@ fun UserMoreMenu(
     val isLocalBlocked = mid in blocks.localBlockedMids
     val isServerBlack = blocks.isServerBlacklisted(mid)
     Box(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .size(buttonSize)
-                .clip(CircleShape)
-                .clickable { expanded = true }
-                .semantics { contentDescription = "更多" },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = COUIIcons.More,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = COUITheme.colorScheme.onSurfaceSecondary,
-            )
+        if (highlighted) {
+            HighlightedIconButton(
+                onClick = { expanded = true },
+                modifier = Modifier.couiTopAppBarActionItem(),
+            ) {
+                Icon(
+                    imageVector = COUIIcons.More,
+                    contentDescription = "更多",
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(buttonSize)
+                    .clip(CircleShape)
+                    .clickable { expanded = true }
+                    .semantics { contentDescription = "更多" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = COUIIcons.More,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = COUITheme.colorScheme.onSurfaceSecondary,
+                )
+            }
         }
         CouiPopupMenu(
             show = expanded,

@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import erl.bilico.ui.components.COUISmoothCapsuleShape
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -146,7 +145,7 @@ internal fun UpRow(
             }
         }
         Spacer(Modifier.width(10.dp))
-        FollowButton(following = following, onClick = onFollow)
+        erl.bilico.ui.components.FollowCapsuleButton(following = following, onClick = onFollow)
     }
 }
 
@@ -220,22 +219,6 @@ internal fun VideoBvidRow(bvid: String) {
             )
         }
     }
-}
-
-@Composable
-private fun FollowButton(following: Boolean, onClick: () -> Unit) {
-    val scheme = COUITheme.colorScheme
-    Text(
-        text = if (following) "已关注" else "关注",
-        modifier = Modifier
-            .clip(COUISmoothCapsuleShape)
-            .background(if (following) scheme.surfaceContainer else scheme.primary)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 7.dp),
-        style = COUITheme.textStyles.footnote1,
-        fontWeight = FontWeight.Medium,
-        color = if (following) scheme.onSurfaceSecondary else scheme.onPrimary,
-    )
 }
 
 /**
