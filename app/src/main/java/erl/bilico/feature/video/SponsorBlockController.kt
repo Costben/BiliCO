@@ -186,15 +186,21 @@ internal class SponsorBlockController(
     }
 
     /**
-     * 空降助手里的快捷跳转：跳到片段起点，并把它从自动跳过的候选里摘掉。
-     *
-     * 跳过类片段落在起点会立刻命中自动跳过判定，不标成已处理就等于原地弹回去。
+     * 空降助手里的快捷跳转：精彩时刻跳到标记点，其余跳过/静音类片段直接跳到片段结尾（跳过该段）。
      */
     fun jumpToSegment(player: Player, segment: SponsorSegment) {
-        if (segment.actionType == SponsorActionType.Skip) handledUuids.add(segment.uuid)
+        val isPoi = segment.actionType == SponsorActionType.Poi || segment.category == SponsorCategory.PoiHighlight
+        val targetMs = if (isPoi) {
+            dismissedPoiUuids.add(segment.uuid)
+            segment.startMs
+        } else {
+            handledUuids.add(segment.uuid)
+            restoreMuteIfNeeded(player)
+            segment.endMs
+        }
         promptSegment = null
         poiSegment = null
-        player.seekTo(segment.startMs)
+        player.seekTo(targetMs.coerceAtLeast(0L))
     }
 
     fun jumpToPoi(player: Player) {

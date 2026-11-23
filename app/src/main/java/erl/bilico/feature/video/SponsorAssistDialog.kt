@@ -23,6 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import erl.bilico.data.model.SponsorActionType
+import erl.bilico.data.model.SponsorCategory
 import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.components.COUISmoothCapsuleShape
@@ -36,8 +38,8 @@ import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
 /**
- * 空降助手面板：上面是社区已标记片段的快捷跳转，点一条直接落到它的起点；
- * 下面保留「提交空降片段」入口，跳转与提交在同一个面板里完成。
+ * 空降助手面板：上面是社区已标记片段的快捷操作，跳过类片段点一下直接跳到段落之后，精彩时刻跳到对应位置；
+ * 下面保留「提交空降片段」入口，跳过与提交在同一个面板里完成。
  */
 @Composable
 internal fun SponsorAssistDialog(
@@ -96,7 +98,7 @@ internal fun SponsorAssistDialog(
                     color = scheme.onSurface,
                 )
                 Text(
-                    text = if (sorted.isEmpty()) "暂无片段" else "${sorted.size} 条 · 点一下跳到起点",
+                    text = if (sorted.isEmpty()) "暂无片段" else "${sorted.size} 条 · 点一下跳过或跳转",
                     style = COUITheme.textStyles.footnote2,
                     color = scheme.onSurfaceSecondary,
                     maxLines = 1,
@@ -200,8 +202,9 @@ private fun SegmentRow(segment: SponsorSegment, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        val isPoi = segment.actionType == SponsorActionType.Poi || segment.category == SponsorCategory.PoiHighlight
         Text(
-            text = "跳转",
+            text = if (isPoi) "跳转" else "跳过",
             style = COUITheme.textStyles.footnote2,
             color = scheme.primary,
             maxLines = 1,
