@@ -576,6 +576,7 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
             commentRootId = route.commentRootId,
             commentTargetId = route.commentTargetId,
             offline = route.offline,
+            promoted = route.promoted,
         )
         is Route.LiveRoom -> LiveRoomScreen(container, nav, route.roomId)
         is Route.Space -> SpaceScreen(nav, container, route.mid)

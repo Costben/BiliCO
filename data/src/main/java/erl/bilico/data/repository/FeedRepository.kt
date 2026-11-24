@@ -125,8 +125,16 @@ class FeedRepository(
             val nextIdx = rawItems.lastOrNull { it.idx > 0L }?.idx
             if (nextIdx != null) cursorIdx = nextIdx
 
+            val includePromoted = settings.promotionBadgeEnabled.value
             rawItems.asSequence()
-                .filter { it.adInfo == null && (it.cardGoto == "av" || it.goto == "av") }
+                .filter { item ->
+                    // 推广卡片的 goto 可能是 ad_av，不能只认 av。
+                    if (item.adInfo != null) {
+                        includePromoted
+                    } else {
+                        item.cardGoto == "av" || item.goto == "av"
+                    }
+                }
                 .mapNotNull { it.toFeedVideo() }
                 .forEach { video ->
                     if (seenBvids.add(video.bvid)) collected += video
@@ -238,8 +246,15 @@ class FeedRepository(
         if (response.code != 0) {
             error(response.message.ifBlank { "推荐加载失败(${response.code})" })
         }
+        val includePromoted = settings.promotionBadgeEnabled.value
         return response.data?.item.orEmpty()
-            .filter { it.goto == "av" || it.goto.isNullOrBlank() }
+            .filter { item ->
+                if (item.businessInfo != null) {
+                    includePromoted
+                } else {
+                    item.goto == "av" || item.goto.isNullOrBlank()
+                }
+            }
             .mapNotNull { it.toFeedVideo() }
             .take(pageSize)
     }
@@ -379,6 +394,7 @@ class FeedRepository(
             appParam = param.toLongOrNull() ?: aidValue,
             cardGoto = cardGoto.ifBlank { goto.ifBlank { "av" } },
             fromAppFeed = true,
+            isPromoted = adInfo != null,
             dislikeReasons = v2Dislike.ifEmpty { legacyDislike },
             dislikeFeedbacks = v2Feedback.ifEmpty { legacyFeedback },
         )
@@ -405,6 +421,7 @@ class FeedRepository(
             danmakuText = Formatters.formatStat(stat?.danmaku ?: 0L),
             durationText = Formatters.formatDuration(seconds),
             isFollowed = isFollowed == 1,
+            isPromoted = businessInfo != null,
         )
     }
 

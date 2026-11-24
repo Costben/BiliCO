@@ -36,6 +36,10 @@ internal class SponsorBlockController(
     var segments: List<SponsorSegment> by mutableStateOf(emptyList())
         private set
 
+    /** 社区把整条视频标成了商单（`actionType=full`），比只标了部分片段更确定。 */
+    var fullSponsorMark: Boolean by mutableStateOf(false)
+        private set
+
     var promptSegment: SponsorSegment? by mutableStateOf(null)
         private set
 
@@ -70,9 +74,21 @@ internal class SponsorBlockController(
             repository.skipSegments(bvid, cid)
                 .onSuccess { list ->
                     if (currentBvid == bvid && currentCid == cid) {
-                        segments = list
+                        applyFetchedSegments(list)
                     }
                 }
+        }
+    }
+
+    /** 整片标记只用来判定徽标，不参与跳过与进度条染色。 */
+    private fun applyFetchedSegments(list: List<SponsorSegment>) {
+        segments = list.filter { it.actionType != SponsorActionType.Full }
+        // 整片标记里只有赞助广告和「独家合作（免费/补贴拿到产品）」算商单；
+        // 自我推广是 UP 主推自己的东西，不能算恰饭。
+        fullSponsorMark = list.any {
+            it.actionType == SponsorActionType.Full &&
+                (it.category == SponsorCategory.Sponsor ||
+                    it.category == SponsorCategory.ExclusiveAccess)
         }
     }
 
@@ -82,6 +98,7 @@ internal class SponsorBlockController(
         currentBvid = ""
         currentCid = 0L
         segments = emptyList()
+        fullSponsorMark = false
         promptSegment = null
         undoNotice = null
         poiSegment = null
@@ -275,7 +292,7 @@ internal class SponsorBlockController(
                 scope.launch {
                     repository.skipSegments(bvid, cid, bypassCache = true).onSuccess { refreshed ->
                         if (currentBvid == bvid && currentCid == cid && refreshed.isNotEmpty()) {
-                            segments = refreshed
+                            applyFetchedSegments(refreshed)
                         }
                     }
                 }

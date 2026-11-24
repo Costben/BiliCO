@@ -50,6 +50,8 @@ import erl.bilico.data.settings.SettingsKeys.KEY_SEARCH_HISTORY
 import erl.bilico.data.settings.SettingsKeys.KEY_SHOW_VIDEO_DISLIKE
 import erl.bilico.data.settings.SettingsKeys.KEY_SKIPPED_UPDATE
 import erl.bilico.data.settings.SettingsKeys.KEY_SPEED_LOCKED
+import erl.bilico.data.settings.SettingsKeys.KEY_PROMOTION_BADGE_ENABLED
+import erl.bilico.data.settings.SettingsKeys.KEY_SPONSOR_BADGE_ENABLED
 import erl.bilico.data.settings.SettingsKeys.KEY_SPONSOR_BLOCK_ENABLED
 import erl.bilico.data.settings.SettingsKeys.KEY_SPONSOR_CATEGORIES
 import erl.bilico.data.settings.SettingsKeys.KEY_SPONSOR_SKIP_MODE
@@ -186,6 +188,14 @@ class SettingsRepository(
     private val _sponsorBlockEnabled = MutableStateFlow(true)
     val sponsorBlockEnabled: StateFlow<Boolean> = _sponsorBlockEnabled.asStateFlow()
 
+    /** 在视频详情页标题后标注空降助手识别到的商单。 */
+    private val _sponsorBadgeEnabled = MutableStateFlow(true)
+    val sponsorBadgeEnabled: StateFlow<Boolean> = _sponsorBadgeEnabled.asStateFlow()
+
+    /** 在视频标题前标注推荐流下发的商业推广（小火箭）内容。 */
+    private val _promotionBadgeEnabled = MutableStateFlow(true)
+    val promotionBadgeEnabled: StateFlow<Boolean> = _promotionBadgeEnabled.asStateFlow()
+
     private val _sponsorSkipMode = MutableStateFlow(0)
     val sponsorSkipMode: StateFlow<Int> = _sponsorSkipMode.asStateFlow()
 
@@ -269,6 +279,8 @@ class SettingsRepository(
             feed.restore()
             autoNext.restore()
             _sponsorBlockEnabled.value = prefs[KEY_SPONSOR_BLOCK_ENABLED] ?: true
+            _sponsorBadgeEnabled.value = prefs[KEY_SPONSOR_BADGE_ENABLED] ?: true
+            _promotionBadgeEnabled.value = prefs[KEY_PROMOTION_BADGE_ENABLED] ?: true
             _sponsorSkipMode.value = (prefs[KEY_SPONSOR_SKIP_MODE] ?: 0).coerceIn(0, 2)
             _sponsorCategories.value = prefs[KEY_SPONSOR_CATEGORIES]
                 ?.split(',')
@@ -317,6 +329,16 @@ class SettingsRepository(
     fun setSponsorBlockEnabled(enabled: Boolean) {
         _sponsorBlockEnabled.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_SPONSOR_BLOCK_ENABLED] = enabled } }
+    }
+
+    fun setSponsorBadgeEnabled(enabled: Boolean) {
+        _sponsorBadgeEnabled.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_SPONSOR_BADGE_ENABLED] = enabled } }
+    }
+
+    fun setPromotionBadgeEnabled(enabled: Boolean) {
+        _promotionBadgeEnabled.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_PROMOTION_BADGE_ENABLED] = enabled } }
     }
 
     fun setSponsorSkipMode(mode: Int) {

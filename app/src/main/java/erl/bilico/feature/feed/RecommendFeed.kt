@@ -261,7 +261,7 @@ internal fun RecommendFeed(
                     coverHeightPx = coverHeightPx,
                     modifier = Modifier.expandOrigin(origin),
                     columns = columns,
-                    onOpen = { nav.push(Route.Video(video.bvid), origin) },
+                    onOpen = { nav.push(Route.Video(video.bvid, promoted = video.isPromoted), origin) },
                     onWatchLater = rememberWatchLaterAction(container, video),
                 )
             }

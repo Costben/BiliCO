@@ -49,6 +49,8 @@ internal object SettingsKeys {
     val KEY_FS_GESTURE_HINT = booleanPreferencesKey("fullscreen_gesture_hint")
     val KEY_PLAYER_CONIC_LIGHT = booleanPreferencesKey("player_conic_light")
     val KEY_SPONSOR_BLOCK_ENABLED = booleanPreferencesKey("sponsor_block_enabled")
+    val KEY_SPONSOR_BADGE_ENABLED = booleanPreferencesKey("sponsor_badge_enabled")
+    val KEY_PROMOTION_BADGE_ENABLED = booleanPreferencesKey("promotion_badge_enabled")
     val KEY_SPONSOR_SKIP_MODE = intPreferencesKey("sponsor_skip_mode")
     val KEY_SPONSOR_CATEGORIES = stringPreferencesKey("sponsor_categories")
     val KEY_SPONSOR_USER_ID = stringPreferencesKey("sponsor_block_user_id")

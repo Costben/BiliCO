@@ -87,6 +87,8 @@ internal fun VideoDetailSection(
     backEnabled: Boolean = true,
     commentRootId: Long = 0L,
     commentTargetId: Long = 0L,
+    sponsorLabel: String? = null,
+    promotedBadge: Boolean = false,
 ) {
     val navBarBottom = rememberStableNavBarBottomDp()
     val fallbackBackdrop = rememberLayerBackdrop()
@@ -160,6 +162,8 @@ internal fun VideoDetailSection(
                             val keyword = tag.trim()
                             if (keyword.isNotEmpty()) nav.push(Route.Search(keyword))
                         },
+                        sponsorLabel = sponsorLabel,
+                        promotedBadge = promotedBadge,
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (nav.playQueue.items.isNotEmpty()) {

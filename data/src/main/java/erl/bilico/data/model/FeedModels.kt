@@ -28,6 +28,8 @@ data class RecommendItem(
     val owner: RecommendOwner? = null,
     val stat: RecommendStat? = null,
     @SerialName("is_followed") val isFollowed: Int = 0,
+    /** 商业推广信息；非空表示这条推荐是推广内容。 */
+    @SerialName("business_info") val businessInfo: kotlinx.serialization.json.JsonElement? = null,
 )
 
 @Serializable

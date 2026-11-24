@@ -151,6 +151,8 @@ sealed interface Route {
         val commentRootId: Long = 0L,
         val commentTargetId: Long = 0L,
         val offline: Boolean = false,
+        /** 推荐流下发的商业推广（小火箭）内容，只在详情页标题前标注。 */
+        val promoted: Boolean = false,
     ) : Route
     data class LiveRoom(val roomId: Long) : Route
     data class Space(val mid: Long) : Route

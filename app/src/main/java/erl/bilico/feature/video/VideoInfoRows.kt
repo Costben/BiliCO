@@ -156,11 +156,19 @@ private fun upMetaText(followers: Long?, pubdate: Long): String = buildList {
 
 /** 视频标题与右上角更多操作按钮（从 UP 主行下移至此，避免挤压长 UP 主名字）。 */
 @Composable
-internal fun VideoTitleRow(detail: VideoDetail, expanded: Boolean) {
+internal fun VideoTitleRow(
+    detail: VideoDetail,
+    expanded: Boolean,
+    promotedBadge: Boolean = false,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
     ) {
+        if (promotedBadge) {
+            erl.bilico.ui.components.PromotionBadge(fontSize = 11.sp)
+            Spacer(Modifier.width(4.dp))
+        }
         Text(
             text = detail.title,
             modifier = Modifier.weight(1f),
@@ -184,9 +192,9 @@ internal fun VideoTitleRow(detail: VideoDetail, expanded: Boolean) {
     }
 }
 
-/** 播放量行与简介之间的 BV 号行，点击直接复制 BV 号。 */
+/** 播放量行与简介之间的 BV 号行，点击直接复制 BV 号；商单标记挂在 BV 号右侧。 */
 @Composable
-internal fun VideoBvidRow(bvid: String) {
+internal fun VideoBvidRow(bvid: String, sponsorLabel: String? = null) {
     val context = LocalContext.current
     val metaColor = COUITheme.colorScheme.onSurfaceSecondary
     Row(
@@ -217,6 +225,10 @@ internal fun VideoBvidRow(bvid: String) {
                 modifier = Modifier.size(12.dp),
                 tint = metaColor,
             )
+        }
+        if (sponsorLabel != null) {
+            Spacer(Modifier.width(8.dp))
+            erl.bilico.ui.components.SponsorBadge(fontSize = 11.sp, text = sponsorLabel)
         }
     }
 }

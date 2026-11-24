@@ -70,7 +70,8 @@ class SponsorBlockRepository(
                 .addQueryParameter("videoID", bvid)
                 .addQueryParameter("cid", cid.toString())
                 .addQueryParameter("categories", categoriesJson)
-                .addQueryParameter("actionTypes", """["skip","mute","poi"]""")
+                // full 是「整片都是广告」的标记，不带它服务端不会返回，也就无法判定明确的商单。
+                .addQueryParameter("actionTypes", """["skip","mute","poi","full"]""")
                 .build()
             val request = Request.Builder()
                 .url(url)
@@ -185,11 +186,17 @@ class SponsorBlockRepository(
     private fun RawSponsorSegment.toModel(fallbackCid: Long): SponsorSegment? {
         val cat = SponsorCategory.fromId(category) ?: return null
         val action = SponsorActionType.fromId(actionType)
-        if (action == SponsorActionType.Unknown || action == SponsorActionType.Full) return null
+        if (action == SponsorActionType.Unknown) return null
         if (segment.size < 2) return null
         val startMs = (segment[0] * 1000.0).roundToLong().coerceAtLeast(0L)
         val endMs = (segment[1] * 1000.0).roundToLong().coerceAtLeast(startMs)
-        if (action != SponsorActionType.Poi && endMs - startMs < MIN_SEGMENT_MS) return null
+        // Full 是「整片都是广告」的标记，segment 固定为 [0,0]，不能按最短时长丢掉。
+        if (action != SponsorActionType.Poi &&
+            action != SponsorActionType.Full &&
+            endMs - startMs < MIN_SEGMENT_MS
+        ) {
+            return null
+        }
         return SponsorSegment(
             uuid = uuid,
             cid = cid.toLongOrNull() ?: fallbackCid,

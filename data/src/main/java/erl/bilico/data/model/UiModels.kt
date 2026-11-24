@@ -28,6 +28,8 @@ data class FeedVideo(
     val appParam: Long = 0L,
     val cardGoto: String = "av",
     val fromAppFeed: Boolean = false,
+    /** 推荐流下发的商业推广（小火箭）内容。 */
+    val isPromoted: Boolean = false,
     val dislikeReasons: List<FeedDislikeReason> = emptyList(),
     val dislikeFeedbacks: List<FeedDislikeReason> = emptyList(),
 )

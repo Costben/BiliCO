@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import erl.bilico.data.model.FavoriteFolder
+import erl.bilico.data.model.SponsorCategory
 import erl.bilico.data.model.VideoEpisode
 import erl.bilico.data.model.isHdr
 import erl.bilico.di.AppContainer
@@ -38,6 +39,8 @@ import erl.bilico.ui.LocalRouteMinimized
 import erl.bilico.ui.LocalRouteTransition
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import erl.bilico.ui.components.SPONSOR_BADGE_CONFIRMED
+import erl.bilico.ui.components.SPONSOR_BADGE_TEXT
 import erl.bilico.ui.pageContainerColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -53,6 +56,7 @@ fun VideoScreen(
     commentRootId: Long = 0L,
     commentTargetId: Long = 0L,
     offline: Boolean = false,
+    promoted: Boolean = false,
 ) {
     // 一个播放页只建一份 ViewModel：连播换下一条、甚至退出再点进来，都复用同一份。
     // 以前把 bvid 拼进 key，每看一条就多留一份 ViewModel 和一条播放地址，全挂在 Activity 的
@@ -88,6 +92,8 @@ fun VideoScreen(
     val speedLocked by container.settings.speedLocked.collectAsStateWithLifecycle()
     val lockedSpeed by container.settings.lockedSpeed.collectAsStateWithLifecycle()
     val showVideoDislike by container.settings.showVideoDislike.collectAsStateWithLifecycle()
+    val sponsorBadgeEnabled by container.settings.sponsorBadgeEnabled.collectAsStateWithLifecycle()
+    val promotionBadgeEnabled by container.settings.promotionBadgeEnabled.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
@@ -531,6 +537,14 @@ fun VideoScreen(
                 onOpenChapters = { chapterDialogVisible = true },
                 barBackdrops = barBackdrops, blurActive = blurActive, backEnabled = !fullscreen,
                 commentRootId = commentRootId, commentTargetId = commentTargetId,
+                sponsorLabel = when {
+                    !sponsorBadgeEnabled -> null
+                    sponsorController.fullSponsorMark -> SPONSOR_BADGE_CONFIRMED
+                    sponsorController.segments.any { it.category == SponsorCategory.Sponsor } ->
+                        SPONSOR_BADGE_TEXT
+                    else -> null
+                },
+                promotedBadge = promotionBadgeEnabled && promoted,
             )
         },
         portraitOverlay = {

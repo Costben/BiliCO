@@ -74,6 +74,8 @@ fun SettingsScreen(
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
     val advancedPlusOne by container.settings.advancedPlusOne.collectAsStateWithLifecycle()
     val sponsorBlockEnabled by container.settings.sponsorBlockEnabled.collectAsStateWithLifecycle()
+    val sponsorBadgeEnabled by container.settings.sponsorBadgeEnabled.collectAsStateWithLifecycle()
+    val promotionBadgeEnabled by container.settings.promotionBadgeEnabled.collectAsStateWithLifecycle()
     val sponsorSkipMode by container.settings.sponsorSkipMode.collectAsStateWithLifecycle()
     val sponsorCategories by container.settings.sponsorCategories.collectAsStateWithLifecycle()
     val autoCheckUpdate by container.settings.autoCheckUpdate.collectAsStateWithLifecycle()
@@ -334,6 +336,34 @@ fun SettingsScreen(
                     modifier = Modifier.testTag("settings_sponsor_categories"),
                     cardListPosition = CardListPosition.Tail,
                     onClick = { showSponsorCategories = true },
+                )
+            }
+        }
+
+        item(key = "content-badge-title") { SectionTitle("内容标记") }
+
+        item(key = "content-badge") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = CardDefaults.GroupCornerRadius,
+                insideMargin = PaddingValues(0.dp),
+                weight = CardDefaults.GroupWeight,
+            ) {
+                SwitchPreference(
+                    checked = sponsorBadgeEnabled,
+                    onCheckedChange = container.settings::setSponsorBadgeEnabled,
+                    title = "详情页标记商单",
+                    summary = "用空降助手识别商单广告，在详情页 BV 号旁标注「商单」或「疑似商单」",
+                    modifier = Modifier.testTag("settings_sponsor_badge"),
+                    cardListPosition = CardListPosition.Head,
+                )
+                SwitchPreference(
+                    checked = promotionBadgeEnabled,
+                    onCheckedChange = container.settings::setPromotionBadgeEnabled,
+                    title = "详情页标记推广",
+                    summary = "在视频详情页的标题前标注「推广」；关闭后推荐流会过滤掉推广卡片",
+                    modifier = Modifier.testTag("settings_promotion_badge"),
+                    cardListPosition = CardListPosition.Tail,
                 )
             }
         }
