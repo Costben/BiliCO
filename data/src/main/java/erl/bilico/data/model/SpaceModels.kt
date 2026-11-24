@@ -18,6 +18,8 @@ data class SpaceUserInfo(
     val sign: String = "",
     val level: Int = 0,
     val official: OfficialVerifyData? = null,
+    @SerialName("live_room")
+    val liveRoom: SpaceLiveRoom? = null,
 )
 
 @Serializable

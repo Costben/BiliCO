@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,6 +51,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 private val RowCoverWidth = 132.dp
+private val RowCoverHeight = RowCoverWidth * 9f / 16f
 
 /** 封面圆角按外轮廓半径减去内边距收进去，两条弧才同心；间距不小于外圆角时退回直角。 */
 private fun coverCorner(outer: Dp, inset: Dp): Dp = (outer - inset).coerceAtLeast(0.dp)
@@ -171,62 +173,46 @@ fun LibraryVideoBody(
         }
 
         Column(
-            modifier = Modifier.weight(1f).padding(start = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 10.dp)
+                .heightIn(min = RowCoverHeight),
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
                 text = video.title,
                 fontSize = 14.sp,
-                lineHeight = 19.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.Medium,
                 color = COUITheme.colorScheme.onSurface,
-                // 带投稿时间的列表（空间）固定留两行标题，下面两行才不会随标题长短跳动。
-                minLines = if (video.pubTimeText.isNotBlank()) 2 else 1,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (video.pubTimeText.isNotBlank()) {
-                Text(
-                    text = video.pubTimeText,
-                    fontSize = 11.sp,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                LibraryMetaLine(
+                    upName = video.upName,
+                    pubTimeText = video.pubTimeText,
+                    playText = video.playText,
+                    hasStatRow = hasStatRow,
                 )
-            }
-            val subtitle = buildString {
-                if (video.upName.isNotBlank()) append(video.upName)
-                if (!hasStatRow && video.playText.isNotBlank()) {
-                    if (isNotEmpty()) append(" · ")
-                    append(video.playText).append("播放")
-                }
-            }
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    fontSize = 11.sp,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (hasStatRow || statTrailing != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (hasStatRow) {
-                        if (video.playText.isNotBlank()) {
-                            StatLabel(COUIIcons.Play, video.playText)
+                if (hasStatRow || statTrailing != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(16.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        if (hasStatRow) {
+                            if (video.playText.isNotBlank()) {
+                                CompactStatLabel(COUIIcons.Play, video.playText)
+                            }
+                            if (video.danmakuText.isNotBlank()) {
+                                if (video.playText.isNotBlank()) Spacer(Modifier.width(8.dp))
+                                CompactStatLabel(DanmakuStatIcon, video.danmakuText)
+                            }
                         }
-                        if (video.danmakuText.isNotBlank()) {
-                            if (video.playText.isNotBlank()) Spacer(Modifier.width(10.dp))
-                            StatLabel(DanmakuStatIcon, video.danmakuText)
+                        if (statTrailing != null) {
+                            Spacer(Modifier.weight(1f))
+                            statTrailing()
                         }
-                    }
-                    if (statTrailing != null) {
-                        Spacer(Modifier.weight(1f))
-                        statTrailing()
                     }
                 }
             }
@@ -245,6 +231,72 @@ fun LibraryVideoBody(
 }
 
 @Composable
+private fun LibraryMetaLine(
+    upName: String,
+    pubTimeText: String,
+    playText: String,
+    hasStatRow: Boolean,
+) {
+    val color = COUITheme.colorScheme.onSurfaceSecondary
+    if (hasStatRow) {
+        if (upName.isBlank() && pubTimeText.isBlank()) return
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (upName.isNotBlank()) {
+                Text(
+                    text = upName,
+                    modifier = Modifier.weight(1f, fill = false),
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp,
+                    color = color,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (pubTimeText.isNotBlank()) {
+                Text(
+                    text = if (upName.isNotBlank()) " · $pubTimeText" else pubTimeText,
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp,
+                    color = color,
+                    maxLines = 1,
+                )
+            }
+        }
+    } else {
+        val subtitle = buildString {
+            if (upName.isNotBlank()) append(upName)
+            if (playText.isNotBlank()) {
+                if (isNotEmpty()) append(" · ")
+                append(playText).append("播放")
+            }
+        }
+        if (subtitle.isNotBlank()) {
+            Text(
+                text = subtitle,
+                fontSize = 11.sp,
+                lineHeight = 13.sp,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactStatLabel(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    val color = COUITheme.colorScheme.onSurfaceSecondary
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(11.dp), tint = color)
+        Spacer(Modifier.width(2.dp))
+        Text(text = text, fontSize = 10.sp, lineHeight = 12.sp, color = color, maxLines = 1)
+    }
+}
+
+@Composable
 private fun LibraryMoreMenuButton(items: List<CouiMenuItem>) {
     val scheme = COUITheme.colorScheme
     var expanded by remember { mutableStateOf(false) }
@@ -252,7 +304,7 @@ private fun LibraryMoreMenuButton(items: List<CouiMenuItem>) {
     Box {
         Box(
             modifier = Modifier
-                .size(22.dp)
+                .size(16.dp)
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -265,7 +317,7 @@ private fun LibraryMoreMenuButton(items: List<CouiMenuItem>) {
             Icon(
                 imageVector = COUIIcons.More,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(15.dp),
                 tint = scheme.onSurfaceSecondary,
             )
         }

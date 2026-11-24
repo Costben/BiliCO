@@ -85,6 +85,7 @@ import erl.bilico.feature.settings.AboutScreen
 import erl.bilico.feature.settings.BlockManagerScreen
 import erl.bilico.feature.settings.SettingsScreen
 import erl.bilico.feature.settings.StatsOverlaySettingsScreen
+import erl.bilico.feature.space.SpaceCollectionScreen
 import erl.bilico.feature.space.SpaceScreen
 import erl.bilico.feature.update.UpdateDialog
 import erl.bilico.feature.update.UpdateScreen
@@ -583,6 +584,15 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
         )
         is Route.LiveRoom -> LiveRoomScreen(container, nav, route.roomId)
         is Route.Space -> SpaceScreen(nav, container, route.mid)
+        is Route.SpaceCollection -> SpaceCollectionScreen(
+            nav = nav,
+            container = container,
+            mid = route.mid,
+            collectionId = route.collectionId,
+            isSeason = route.isSeason,
+            title = route.title,
+            total = route.total,
+        )
         Route.History -> HistoryScreen(container, nav)
         Route.Favorites -> FavoriteFoldersScreen(container, nav)
         is Route.FavoriteFolder -> FavoriteFolderScreen(container, nav, route.mediaId, route.title)

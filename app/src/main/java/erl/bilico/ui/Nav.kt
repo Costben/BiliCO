@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -103,15 +104,14 @@ class RowScrollState(
     val scrollBy: suspend (Float) -> Float,
 )
 
-fun LazyListState.asRowScrollState(): RowScrollState = RowScrollState(
-    visibleKeys = { layoutInfo.visibleItemsInfo.map { it.key } },
-    scrollBy = { scrollBy(it) },
-)
+fun LazyListState.asRowScrollState(): RowScrollState =
+    RowScrollState({ layoutInfo.visibleItemsInfo.map { it.key } }, { scrollBy(it) })
 
-fun LazyGridState.asRowScrollState(): RowScrollState = RowScrollState(
-    visibleKeys = { layoutInfo.visibleItemsInfo.map { it.key } },
-    scrollBy = { scrollBy(it) },
-)
+fun LazyGridState.asRowScrollState(): RowScrollState =
+    RowScrollState({ layoutInfo.visibleItemsInfo.map { it.key } }, { scrollBy(it) })
+
+fun LazyStaggeredGridState.asRowScrollState(): RowScrollState =
+    RowScrollState({ layoutInfo.visibleItemsInfo.map { it.key } }, { scrollBy(it) })
 
 @Composable
 fun rememberExpandOrigin(cornerRadius: Dp = 17.dp): ExpandOrigin {
@@ -156,6 +156,7 @@ sealed interface Route {
     ) : Route
     data class LiveRoom(val roomId: Long) : Route
     data class Space(val mid: Long) : Route
+    data class SpaceCollection(val mid: Long, val collectionId: Long, val isSeason: Boolean, val title: String, val total: Int = 0) : Route
     data object History : Route
     data object Favorites : Route
     data class FavoriteFolder(val mediaId: Long, val title: String) : Route

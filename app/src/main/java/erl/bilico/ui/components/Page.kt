@@ -49,6 +49,7 @@ import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
@@ -69,6 +70,7 @@ fun SecondaryPage(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    subtitle: String = "",
     listState: LazyListState = rememberLazyListState(),
     actions: @Composable RowScope.() -> Unit = {},
     topBar: (@Composable () -> Unit)? = null,
@@ -84,7 +86,9 @@ fun SecondaryPage(
     val pageColor = pageContainerColor()
     val defaultBottomPadding = 24.dp + navBottomPadding()
     val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
-    val contentTop = glassBarContentTop(topBarHeight, 10.dp)
+    val glassExtraHeight = if (subtitle.isNotBlank()) 32.dp else AppBarBlurOverlayDefaults.ExtraHeight
+    val contentTop = glassBarContentTop(topBarHeight, 10.dp) +
+        if (subtitle.isNotBlank()) 14.dp else 0.dp
 
     BindScrollToTop(listState)
 
@@ -140,8 +144,10 @@ fun SecondaryPage(
                         title = title,
                         modifier = Modifier.align(Alignment.TopCenter),
                         color = pageColor,
+                        subtitle = subtitle,
                         showDivider = false,
                         gradientGlass = BlurEffectsEnabled,
+                        gradientGlassExtraHeight = glassExtraHeight,
                         navigationIcon = { BackIconButton(onClick = onBack) },
                         actions = actions,
                     )

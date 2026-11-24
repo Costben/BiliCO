@@ -62,6 +62,12 @@ import erl.bilico.data.model.SearchSquareResponse
 import erl.bilico.data.model.SearchSuggestResponse
 import erl.bilico.data.model.SearchTypeResponse
 import erl.bilico.data.model.SpaceInfoResponse
+import erl.bilico.data.model.SpaceLikedVideosResponse
+import erl.bilico.data.model.SpaceLiveRoomOldResponse
+import erl.bilico.data.model.SpaceOpusFeedResponse
+import erl.bilico.data.model.SpaceSeasonArchivesResponse
+import erl.bilico.data.model.SpaceSeasonsSeriesResponse
+import erl.bilico.data.model.SpaceSeriesArchivesResponse
 import erl.bilico.data.model.SpaceVideoResponse
 import erl.bilico.data.model.UpStatResponse
 import erl.bilico.data.model.UploadBfsResponse
@@ -294,8 +300,26 @@ interface BiliApi {
     @GET("x/space/wbi/acc/info")
     suspend fun spaceInfo(@QueryMap params: Map<String, String>): SpaceInfoResponse
 
+    @GET("https://api.live.bilibili.com/room/v1/Room/getRoomInfoOld")
+    suspend fun spaceLiveRoom(@Query("mid") mid: Long): SpaceLiveRoomOldResponse
+
     @GET("x/space/wbi/arc/search")
     suspend fun spaceVideos(@QueryMap params: Map<String, String>): SpaceVideoResponse
+
+    @GET("x/polymer/web-space/home/seasons_series")
+    suspend fun spaceSeasonsSeries(@QueryMap params: Map<String, String>): SpaceSeasonsSeriesResponse
+
+    @GET("x/polymer/web-space/seasons_archives_list")
+    suspend fun spaceSeasonArchives(@QueryMap params: Map<String, String>): SpaceSeasonArchivesResponse
+
+    @GET("x/series/archives")
+    suspend fun spaceSeriesArchives(@QueryMap params: Map<String, String>): SpaceSeriesArchivesResponse
+
+    @GET("x/space/like/video")
+    suspend fun spaceLikedVideos(@Query("vmid") mid: Long): SpaceLikedVideosResponse
+
+    @GET("x/polymer/web-dynamic/v1/opus/feed/space")
+    suspend fun spaceOpusFeed(@QueryMap params: Map<String, String>): SpaceOpusFeedResponse
 
     @GET("x/relation/stat")
     suspend fun relationStat(@Query("vmid") mid: Long): RelationStatResponse

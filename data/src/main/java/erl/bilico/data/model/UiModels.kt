@@ -550,6 +550,30 @@ data class SpaceProfile(
     val likesText: String,
     val officialType: Int = -1,
     val officialDesc: String = "",
+    val liveRoomId: Long = 0L,
+    val isLive: Boolean = false,
+    val liveTitle: String = "",
+)
+
+/** UP 主个人主页维护的播放合集或系列。 */
+data class SpaceCollection(
+    val id: Long,
+    val isSeason: Boolean,
+    val name: String,
+    val cover: String,
+    val description: String,
+    val total: Int,
+)
+
+/** UP 主个人主页图文 / 专栏列表条目。 */
+data class SpaceOpusUi(
+    val opusId: String,
+    val content: String,
+    val coverUrl: String,
+    val coverWidth: Int = 0,
+    val coverHeight: Int = 0,
+    val likeText: String = "",
+    val pubTime: String = "",
 )
 
 /** 空间投稿、收藏夹内容、稍后再看、历史共用的一张视频条目。 */
@@ -567,6 +591,7 @@ data class LibraryVideo(
     val progressSec: Int = 0,
     val aid: Long = 0,
     val favType: Int = 2,
+    val playCount: Long = 0L,
 )
 
 data class FavoriteFolder(
