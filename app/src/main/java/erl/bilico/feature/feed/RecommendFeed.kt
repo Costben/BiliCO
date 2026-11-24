@@ -272,7 +272,12 @@ internal fun RecommendFeed(
             ) { card(it) }
             if (inserted in 1 until shown.items.size) {
                 item(key = RefreshDividerKey, span = { GridItemSpan(maxLineSpan) }) {
-                    RefreshDivider(onBackToTop = { scope.launch { listState.animateScrollToItem(0) } })
+                    RefreshDivider(
+                        onBackToTop = {
+                            viewModel.refresh()
+                            scope.launch { listState.animateScrollToItem(0) }
+                        },
+                    )
                 }
             }
             items(
@@ -302,7 +307,7 @@ internal fun RecommendFeed(
 
 /**
  * 推荐流刷新后的拼接占位：整块和一张卡片差不多高，提示这批新内容看完了。
- * 点一下滚回列表顶部。
+ * 点一下滚回列表顶部并再刷新一次。
  */
 @Composable
 private fun RefreshDivider(onBackToTop: () -> Unit) {

@@ -364,7 +364,12 @@ private fun DynamicContent(
 
                 if (inserted in 1 until shown.items.size) {
                     item(key = RefreshDividerKey) {
-                        RefreshDivider(onBackToTop = { scope.launch { listState.animateScrollToItem(0) } })
+                        RefreshDivider(
+                            onBackToTop = {
+                                viewModel.refresh()
+                                scope.launch { listState.animateScrollToItem(0) }
+                            },
+                        )
                     }
                 }
 
@@ -397,7 +402,7 @@ private fun DynamicContent(
 }
 
 /**
- * 动态流刷新后的拼接占位：提示这批新内容看完了，点一下滚回列表顶部。
+ * 动态流刷新后的拼接占位：提示这批新内容看完了，点一下滚回列表顶部并再刷新一次。
  */
 @Composable
 private fun RefreshDivider(onBackToTop: () -> Unit) {
