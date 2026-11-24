@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.min
 import coil3.compose.AsyncImage
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
+import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.FullPagePullToRefreshTexts
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
@@ -306,6 +309,54 @@ fun TopBarTextButton(
 fun PreferenceDivider() {
     val inset = BasicComponentDefaults.InsideMargin.calculateLeftPadding(LayoutDirection.Ltr)
     HorizontalDivider(Modifier.padding(horizontal = inset))
+}
+
+/**
+ * 推荐流 / 动态流刷新后的拼接占位：占满一行、紧凑单行高度，
+ * 提示本轮刷新内容已看完，点一下回到顶部并重新刷新。
+ */
+@Composable
+fun RefreshDivider(
+    onBackToTop: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = COUITheme.colorScheme
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp),
+            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+            onClick = onBackToTop,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "本次刷新内容已看完 · ",
+                    fontSize = 13.sp,
+                    color = scheme.onSurfaceSecondary,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Text(
+                    text = "回到顶部并刷新",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = scheme.primary,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
+    }
 }
 
 @Composable

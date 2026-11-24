@@ -59,6 +59,7 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.FullPageRefreshHoldMillis
 import erl.bilico.ui.components.FullPageRefreshTexts
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.RefreshDivider
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.Card
@@ -398,40 +399,6 @@ private fun DynamicContent(
             }
         }
 
-    }
-}
-
-/**
- * 动态流刷新后的拼接占位：提示这批新内容看完了，点一下滚回列表顶部并再刷新一次。
- */
-@Composable
-private fun RefreshDivider(onBackToTop: () -> Unit) {
-    val scheme = COUITheme.colorScheme
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(88.dp),
-        insideMargin = PaddingValues(0.dp),
-        onClick = onBackToTop,
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "本次刷新的内容已看完",
-                fontSize = 12.sp,
-                color = scheme.onSurfaceSecondary,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "回到顶部",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = scheme.primary,
-            )
-        }
     }
 }
 
