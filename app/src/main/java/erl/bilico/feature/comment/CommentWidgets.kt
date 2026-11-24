@@ -44,6 +44,7 @@ import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.LoadingImage
+import erl.bilico.ui.hyperlinkColor
 import erl.bilico.ui.imageOrigin
 import erl.bilico.ui.components.RichCommentText
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -91,7 +92,7 @@ internal fun BiliCommentItem(
         { if (comment.mid > 0L) onOpenUser(comment.mid) }
     }
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
-    val linkBlue = if (isDark) Color(0xFF5CA8FF) else Color(0xFF1367B1)
+    val linkBlue = hyperlinkColor()
     // 楼中楼：白卡片上压一块中性浅灰，和列表底色拉开层次（取微博的配色）。
     val subBoxBg = if (isDark) Color(0xFF2B2D31) else Color(0xFFF2F3F5)
     // 灰块和白卡的亮度差只有 12 级，补一根极淡的描边，免得看着像没渲染出来。

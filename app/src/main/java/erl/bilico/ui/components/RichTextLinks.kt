@@ -36,6 +36,7 @@ import erl.bilico.data.model.DynamicTextNode
 import erl.bilico.data.model.DynamicTextNodeKind
 import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.util.Formatters
+import erl.bilico.ui.hyperlinkColor
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -135,7 +136,7 @@ fun RichDynamicText(
     selectable: Boolean = false,
     style: TextStyle = COUITheme.textStyles.body1,
     color: Color = COUITheme.colorScheme.onSurface,
-    linkColor: Color = COUITheme.colorScheme.primary,
+    linkColor: Color = hyperlinkColor(),
     maxLines: Int = Int.MAX_VALUE,
     onOpenUser: ((Long) -> Unit)? = null,
     stripImagePlaceholders: Boolean = false,

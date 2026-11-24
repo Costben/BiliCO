@@ -34,7 +34,38 @@ internal const val AccentHueCycle = 1
 private const val HueCyclePeriodMs = 36_000L
 private const val HueCycleTickMs = 120L
 
+/** 「我的」页入口左侧图标配色模式：0 默认色（ColorOS 17 彩色），1 黑白色，2 强调色。 */
+internal const val MeIconModeColorful = 0
+internal const val MeIconModeMonochrome = 1
+internal const val MeIconModeAccent = 2
+
+/**
+ * ColorOS 17 设置页同款双色图标功能色系（浅色 / 深色双套值，暗底略提亮保证对比度）：
+ * - [Blue]：核心主干、连接、账号身份与个人数据记录
+ * - [Orange]：个性化外观、交互体验与片单操作
+ * - [Yellow]：珍藏星标与特色内容亮点探索
+ * - [Green]：对话通信、空间定位与应用状态通道
+ * - [Red]：强情感 / 高警示（极度克制，全页仅用于退出登录）
+ * - [Neutral]：系统设置、底层维护与元信息兜底（对齐 ColorOS「系统与更新 / 关于本机」）
+ */
+internal enum class MeIconPalette(val light: Color, val dark: Color) {
+    Green(Color(0xFF00BD13), Color(0xFF24B232)),
+    Blue(Color(0xFF0080FF), Color(0xFF1A8CFF)),
+    Orange(Color(0xFFFF7700), Color(0xFFF08222)),
+    Yellow(Color(0xFFFFB200), Color(0xFFE5A100)),
+    Red(Color(0xFFEB3B2F), Color(0xFFEB493D)),
+    Neutral(Color(0xFF5C6066), Color(0xFF9EA4AD)),
+    ;
+
+    fun resolve(dark: Boolean): Color = if (dark) this.dark else light
+}
+
 private val LocalAccentColor = compositionLocalOf { 0 }
+private val LocalAccentHyperlink = compositionLocalOf { false }
+private val LocalMeIconColorMode = compositionLocalOf { MeIconModeColorful }
+
+private val DefaultHyperlinkLightColor = Color(0xFF1367B1)
+private val DefaultHyperlinkDarkColor = Color(0xFF5CA8FF)
 
 internal data class AccentPreset(val label: String, val argb: Int)
 
@@ -134,6 +165,8 @@ fun isDarkTheme(darkMode: Int): Boolean = when (darkMode) {
 fun BiliCoTheme(
     darkMode: Int,
     accentColor: Int = LocalAccentColor.current,
+    accentHyperlink: Boolean = LocalAccentHyperlink.current,
+    meIconColorMode: Int = LocalMeIconColorMode.current,
     content: @Composable () -> Unit,
 ) {
     val isHueCycle = accentColor == AccentHueCycle
@@ -162,8 +195,41 @@ fun BiliCoTheme(
                 .withAccent(darkAccent, dark = true, keepFocusOutlineStatic = isHueCycle),
         )
     }
-    CompositionLocalProvider(LocalAccentColor provides accentColor) {
+    CompositionLocalProvider(
+        LocalAccentColor provides accentColor,
+        LocalAccentHyperlink provides accentHyperlink,
+        LocalMeIconColorMode provides meIconColorMode,
+    ) {
         COUITheme(controller = controller, content = content)
+    }
+}
+
+/**
+ * 超链接文本颜色（话题、@提及、网址、BV 号、时间戳与回复链接等）：
+ * 开启「超链接应用主题色」时跟随当前主题强调色，关闭时保持默认链接蓝。
+ */
+@Composable
+internal fun hyperlinkColor(): Color {
+    val scheme = COUITheme.colorScheme
+    if (LocalAccentHyperlink.current) return scheme.primary
+    return if (scheme.background.luminance() < 0.5f) {
+        DefaultHyperlinkDarkColor
+    } else {
+        DefaultHyperlinkLightColor
+    }
+}
+
+/**
+ * 「我的」页面入口左侧图标颜色：
+ * 0 默认色（ColorOS 17 彩色），1 黑白色（onSurface），2 强调色（主题色 primary）。
+ */
+@Composable
+internal fun meEntryIconColor(palette: MeIconPalette): Color {
+    val scheme = COUITheme.colorScheme
+    return when (LocalMeIconColorMode.current) {
+        MeIconModeMonochrome -> scheme.onSurface
+        MeIconModeAccent -> scheme.primary
+        else -> palette.resolve(dark = scheme.background.luminance() < 0.5f)
     }
 }
 

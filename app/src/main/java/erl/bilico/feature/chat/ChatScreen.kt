@@ -83,6 +83,7 @@ import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.RichCommentText
+import erl.bilico.ui.hyperlinkColor
 import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.components.inputCapsuleGlass
 import erl.bilico.ui.pageContainerColor
@@ -457,7 +458,7 @@ private fun ChatBubbleRow(
                         compactEmotes = true,
                         style = TextStyle(fontSize = 15.sp, lineHeight = 20.sp),
                         color = if (isMe) Color.White else scheme.onSurface,
-                        prefixColor = if (isMe) Color.White else scheme.primary,
+                        prefixColor = if (isMe) Color.White else hyperlinkColor(),
                     )
                 }
             }

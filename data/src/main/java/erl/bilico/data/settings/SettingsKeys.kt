@@ -12,6 +12,8 @@ internal object SettingsKeys {
 
     val KEY_DARK_MODE = intPreferencesKey("dark_mode")
     val KEY_ACCENT_COLOR = intPreferencesKey("accent_color")
+    val KEY_ACCENT_HYPERLINK = booleanPreferencesKey("accent_hyperlink")
+    val KEY_ME_ICON_COLOR_MODE = intPreferencesKey("me_icon_color_mode")
     val KEY_QUALITY = intPreferencesKey("default_quality")
     val KEY_CDN = stringPreferencesKey("playback_cdn")
     val KEY_FEED_SOURCE = intPreferencesKey("feed_source")

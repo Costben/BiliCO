@@ -66,6 +66,7 @@ import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
 import erl.bilico.ui.components.LocalOpenBvid
+import erl.bilico.ui.hyperlinkColor
 import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -298,7 +299,7 @@ private fun ArticleBlockView(
     onOpenImage: (List<DynamicImage>, Int) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
-    val linkColor = COUITheme.colorScheme.primary
+    val linkColor = hyperlinkColor()
     val textColor = COUITheme.colorScheme.onSurface
     val secondaryColor = COUITheme.colorScheme.onSurfaceSecondary
     val onOpenLink: (String) -> Unit = { url -> runCatching { uriHandler.openUri(url) } }

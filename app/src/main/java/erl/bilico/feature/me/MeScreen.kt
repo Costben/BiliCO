@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.overscroll
 import androidx.compose.foundation.rememberOverscrollEffect
@@ -47,8 +48,10 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.login.LoginContent
 import erl.bilico.feature.login.LoginViewModel
+import erl.bilico.ui.MeIconPalette
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import erl.bilico.ui.meEntryIconColor
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.MeBangumiIcon
@@ -79,6 +82,7 @@ fun MeScreen(
     container: AppContainer,
     nav: NavState,
     topInset: Dp,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val account by container.session.account.collectAsStateWithLifecycle()
     val sessions by container.session.sessions.collectAsStateWithLifecycle()
@@ -90,7 +94,6 @@ fun MeScreen(
     val scope = rememberCoroutineScope()
     var confirmLogout by remember { mutableStateOf(false) }
     var switchAccounts by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
     val fallbackOverscroll = rememberOverscrollEffect()
     val fallbackScrollState = rememberScrollableState { 0f }
     val fitsInViewport = !listState.canScrollForward && !listState.canScrollBackward
@@ -137,6 +140,7 @@ fun MeScreen(
                             EntryRow(
                                 title = "切换账号",
                                 icon = MeSwitchAccountIcon,
+                                palette = MeIconPalette.Blue,
                                 position = CardListPosition.None,
                                 onClick = { switchAccounts = true },
                             )
@@ -163,12 +167,14 @@ fun MeScreen(
                 EntryRow(
                     title = "历史记录",
                     icon = MeHistoryIcon,
+                    palette = MeIconPalette.Blue,
                     position = CardListPosition.Head,
                     onClick = { nav.push(Route.History) },
                 )
                 EntryRow(
                     title = "消息",
                     icon = MeMessageIcon,
+                    palette = MeIconPalette.Green,
                     position = CardListPosition.Middle,
                     statusText = unread.total.takeIf { it > 0 }?.toString(),
                     showRedDot = unread.total > 0,
@@ -177,12 +183,14 @@ fun MeScreen(
                 EntryRow(
                     title = "收藏夹",
                     icon = MeFavoritesIcon,
+                    palette = MeIconPalette.Yellow,
                     position = CardListPosition.Middle,
                     onClick = { nav.push(Route.Favorites) },
                 )
                 EntryRow(
                     title = "稍后再看",
                     icon = MeWatchLaterIcon,
+                    palette = MeIconPalette.Orange,
                     position = CardListPosition.Middle,
                     onClick = { nav.push(Route.WatchLater) },
                 )
@@ -194,24 +202,28 @@ fun MeScreen(
                         else -> null
                     },
                     icon = MeDownloadsIcon,
+                    palette = MeIconPalette.Blue,
                     position = CardListPosition.Middle,
                     onClick = { nav.push(Route.Downloads) },
                 )
                 EntryRow(
                     title = "追番",
                     icon = MeBangumiIcon,
+                    palette = MeIconPalette.Yellow,
                     position = CardListPosition.Middle,
                     onClick = { nav.push(Route.BangumiFollow) },
                 )
                 EntryRow(
                     title = "关注",
                     icon = MeFollowIcon,
+                    palette = MeIconPalette.Blue,
                     position = CardListPosition.Middle,
                     onClick = { nav.push(Route.Following) },
                 )
                 EntryRow(
                     title = "设置",
                     icon = MeSettingsIcon,
+                    palette = MeIconPalette.Neutral,
                     position = CardListPosition.Tail,
                     onClick = { nav.push(Route.Settings) },
                 )
@@ -229,12 +241,14 @@ fun MeScreen(
                     EntryRow(
                         title = "切换账号",
                         icon = MeSwitchAccountIcon,
+                        palette = MeIconPalette.Blue,
                         position = CardListPosition.Head,
                         onClick = { switchAccounts = true },
                     )
                     EntryRow(
                         title = "退出登录",
                         icon = MeLogoutIcon,
+                        palette = MeIconPalette.Red,
                         position = CardListPosition.Tail,
                         onClick = { confirmLogout = true },
                     )
@@ -282,6 +296,7 @@ fun MeScreen(
 private fun EntryRow(
     title: String,
     icon: ImageVector,
+    palette: MeIconPalette,
     position: CardListPosition,
     summary: String? = null,
     statusText: String? = null,
@@ -298,7 +313,7 @@ private fun EntryRow(
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = COUITheme.colorScheme.onSurface,
+                tint = meEntryIconColor(palette),
                 modifier = Modifier.size(24.dp),
             )
         },

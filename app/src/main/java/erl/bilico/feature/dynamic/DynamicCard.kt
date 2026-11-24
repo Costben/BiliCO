@@ -59,6 +59,7 @@ import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.LoadingImage
 import erl.bilico.ui.components.RichDynamicText
 import erl.bilico.ui.expandOrigin
+import erl.bilico.ui.hyperlinkColor
 import erl.bilico.ui.rememberExpandOrigin
 import io.github.suqi8.coui.kmp.basic.CapsuleOutlineShape
 import io.github.suqi8.coui.kmp.basic.Card
@@ -89,7 +90,7 @@ internal fun DynamicCard(
     rowKey: Any? = null,
 ) {
     val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
-    val linkBlue = if (isDark) Color(0xFF5CA8FF) else Color(0xFF1367B1)
+    val linkBlue = hyperlinkColor()
     val video = item.video
     val live = item.live
     val cardCornerRadius = COUITheme.dimens.card.cornerRadius

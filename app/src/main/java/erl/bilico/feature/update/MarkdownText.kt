@@ -22,6 +22,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import erl.bilico.ui.hyperlinkColor
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -38,7 +39,7 @@ fun MarkdownText(
     headingColor: Color = COUITheme.colorScheme.onBackground,
 ) {
     val blocks = remember(markdown) { parseBlocks(markdown) }
-    val linkColor = COUITheme.colorScheme.primary
+    val linkColor = hyperlinkColor()
     val codeBackground = headingColor.copy(alpha = 0.08f)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         blocks.forEachIndexed { index, block ->

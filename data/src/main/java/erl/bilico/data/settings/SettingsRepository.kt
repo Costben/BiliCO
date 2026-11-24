@@ -10,6 +10,8 @@ import erl.bilico.data.settings.SettingsKeys.DEFAULT_LONG_PRESS_SPEED
 import erl.bilico.data.settings.SettingsKeys.HISTORY_LIMIT
 import erl.bilico.data.settings.SettingsKeys.KEY_ACCEPT_PRERELEASE
 import erl.bilico.data.settings.SettingsKeys.KEY_ACCENT_COLOR
+import erl.bilico.data.settings.SettingsKeys.KEY_ACCENT_HYPERLINK
+import erl.bilico.data.settings.SettingsKeys.KEY_ME_ICON_COLOR_MODE
 import erl.bilico.data.settings.SettingsKeys.KEY_ADJUSTABLE_LONG_PRESS_SPEED
 import erl.bilico.data.settings.SettingsKeys.KEY_ADVANCED_PLUS_ONE
 import erl.bilico.data.settings.SettingsKeys.KEY_AUTO_CHECK_UPDATE
@@ -83,6 +85,14 @@ class SettingsRepository(
     /** 主题强调色 ARGB；0 为默认，1 为 Jeb_ 动态循环，其余为 0xFFRRGGBB。 */
     private val _accentColor = MutableStateFlow(0)
     val accentColor: StateFlow<Int> = _accentColor.asStateFlow()
+
+    /** 是否将主题强调色应用到超链接文本（话题、@提及、网址与回复链接等）。 */
+    private val _accentHyperlink = MutableStateFlow(false)
+    val accentHyperlink: StateFlow<Boolean> = _accentHyperlink.asStateFlow()
+
+    /** 「我的」页面入口左侧图标配色模式：0 默认色（ColorOS 17 彩色），1 黑白色，2 强调色。 */
+    private val _meIconColorMode = MutableStateFlow(0)
+    val meIconColorMode: StateFlow<Int> = _meIconColorMode.asStateFlow()
 
     private val _defaultQuality = MutableStateFlow(DefaultQuality.P1080.id)
     val defaultQuality: StateFlow<Int> = _defaultQuality.asStateFlow()
@@ -233,6 +243,8 @@ class SettingsRepository(
             val prefs = context.biliDataStore.data.first()
             _darkMode.value = prefs[KEY_DARK_MODE] ?: 0
             _accentColor.value = normalizeAccentColor(prefs[KEY_ACCENT_COLOR] ?: 0)
+            _accentHyperlink.value = prefs[KEY_ACCENT_HYPERLINK] ?: false
+            _meIconColorMode.value = (prefs[KEY_ME_ICON_COLOR_MODE] ?: 0).coerceIn(0, 2)
             _defaultQuality.value = DefaultQuality.fromId(prefs[KEY_QUALITY] ?: DefaultQuality.P1080.id).id
             _cdnOption.value = CdnOption.fromId(prefs[KEY_CDN]).id
             _feedSource.value = (prefs[KEY_FEED_SOURCE] ?: 0).coerceIn(0, 1)
@@ -621,6 +633,17 @@ class SettingsRepository(
         val normalized = normalizeAccentColor(argb)
         _accentColor.value = normalized
         scope.launch { context.biliDataStore.edit { it[KEY_ACCENT_COLOR] = normalized } }
+    }
+
+    fun setAccentHyperlink(enabled: Boolean) {
+        _accentHyperlink.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_ACCENT_HYPERLINK] = enabled } }
+    }
+
+    fun setMeIconColorMode(mode: Int) {
+        val resolved = mode.coerceIn(0, 2)
+        _meIconColorMode.value = resolved
+        scope.launch { context.biliDataStore.edit { it[KEY_ME_ICON_COLOR_MODE] = resolved } }
     }
 
     private fun normalizeAccentColor(argb: Int): Int = when (argb) {
