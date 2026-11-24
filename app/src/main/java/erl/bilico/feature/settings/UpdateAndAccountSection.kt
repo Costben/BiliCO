@@ -1,23 +1,14 @@
 package erl.bilico.feature.settings
 
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.dp
 import erl.bilico.BuildConfig
 import erl.bilico.data.model.Account
 import erl.bilico.data.session.StoredSession
-import erl.bilico.ui.components.PreferenceDivider
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.CardDefaults
-import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
 
-@Composable
-internal fun UpdateSettingsCard(
+internal fun updateSettingsEntries(
     checkingUpdate: Boolean,
     autoCheckUpdate: Boolean,
     acceptPrerelease: Boolean,
@@ -27,90 +18,121 @@ internal fun UpdateSettingsCard(
     onAutoCheckUpdateChange: (Boolean) -> Unit,
     onAcceptPrereleaseChange: (Boolean) -> Unit,
     onInAppUpdateChange: (Boolean) -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = CardDefaults.GroupCornerRadius,
-        insideMargin = PaddingValues(0.dp),
-        weight = CardDefaults.GroupWeight,
-    ) {
-        ArrowPreference(
+): List<SettingsEntry> {
+    val updateSummary = if (checkingUpdate) "正在检查…" else "当前版本 v${BuildConfig.VERSION_NAME}"
+    return listOf(
+        SettingsEntry(
+            id = "update_check",
             title = "检查更新",
-            modifier = Modifier.testTag("settings_update"),
-            summary = if (checkingUpdate) "正在检查…" else "当前版本 v${BuildConfig.VERSION_NAME}",
-            cardListPosition = CardListPosition.Head,
-            onClick = onCheckUpdate,
-        )
-        PreferenceDivider()
-        ArrowPreference(
+            summary = updateSummary,
+            keywords = "新版本 升级 版本号",
+        ) { pos ->
+            ArrowPreference(
+                title = "检查更新",
+                modifier = Modifier.testTag("settings_update"),
+                summary = updateSummary,
+                cardListPosition = pos,
+                onClick = onCheckUpdate,
+            )
+        },
+        SettingsEntry(
+            id = "update_changelog",
             title = "更新日志",
-            modifier = Modifier.testTag("settings_changelog"),
             summary = "检查更新页面 · 历史版本与发布说明",
-            cardListPosition = CardListPosition.Middle,
-            onClick = onOpenChangelog,
-        )
-        PreferenceDivider()
-        SwitchPreference(
-            checked = autoCheckUpdate,
-            onCheckedChange = onAutoCheckUpdateChange,
+            keywords = "版本记录 发布说明 changelog",
+        ) { pos ->
+            ArrowPreference(
+                title = "更新日志",
+                modifier = Modifier.testTag("settings_changelog"),
+                summary = "检查更新页面 · 历史版本与发布说明",
+                cardListPosition = pos,
+                onClick = onOpenChangelog,
+            )
+        },
+        SettingsEntry(
+            id = "auto_update",
             title = "自动检查更新",
-            modifier = Modifier.testTag("settings_auto_update"),
-            cardListPosition = CardListPosition.Middle,
-        )
-        PreferenceDivider()
-        SwitchPreference(
-            checked = acceptPrerelease,
-            onCheckedChange = onAcceptPrereleaseChange,
+            keywords = "启动 检查 版本",
+        ) { pos ->
+            SwitchPreference(
+                checked = autoCheckUpdate,
+                onCheckedChange = onAutoCheckUpdateChange,
+                title = "自动检查更新",
+                modifier = Modifier.testTag("settings_auto_update"),
+                cardListPosition = pos,
+            )
+        },
+        SettingsEntry(
+            id = "prerelease",
             title = "接收预发布版本",
-            modifier = Modifier.testTag("settings_prerelease"),
-            cardListPosition = CardListPosition.Middle,
-        )
-        PreferenceDivider()
-        SwitchPreference(
-            checked = inAppUpdate,
-            onCheckedChange = onInAppUpdateChange,
+            keywords = "测试版 beta pre 内测",
+        ) { pos ->
+            SwitchPreference(
+                checked = acceptPrerelease,
+                onCheckedChange = onAcceptPrereleaseChange,
+                title = "接收预发布版本",
+                modifier = Modifier.testTag("settings_prerelease"),
+                cardListPosition = pos,
+            )
+        },
+        SettingsEntry(
+            id = "in_app_update",
             title = "应用内更新",
-            modifier = Modifier.testTag("settings_in_app_update"),
-            cardListPosition = CardListPosition.Tail,
-        )
-    }
+            keywords = "下载 安装 APK",
+        ) { pos ->
+            SwitchPreference(
+                checked = inAppUpdate,
+                onCheckedChange = onInAppUpdateChange,
+                title = "应用内更新",
+                modifier = Modifier.testTag("settings_in_app_update"),
+                cardListPosition = pos,
+            )
+        },
+    )
 }
 
-@Composable
-internal fun AccountSettingsCard(
+internal fun accountSettingsEntries(
     account: Account?,
     sessions: List<StoredSession>,
     onSwitchAccount: () -> Unit,
     onLogout: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = CardDefaults.GroupCornerRadius,
-        insideMargin = PaddingValues(0.dp),
-        weight = CardDefaults.GroupWeight,
-    ) {
-        // 名册里还有账号时留一个切换入口：设置页也能直接换号，不必绕回「我的」。
-        if (sessions.isNotEmpty()) {
-            ArrowPreference(
+): List<SettingsEntry> = buildList {
+    // 名册里还有账号时留一个切换入口：设置页也能直接换号，不必绕回「我的」。
+    if (sessions.isNotEmpty()) {
+        val summary = "已保存 ${sessions.size} 个账号"
+        add(
+            SettingsEntry(
+                id = "switch_account",
                 title = "切换账号",
-                modifier = Modifier.testTag("settings_switch_account"),
-                summary = "已保存 ${sessions.size} 个账号",
-                cardListPosition = if (account != null) CardListPosition.Head else CardListPosition.None,
-                onClick = onSwitchAccount,
-            )
-        }
-        if (account != null) {
-            ArrowPreference(
+                summary = summary,
+                keywords = "多账号 换号 登录",
+            ) { pos ->
+                ArrowPreference(
+                    title = "切换账号",
+                    modifier = Modifier.testTag("settings_switch_account"),
+                    summary = summary,
+                    cardListPosition = pos,
+                    onClick = onSwitchAccount,
+                )
+            },
+        )
+    }
+    if (account != null) {
+        add(
+            SettingsEntry(
+                id = "logout",
                 title = "退出登录",
-                modifier = Modifier.testTag("settings_logout"),
                 summary = account.name,
-                cardListPosition = if (sessions.isNotEmpty()) {
-                    CardListPosition.Tail
-                } else {
-                    CardListPosition.None
-                },
-                onClick = onLogout,
-            )
-        }
+                keywords = "注销 登出 账号",
+            ) { pos ->
+                ArrowPreference(
+                    title = "退出登录",
+                    modifier = Modifier.testTag("settings_logout"),
+                    summary = account.name,
+                    cardListPosition = pos,
+                    onClick = onLogout,
+                )
+            },
+        )
     }
 }
