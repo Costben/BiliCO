@@ -71,6 +71,8 @@ import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
+import erl.bilico.ui.topBarScrollPx
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
@@ -294,13 +296,27 @@ fun SpaceScreen(
             }
 
             PinnedBarDensity {
+                val barDensity = LocalDensity.current
                 val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val pageBarHeight = statusBarTop + 44.dp
                 Box(Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
                     AppBarSurface(
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = pageColor,
-                        scrollFraction = { 1f },
+                        scrollFraction = {
+                            val activeTab = visibleTabs.getOrNull(pagerState.currentPage)
+                            val tabScrolled = when (activeTab) {
+                                SpaceTab.VIDEOS -> videosListState.topBarScrollPx()
+                                SpaceTab.SEASONS -> collectionsListState.topBarScrollPx()
+                                SpaceTab.DYNAMICS -> dynamicsListState.topBarScrollPx()
+                                SpaceTab.OPUS -> opusGridState.topBarScrollPx()
+                                SpaceTab.LIKES -> likesListState.topBarScrollPx()
+                                null -> 0f
+                            }
+                            val headerScrolled = (-headerOffsetPx).coerceAtLeast(0f)
+                            val scrolled = maxOf(headerScrolled, tabScrolled)
+                            AppBarBlurOverlayDefaults.scrollAlpha(scrolled, barDensity)
+                        },
                     ) {
                         Box(Modifier.fillMaxWidth().height(pageBarHeight))
                     }

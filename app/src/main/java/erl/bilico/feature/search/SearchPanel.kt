@@ -119,6 +119,7 @@ internal fun HomeSearchOverlay(
     barBounds: TopBarBounds,
     onSelectKeyword: (String) -> Unit,
     modifier: Modifier = Modifier,
+    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
 ) {
     val density = LocalDensity.current
     val topBarHeightPx = with(density) { topBarHeight.toPx() }
@@ -135,6 +136,7 @@ internal fun HomeSearchOverlay(
             nav = nav,
             barBounds = barBounds,
             onSelectKeyword = onSelectKeyword,
+            listState = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
@@ -167,9 +169,9 @@ internal fun SearchPanelBody(
     barBounds: TopBarBounds,
     onSelectKeyword: (String) -> Unit,
     modifier: Modifier = Modifier,
+    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
 ) {
     val surfaceColor = pageContainerColor()
-    val listState = rememberLazyListState()
     BindScrollToTop(listState)
     val rowScrollState = remember(listState) { listState.asRowScrollState() }
     val focusManager = LocalFocusManager.current

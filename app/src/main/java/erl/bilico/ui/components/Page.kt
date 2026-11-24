@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -42,11 +43,14 @@ import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
+import erl.bilico.ui.rememberGridTopBarScrollBehavior
+import erl.bilico.ui.rememberListTopBarScrollBehavior
 import io.github.suqi8.coui.kmp.basic.FullPagePullToRefresh
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
+import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
@@ -89,6 +93,7 @@ fun SecondaryPage(
     val glassExtraHeight = if (subtitle.isNotBlank()) 32.dp else AppBarBlurOverlayDefaults.ExtraHeight
     val contentTop = glassBarContentTop(topBarHeight, 10.dp) +
         if (subtitle.isNotBlank()) 14.dp else 0.dp
+    val scrollBehavior = rememberListTopBarScrollBehavior(listState)
 
     BindScrollToTop(listState)
 
@@ -102,7 +107,10 @@ fun SecondaryPage(
             val list: @Composable () -> Unit = {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().scrollEndHaptic(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        .scrollEndHaptic(),
                     contentPadding = PaddingValues(
                         start = 12.dp,
                         top = contentTop,
@@ -148,6 +156,7 @@ fun SecondaryPage(
                         showDivider = false,
                         gradientGlass = BlurEffectsEnabled,
                         gradientGlassExtraHeight = glassExtraHeight,
+                        scrollBehavior = scrollBehavior,
                         navigationIcon = { BackIconButton(onClick = onBack) },
                         actions = actions,
                     )
@@ -169,6 +178,7 @@ fun SecondaryGridPage(
     val pageColor = pageContainerColor()
     val backdrop = rememberLayerBackdrop()
     val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
+    val scrollBehavior = rememberGridTopBarScrollBehavior(gridState)
 
     BindScrollToTop(gridState)
 
@@ -182,7 +192,10 @@ fun SecondaryGridPage(
             LazyVerticalGrid(
                 state = gridState,
                 columns = GridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize().scrollEndHaptic(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .scrollEndHaptic(),
                 contentPadding = PaddingValues(
                     start = 12.dp,
                     top = glassBarContentTop(topBarHeight, 10.dp),
@@ -206,6 +219,7 @@ fun SecondaryGridPage(
                     color = pageColor,
                     showDivider = false,
                     gradientGlass = BlurEffectsEnabled,
+                    scrollBehavior = scrollBehavior,
                     navigationIcon = { BackIconButton(onClick = onBack) },
                 )
             }
@@ -228,6 +242,7 @@ fun SecondaryPagerPage(
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
     topBar: (@Composable () -> Unit)? = null,
+    scrollBehavior: ScrollBehavior? = null,
     header: @Composable () -> Unit,
     page: @Composable (index: Int, contentTop: Dp) -> Unit,
 ) {
@@ -287,6 +302,7 @@ fun SecondaryPagerPage(
                         color = pageColor,
                         showDivider = false,
                         gradientGlass = BlurEffectsEnabled,
+                        scrollBehavior = scrollBehavior,
                         navigationIcon = { BackIconButton(onClick = onBack) },
                         actions = actions,
                         bottomContent = {

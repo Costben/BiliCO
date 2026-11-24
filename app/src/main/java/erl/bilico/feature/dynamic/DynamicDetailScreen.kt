@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -78,6 +79,7 @@ import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
 import erl.bilico.ui.rememberImageOriginScope
+import erl.bilico.ui.rememberListTopBarScrollBehavior
 import erl.bilico.ui.reportBottomBarTop
 import erl.bilico.ui.reportTopBarBottom
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
@@ -203,6 +205,7 @@ fun DynamicDetailScreen(
     val backdrop = rememberLayerBackdrop()
     val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
     val topBarBounds = remember { TopBarBounds() }
+    val scrollBehavior = rememberListTopBarScrollBehavior(listState)
     val rowScrollState = remember(listState) { listState.asRowScrollState() }
     val imageOriginScope = rememberImageOriginScope(listState, topBarBounds)
 
@@ -219,7 +222,10 @@ fun DynamicDetailScreen(
             ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().scrollEndHaptic(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .scrollEndHaptic(),
                 contentPadding = PaddingValues(
                     start = 12.dp,
                     top = glassBarContentTop(topBarHeight, 10.dp),
@@ -456,6 +462,7 @@ fun DynamicDetailScreen(
                     color = pageColor,
                     showDivider = false,
                     gradientGlass = BlurEffectsEnabled,
+                    scrollBehavior = scrollBehavior,
                     navigationIcon = { BackIconButton(onClick = nav::pop) },
                 )
             }

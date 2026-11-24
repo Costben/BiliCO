@@ -5,16 +5,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -23,8 +21,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -42,7 +41,6 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -50,18 +48,21 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import erl.bilico.data.settings.HomeTabType
 import erl.bilico.di.AppContainer
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.feature.dynamic.DynamicFilters
 import erl.bilico.feature.dynamic.DynamicPublishOverlay
 import erl.bilico.feature.dynamic.DynamicScreen
+import erl.bilico.feature.dynamic.DynamicScrollStates
+import erl.bilico.feature.dynamic.rememberDynamicScrollStates
 import erl.bilico.feature.feed.FeedScreen
+import erl.bilico.feature.feed.FeedScrollStates
+import erl.bilico.feature.feed.rememberFeedScrollStates
 import erl.bilico.feature.me.MeScreen
 import erl.bilico.feature.me.ProfileEditHost
 import erl.bilico.feature.search.HomeSearchOverlay
@@ -70,13 +71,13 @@ import erl.bilico.feature.search.SearchViewModel
 import erl.bilico.feature.search.showingResults
 import io.github.suqi8.coui.kmp.anim.COUIInEase
 import io.github.suqi8.coui.kmp.anim.COUIOutEase
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformBottomBarMaterialEnabled
 import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.basic.rememberSearchResultsTransitionState
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
-import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.abs
 
 /** 底栏切页的交叉淡入时长。 */
@@ -203,6 +204,10 @@ fun MainShell(nav: NavState, container: AppContainer) {
         pageCount = { feedTabs.size },
     )
     val dynamicPager = rememberPagerState(initialPage = dynamicFilterIndex, pageCount = { DynamicFilters.size })
+    val feedScrollStates = rememberFeedScrollStates()
+    val dynamicScrollStates = rememberDynamicScrollStates()
+    val meListState = rememberLazyListState()
+    val searchListState = rememberLazyListState()
 
     val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
     val collapsePx = when (tab) {
@@ -271,6 +276,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 onCollapse = { feedCollapse = it },
                                 pagerState = feedPager,
                                 refreshTick = feedRefreshTick,
+                                scrollStates = feedScrollStates,
                             )
 
                             1 -> DynamicScreen(
@@ -282,12 +288,14 @@ fun MainShell(nav: NavState, container: AppContainer) {
                                 pagerState = dynamicPager,
                                 onCollapse = { dynamicCollapse = it },
                                 refreshTick = dynamicRefreshTick,
+                                scrollStates = dynamicScrollStates,
                             )
 
                             else -> MeScreen(
                                 container = container,
                                 nav = nav,
                                 topInset = topBarHeight,
+                                listState = meListState,
                             )
                         }
                     }
@@ -303,11 +311,16 @@ fun MainShell(nav: NavState, container: AppContainer) {
             PinnedBarDensity {
                 MainBarUnderlay(
                     tab = tab,
+                    loggedIn = account != null,
                     collapsed = collapsed,
+                    feedTabs = feedTabs,
                     feedTabLabels = feedTabLabels,
                     feedPager = feedPager,
+                    feedScrollStates = feedScrollStates,
                     onSegment = { segment = it },
                     dynamicPager = dynamicPager,
+                    dynamicScrollStates = dynamicScrollStates,
+                    meListState = meListState,
                     onDynamicFilter = { dynamicFilterIndex = it },
                     onFeedReselect = { feedRefreshTick++ },
                     onDynamicReselect = { dynamicRefreshTick++ },
@@ -382,6 +395,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 barBounds = topBarBounds,
                 onSelectKeyword = submitHomeSearch,
                 modifier = Modifier.fillMaxSize(),
+                listState = searchListState,
             )
         }
 
@@ -407,6 +421,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
             LocalEdgeToEdge provides true,
         ) {
             PinnedBarDensity {
+                val searchBarDensity = LocalDensity.current
                 MainTitleRow(
                     tab = tab,
                     nav = nav,
@@ -426,7 +441,9 @@ fun MainShell(nav: NavState, container: AppContainer) {
                         if (account == null) Toast.makeText(context, "登录后可用", Toast.LENGTH_SHORT).show()
                         else editProfileOpen = true
                     },
-                    panelAlpha = { panelAlpha.value },
+                    panelAlpha = {
+                        panelAlpha.value * AppBarBlurOverlayDefaults.scrollAlpha(searchListState.topBarScrollPx(), searchBarDensity)
+                    },
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
@@ -467,11 +484,16 @@ fun MainShell(nav: NavState, container: AppContainer) {
 @Composable
 private fun MainBarUnderlay(
     tab: Int,
+    loggedIn: Boolean,
     collapsed: () -> Float,
+    feedTabs: List<HomeTabType>,
     feedTabLabels: List<String>,
     feedPager: PagerState,
+    feedScrollStates: FeedScrollStates,
     onSegment: (Int) -> Unit,
     dynamicPager: PagerState,
+    dynamicScrollStates: DynamicScrollStates,
+    meListState: LazyListState,
     onDynamicFilter: (Int) -> Unit,
     onFeedReselect: () -> Unit,
     onDynamicReselect: () -> Unit,
@@ -481,12 +503,16 @@ private fun MainBarUnderlay(
     bounds: TopBarBounds,
     modifier: Modifier = Modifier,
 ) {
+    val density = LocalDensity.current
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val pageBarHeight = statusBarTop + TitleRowHeight
-    val titleHeightPx = with(LocalDensity.current) { TitleRowHeight.toPx() }
+    val titleHeightPx = with(density) { TitleRowHeight.toPx() }
     val doubleTap = Modifier.pointerInput(onDoubleTap) {
         detectTapGestures(onDoubleTap = { onDoubleTap() })
     }
+    val feedWeight = animateFloatAsState(if (tab == 0) 1f else 0f, tween(MainTabFadeMillis), label = "mainBarFeedWeight")
+    val dynamicWeight = animateFloatAsState(if (tab == 1) 1f else 0f, tween(MainTabFadeMillis), label = "mainBarDynamicWeight")
+    val meWeight = animateFloatAsState(if (tab == 2) 1f else 0f, tween(MainTabFadeMillis), label = "mainBarMeWeight")
 
     Box(modifier) {
         AppBarSurface(
@@ -495,7 +521,20 @@ private fun MainBarUnderlay(
                 .offset { IntOffset(0, 0) }
                 .then(if (panelCovering) Modifier else Modifier.reportTopBarBottom(bounds)),
             containerColor = pageContainerColor(),
-            scrollFraction = { 1f },
+            scrollFraction = {
+                val feedAlpha = pagerTopBarScrollAlpha(feedPager, feedTabs.size, density) { idx ->
+                    feedTabs.getOrNull(idx)?.let { feedScrollStates.stateFor(it).topBarScrollPx() } ?: 0f
+                }
+                val dynamicAlpha = if (!loggedIn) 0f else {
+                    pagerTopBarScrollAlpha(dynamicPager, DynamicFilters.size, density) { idx ->
+                        DynamicFilters.getOrNull(idx)?.first?.let(dynamicScrollStates::scrollPxFor) ?: 0f
+                    }
+                }
+                val meAlpha = AppBarBlurOverlayDefaults.scrollAlpha(meListState.topBarScrollPx(), density)
+                (feedWeight.value * feedAlpha +
+                    dynamicWeight.value * dynamicAlpha +
+                    meWeight.value * meAlpha).coerceIn(0f, 1f)
+            },
         ) {
             Box(
                 Modifier

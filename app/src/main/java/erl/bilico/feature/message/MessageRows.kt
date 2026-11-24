@@ -186,8 +186,8 @@ internal fun SessionList(
     contentTop: Dp,
     viewModel: MessageViewModel,
     nav: NavState,
+    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
 ) {
-    val listState = rememberLazyListState()
     BindScrollToTop(listState)
     val itemCount by rememberUpdatedState(state.sessions.size)
     val transitionSpec = SearchResultContainerDefaults.transitionSpec(

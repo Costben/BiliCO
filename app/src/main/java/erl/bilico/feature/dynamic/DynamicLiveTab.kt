@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -59,12 +60,12 @@ internal fun DynamicLiveTab(
     active: Boolean,
     onCollapse: (Float) -> Unit,
     refreshTick: Int,
+    gridState: LazyGridState = rememberLazyGridState(),
 ) {
     val viewModel: LiveListViewModel = viewModel(key = "dynamic-live") {
         LiveListViewModel(container.live, following = true)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val gridState = rememberLazyGridState()
     BindScrollToTop(gridState, enabled = active)
     val scope = rememberCoroutineScope()
     val pullState = rememberFullPagePullToRefreshState()

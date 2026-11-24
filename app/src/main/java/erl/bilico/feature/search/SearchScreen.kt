@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -31,6 +33,8 @@ import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
 import erl.bilico.ui.reportTopBarBottom
+import erl.bilico.ui.topBarScrollPx
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.rememberSearchResultsTransitionState
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -53,6 +57,7 @@ fun SearchScreen(
     val history by container.settings.searchHistory.collectAsStateWithLifecycle()
     val searchBackdrop = rememberLayerBackdrop()
     val barBounds = remember { TopBarBounds() }
+    val searchListState = rememberLazyListState()
     var sortMenuExpanded by remember { mutableStateOf(false) }
 
     val showingResults = state.showingResults()
@@ -117,6 +122,7 @@ fun SearchScreen(
             nav = nav,
             barBounds = barBounds,
             onSelectKeyword = submitSearch,
+            listState = searchListState,
         )
 
         CompositionLocalProvider(
@@ -125,6 +131,7 @@ fun SearchScreen(
             LocalSoftwareKeyboardController provides if (suppressInitialFocus) null else keyboard,
         ) {
             PinnedBarDensity {
+                val searchBarDensity = LocalDensity.current
                 SearchTopAppBar(
                     searchState = state,
                     onQueryChange = viewModel::onQueryChange,
@@ -135,7 +142,12 @@ fun SearchScreen(
                     showingResults = searchTransition.filtersVisible,
                     onTabChange = viewModel::setTab,
                     onSortMenuOpen = { sortMenuExpanded = true },
-                    panelAlpha = { 1f },
+                    panelAlpha = {
+                        AppBarBlurOverlayDefaults.scrollAlpha(
+                            searchListState.topBarScrollPx(),
+                            searchBarDensity,
+                        )
+                    },
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()

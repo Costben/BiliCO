@@ -66,6 +66,8 @@ import erl.bilico.ui.components.SecondaryPagerPage
 import erl.bilico.ui.components.StatLabel
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.pageContainerColor
+import erl.bilico.ui.pagerTopBarScrollAlpha
+import erl.bilico.ui.topBarScrollPx
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
@@ -96,6 +98,7 @@ fun HistoryScreen(
     val scope = rememberCoroutineScope()
 
     val pagerState = rememberPagerState(pageCount = { HistoryTab.entries.size })
+    val tabListStates = HistoryTab.entries.associateWith { rememberLazyListState() }
     var menuExpanded by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
 
@@ -128,13 +131,18 @@ fun HistoryScreen(
         onBack = nav::pop,
         pagerState = pagerState,
         topBar = {
+            val density = androidx.compose.ui.platform.LocalDensity.current
             val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val currentTab = HistoryTab.entries[pagerState.currentPage]
             Box(Modifier.fillMaxWidth()) {
                 AppBarSurface(
                     modifier = Modifier.matchParentSize(),
                     containerColor = pageContainerColor(),
-                    scrollFraction = { 1f },
+                    scrollFraction = {
+                        pagerTopBarScrollAlpha(pagerState, HistoryTab.entries.size, density) { idx ->
+                            tabListStates[HistoryTab.entries[idx]]?.topBarScrollPx() ?: 0f
+                        }
+                    },
                 )
                 Column(
                     modifier = Modifier
@@ -261,6 +269,7 @@ fun HistoryScreen(
             loggedIn = loggedIn != null,
             tab = tab,
             active = pageIndex == pagerState.currentPage,
+            listState = tabListStates.getValue(tab),
             tabState = tabState,
             items = filteredItems,
             isFiltering = state.searchQuery.isNotBlank(),
@@ -309,6 +318,7 @@ private fun HistoryTabList(
     loggedIn: Boolean,
     tab: HistoryTab,
     active: Boolean,
+    listState: androidx.compose.foundation.lazy.LazyListState,
     tabState: HistoryTabState,
     items: List<HistoryItem>,
     isFiltering: Boolean,
@@ -322,7 +332,6 @@ private fun HistoryTabList(
     onResumeHistory: () -> Unit,
     onOpenItem: (HistoryItem) -> Unit,
 ) {
-    val listState = rememberLazyListState()
     BindScrollToTop(listState, enabled = active)
 
     LaunchedEffect(listState, items.size, isFiltering) {

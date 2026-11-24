@@ -51,6 +51,8 @@ import erl.bilico.ui.components.SecondaryPagerPage
 import erl.bilico.ui.components.SectionTitle
 import erl.bilico.ui.components.SingleInputDialog
 import erl.bilico.ui.components.navBottomPadding
+import erl.bilico.ui.rememberPagerTopBarScrollBehavior
+import erl.bilico.ui.topBarScrollPx
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
@@ -82,6 +84,12 @@ fun BlockManagerScreen(
     val scheme = COUITheme.colorScheme
 
     val pagerState = rememberPagerState(pageCount = { BLOCK_MANAGER_TABS.size })
+    val pageListStates = List(BLOCK_MANAGER_TABS.size) { rememberLazyListState() }
+    val scrollBehavior = rememberPagerTopBarScrollBehavior(
+        pagerState = pagerState,
+        pageCount = BLOCK_MANAGER_TABS.size,
+        scrollPxForPage = { idx -> pageListStates.getOrNull(idx)?.topBarScrollPx() ?: 0f },
+    )
     var keywordDialogScope by remember { mutableStateOf<BlockKeywordScope?>(null) }
     var customThresholdKind by remember { mutableStateOf<String?>(null) }
     var showRegexHelp by remember { mutableStateOf(false) }
@@ -96,6 +104,7 @@ fun BlockManagerScreen(
         title = "屏蔽管理",
         onBack = nav::pop,
         pagerState = pagerState,
+        scrollBehavior = scrollBehavior,
         actions = {
             RegexHelpButton(onClick = { showRegexHelp = true })
         },
@@ -112,7 +121,7 @@ fun BlockManagerScreen(
             )
         },
     ) { pageIndex, contentTop ->
-        val listState = rememberLazyListState()
+        val listState = pageListStates[pageIndex]
         BindScrollToTop(listState, enabled = pageIndex == pagerState.currentPage)
         LazyColumn(
             state = listState,

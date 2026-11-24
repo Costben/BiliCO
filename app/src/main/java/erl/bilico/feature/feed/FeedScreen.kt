@@ -2,11 +2,13 @@ package erl.bilico.feature.feed
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -27,6 +29,37 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  * 分段胶囊不在这里画：它要跟着标题行折进顶栏，得画在顶栏那一层才不会被玻璃盖住，
  * 所以 [segment]、[tabs] 与 [onSegment] 都由外壳持有。
  */
+class FeedScrollStates(
+    val recommend: LazyGridState,
+    val hot: LazyGridState,
+    val ranking: LazyGridState,
+    val bangumi: LazyGridState,
+    val cinema: LazyGridState,
+    val live: LazyGridState,
+) {
+    fun stateFor(tab: HomeTabType): LazyGridState = when (tab) {
+        HomeTabType.RECOMMEND -> recommend
+        HomeTabType.HOT -> hot
+        HomeTabType.RANKING -> ranking
+        HomeTabType.BANGUMI -> bangumi
+        HomeTabType.CINEMA -> cinema
+        HomeTabType.LIVE -> live
+    }
+}
+
+@Composable
+fun rememberFeedScrollStates(): FeedScrollStates {
+    val recommend = rememberLazyGridState()
+    val hot = rememberLazyGridState()
+    val ranking = rememberLazyGridState()
+    val bangumi = rememberLazyGridState()
+    val cinema = rememberLazyGridState()
+    val live = rememberLazyGridState()
+    return remember(recommend, hot, ranking, bangumi, cinema, live) {
+        FeedScrollStates(recommend, hot, ranking, bangumi, cinema, live)
+    }
+}
+
 @Composable
 fun FeedScreen(
     container: AppContainer,
@@ -38,13 +71,14 @@ fun FeedScreen(
     onCollapse: (Float) -> Unit,
     pagerState: PagerState,
     refreshTick: Int,
+    scrollStates: FeedScrollStates = rememberFeedScrollStates(),
 ) {
-    val recommendState = rememberLazyGridState()
-    val hotState = rememberLazyGridState()
-    val rankingState = rememberLazyGridState()
-    val bangumiState = rememberLazyGridState()
-    val cinemaState = rememberLazyGridState()
-    val liveState = rememberLazyGridState()
+    val recommendState = scrollStates.recommend
+    val hotState = scrollStates.hot
+    val rankingState = scrollStates.ranking
+    val bangumiState = scrollStates.bangumi
+    val cinemaState = scrollStates.cinema
+    val liveState = scrollStates.live
     val segmentTop = topInset + 8.dp
 
     // 点胶囊翻页；滑完一页再把选中态写回去。
