@@ -56,8 +56,11 @@ import erl.bilico.feature.comment.CommentTab
 import erl.bilico.feature.comment.ReplyDetailOverlay
 import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.feature.dynamic.DynamicImageViewer
+import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.NavState
+import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.imageOrigin
+import erl.bilico.ui.reportTopBarBottom
 import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.ErrorState
@@ -556,11 +559,12 @@ private fun ArticleCommentSheet(
 ) {
     val parentOpenBvid = LocalOpenBvid.current
     val replyThread = remember(oid, type) { ReplyThreadController() }
+    val sheetBarBounds = remember { TopBarBounds() }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.fillMaxSize().background(pageContainerColor())) {
             Column(Modifier.fillMaxSize()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth().reportTopBarBottom(sheetBarBounds).statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     BackIconButton(onClick = onDismiss)
@@ -573,13 +577,10 @@ private fun ArticleCommentSheet(
                     }
                 }
                 HorizontalDivider(color = COUITheme.colorScheme.dividerLine)
-                CompositionLocalProvider(LocalOpenBvid provides { bvid -> onDismiss(); parentOpenBvid?.invoke(bvid) }) {
+                CompositionLocalProvider(LocalOpenBvid provides { bvid -> onDismiss(); parentOpenBvid?.invoke(bvid) }, LocalTopBarBounds provides sheetBarBounds) {
                     CommentTab(
-                        container = container,
-                        oid = oid,
-                        type = type,
-                        targetRootId = commentRootId,
-                        targetReplyId = commentTargetId,
+                        container = container, oid = oid, type = type,
+                        targetRootId = commentRootId, targetReplyId = commentTargetId,
                         onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
                         replyThreadController = replyThread,
                         modifier = Modifier.weight(1f).fillMaxWidth(),

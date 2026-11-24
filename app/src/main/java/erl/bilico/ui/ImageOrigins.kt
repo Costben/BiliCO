@@ -2,6 +2,7 @@ package erl.bilico.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -11,14 +12,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.DynamicImage
+import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
@@ -27,6 +32,32 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 const val ImageZoomMillis = 420
+
+/**
+ * 图片缩略图所属列表与栏边界：看图页关闭缩回前，把被顶栏/底栏遮住的缩略图先挪到可视安全区内，
+ * 并供看图浮层在进退场期间裁切到顶栏下沿与底栏上沿之间。
+ */
+@Stable
+class ImageOriginScope(
+    val listState: RowScrollState,
+    val topBar: TopBarBounds?,
+    val clearancePx: Float,
+)
+
+val LocalImageOriginScope = staticCompositionLocalOf<ImageOriginScope?> { null }
+val LocalImageOriginRowKey = staticCompositionLocalOf<Any?> { null }
+
+@Composable
+fun rememberImageOriginScope(
+    listState: LazyListState,
+    topBar: TopBarBounds? = LocalTopBarBounds.current,
+): ImageOriginScope {
+    val rowState = remember(listState) { listState.asRowScrollState() }
+    val clearance = with(LocalDensity.current) { AppBarBlurOverlayDefaults.ExtraHeight.toPx() }
+    return remember(rowState, topBar, clearance) {
+        ImageOriginScope(rowState, topBar, clearance)
+    }
+}
 
 /**
  * 缩略图在根宿主坐标系下的信息：位置、圆角、真实宽高比以及卡片实际绘制的模型地址。
@@ -44,6 +75,8 @@ internal class ThumbSlot {
     var cornerRadius: Dp = 0.dp
     var aspect: Float? = null
     var model: String? = null
+    var originScope: ImageOriginScope? = null
+    var rowKey: Any? = null
 }
 
 /** 屏幕上各图片缩略图的位置索引（按规范化图片 URL 保留叠加层栈，弹窗关闭后自动还原底层缩略图）。 */
@@ -83,6 +116,55 @@ class ImageOrigins {
     /** 卡片登记的真实宽高比，未携带尺寸字段时可先于大图解码对齐容器大小。 */
     internal fun aspectOf(url: String): Float? = activeSlot(url)?.aspect
 
+    /**
+     * 把被顶栏或底栏遮住的缩略图所在行滚回安全可视区内；
+     * 与卡片返回的 `alignCardBelowBar` 对齐，确保缩回落点不被栏压住。
+     */
+    internal suspend fun alignOriginBelowBar(url: String?, host: LayoutCoordinates?) {
+        if (url.isNullOrEmpty() || host == null || !host.isAttached) return
+        val slot = activeSlot(url) ?: return
+        val originScope = slot.originScope ?: return
+        val bar = originScope.topBar ?: return
+        repeat(4) {
+            val rowKey = slot.rowKey
+            if (rowKey != null && originScope.listState.visibleKeys().none { it == rowKey }) return
+            val coordinates = slot.coordinates?.takeIf { it.isAttached } ?: return
+            val rectInHost = host.localBoundingBoxOf(coordinates, clipBounds = false)
+            if (rectInHost.width <= 0f || rectInHost.height <= 0f) return
+            val rect = rectInHost.translate(host.localToRoot(Offset.Zero))
+
+            val topLine = bar.bottom
+            val topSafe = topLine + originScope.clearancePx
+            val topDelta = if (topLine > 0f) topSafe - rect.top else 0f
+
+            val bottomLine = bar.bottomBarTop
+            val bottomSafe = bottomLine - originScope.clearancePx
+            val rawBottomDelta = if (bottomLine > 0f) rect.bottom - bottomSafe else 0f
+            val maxUpShift = if (topLine > 0f) (rect.top - topSafe).coerceAtLeast(0f) else Float.MAX_VALUE
+            val bottomDelta = rawBottomDelta.coerceAtMost(maxUpShift)
+
+            val scrollDelta = when {
+                topDelta > 0.5f -> -topDelta
+                bottomDelta > 0.5f -> bottomDelta
+                else -> return
+            }
+            if (originScope.listState.scrollBy(scrollDelta) == 0f) return
+            withFrameNanos { }
+            withFrameNanos { }
+        }
+    }
+
+    /** 当前图片对应页面顶栏下沿与底栏上沿在 [host] 坐标系下的安全裁切区间（Pair(top, bottom)，0/Float.MAX_VALUE 表示无限制）。 */
+    internal fun viewportLimitsInHost(url: String?, host: LayoutCoordinates?): Pair<Float, Float>? {
+        if (url.isNullOrEmpty() || host == null || !host.isAttached) return null
+        val bar = activeSlot(url)?.originScope?.topBar ?: return null
+        if (bar.bottom <= 0f && bar.bottomBarTop <= 0f) return null
+        val rootOffsetY = host.localToRoot(Offset.Zero).y
+        val top = if (bar.bottom > 0f) (bar.bottom - rootOffsetY).coerceAtLeast(0f) else 0f
+        val bottom = if (bar.bottomBarTop > 0f) (bar.bottomBarTop - rootOffsetY).coerceAtLeast(top) else Float.MAX_VALUE
+        return top to bottom
+    }
+
     /** 实时读取缩略图当前屏幕位置，退场时即使列表滚过也能准确缩回目标位置。 */
     internal fun boundsOf(url: String, host: LayoutCoordinates, density: Float): ThumbBounds? {
         if (!host.isAttached) return null
@@ -114,12 +196,16 @@ fun Modifier.imageOrigin(
     model: String? = null,
 ): Modifier {
     val origins = LocalImageOrigins.current
+    val originScope = LocalImageOriginScope.current
+    val rowKey = LocalImageOriginRowKey.current
     val normalizedUrl = url
     val slot = remember(normalizedUrl) { ThumbSlot() }
     SideEffect {
         slot.cornerRadius = cornerRadius
         slot.aspect = aspect
         slot.model = model
+        slot.originScope = originScope
+        slot.rowKey = rowKey
     }
     DisposableEffect(origins, normalizedUrl, slot) {
         onDispose { origins.remove(normalizedUrl, slot) }
@@ -143,6 +229,7 @@ class ImageViewerSession(
     val progress = Animatable(0f)
     var exiting by mutableStateOf(false)
     var previewing by mutableStateOf(false)
+    internal var onPrepareClose: (suspend () -> Unit)? = null
 }
 
 /** 根节点的看图浮层宿主：与页面栈、回复弹窗共享同一窗口坐标系。 */
@@ -179,6 +266,7 @@ class ImageViewerHost {
         target.exiting = true
         coroutineScope.launch {
             try {
+                if (!target.previewing) target.onPrepareClose?.invoke()
                 target.progress.animateTo(0f, tween(ImageZoomMillis, easing = ExpandEasing))
             } catch (_: CancellationException) {
                 // 让 finally 完成状态收口。
@@ -203,6 +291,7 @@ class ImageViewerHost {
         coroutineScope.launch {
             try {
                 if (remaining > 0.005f) {
+                    session.onPrepareClose?.invoke()
                     session.progress.animateTo(0f, tween(duration, easing = ExpandEasing))
                 }
             } finally {

@@ -45,8 +45,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size as ComposeSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onPlaced
@@ -54,8 +58,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -159,7 +166,17 @@ internal fun ImageViewerOverlay(
     val pagerState = rememberPagerState(initialPage = start) { urls.size }
     val current = urls.getOrNull(pagerState.currentPage).orEmpty()
 
-    SideEffect { origins.viewing = current }
+    SideEffect {
+        origins.viewing = current
+        session.onPrepareClose = {
+            origins.alignOriginBelowBar(current, frame.host)
+        }
+    }
+    LaunchedEffect(current, session.progress.isRunning, session.exiting, session.previewing) {
+        if (!session.exiting && !session.previewing && !session.progress.isRunning && session.progress.value >= 0.999f) {
+            origins.alignOriginBelowBar(current, frame.host)
+        }
+    }
     DisposableEffect(session) {
         onDispose { origins.viewing = null }
     }
@@ -224,7 +241,34 @@ internal fun ImageViewerOverlay(
             pageSpacing = 16.dp,
             beyondViewportPageCount = 1,
             userScrollEnabled = urls.size > 1 && !frame.dismiss.active && !frame.dismiss.exiting,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val d = frame.dismiss
+                    val clipFraction = when {
+                        d.exiting && d.exitHasThumb -> d.exitProgress.value.coerceIn(0f, 1f)
+                        !d.active && !d.exiting && progress() < 1f -> (1f - progress()).coerceIn(0f, 1f)
+                        else -> 0f
+                    }
+                    val limits = if (clipFraction > 0f && size.height > 0f) {
+                        origins.viewportLimitsInHost(current, frame.host)
+                    } else {
+                        null
+                    }
+                    if (limits != null) {
+                        val (vpTop, vpBottom) = limits
+                        val top = lerp(0f, vpTop, clipFraction)
+                        val bottom = if (vpBottom < Float.MAX_VALUE) {
+                            lerp(size.height, vpBottom, clipFraction)
+                        } else {
+                            size.height
+                        }
+                        shape = VerticalViewportShape(top, bottom)
+                        clip = true
+                    } else {
+                        clip = false
+                    }
+                },
         ) { page ->
             val keyUrl = urls[page]
             val requestUrl = if (originalPages[page] == true) {
@@ -376,6 +420,21 @@ private fun ViewerSystemBars(visible: Boolean) {
         onDispose {
             controller?.show(WindowInsetsCompat.Type.statusBars())
         }
+    }
+}
+
+private class VerticalViewportShape(
+    private val top: Float,
+    private val bottom: Float,
+) : Shape {
+    override fun createOutline(
+        size: ComposeSize,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val clippedTop = top.coerceIn(0f, size.height)
+        val clippedBottom = bottom.coerceIn(clippedTop, size.height)
+        return Outline.Rectangle(Rect(0f, clippedTop, size.width, clippedBottom))
     }
 }
 

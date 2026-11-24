@@ -11,6 +11,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -24,12 +25,15 @@ import erl.bilico.feature.comment.CommentTab
 import erl.bilico.feature.comment.ReplyDetailOverlay
 import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.Route
+import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
+import erl.bilico.ui.reportTopBarBottom
 import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBarDefaults
 import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarDefaults
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
@@ -103,6 +107,8 @@ internal fun VideoDetailSection(
     // 停在顶部时栏下面没有东西会滚过去，这时候开着模糊只会把第一行的上沿糊出软边；
     // 等列表真的滚起来再启用。
     val barBlurActive = blurActive && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
+    val detailBarBounds = remember { TopBarBounds() }
+    CompositionLocalProvider(LocalTopBarBounds provides detailBarBounds) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -227,7 +233,8 @@ internal fun VideoDetailSection(
         DetailBarGlassSurface(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .reportTopBarBottom(detailBarBounds),
             containerColor = pageBg,
             backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,
             materialBackdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop else null,
@@ -269,5 +276,6 @@ internal fun VideoDetailSection(
                 )
             }
         }
+    }
     }
 }

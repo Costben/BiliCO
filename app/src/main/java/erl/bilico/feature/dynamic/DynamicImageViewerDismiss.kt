@@ -220,25 +220,8 @@ internal fun handleDismissRelease(
     val startScale = dismiss.currentScale()
     val startTranslation = dismiss.currentTranslation()
     val startBgAlpha = dismiss.currentBgAlpha()
-
-    val host = frame.host
-    val live = if (url != null && host != null && !frame.zoomed) {
-        origins.boundsOf(url, host, density)?.also { frame.thumbs[url] = it }
-    } else {
-        null
-    }
-    val thumb = live ?: url?.takeIf { !frame.zoomed }?.let { frame.thumbs[it] }
-    val aspect = url?.let { frame.aspects[it] ?: thumb?.aspect }
-
     val w = dismiss.boxSize.width.toFloat()
     val h = dismiss.boxSize.height.toFloat()
-    val effectiveAspect = aspect ?: thumb?.rect?.let { if (it.height > 0f) it.width / it.height else null }
-    val restFrame = if (w > 0f && h > 0f && effectiveAspect != null) restSize(w, h, effectiveAspect) else null
-    val longImage = restFrame != null && restFrame.height > h + 0.5f
-    // 长图整图比屏幕高，靠「当前可见区域 → 缩略图裁切区域」的矩形映射回缩；
-    // 拿不到图片实际落点时才退回淡出。
-    val hasThumb = thumb != null && restFrame != null &&
-        (!longImage || (imageSize != null && imageTopLeft != null))
 
     dismiss.exitStartScale = startScale
     dismiss.exitStartTranslation = startTranslation
@@ -246,6 +229,26 @@ internal fun handleDismissRelease(
     dismiss.animJob = scope.launch {
         dismiss.exitBgAlpha.snapTo(startBgAlpha)
         dismiss.exitProgress.snapTo(0f)
+        dismiss.exitTranslation.snapTo(startTranslation)
+
+        val host = frame.host
+        if (!frame.zoomed) {
+            origins.alignOriginBelowBar(url, host)
+        }
+        val live = if (url != null && host != null && !frame.zoomed) {
+            origins.boundsOf(url, host, density)?.also { frame.thumbs[url] = it }
+        } else {
+            null
+        }
+        val thumb = live ?: url?.takeIf { !frame.zoomed }?.let { frame.thumbs[it] }
+        val aspect = url?.let { frame.aspects[it] ?: thumb?.aspect }
+        val effectiveAspect = aspect ?: thumb?.rect?.let { if (it.height > 0f) it.width / it.height else null }
+        val restFrame = if (w > 0f && h > 0f && effectiveAspect != null) restSize(w, h, effectiveAspect) else null
+        val longImage = restFrame != null && restFrame.height > h + 0.5f
+        // 长图整图比屏幕高，靠「当前可见区域 → 缩略图裁切区域」的矩形映射回缩；
+        // 拿不到图片实际落点时才退回淡出。
+        val hasThumb = thumb != null && restFrame != null &&
+            (!longImage || (imageSize != null && imageTopLeft != null))
 
         if (hasThumb) {
             val source = thumb.rect
@@ -272,7 +275,6 @@ internal fun handleDismissRelease(
             } else {
                 null
             }
-            dismiss.exitTranslation.snapTo(startTranslation)
 
             coroutineScope {
                 launch {

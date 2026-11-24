@@ -10,6 +10,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -28,12 +29,15 @@ import erl.bilico.feature.video.rememberBarScrolled
 import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.feature.video.rememberStableStatusBarHeightPx
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
+import erl.bilico.ui.reportTopBarBottom
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 
 /**
@@ -79,7 +83,9 @@ internal fun PgcDetailSection(
     val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + DETAIL_CONTENT_GAP
     // 与普通视频详情页一致：停在顶部时不启用毛玻璃。
     val barBlurActive = blurActive && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
+    val detailBarBounds = remember { TopBarBounds() }
 
+    CompositionLocalProvider(LocalTopBarBounds provides detailBarBounds) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -142,7 +148,8 @@ internal fun PgcDetailSection(
         DetailBarGlassSurface(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .reportTopBarBottom(detailBarBounds),
             containerColor = pageBg,
             backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,
             materialBackdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop else null,
@@ -181,6 +188,7 @@ internal fun PgcDetailSection(
                 )
             }
         }
+    }
     }
 }
 

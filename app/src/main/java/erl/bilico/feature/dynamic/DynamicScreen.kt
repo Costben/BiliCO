@@ -50,10 +50,13 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.CommentComposerSheet
 import erl.bilico.feature.feed.FeedSegmentRowHeight
 import erl.bilico.ui.ExpandOrigin
+import erl.bilico.ui.LocalImageOriginRowKey
+import erl.bilico.ui.LocalImageOriginScope
 import erl.bilico.ui.NavState
 import erl.bilico.ui.TitleRowHeight
 import erl.bilico.ui.Route
 import erl.bilico.ui.asRowScrollState
+import erl.bilico.ui.rememberImageOriginScope
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.FullPageRefreshHoldMillis
@@ -341,20 +344,25 @@ private fun DynamicContent(
                 val freshItems = shown.items.take(inserted).filter { blocks.shouldShowDynamic(it) }
                 val olderItems = shown.items.drop(inserted).filter { blocks.shouldShowDynamic(it) }
                 val card: @Composable (DynamicItemUi) -> Unit = { item ->
-                    DynamicCard(
-                        item = item,
-                        onOpenUser = onOpenUser,
-                        onOpenVideo = onOpenVideo,
-                        onOpenImage = onOpenImage,
-                        onOpenDynamic = onOpenDynamic,
-                        onWatchLater = onWatchLater,
-                        onOpenLive = onOpenLive,
-                        currentMid = currentMid,
-                        onDelete = onDelete,
-                        onLike = onLike,
-                        rowScrollState = rowScrollState,
-                        rowKey = item.id,
-                    )
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        LocalImageOriginScope provides rememberImageOriginScope(listState),
+                        LocalImageOriginRowKey provides item.id,
+                    ) {
+                        DynamicCard(
+                            item = item,
+                            onOpenUser = onOpenUser,
+                            onOpenVideo = onOpenVideo,
+                            onOpenImage = onOpenImage,
+                            onOpenDynamic = onOpenDynamic,
+                            onWatchLater = onWatchLater,
+                            onOpenLive = onOpenLive,
+                            currentMid = currentMid,
+                            onDelete = onDelete,
+                            onLike = onLike,
+                            rowScrollState = rowScrollState,
+                            rowKey = item.id,
+                        )
+                    }
                 }
 
                 items(
