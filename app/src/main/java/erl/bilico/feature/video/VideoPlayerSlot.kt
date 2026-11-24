@@ -94,9 +94,7 @@ internal fun BoxScope.VideoPlayerSlot(
     val topBarLayoutFullscreen by container.settings.playerTopBar.fullscreen.collectAsStateWithLifecycle()
     val topBarLayoutPortrait by container.settings.playerTopBar.portrait.collectAsStateWithLifecycle()
 
-    val anyStageDialogOpen = fullscreen &&
-        (danmakuSettingsDialogVisible || sponsorSubmitDialog != null ||
-            castDialog != null || downloadDialog != null || reportVideoDialog != null)
+    val captureStageBackdrop = BlurEffectsEnabled && fullscreen && !hdrVideo
     val returnHome = LocalStageReturnHome.current ?: { nav.popToMain() }
     val episodesMenuItems = rememberEpisodesMenuItems(
         detail = state.detail,
@@ -142,7 +140,7 @@ internal fun BoxScope.VideoPlayerSlot(
         onRetry = viewModel::load,
         modifier = Modifier
             .fillMaxSize()
-            .layerBackdropIf(BlurEffectsEnabled && anyStageDialogOpen, stageBackdrop),
+            .layerBackdropIf(captureStageBackdrop, stageBackdrop),
         inPipMode = inPipMode,
         danmakuEnabled = danmakuEnabled,
         onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
@@ -251,7 +249,7 @@ internal fun BoxScope.VideoPlayerSlot(
     if (fullscreen) {
         VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)
         CompositionLocalProvider(
-            LocalBackdrop provides if (BlurEffectsEnabled) stageBackdrop else null,
+            LocalBackdrop provides if (BlurEffectsEnabled && !hdrVideo) stageBackdrop else null,
         ) {
             VideoScreenDialogs(
                 coinDialogVisible = false,

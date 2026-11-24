@@ -396,7 +396,7 @@ fun LiveRoomScreen(
         playerContent = {
             val returnHome = LocalStageReturnHome.current ?: { nav.popToMain() }
             val stageBackdrop = rememberLayerBackdrop()
-            val anyStageDialogOpen = !useSurfaceView && fullscreen && (danmakuSettingsDialogVisible || castDialogVisible || lineDialogVisible || scDrawerVisible)
+            val captureStageBackdrop = BlurEffectsEnabled && fullscreen && !useSurfaceView
             VideoPlayer(
                 player = player,
                 title = state.detail?.title.orEmpty(),
@@ -424,7 +424,7 @@ fun LiveRoomScreen(
                 onRetry = viewModel::retryPlayback,
                 modifier = Modifier
                     .fillMaxSize()
-                    .layerBackdropIf(BlurEffectsEnabled && anyStageDialogOpen, stageBackdrop),
+                    .layerBackdropIf(captureStageBackdrop, stageBackdrop),
                 inPipMode = inPipMode,
                 liveMode = true,
                 statusText = if (state.onlyAudio) "黑听中" else state.statusText(),

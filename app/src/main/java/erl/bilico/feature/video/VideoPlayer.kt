@@ -61,6 +61,7 @@ import erl.bilico.ui.components.PlayerStateOverlay
 import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Pause
@@ -241,8 +242,9 @@ internal fun VideoPlayer(
     // 画面一律按原始比例 FIT：槽位多高画面就多高，宽度跟着缩，整幅画面始终完整可见。
     val resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
     val menuBackdrop = rememberLayerBackdrop()
-    // SurfaceView 的画面不进 Compose 的绘制层，抓出来的背景只有一块黑，不如直接退成不模糊。
-    val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && activeMenu != PlayerPopupMenu.NONE && !hdrVideo
+    // 常驻图层：避免开关菜单/弹窗时拆装 LayerBackdrop 导致播放器重建硬件层闪缩；
+    // SurfaceView 的画面不进 Compose 绘制层，HDR 场景下直接禁用，面板退回纯实色不透明。
+    val captureMenuBackdrop = BlurEffectsEnabled && fullscreen && !hdrVideo
     val isTop = LocalRouteIsTop.current
     val minimized = LocalRouteMinimized.current
     val keepScreenOn = isTop && !inPipMode && rememberPlaybackScreenOn(player)
@@ -363,6 +365,11 @@ internal fun VideoPlayer(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+
+        PlayerStatsFloatingOverlay(
+            player = player, source = source, fullscreen = fullscreen,
+            inPipMode = inPipMode, modifier = Modifier.fillMaxSize(),
+        )
 
         AnimatedVisibility(
             visible = showChrome,
@@ -575,23 +582,18 @@ internal fun VideoPlayer(
             DanmakuActionToolbar(activeHit, danmakuActions, { selectedDanmaku = null }, Modifier.fillMaxSize())
         }
 
-        PlayerStageDialogs(
-            player = player,
-            source = source,
-            fullscreen = fullscreen,
-            statsVisible = statsVisible,
-            onDismissStats = { statsVisible = false },
-            sponsorAssistVisible = sponsorAssistVisible,
-            sponsorSegments = sponsorSegments,
-            onJumpSponsorSegment = onJumpSponsorSegment,
-            onSubmitSponsor = onSubmitSponsor,
-            onDismissSponsorAssist = { sponsorAssistVisible = false },
-            topBarSettingsVisible = topBarSettingsVisible,
-            topBarLayoutFullscreen = topBarLayoutFullscreen,
-            topBarLayoutPortrait = topBarLayoutPortrait,
-            onToggleTopBarItem = onToggleTopBarItem,
-            onMoveTopBarItem = onMoveTopBarItem,
-            onDismissTopBarSettings = { topBarSettingsVisible = false },
-        )
+        CompositionLocalProvider(LocalBackdrop provides if (BlurEffectsEnabled && fullscreen && !hdrVideo) menuBackdrop else null) {
+            PlayerStageDialogs(
+                player = player, source = source, fullscreen = fullscreen,
+                statsVisible = statsVisible, onDismissStats = { statsVisible = false },
+                sponsorAssistVisible = sponsorAssistVisible, sponsorSegments = sponsorSegments,
+                onJumpSponsorSegment = onJumpSponsorSegment, onSubmitSponsor = onSubmitSponsor,
+                onDismissSponsorAssist = { sponsorAssistVisible = false },
+                topBarSettingsVisible = topBarSettingsVisible,
+                topBarLayoutFullscreen = topBarLayoutFullscreen, topBarLayoutPortrait = topBarLayoutPortrait,
+                onToggleTopBarItem = onToggleTopBarItem, onMoveTopBarItem = onMoveTopBarItem,
+                onDismissTopBarSettings = { topBarSettingsVisible = false },
+            )
+        }
     }
 }
