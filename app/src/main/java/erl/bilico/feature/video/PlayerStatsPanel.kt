@@ -1,6 +1,8 @@
 package erl.bilico.feature.video
 
 import android.net.Uri
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -23,10 +26,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.Player
@@ -34,6 +40,8 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import erl.bilico.data.model.PlaybackSource
+import erl.bilico.data.settings.StatsOverlayField
+import erl.bilico.di.LocalAppContainer
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -78,7 +86,7 @@ internal fun rememberPlayerStats(player: Player): PlayerStats {
 }
 
 /** 一次采样得到的全部文案。面板每 500ms 重采一次，只在数据落定时重组，不逐帧刷新。 */
-private data class StatsSnapshot(
+internal data class StatsSnapshot(
     val quality: String?,
     val resolution: String,
     val frameRate: String,
@@ -94,7 +102,25 @@ private data class StatsSnapshot(
     val audioHost: String,
     val playerType: String,
     val speed: String,
-)
+) {
+    fun toRows(): List<Pair<StatsOverlayField, String>> = buildList {
+        quality?.let { add(StatsOverlayField.QUALITY to it) }
+        add(StatsOverlayField.RESOLUTION to resolution)
+        add(StatsOverlayField.FRAME_RATE to frameRate)
+        add(StatsOverlayField.PLAYER_TYPE to playerType)
+        add(StatsOverlayField.VIDEO_CODEC to videoCodec)
+        add(StatsOverlayField.AUDIO_CODEC to audioCodec)
+        add(StatsOverlayField.VIDEO_BITRATE to videoBitrate)
+        add(StatsOverlayField.AUDIO_BITRATE to audioBitrate)
+        add(StatsOverlayField.RENDERED_FRAMES to renderedFrames.toString())
+        add(StatsOverlayField.DROPPED_FRAMES to droppedDetail)
+        add(StatsOverlayField.BUFFER to buffer)
+        add(StatsOverlayField.BANDWIDTH to bandwidth)
+        add(StatsOverlayField.VIDEO_HOST to videoHost)
+        add(StatsOverlayField.AUDIO_HOST to audioHost)
+        add(StatsOverlayField.SPEED to speed)
+    }
+}
 
 /**
  * 「视频信息统计」面板：清晰度、分辨率与帧率、编解码、码率、已渲染帧与丢帧、缓冲、带宽估计和线路。
@@ -107,6 +133,8 @@ internal fun PlayerStatsDialog(
     inlineInStage: Boolean,
     onDismiss: () -> Unit,
 ) {
+    val statsOverlay = LocalAppContainer.current?.settings?.statsOverlay
+    val floatingEnabled = statsOverlay?.enabled?.collectAsStateWithLifecycle()?.value == true
     val stats = rememberPlayerStats(player)
     var snapshot by remember(player, source) { mutableStateOf(readSnapshot(player, source, stats, null)) }
 
@@ -135,6 +163,28 @@ internal fun PlayerStatsDialog(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 4.dp),
             ) {
+                if (statsOverlay != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                statsOverlay.setEnabled(!floatingEnabled)
+                                dismiss()
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .testTag("stats_floating_toggle"),
+                    ) {
+                        Text(
+                            text = if (floatingEnabled) "关闭浮窗" else "浮窗",
+                            style = COUITheme.textStyles.body2.copy(fontWeight = FontWeight.Medium),
+                            color = scheme.primary,
+                        )
+                    }
+                }
                 Text(
                     text = "统计信息",
                     modifier = Modifier.align(Alignment.Center),
@@ -160,24 +210,7 @@ internal fun PlayerStatsDialog(
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                val rows = buildList {
-                    snapshot.quality?.let { add("清晰度" to it) }
-                    add("分辨率" to snapshot.resolution)
-                    add("帧率" to snapshot.frameRate)
-                    add("播放器" to snapshot.playerType)
-                    add("视频编码" to snapshot.videoCodec)
-                    add("音频编码" to snapshot.audioCodec)
-                    add("视频码率" to snapshot.videoBitrate)
-                    add("音频码率" to snapshot.audioBitrate)
-                    add("已渲染帧" to snapshot.renderedFrames.toString())
-                    add("丢帧" to snapshot.droppedDetail)
-                    add("缓冲" to snapshot.buffer)
-                    add("带宽估计" to snapshot.bandwidth)
-                    add("视频线路" to snapshot.videoHost)
-                    add("音频线路" to snapshot.audioHost)
-                    add("播放速度" to snapshot.speed)
-                }
-                rows.forEach { (label, value) -> StatRow(label, value) }
+                snapshot.toRows().forEach { (field, value) -> StatRow(field.label, value) }
             }
         }
     }
@@ -205,7 +238,7 @@ private fun StatRow(label: String, value: String) {
     }
 }
 
-private fun readSnapshot(
+internal fun readSnapshot(
     player: Player,
     source: PlaybackSource?,
     stats: PlayerStats,

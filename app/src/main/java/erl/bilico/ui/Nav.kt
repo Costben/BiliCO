@@ -163,6 +163,7 @@ sealed interface Route {
     data object Downloads : Route
     data object Following : Route
     data object Settings : Route
+    data object StatsOverlaySettings : Route
     data object BlockManager : Route
     data object About : Route
     data class Pgc(

@@ -11,6 +11,7 @@ internal object SettingsKeys {
     const val DEFAULT_LONG_PRESS_SPEED = 200
 
     val KEY_DARK_MODE = intPreferencesKey("dark_mode")
+    val KEY_ACCENT_COLOR = intPreferencesKey("accent_color")
     val KEY_QUALITY = intPreferencesKey("default_quality")
     val KEY_CDN = stringPreferencesKey("playback_cdn")
     val KEY_FEED_SOURCE = intPreferencesKey("feed_source")

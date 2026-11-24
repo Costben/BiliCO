@@ -164,6 +164,8 @@ internal fun SponsorCategoriesDialog(
 internal fun SettingsDialogsHost(
     container: AppContainer,
     nav: NavState,
+    darkMode: Int,
+    accentColor: Int,
     cdnOption: String,
     danmakuSettings: DanmakuSettings,
     topBarLayoutFullscreen: PlayerTopBarLayout,
@@ -172,6 +174,7 @@ internal fun SettingsDialogsHost(
     sponsorCategories: Set<String>,
     account: Account?,
     sessions: List<StoredSession>,
+    pickAccentColor: Boolean,
     pickCdn: Boolean,
     showDanmakuSettings: Boolean,
     showTopBarSettings: Boolean,
@@ -179,6 +182,7 @@ internal fun SettingsDialogsHost(
     showSponsorCategories: Boolean,
     switchAccounts: Boolean,
     confirmLogout: Boolean,
+    onDismissAccentColor: () -> Unit,
     onDismissCdn: () -> Unit,
     onDismissDanmaku: () -> Unit,
     onDismissTopBar: () -> Unit,
@@ -187,6 +191,18 @@ internal fun SettingsDialogsHost(
     onDismissSwitchAccounts: () -> Unit,
     onDismissLogout: () -> Unit,
 ) {
+    if (pickAccentColor) {
+        AccentColorPickerDialog(
+            darkMode = darkMode,
+            currentArgb = accentColor,
+            onDismiss = onDismissAccentColor,
+            onConfirm = { picked ->
+                container.settings.setAccentColor(picked)
+                onDismissAccentColor()
+            },
+        )
+    }
+
     if (pickCdn) {
         OptionPicker(
             title = "播放线路",

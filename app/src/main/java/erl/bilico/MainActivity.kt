@@ -75,7 +75,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
-            BiliCoTheme(darkMode) {
+            val accentColor by container.settings.accentColor.collectAsStateWithLifecycle()
+            BiliCoTheme(darkMode, accentColor) {
                 val dark = isDarkTheme(darkMode)
                 DisposableEffect(dark) {
                     window.setBackgroundDrawable(

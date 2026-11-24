@@ -1,7 +1,13 @@
 package erl.bilico.feature.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -10,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -20,10 +27,12 @@ import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.settings.CoverAspect
 import erl.bilico.data.settings.DefaultQuality
 import erl.bilico.data.settings.FeedPreferences
+import erl.bilico.data.settings.StatsOverlayPreferences
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
+import erl.bilico.ui.accentColorSummary
 import erl.bilico.ui.components.PreferenceDivider
 import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.components.SectionTitle
@@ -35,6 +44,7 @@ import io.github.suqi8.coui.kmp.basic.DropdownItem
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
 import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.launch
 
 @Composable
@@ -45,6 +55,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
+    val accentColor by container.settings.accentColor.collectAsStateWithLifecycle()
     val returnBounce by container.settings.returnBounce.collectAsStateWithLifecycle()
     val predictiveBackFollow by container.settings.predictiveBackFollow.collectAsStateWithLifecycle()
     val quality by container.settings.defaultQuality.collectAsStateWithLifecycle()
@@ -78,6 +89,10 @@ fun SettingsScreen(
     val promotionBadgeEnabled by container.settings.promotionBadgeEnabled.collectAsStateWithLifecycle()
     val sponsorSkipMode by container.settings.sponsorSkipMode.collectAsStateWithLifecycle()
     val sponsorCategories by container.settings.sponsorCategories.collectAsStateWithLifecycle()
+    val statsOverlayEnabled by container.settings.statsOverlay.enabled.collectAsStateWithLifecycle()
+    val statsOverlayX by container.settings.statsOverlay.xFraction.collectAsStateWithLifecycle()
+    val statsOverlayY by container.settings.statsOverlay.yFraction.collectAsStateWithLifecycle()
+    val statsOverlayFields by container.settings.statsOverlay.visibleFields.collectAsStateWithLifecycle()
     val autoCheckUpdate by container.settings.autoCheckUpdate.collectAsStateWithLifecycle()
     val acceptPrerelease by container.settings.acceptPrerelease.collectAsStateWithLifecycle()
     val inAppUpdate by container.settings.inAppUpdate.collectAsStateWithLifecycle()
@@ -86,6 +101,7 @@ fun SettingsScreen(
     val downloadTasks by container.downloads.tasks.collectAsStateWithLifecycle()
     val downloadBytes by container.downloads.totalCachedBytes.collectAsStateWithLifecycle()
 
+    var pickAccentColor by remember { mutableStateOf(false) }
     var pickCdn by remember { mutableStateOf(false) }
     var showDanmakuSettings by remember { mutableStateOf(false) }
     var showTopBarSettings by remember { mutableStateOf(false) }
@@ -112,6 +128,23 @@ fun SettingsScreen(
                     modifier = Modifier.testTag("settings_dark"),
                     cardListPosition = CardListPosition.Head,
                     onSelectedIndexChange = container.settings::setDarkMode,
+                )
+                ArrowPreference(
+                    title = "主题色",
+                    summary = accentColorSummary(accentColor),
+                    endActions = {
+                        Box(
+                            Modifier
+                                .padding(end = 6.dp)
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(COUITheme.colorScheme.primary)
+                                .border(1.dp, COUITheme.colorScheme.outline, CircleShape),
+                        )
+                    },
+                    modifier = Modifier.testTag("settings_accent_color"),
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { pickAccentColor = true },
                 )
                 OverlayDropdownPreference(
                     items = COVER_ASPECT_OPTIONS,
@@ -266,6 +299,18 @@ fun SettingsScreen(
                     cardListPosition = CardListPosition.Middle,
                     onClick = { showTopBarSettings = true },
                 )
+                ArrowPreference(
+                    title = "统计信息浮窗",
+                    summary = StatsOverlayPreferences.summary(
+                        enabled = statsOverlayEnabled,
+                        xFraction = statsOverlayX,
+                        yFraction = statsOverlayY,
+                        visibleCount = statsOverlayFields.size,
+                    ),
+                    modifier = Modifier.testTag("settings_stats_overlay"),
+                    cardListPosition = CardListPosition.Middle,
+                    onClick = { nav.push(Route.StatsOverlaySettings) },
+                )
                 SwitchPreference(
                     checked = playerConicLight,
                     onCheckedChange = container.settings::setPlayerConicLight,
@@ -306,66 +351,19 @@ fun SettingsScreen(
         item(key = "sponsor-title") { SectionTitle("空降助手") }
 
         item(key = "sponsor") {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = CardDefaults.GroupCornerRadius,
-                insideMargin = PaddingValues(0.dp),
-                weight = CardDefaults.GroupWeight,
-            ) {
-                SwitchPreference(
-                    checked = sponsorBlockEnabled,
-                    onCheckedChange = container.settings::setSponsorBlockEnabled,
-                    title = "空降助手",
-                    summary = "跳过或标记视频内的赞助广告、三连与片头片尾",
-                    modifier = Modifier.testTag("settings_sponsor_block"),
-                    cardListPosition = CardListPosition.Head,
-                )
-                OverlayDropdownPreference(
-                    items = SPONSOR_SKIP_MODES,
-                    selectedIndex = sponsorSkipMode.coerceIn(0, SPONSOR_SKIP_MODES.lastIndex),
-                    title = "空降方式",
-                    enabled = sponsorBlockEnabled,
-                    modifier = Modifier.testTag("settings_sponsor_mode"),
-                    cardListPosition = CardListPosition.Middle,
-                    onSelectedIndexChange = container.settings::setSponsorSkipMode,
-                )
-                ArrowPreference(
-                    title = "跳过片段类型",
-                    summary = "已启用 ${sponsorCategories.size} 类",
-                    enabled = sponsorBlockEnabled,
-                    modifier = Modifier.testTag("settings_sponsor_categories"),
-                    cardListPosition = CardListPosition.Tail,
-                    onClick = { showSponsorCategories = true },
-                )
-            }
-        }
-
-        item(key = "content-badge-title") { SectionTitle("内容标记") }
-
-        item(key = "content-badge") {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = CardDefaults.GroupCornerRadius,
-                insideMargin = PaddingValues(0.dp),
-                weight = CardDefaults.GroupWeight,
-            ) {
-                SwitchPreference(
-                    checked = sponsorBadgeEnabled,
-                    onCheckedChange = container.settings::setSponsorBadgeEnabled,
-                    title = "详情页标记商单",
-                    summary = "用空降助手识别商单广告，在详情页 BV 号旁标注「商单」或「疑似商单」",
-                    modifier = Modifier.testTag("settings_sponsor_badge"),
-                    cardListPosition = CardListPosition.Head,
-                )
-                SwitchPreference(
-                    checked = promotionBadgeEnabled,
-                    onCheckedChange = container.settings::setPromotionBadgeEnabled,
-                    title = "详情页标记推广",
-                    summary = "在视频详情页的标题前标注「推广」；关闭后推荐流会过滤掉推广卡片",
-                    modifier = Modifier.testTag("settings_promotion_badge"),
-                    cardListPosition = CardListPosition.Tail,
-                )
-            }
+            SponsorSettingsCard(
+                enabled = sponsorBlockEnabled,
+                skipMode = sponsorSkipMode,
+                skipModeOptions = SPONSOR_SKIP_MODES,
+                selectedCategoryCount = sponsorCategories.size,
+                sponsorBadgeEnabled = sponsorBadgeEnabled,
+                promotionBadgeEnabled = promotionBadgeEnabled,
+                onEnabledChange = container.settings::setSponsorBlockEnabled,
+                onSkipModeChange = container.settings::setSponsorSkipMode,
+                onOpenCategories = { showSponsorCategories = true },
+                onSponsorBadgeChange = container.settings::setSponsorBadgeEnabled,
+                onPromotionBadgeChange = container.settings::setPromotionBadgeEnabled,
+            )
         }
 
         item(key = "danmaku-title") { SectionTitle("弹幕") }
@@ -473,56 +471,17 @@ fun SettingsScreen(
         item(key = "update-title") { SectionTitle("更新") }
 
         item(key = "update") {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = CardDefaults.GroupCornerRadius,
-                insideMargin = PaddingValues(0.dp),
-                weight = CardDefaults.GroupWeight,
-            ) {
-                ArrowPreference(
-                    title = "检查更新",
-                    modifier = Modifier.testTag("settings_update"),
-                    summary = if (container.updater.checkingUpdate) {
-                        "正在检查…"
-                    } else {
-                        "当前版本 v${BuildConfig.VERSION_NAME}"
-                    },
-                    cardListPosition = CardListPosition.Head,
-                    onClick = { scope.launch { container.updater.checkUpdate(manual = true) } },
-                )
-                PreferenceDivider()
-                ArrowPreference(
-                    title = "更新日志",
-                    modifier = Modifier.testTag("settings_changelog"),
-                    summary = "检查更新页面 · 历史版本与发布说明",
-                    cardListPosition = CardListPosition.Middle,
-                    onClick = { nav.push(Route.Update) },
-                )
-                PreferenceDivider()
-                SwitchPreference(
-                    checked = autoCheckUpdate,
-                    onCheckedChange = container.settings::setAutoCheckUpdate,
-                    title = "自动检查更新",
-                    modifier = Modifier.testTag("settings_auto_update"),
-                    cardListPosition = CardListPosition.Middle,
-                )
-                PreferenceDivider()
-                SwitchPreference(
-                    checked = acceptPrerelease,
-                    onCheckedChange = container.settings::setAcceptPrerelease,
-                    title = "接收预发布版本",
-                    modifier = Modifier.testTag("settings_prerelease"),
-                    cardListPosition = CardListPosition.Middle,
-                )
-                PreferenceDivider()
-                SwitchPreference(
-                    checked = inAppUpdate,
-                    onCheckedChange = container.settings::setInAppUpdate,
-                    title = "应用内更新",
-                    modifier = Modifier.testTag("settings_in_app_update"),
-                    cardListPosition = CardListPosition.Tail,
-                )
-            }
+            UpdateSettingsCard(
+                checkingUpdate = container.updater.checkingUpdate,
+                autoCheckUpdate = autoCheckUpdate,
+                acceptPrerelease = acceptPrerelease,
+                inAppUpdate = inAppUpdate,
+                onCheckUpdate = { scope.launch { container.updater.checkUpdate(manual = true) } },
+                onOpenChangelog = { nav.push(Route.Update) },
+                onAutoCheckUpdateChange = container.settings::setAutoCheckUpdate,
+                onAcceptPrereleaseChange = container.settings::setAcceptPrerelease,
+                onInAppUpdateChange = container.settings::setInAppUpdate,
+            )
         }
 
         item(key = "about-title") { SectionTitle("关于") }
@@ -548,44 +507,12 @@ fun SettingsScreen(
             item(key = "account-title") { SectionTitle("账号") }
 
             item(key = "account") {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    cornerRadius = CardDefaults.GroupCornerRadius,
-                    insideMargin = PaddingValues(0.dp),
-                    weight = CardDefaults.GroupWeight,
-                ) {
-                    // 名册里还有账号时留一个切换入口：设置页也能直接换号，不必绕回「我的」。
-                    if (sessions.isNotEmpty()) {
-                        ArrowPreference(
-                            title = "切换账号",
-                            modifier = Modifier.testTag("settings_switch_account"),
-                            summary = "已保存 ${sessions.size} 个账号",
-                            cardListPosition = CardListPosition.Head,
-                            onClick = { switchAccounts = true },
-                        )
-                    }
-                    if (account != null) {
-                        ArrowPreference(
-                            title = "退出登录",
-                            modifier = Modifier.testTag("settings_logout"),
-                            summary = account?.name,
-                            cardListPosition = if (sessions.isNotEmpty()) {
-                                CardListPosition.Tail
-                            } else {
-                                CardListPosition.None
-                            },
-                            onClick = { confirmLogout = true },
-                        )
-                    } else {
-                        ArrowPreference(
-                            title = "切换账号",
-                            modifier = Modifier.testTag("settings_switch_account"),
-                            summary = "已保存 ${sessions.size} 个账号",
-                            cardListPosition = CardListPosition.None,
-                            onClick = { switchAccounts = true },
-                        )
-                    }
-                }
+                AccountSettingsCard(
+                    account = account,
+                    sessions = sessions,
+                    onSwitchAccount = { switchAccounts = true },
+                    onLogout = { confirmLogout = true },
+                )
             }
         }
     }
@@ -593,6 +520,8 @@ fun SettingsScreen(
     SettingsDialogsHost(
         container = container,
         nav = nav,
+        darkMode = darkMode,
+        accentColor = accentColor,
         cdnOption = cdnOption,
         danmakuSettings = danmakuSettings,
         topBarLayoutFullscreen = topBarLayoutFullscreen,
@@ -601,6 +530,7 @@ fun SettingsScreen(
         sponsorCategories = sponsorCategories,
         account = account,
         sessions = sessions,
+        pickAccentColor = pickAccentColor,
         pickCdn = pickCdn,
         showDanmakuSettings = showDanmakuSettings,
         showTopBarSettings = showTopBarSettings,
@@ -608,6 +538,7 @@ fun SettingsScreen(
         showSponsorCategories = showSponsorCategories,
         switchAccounts = switchAccounts,
         confirmLogout = confirmLogout,
+        onDismissAccentColor = { pickAccentColor = false },
         onDismissCdn = { pickCdn = false },
         onDismissDanmaku = { showDanmakuSettings = false },
         onDismissTopBar = { showTopBarSettings = false },

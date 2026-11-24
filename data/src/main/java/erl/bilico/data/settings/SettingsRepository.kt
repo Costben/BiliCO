@@ -9,6 +9,7 @@ import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.settings.SettingsKeys.DEFAULT_LONG_PRESS_SPEED
 import erl.bilico.data.settings.SettingsKeys.HISTORY_LIMIT
 import erl.bilico.data.settings.SettingsKeys.KEY_ACCEPT_PRERELEASE
+import erl.bilico.data.settings.SettingsKeys.KEY_ACCENT_COLOR
 import erl.bilico.data.settings.SettingsKeys.KEY_ADJUSTABLE_LONG_PRESS_SPEED
 import erl.bilico.data.settings.SettingsKeys.KEY_ADVANCED_PLUS_ONE
 import erl.bilico.data.settings.SettingsKeys.KEY_AUTO_CHECK_UPDATE
@@ -78,6 +79,10 @@ class SettingsRepository(
 
     private val _darkMode = MutableStateFlow(0)
     val darkMode: StateFlow<Int> = _darkMode.asStateFlow()
+
+    /** 主题强调色 ARGB；0 为默认，1 为 Jeb_ 动态循环，其余为 0xFFRRGGBB。 */
+    private val _accentColor = MutableStateFlow(0)
+    val accentColor: StateFlow<Int> = _accentColor.asStateFlow()
 
     private val _defaultQuality = MutableStateFlow(DefaultQuality.P1080.id)
     val defaultQuality: StateFlow<Int> = _defaultQuality.asStateFlow()
@@ -184,6 +189,9 @@ class SettingsRepository(
     /** 自动连播下一条推荐视频时的弹窗与倒计时设置。 */
     val autoNext = AutoNextPreferences(context, scope)
 
+    /** 播放器视频统计信息浮窗配置。 */
+    val statsOverlay = StatsOverlayPreferences(context, scope)
+
     /** 空降助手（SponsorBlock）总开关与跳过模式：0 自动跳过，1 手动跳过，2 仅进度条标记。 */
     private val _sponsorBlockEnabled = MutableStateFlow(true)
     val sponsorBlockEnabled: StateFlow<Boolean> = _sponsorBlockEnabled.asStateFlow()
@@ -224,6 +232,7 @@ class SettingsRepository(
         scope.launch {
             val prefs = context.biliDataStore.data.first()
             _darkMode.value = prefs[KEY_DARK_MODE] ?: 0
+            _accentColor.value = normalizeAccentColor(prefs[KEY_ACCENT_COLOR] ?: 0)
             _defaultQuality.value = DefaultQuality.fromId(prefs[KEY_QUALITY] ?: DefaultQuality.P1080.id).id
             _cdnOption.value = CdnOption.fromId(prefs[KEY_CDN]).id
             _feedSource.value = (prefs[KEY_FEED_SOURCE] ?: 0).coerceIn(0, 1)
@@ -278,6 +287,7 @@ class SettingsRepository(
             playerTopBar.restore()
             feed.restore()
             autoNext.restore()
+            statsOverlay.restore()
             _sponsorBlockEnabled.value = prefs[KEY_SPONSOR_BLOCK_ENABLED] ?: true
             _sponsorBadgeEnabled.value = prefs[KEY_SPONSOR_BADGE_ENABLED] ?: true
             _promotionBadgeEnabled.value = prefs[KEY_PROMOTION_BADGE_ENABLED] ?: true
@@ -605,6 +615,17 @@ class SettingsRepository(
     fun setDarkMode(mode: Int) {
         _darkMode.value = mode.coerceIn(0, 2)
         scope.launch { context.biliDataStore.edit { it[KEY_DARK_MODE] = _darkMode.value } }
+    }
+
+    fun setAccentColor(argb: Int) {
+        val normalized = normalizeAccentColor(argb)
+        _accentColor.value = normalized
+        scope.launch { context.biliDataStore.edit { it[KEY_ACCENT_COLOR] = normalized } }
+    }
+
+    private fun normalizeAccentColor(argb: Int): Int = when (argb) {
+        0, 1 -> argb
+        else -> argb or 0xFF000000.toInt()
     }
 
     fun setDefaultQuality(quality: Int) {
