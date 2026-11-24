@@ -91,8 +91,11 @@ class SpaceRepository(
                         cover = Formatters.normalizeImageUrl(item.pic),
                         upName = "",
                         playText = Formatters.formatStat(item.play),
+                        danmakuText = Formatters.formatStat(item.videoReview),
+                        pubTimeText = Formatters.formatTimeAgo(item.created),
                         durationText = Formatters.formatDuration(seconds.toLong()),
                         durationSec = seconds,
+                        aid = item.aid,
                     )
                 }
                 val total = response.data?.page?.count ?: 0

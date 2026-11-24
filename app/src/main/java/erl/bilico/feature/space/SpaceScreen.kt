@@ -242,6 +242,11 @@ fun SpaceScreen(
                     LibraryVideoRow(
                         video = video,
                         onClick = { nav.push(Route.Video(video.bvid)) },
+                        longPressItems = rememberSpaceVideoMenuItems(
+                            video = video,
+                            profile = profile,
+                            container = container,
+                        ),
                     )
                 }
 

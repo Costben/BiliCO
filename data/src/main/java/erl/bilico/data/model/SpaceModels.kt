@@ -89,6 +89,10 @@ data class SpaceVideoItem(
     @Serializable(with = FlexibleLongSerializer::class)
     val play: Long = 0,
     val comment: Long = 0,
+    /** 弹幕数。空间投稿列表里叫 video_review，和评论数 comment 不是一个字段。 */
+    @SerialName("video_review")
+    @Serializable(with = FlexibleLongSerializer::class)
+    val videoReview: Long = 0,
     val length: String = "",
     @Serializable(with = FlexibleLongSerializer::class)
     val created: Long = 0,

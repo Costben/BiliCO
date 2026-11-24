@@ -560,6 +560,8 @@ data class LibraryVideo(
     val upName: String,
     val playText: String = "",
     val danmakuText: String = "",
+    /** 投稿时间文案，只有空间投稿列表会填；其余列表留空。 */
+    val pubTimeText: String = "",
     val durationText: String = "",
     val durationSec: Int = 0,
     val progressSec: Int = 0,
