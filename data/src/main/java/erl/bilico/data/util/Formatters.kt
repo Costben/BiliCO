@@ -188,6 +188,31 @@ object Formatters {
         return String(bytes)
     }
 
+    /** 封面角标用的紧凑计数：≥10 万与 ≥10 亿省略小数位，其余去掉无效 `.0`。 */
+    fun compactStatLabel(raw: String): String {
+        val text = raw.trim()
+        if (text.isEmpty()) return ""
+        val match = Regex("^([0-9]+(?:\\.[0-9]+)?)([万亿])$").find(text) ?: return text
+        val value = match.groupValues[1].toDoubleOrNull() ?: return text
+        val unit = match.groupValues[2]
+        return if (value >= 10.0) {
+            "${kotlin.math.round(value).toLong()}$unit"
+        } else {
+            "${match.groupValues[1].removeSuffix(".0")}$unit"
+        }
+    }
+
+    /** 封面角标用的紧凑时长：超过 1 小时去掉小时前导 `0`（`01:31:44` -> `1:31:44`）。 */
+    fun compactDurationLabel(raw: String): String {
+        val text = raw.trim()
+        val parts = text.split(':')
+        if (parts.size == 3 && parts[0].length == 2 && parts[0].startsWith('0')) {
+            val hour = parts[0].toIntOrNull() ?: return text
+            return "$hour:${parts[1]}:${parts[2]}"
+        }
+        return text
+    }
+
     /** 接口会用 `-` 这类占位表示数量未知，这种文本不该出现在界面上，返回空串让调用方跳过。 */
     fun statLabelOrBlank(raw: String): String =
         raw.trim().takeIf { label -> label.any { it.isDigit() } }.orEmpty()

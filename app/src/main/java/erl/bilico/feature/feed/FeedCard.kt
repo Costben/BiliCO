@@ -30,12 +30,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -121,7 +124,7 @@ private data class FeedCardMetrics(
 
             else -> FeedCardMetrics(
                 edgeInset = 3.dp,
-                chipGap = 10.dp,
+                chipGap = 4.dp,
                 chipFontSize = 10.sp,
                 chipIconSize = 10.dp,
                 chipPaddingH = 4.dp,
@@ -190,42 +193,22 @@ internal fun FeedCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-            // 底部一行：左边统计角标、右边时长。统计那侧是带权重的槽位，
-            // 数字再长也只会在自己槽位里截断，不会顶到时长上。
-            Row(
+            // 底部一行：整数化紧凑格式 + 放不下时自动隐藏弹幕保「播放+时长」，杜绝 4.... 截断。
+            val compactPlay = remember(video.playCountText) { Formatters.compactStatLabel(video.playCountText) }
+            val compactDanmaku = remember(video.danmakuText, metrics.showDanmakuOnCover) {
+                if (metrics.showDanmakuOnCover) Formatters.compactStatLabel(video.danmakuText) else ""
+            }
+            val compactDuration = remember(video.durationText) { Formatters.compactDurationLabel(video.durationText) }
+            CoverBottomBadges(
+                playText = compactPlay,
+                danmakuText = compactDanmaku,
+                durationText = compactDuration,
+                metrics = metrics,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .padding(metrics.edgeInset),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = metrics.chipGap),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    CoverStats(
-                        playText = video.playCountText,
-                        danmakuText = if (metrics.showDanmakuOnCover) video.danmakuText else "",
-                        fontSize = metrics.chipFontSize,
-                        iconSize = metrics.chipIconSize,
-                        paddingHorizontal = metrics.chipPaddingH,
-                    )
-                }
-                if (video.durationText.isNotBlank()) {
-                    Text(
-                        text = video.durationText,
-                        modifier = Modifier
-                            .clip(CoverChipShape)
-                            .background(CoverChipBackground)
-                            .padding(horizontal = metrics.chipPaddingH, vertical = 1.dp),
-                        fontSize = metrics.chipFontSize,
-                        color = Color.White,
-                        maxLines = 1,
-                    )
-                }
-            }
+            )
         }
 
         Column(
@@ -303,7 +286,69 @@ internal fun FeedCard(
 private val CoverChipShape = SquircleShape(4.dp)
 private val CoverChipBackground = Color(0x80000000)
 
-/** 封面左下角的统计角标：播放量与弹幕数放在同一枚半透明胶囊里，中间只留一点缝。 */
+/** 封面底部角标排布：优先完整展示「播放 + 弹幕 + 时长」，放不下时整项隐去弹幕而非截成省略号。 */
+@Composable
+private fun CoverBottomBadges(
+    playText: String,
+    danmakuText: String,
+    durationText: String,
+    metrics: FeedCardMetrics,
+    modifier: Modifier = Modifier,
+) {
+    if (playText.isBlank() && danmakuText.isBlank() && durationText.isBlank()) return
+    Layout(
+        modifier = modifier,
+        content = {
+            if (playText.isNotBlank() && danmakuText.isNotBlank()) {
+                Box(Modifier.layoutId("playDm")) {
+                    CoverStats(playText, danmakuText, metrics.chipFontSize, metrics.chipIconSize, metrics.chipPaddingH)
+                }
+            }
+            if (playText.isNotBlank()) {
+                Box(Modifier.layoutId("playOnly")) {
+                    CoverStats(playText, "", metrics.chipFontSize, metrics.chipIconSize, metrics.chipPaddingH)
+                }
+            } else if (danmakuText.isNotBlank()) {
+                Box(Modifier.layoutId("dmOnly")) {
+                    CoverStats("", danmakuText, metrics.chipFontSize, metrics.chipIconSize, metrics.chipPaddingH)
+                }
+            }
+            if (durationText.isNotBlank()) {
+                Box(Modifier.layoutId("dur")) {
+                    Text(
+                        text = durationText,
+                        modifier = Modifier
+                            .clip(CoverChipShape)
+                            .background(CoverChipBackground)
+                            .padding(horizontal = metrics.chipPaddingH, vertical = 1.dp),
+                        fontSize = metrics.chipFontSize,
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        },
+    ) { measurables, constraints ->
+        val gapPx = metrics.chipGap.roundToPx()
+        val durPlaceable = measurables.firstOrNull { it.layoutId == "dur" }?.measure(Constraints())
+        val durWidth = durPlaceable?.width ?: 0
+        val leftBudget = (constraints.maxWidth - durWidth - if (durPlaceable != null) gapPx else 0).coerceAtLeast(0)
+        val fullLeft = measurables.firstOrNull { it.layoutId == "playDm" }
+            ?.measure(Constraints())
+            ?.takeIf { it.width <= leftBudget }
+        val finalLeft = fullLeft ?: (measurables.firstOrNull { it.layoutId == "playOnly" }
+            ?: measurables.firstOrNull { it.layoutId == "dmOnly" })
+            ?.measure(Constraints(maxWidth = leftBudget))
+        val height = maxOf(finalLeft?.height ?: 0, durPlaceable?.height ?: 0)
+        layout(constraints.maxWidth, height) {
+            finalLeft?.placeRelative(0, height - finalLeft.height)
+            durPlaceable?.placeRelative(constraints.maxWidth - durWidth, height - durPlaceable.height)
+        }
+    }
+}
+
+/** 封面左下角的统计角标：播放量与弹幕数放在同一枚半透明胶囊里，中间留 4dp 缝。 */
 @Composable
 private fun CoverStats(
     playText: String,
@@ -328,11 +373,12 @@ private fun CoverStats(
                 fontSize = fontSize,
                 color = Color.White,
                 maxLines = 1,
+                softWrap = false,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         if (danmakuText.isNotBlank()) {
-            if (playText.isNotBlank()) Spacer(Modifier.width(6.dp))
+            if (playText.isNotBlank()) Spacer(Modifier.width(4.dp))
             Icon(DanmakuStatIcon, null, Modifier.size(iconSize), tint = Color.White)
             Spacer(Modifier.width(2.dp))
             Text(
@@ -340,6 +386,7 @@ private fun CoverStats(
                 fontSize = fontSize,
                 color = Color.White,
                 maxLines = 1,
+                softWrap = false,
                 overflow = TextOverflow.Ellipsis,
             )
         }
