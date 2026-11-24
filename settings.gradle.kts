@@ -17,13 +17,25 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // COUI 17 本地构件仓：优先 ../coui 的最新构建产物，其次稳定副本兜底。
-        // 目录不存在时 Gradle 视作空仓库，不影响远端解析。
-        listOf(
-            "coui/build/repository/local",
-            "coui-local-repo",
-        ).forEach { path ->
-            maven { url = uri(rootDir.parentFile.resolve(path)) }
+        // COUI 17：优先本机 ../coui/build/repository/local，
+        // 外部环境或指定 -Pcoui.useRemote=true 时自动回退到 Costben/coui17 的 maven-repo 孤儿分支。
+        val localCouiRepo = rootDir.parentFile.resolve("coui/build/repository/local")
+        val forceRemoteCoui = providers.gradleProperty("coui.useRemote").orNull.equals("true", ignoreCase = true)
+        exclusiveContent {
+            forRepository {
+                maven {
+                    if (localCouiRepo.isDirectory && !forceRemoteCoui) {
+                        name = "localCouiRepo"
+                        url = uri(localCouiRepo)
+                    } else {
+                        name = "coui17MavenRepo"
+                        url = uri("https://raw.githubusercontent.com/Costben/coui17/maven-repo/coui-repo")
+                    }
+                }
+            }
+            filter {
+                includeGroup("io.github.suqi8.coui.kmp")
+            }
         }
     }
 }
