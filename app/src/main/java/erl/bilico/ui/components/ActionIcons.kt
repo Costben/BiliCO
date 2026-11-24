@@ -210,3 +210,30 @@ internal val TopBarMoreIcon: ImageVector by lazy {
         ),
     )
 }
+
+/** 统计信息浮窗图标（未开启态）：外框屏幕 + 右下角空心悬浮小窗。 */
+internal val FloatingWindowOutlineIcon: ImageVector by lazy {
+    unifiedStrokeIcon(
+        name = "FloatingWindowOutline",
+        paths = listOf(
+            roundedRectPath(3.6f, 4.8f, 16.8f, 14.4f, 3.2f),
+            roundedRectPath(10.8f, 11.0f, 6.8f, 5.4f, 1.4f),
+        ),
+    )
+}
+
+/** 统计信息浮窗图标（已开启态）：外框屏幕 + 右下角实心悬浮小窗。 */
+internal val FloatingWindowActiveIcon: ImageVector by lazy {
+    dualToneVector(
+        name = "FloatingWindowActive",
+        layers = listOf(
+            VectorLayer(
+                path = roundedRectPath(3.6f, 4.8f, 16.8f, 14.4f, 3.2f),
+                strokeWidth = UNIFIED_STROKE_WIDTH,
+            ),
+            VectorLayer(
+                path = roundedRectPath(10.4f, 10.6f, 7.2f, 5.8f, 1.6f),
+            ),
+        ),
+    )
+}

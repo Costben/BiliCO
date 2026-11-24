@@ -1,8 +1,6 @@
 package erl.bilico.feature.video
 
 import android.net.Uri
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -26,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,6 +38,8 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.settings.StatsOverlayField
 import erl.bilico.di.LocalAppContainer
+import erl.bilico.ui.components.FloatingWindowActiveIcon
+import erl.bilico.ui.components.FloatingWindowOutlineIcon
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -164,24 +162,24 @@ internal fun PlayerStatsDialog(
                     .padding(horizontal = 20.dp, vertical = 4.dp),
             ) {
                 if (statsOverlay != null) {
-                    Box(
+                    HighlightedIconButton(
+                        onClick = {
+                            statsOverlay.setEnabled(!floatingEnabled)
+                            dismiss()
+                        },
                         modifier = Modifier
                             .align(Alignment.CenterStart)
-                            .clip(CircleShape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                statsOverlay.setEnabled(!floatingEnabled)
-                                dismiss()
-                            }
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
                             .testTag("stats_floating_toggle"),
                     ) {
-                        Text(
-                            text = if (floatingEnabled) "关闭浮窗" else "浮窗",
-                            style = COUITheme.textStyles.body2.copy(fontWeight = FontWeight.Medium),
-                            color = scheme.primary,
+                        Icon(
+                            imageVector = if (floatingEnabled) {
+                                FloatingWindowActiveIcon
+                            } else {
+                                FloatingWindowOutlineIcon
+                            },
+                            contentDescription = if (floatingEnabled) "关闭浮窗" else "开启浮窗",
+                            modifier = Modifier.size(22.dp),
+                            tint = if (floatingEnabled) scheme.primary else scheme.onSurface,
                         )
                     }
                 }

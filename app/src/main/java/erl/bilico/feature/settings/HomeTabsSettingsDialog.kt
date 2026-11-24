@@ -1,6 +1,5 @@
 package erl.bilico.feature.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,7 +38,11 @@ import erl.bilico.data.settings.HomeTabsLayout
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Refresh
+import io.github.suqi8.coui.kmp.layout.SheetActionButton
 import io.github.suqi8.coui.kmp.layout.SheetCloseCapsule
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
@@ -78,16 +82,14 @@ internal fun HomeTabsSettingsDialog(
                     color = COUITheme.colorScheme.onSurface,
                     modifier = Modifier.align(Alignment.Center),
                 )
-                Text(
-                    text = "恢复默认",
-                    style = COUITheme.textStyles.body2.copy(fontWeight = FontWeight.Medium),
-                    color = COUITheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .testTag("home_tabs_reset")
-                        .clickable { onReset() }
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
-                )
+            }
+        },
+        endAction = {
+            SheetActionButton(
+                onClick = onReset,
+                modifier = Modifier.testTag("home_tabs_reset"),
+            ) {
+                Icon(COUIIcons.Refresh, "恢复默认", Modifier.size(24.dp))
             }
         },
         onDismissRequest = { show = false },
