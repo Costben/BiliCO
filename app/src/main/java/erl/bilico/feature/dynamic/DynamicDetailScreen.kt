@@ -59,6 +59,8 @@ import erl.bilico.feature.comment.ReplyDetailOverlay
 import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.ExpandEasing
+import erl.bilico.ui.LocalImageOriginRowKey
+import erl.bilico.ui.LocalImageOriginScope
 import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
@@ -75,6 +77,8 @@ import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
+import erl.bilico.ui.rememberImageOriginScope
+import erl.bilico.ui.reportBottomBarTop
 import erl.bilico.ui.reportTopBarBottom
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBarDefaults
@@ -200,9 +204,13 @@ fun DynamicDetailScreen(
     val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
     val topBarBounds = remember { TopBarBounds() }
     val rowScrollState = remember(listState) { listState.asRowScrollState() }
+    val imageOriginScope = rememberImageOriginScope(listState, topBarBounds)
 
     Box(Modifier.fillMaxSize().background(pageColor)) {
-        CompositionLocalProvider(LocalTopBarBounds provides topBarBounds) {
+        CompositionLocalProvider(
+            LocalTopBarBounds provides topBarBounds,
+            LocalImageOriginScope provides imageOriginScope,
+        ) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -235,6 +243,7 @@ fun DynamicDetailScreen(
 
                     else -> {
                         item(key = "dynamic-card") {
+                            CompositionLocalProvider(LocalImageOriginRowKey provides "dynamic-card") {
                             DynamicCard(
                                 item = currentItem,
                                 isDetail = true,
@@ -292,10 +301,12 @@ fun DynamicDetailScreen(
                                 rowScrollState = rowScrollState,
                                 rowKey = "dynamic-card",
                             )
+                            }
                         }
 
                         if (commentViewModel != null && commentState != null) {
                             item(key = "comment-section") {
+                                CompositionLocalProvider(LocalImageOriginRowKey provides "comment-section") {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
@@ -332,18 +343,25 @@ fun DynamicDetailScreen(
                                             EmptyState("还没有评论")
                                         }
 
-                                        else -> Column(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalArrangement = Arrangement.spacedBy(18.dp),
-                                        ) {
+                                        else -> {
                                             val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
                                             val visibleComments = remember(commentState.items, blocks) {
                                                 commentState.items.mapNotNull { blocks.filterCommentTree(it) }
                                             }
-                                            androidx.compose.runtime.CompositionLocalProvider(
-                                                erl.bilico.feature.comment.LocalCommentTarget provides (commentOid to commentType),
+                                            val sortTransition = erl.bilico.feature.comment.rememberSortCrossfadeTransition(
+                                                renderedSort = commentState.renderedSort,
+                                                items = visibleComments,
+                                                resetKey = commentOid,
+                                            )
+                                            Box(Modifier.fillMaxWidth()) {
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalArrangement = Arrangement.spacedBy(18.dp),
                                             ) {
-                                            visibleComments.forEach { comment ->
+                                                androidx.compose.runtime.CompositionLocalProvider(
+                                                    erl.bilico.feature.comment.LocalCommentTarget provides (commentOid to commentType),
+                                                ) {
+                                                sortTransition.currentItems.forEach { comment ->
                                                 BiliCommentItem(
                                                     comment = comment,
                                                     onLike = {
@@ -376,36 +394,46 @@ fun DynamicDetailScreen(
                                                     onDelete = { commentViewModel.deleteComment(comment) },
                                                     onClick = { replyThread.open(comment) },
                                                 )
-                                            }
-                                            }
-                                            when {
-                                                commentState.isLoadingMore -> Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(40.dp),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    CircularProgressIndicator(
-                                                        modifier = Modifier.size(18.dp),
-                                                        size = 18.dp,
-                                                    )
                                                 }
+                                                }
+                                                when {
+                                                    commentState.isLoadingMore -> Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(40.dp),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        CircularProgressIndicator(
+                                                            modifier = Modifier.size(18.dp),
+                                                            size = 18.dp,
+                                                        )
+                                                    }
 
-                                                commentState.isEnd -> Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(36.dp),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    Text(
-                                                        text = "没有更多评论了",
-                                                        style = COUITheme.textStyles.footnote2,
-                                                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                                                    )
+                                                    commentState.isEnd -> Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(36.dp),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        Text(
+                                                            text = "没有更多评论了",
+                                                            style = COUITheme.textStyles.footnote2,
+                                                            color = COUITheme.colorScheme.onSurfaceSecondary,
+                                                        )
+                                                    }
                                                 }
+                                            }
+                                            erl.bilico.feature.comment.SortCrossfadeColumnOverlay(
+                                                exitingComments = sortTransition.exitingItems,
+                                                exitAlpha = sortTransition.exitAlpha,
+                                                oid = commentOid,
+                                                type = commentType,
+                                                currentMid = currentMid,
+                                            )
                                             }
                                         }
                                     }
+                                }
                                 }
                             }
                         }
@@ -491,6 +519,7 @@ fun DynamicDetailScreen(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .offset(y = -fabLift)
+                            .reportBottomBarTop(topBarBounds)
                             .padding(
                                 end = BottomFloatingAccessoryNavigationBarDefaults.PaddingHorizontal,
                                 bottom = (BottomFloatingNavigationBarDefaults.MinHeightWithoutPaddingVertical -

@@ -60,11 +60,15 @@ internal class ReplyDetailState(
     var rootComment by mutableStateOf(initialRoot)
     var sort by mutableStateOf(ReplySort.Old)
         private set
+    var renderedSort by mutableStateOf(ReplySort.Old)
+        private set
     var items by mutableStateOf<List<Comment>>(emptyList())
         private set
     var totalCount by mutableIntStateOf(initialRoot.replyCount)
         private set
     var isLoading by mutableStateOf(true)
+        private set
+    var isSwitchingSort by mutableStateOf(false)
         private set
     var isEnd by mutableStateOf(false)
         private set
@@ -91,19 +95,26 @@ internal class ReplyDetailState(
     fun selectSort(nextSort: ReplySort) {
         if (sort == nextSort) return
         sort = nextSort
-        loadInitial(nextSort)
+        loadInitial(nextSort, preserveExisting = items.isNotEmpty())
     }
 
-    fun loadInitial(targetSort: ReplySort = sort) {
+    fun loadInitial(targetSort: ReplySort = sort, preserveExisting: Boolean = false) {
         generation += 1
         val reqGen = generation
         val rootId = rootComment.id
-        items = emptyList()
-        forwardPage = 0
-        nextNewPage = 0
-        isEnd = false
+        if (!preserveExisting) {
+            items = emptyList()
+            forwardPage = 0
+            nextNewPage = 0
+            isEnd = false
+            renderedSort = targetSort
+            isLoading = true
+            isSwitchingSort = false
+        } else {
+            isSwitchingSort = true
+            isLoading = false
+        }
         error = null
-        isLoading = true
         scope.launch {
             if (targetSort == ReplySort.Hot || targetSort == ReplySort.Old) {
                 container.comments.replies(oid, rootId, page = 1, pageSize = SUB_REPLY_PAGE_SIZE, type = type)
@@ -112,13 +123,24 @@ internal class ReplyDetailState(
                         knownTotal = page.total
                         totalCount = maxOf(totalCount, page.total, page.replies.size)
                         forwardPage = 1
+                        nextNewPage = 0
                         items = orderSubReplies(page.replies, targetSort).distinctBy { it.id }
                         isEnd = page.replies.isEmpty() || page.replies.size >= page.total
+                        renderedSort = targetSort
                     }
                     .onFailure { failure ->
-                        if (reqGen == generation) error = failure.message ?: "回复加载失败"
+                        if (reqGen != generation) return@onFailure
+                        if (preserveExisting) {
+                            sort = renderedSort
+                            showToast(failure.message ?: "回复加载失败")
+                        } else {
+                            error = failure.message ?: "回复加载失败"
+                        }
                     }
-                if (reqGen == generation) isLoading = false
+                if (reqGen == generation) {
+                    isLoading = false
+                    isSwitchingSort = false
+                }
                 return@launch
             }
 
@@ -132,8 +154,14 @@ internal class ReplyDetailState(
                     totalCount = maxOf(totalCount, page.total, page.replies.size)
                     firstPageReplies = page.replies
                 }.onFailure { failure ->
-                    error = failure.message ?: "回复加载失败"
+                    if (preserveExisting) {
+                        sort = renderedSort
+                        showToast(failure.message ?: "回复加载失败")
+                    } else {
+                        error = failure.message ?: "回复加载失败"
+                    }
                     isLoading = false
+                    isSwitchingSort = false
                     return@launch
                 }
             }
@@ -142,9 +170,12 @@ internal class ReplyDetailState(
             val lastPage = ((total + SUB_REPLY_PAGE_SIZE - 1) / SUB_REPLY_PAGE_SIZE).coerceAtLeast(1)
             if (lastPage == 1 && firstPageReplies != null) {
                 items = firstPageReplies.sortedByDescending { it.timeSec }.distinctBy { it.id }
+                forwardPage = 0
                 nextNewPage = 0
                 isEnd = true
+                renderedSort = targetSort
                 isLoading = false
+                isSwitchingSort = false
                 return@launch
             }
 
@@ -163,17 +194,28 @@ internal class ReplyDetailState(
                         items = tailSorted.distinctBy { it.id }
                         nextNewPage = lastPage - 1
                     }
+                    forwardPage = 0
                     isEnd = nextNewPage < 1
+                    renderedSort = targetSort
                 }
                 .onFailure { failure ->
-                    if (reqGen == generation) error = failure.message ?: "回复加载失败"
+                    if (reqGen != generation) return@onFailure
+                    if (preserveExisting) {
+                        sort = renderedSort
+                        showToast(failure.message ?: "回复加载失败")
+                    } else {
+                        error = failure.message ?: "回复加载失败"
+                    }
                 }
-            if (reqGen == generation) isLoading = false
+            if (reqGen == generation) {
+                isLoading = false
+                isSwitchingSort = false
+            }
         }
     }
 
     fun loadMore() {
-        if (isLoading || isEnd) return
+        if (isLoading || isSwitchingSort || isEnd) return
         val reqGen = generation
         val activeSort = sort
         val rootId = rootComment.id

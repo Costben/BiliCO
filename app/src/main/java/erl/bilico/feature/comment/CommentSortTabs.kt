@@ -5,9 +5,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import erl.bilico.data.model.Comment
 import erl.bilico.data.model.CommentSort
 import io.github.suqi8.coui.kmp.basic.TabRowDefaults
 import io.github.suqi8.coui.kmp.basic.TabRowWithContour
+
+data class CommentUiState(
+    val items: List<Comment> = emptyList(),
+    val isLoading: Boolean = true,
+    val isSwitchingSort: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val isEnd: Boolean = false,
+    val isSending: Boolean = false,
+    val error: String? = null,
+    val total: Int = 0,
+    val message: String? = null,
+    val sort: CommentSort = CommentSort.Hot,
+    val renderedSort: CommentSort = CommentSort.Hot,
+    val focusRootId: Long = 0L,
+    val pendingReplyDialog: Pair<Comment, Long>? = null,
+)
 
 /** 评论排序迷你分段标签栏（最热 / 最新），对应 COUI `SegmentButton.Tiny` 规格。 */
 @Composable

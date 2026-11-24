@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -49,8 +47,6 @@ import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.inputCapsuleGlass
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
-import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalToolbarBackdropBlurFraction
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.Backdrop
@@ -58,8 +54,6 @@ import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.ProgressiveBlur
 import io.github.suqi8.coui.kmp.blur.isBlurEnabled
 import io.github.suqi8.coui.kmp.blur.progressiveTextureBlur
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.basic.Close
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 private const val TOP_BAR_ENGINE_SIGMA_SCALE = 0.45f
@@ -193,7 +187,6 @@ internal fun ReplyDetailTopBar(
     scrollFraction: () -> Float,
     containerColor: Color,
     backdrop: Backdrop?,
-    onClose: () -> Unit,
     modifier: Modifier = Modifier,
     topInset: Dp = 0.dp,
 ) {
@@ -248,9 +241,8 @@ internal fun ReplyDetailTopBar(
                     modifier = Modifier
                         .layoutId("content")
                         .fillMaxWidth()
-                        .padding(start = 20.dp, top = topInset, end = 16.dp)
+                        .padding(start = 20.dp, top = topInset, end = 20.dp)
                         .height(48.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -261,17 +253,6 @@ internal fun ReplyDetailTopBar(
                         ),
                         color = COUITheme.colorScheme.onSurface,
                     )
-                    HighlightedIconButton(
-                        onClick = onClose,
-                        backdrop = backdrop,
-                    ) {
-                        Icon(
-                            imageVector = COUIIcons.Basic.Close,
-                            contentDescription = "关闭",
-                            tint = COUITheme.colorScheme.onSurfaceSecondary,
-                            modifier = Modifier.size(19.dp),
-                        )
-                    }
                 }
             }
         },
