@@ -24,12 +24,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.settings.PlayerTopBarItem
+import erl.bilico.ui.components.PiliGlyph
+import erl.bilico.ui.components.PiliIcon
 import erl.bilico.ui.components.TopBarAudioOnlyIcon
 import erl.bilico.ui.components.TopBarBackIcon
 import erl.bilico.ui.components.TopBarCastIcon
-import erl.bilico.ui.components.TopBarDmOffIcon
-import erl.bilico.ui.components.TopBarDmOnIcon
-import erl.bilico.ui.components.TopBarDmSettingsIcon
 import erl.bilico.ui.components.TopBarHomeIcon
 import erl.bilico.ui.components.TopBarMoreIcon
 import erl.bilico.ui.components.TopBarPipIcon
@@ -67,6 +66,30 @@ internal fun PlayerTopBarIconButton(
     }
 }
 
+/** 播放器顶栏字体图标按钮：40dp 触摸区，按 0.80 比例换算字号以对齐线性图标的视觉占框。 */
+@Composable
+private fun PlayerTopBarGlyphButton(
+    glyph: String,
+    label: String,
+    onClick: () -> Unit,
+    tint: Color = Color.White,
+) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        PiliIcon(
+            glyph = glyph,
+            contentDescription = label,
+            size = 16.dp,
+            tint = tint,
+        )
+    }
+}
+
 /** 每个顶栏按钮的图形，设置页里也用它做行首图标；全套统一 1.80dp 线性与同等视觉占框。 */
 @Composable
 internal fun PlayerTopBarItemIcon(
@@ -79,8 +102,7 @@ internal fun PlayerTopBarItemIcon(
         PlayerTopBarItem.BACK -> TopBarBackIcon
         PlayerTopBarItem.TITLE -> COUIIcons.Notes
         PlayerTopBarItem.WATCH_LATER -> TopBarWatchLaterIcon
-        PlayerTopBarItem.DANMAKU_SETTINGS -> TopBarDmSettingsIcon
-        PlayerTopBarItem.DANMAKU_TOGGLE -> TopBarDmOnIcon
+        PlayerTopBarItem.DANMAKU_SETTINGS, PlayerTopBarItem.DANMAKU_TOGGLE -> null
         PlayerTopBarItem.CAST -> TopBarCastIcon
         PlayerTopBarItem.SHARE -> TopBarShareIcon
         PlayerTopBarItem.HOME -> TopBarHomeIcon
@@ -90,7 +112,14 @@ internal fun PlayerTopBarItemIcon(
         PlayerTopBarItem.SPONSOR -> TopBarSponsorIcon
         PlayerTopBarItem.MORE -> TopBarMoreIcon
     }
-    Icon(vector, null, modifier.size(size), tint)
+    if (vector != null) {
+        Icon(vector, null, modifier.size(size), tint)
+    } else {
+        val glyph = if (item == PlayerTopBarItem.DANMAKU_SETTINGS) PiliGlyph.DmSettings else PiliGlyph.DmOn
+        Box(modifier.size(size), contentAlignment = Alignment.Center) {
+            PiliIcon(glyph, null, size = size * 0.80f, tint = tint)
+        }
+    }
 }
 
 /** 顶栏按钮的回调集合，[PlayerTopBar] 内部逐个按条目取用。 */
@@ -213,11 +242,11 @@ private fun RowScope.Item(
         }
         // 弹幕的两个按钮只在全屏出现：竖屏的弹幕设置和开关在下方「发弹幕」输入框里。
         PlayerTopBarItem.DANMAKU_SETTINGS -> if (fullscreen) actions.onDanmakuSettings?.let {
-            PlayerTopBarIconButton(TopBarDmSettingsIcon, "弹幕设置", it)
+            PlayerTopBarGlyphButton(PiliGlyph.DmSettings, "弹幕设置", it)
         }
         PlayerTopBarItem.DANMAKU_TOGGLE -> if (fullscreen) {
-            PlayerTopBarIconButton(
-                icon = if (danmakuEnabled) TopBarDmOnIcon else TopBarDmOffIcon,
+            PlayerTopBarGlyphButton(
+                glyph = if (danmakuEnabled) PiliGlyph.DmOn else PiliGlyph.DmOff,
                 label = if (danmakuEnabled) "关闭弹幕" else "开启弹幕",
                 onClick = actions.onToggleDanmaku,
                 tint = if (danmakuEnabled) Color.White else Color.White.copy(alpha = 0.45f),

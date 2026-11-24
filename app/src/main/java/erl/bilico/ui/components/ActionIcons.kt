@@ -134,41 +134,6 @@ internal val TopBarWatchLaterIcon: ImageVector by lazy {
     )
 }
 
-internal val TopBarDmSettingsIcon: ImageVector by lazy {
-    unifiedStrokeIcon(
-        name = "TopBarDmSettings",
-        paths = listOf(
-            roundedRectPath(4.4f, 5.6f, 15.2f, 12.8f, 3.2f),
-            "M8.4,10.0H15.6",
-            "M8.4,14.0H12.4",
-            circlePath(14.8f, 14.0f, 1.3f),
-        ),
-    )
-}
-
-internal val TopBarDmOnIcon: ImageVector by lazy {
-    unifiedStrokeIcon(
-        name = "TopBarDmOn",
-        paths = listOf(
-            roundedRectPath(4.4f, 5.6f, 15.2f, 12.8f, 3.2f),
-            "M8.2,10.0H15.8",
-            "M8.2,14.0H13.4",
-        ),
-    )
-}
-
-internal val TopBarDmOffIcon: ImageVector by lazy {
-    unifiedStrokeIcon(
-        name = "TopBarDmOff",
-        paths = listOf(
-            roundedRectPath(4.4f, 5.6f, 15.2f, 12.8f, 3.2f),
-            "M8.2,10.0H11.5",
-            "M8.2,14.0H12.8",
-            "M5.4,18.6L18.6,5.4",
-        ),
-    )
-}
-
 internal val TopBarCastIcon: ImageVector by lazy {
     unifiedStrokeIcon(
         name = "TopBarCast",
