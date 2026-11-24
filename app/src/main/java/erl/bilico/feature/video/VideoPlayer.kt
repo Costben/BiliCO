@@ -494,6 +494,8 @@ internal fun VideoPlayer(
                         icon = if (isPlaying) COUIIcons.Pause else COUIIcons.Play,
                         label = if (isPlaying) "暂停" else "播放",
                         onClick = onPlayPause,
+                        buttonSize = if (fullscreen) 40.dp else 36.dp,
+                        iconPadding = if (fullscreen) 9.dp else 7.dp,
                     )
                     if (liveMode) {
                         Text(

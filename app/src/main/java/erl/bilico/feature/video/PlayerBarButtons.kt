@@ -60,22 +60,24 @@ import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 播放器顶栏的图标按钮：40dp 触摸区，字形四周留 9dp。 */
+/** 播放器顶栏与底栏的图标按钮：默认 40dp 触摸区，字形四周留 9dp；竖屏底栏可收紧外圈留白保持 22dp 图标大小。 */
 @Composable
 internal fun PlayerIconButton(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
     tint: Color = Color.White,
+    buttonSize: Dp = 40.dp,
+    iconPadding: Dp = 9.dp,
 ) {
     Icon(
         imageVector = icon,
         contentDescription = label,
         modifier = Modifier
-            .size(40.dp)
+            .size(buttonSize)
             .clip(CircleShape)
             .clickable(onClick = onClick)
-            .padding(9.dp),
+            .padding(iconPadding),
         tint = tint,
     )
 }
@@ -197,15 +199,18 @@ internal fun ControlLabel(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    horizontalPadding: Dp = 8.dp,
 ) {
     Text(
         text = text,
         modifier = modifier
             .clip(SquircleShape(6.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = horizontalPadding, vertical = 6.dp),
         style = COUITheme.textStyles.footnote1,
         color = Color.White,
+        maxLines = 1,
+        softWrap = false,
     )
 }
 
@@ -350,6 +355,7 @@ internal fun PlayerBottomMenuControl(
     stageCoords: LayoutCoordinates?,
     onAnchorEndChange: (Dp) -> Unit,
     modifier: Modifier = Modifier,
+    horizontalPadding: Dp = 8.dp,
 ) {
     val density = LocalDensity.current
     Box(
@@ -360,7 +366,7 @@ internal fun PlayerBottomMenuControl(
             }
         },
     ) {
-        ControlLabel(text = text, onClick = onOpen)
+        ControlLabel(text = text, onClick = onOpen, horizontalPadding = horizontalPadding)
         if (!fullscreen) {
             CouiPopupMenu(
                 show = menuOpen,
@@ -402,6 +408,10 @@ internal fun RowScope.PlayerBottomTrailingControls(
     onQualityEndChange: (Dp) -> Unit,
     onToggleFullscreen: () -> Unit,
 ) {
+    val labelPaddingH = if (fullscreen) 8.dp else 4.dp
+    val compactGap = if (fullscreen) 4.dp else 0.dp
+    val wideGap = if (fullscreen) 6.dp else 0.dp
+
     if (!liveMode && episodesMenuItems.isNotEmpty()) {
         PlayerBottomMenuControl(
             text = "选集",
@@ -413,7 +423,8 @@ internal fun RowScope.PlayerBottomTrailingControls(
             maxHeight = 350.dp,
             stageCoords = stageCoords,
             onAnchorEndChange = onEpisodesEndChange,
-            modifier = Modifier.padding(start = 4.dp),
+            modifier = Modifier.padding(start = compactGap),
+            horizontalPadding = labelPaddingH,
         )
     }
     if (subtitleLabel != null) {
@@ -426,7 +437,8 @@ internal fun RowScope.PlayerBottomTrailingControls(
             items = subtitleMenuItems,
             stageCoords = stageCoords,
             onAnchorEndChange = onSubtitleEndChange,
-            modifier = Modifier.padding(start = 4.dp),
+            modifier = Modifier.padding(start = compactGap),
+            horizontalPadding = labelPaddingH,
         )
     }
     if (!liveMode) {
@@ -440,11 +452,17 @@ internal fun RowScope.PlayerBottomTrailingControls(
             headerContent = { SpeedLockMenuRow(locked = speedLocked, onToggleLock = onToggleSpeedLock) },
             stageCoords = stageCoords,
             onAnchorEndChange = onSpeedEndChange,
-            modifier = Modifier.padding(start = 6.dp),
+            modifier = Modifier.padding(start = wideGap),
+            horizontalPadding = labelPaddingH,
         )
     } else {
         if (onSelectLine != null) {
-            ControlLabel(text = "线路", onClick = onSelectLine, modifier = Modifier.padding(start = 4.dp))
+            ControlLabel(
+                text = "线路",
+                onClick = onSelectLine,
+                modifier = Modifier.padding(start = compactGap),
+                horizontalPadding = labelPaddingH,
+            )
         }
         if (onSuperChatsClick != null) {
             PlayerSuperChatButton(count = superChatCount, onClick = onSuperChatsClick)
@@ -459,12 +477,15 @@ internal fun RowScope.PlayerBottomTrailingControls(
         items = qualityMenuItems,
         stageCoords = stageCoords,
         onAnchorEndChange = onQualityEndChange,
-        modifier = Modifier.padding(start = 6.dp),
+        modifier = Modifier.padding(start = wideGap),
+        horizontalPadding = labelPaddingH,
     )
     PlayerIconButton(
         icon = if (fullscreen) FullscreenExitIcon else FullscreenIcon,
         label = if (fullscreen) "退出全屏" else "全屏",
         onClick = onToggleFullscreen,
+        buttonSize = if (fullscreen) 40.dp else 36.dp,
+        iconPadding = if (fullscreen) 9.dp else 7.dp,
     )
 }
 
