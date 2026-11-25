@@ -49,17 +49,33 @@ data class VideoDimension(
 }
 
 @Serializable
+data class VideoDescV2(
+    @SerialName("raw_text") val rawText: String = "",
+    val type: Int = 1,
+    @SerialName("biz_id") val bizId: Long = 0,
+)
+
+@Serializable
+data class VideoStaff(
+    val mid: Long = 0,
+    val name: String = "",
+    val title: String = "",
+)
+
+@Serializable
 data class ViewInfo(
     val bvid: String = "",
     val aid: Long = 0,
     val cid: Long = 0,
     val title: String = "",
     val desc: String = "",
+    @SerialName("desc_v2") val descV2: List<VideoDescV2>? = null,
     val pic: String = "",
     val pubdate: Long = 0,
     val duration: Int = 0,
     val dimension: VideoDimension? = null,
     val owner: VideoOwner = VideoOwner(),
+    val staff: List<VideoStaff>? = null,
     val stat: VideoStat = VideoStat(),
     val pages: List<VideoPage> = emptyList(),
     @SerialName("ugc_season") val ugcSeason: UgcSeason? = null,

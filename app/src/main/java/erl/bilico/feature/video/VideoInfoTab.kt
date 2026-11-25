@@ -303,9 +303,10 @@ private fun InfoContent(
                         val textWidthPx = with(density) {
                             (maxWidth - DESC_ICON_SIZE - DESC_ICON_GAP - DESC_END_RESERVE).roundToPx()
                         }
-                        val collapsedText = remember(descPreview, accent, textWidthPx) {
-                            collapsedDescText(measurer, descPreview, descStyle, accent, textWidthPx)
+                        val collapsedPrefix = remember(descPreview, accent, textWidthPx) {
+                            collapsedDescPrefix(measurer, descPreview, descStyle, accent, textWidthPx)
                         }
+                        val showFullDesc = expanded || collapsedPrefix == null
                         Row {
                             Icon(
                                 imageVector = COUIIcons.Info,
@@ -316,24 +317,19 @@ private fun InfoContent(
                                 tint = COUITheme.colorScheme.onSurfaceSecondary,
                             )
                             Spacer(Modifier.width(DESC_ICON_GAP))
-                            if (expanded) {
-                                RichCommentText(
-                                    content = desc,
-                                    emotes = emptyMap(),
-                                    selectable = true,
-                                    style = descStyle,
-                                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                                    prefixColor = hyperlinkColor(),
-                                )
-                            } else {
-                                Text(
-                                    text = collapsedText,
-                                    style = descStyle,
-                                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                                    maxLines = DESC_COLLAPSED_LINES,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
+                            RichCommentText(
+                                content = if (showFullDesc) desc else collapsedPrefix.orEmpty(),
+                                emotes = emptyMap(),
+                                mentions = detail.descMentions,
+                                selectable = expanded,
+                                style = descStyle,
+                                color = COUITheme.colorScheme.onSurfaceSecondary,
+                                prefixColor = hyperlinkColor(),
+                                suffixText = if (showFullDesc) null else "展开",
+                                suffixColor = accent,
+                                maxLines = if (showFullDesc) Int.MAX_VALUE else DESC_COLLAPSED_LINES,
+                                onOpenUser = onOpenUser,
+                            )
                         }
                     }
                 }

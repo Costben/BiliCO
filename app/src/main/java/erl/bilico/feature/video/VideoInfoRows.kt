@@ -234,26 +234,25 @@ internal fun VideoBvidRow(bvid: String, sponsorLabel: String? = null) {
 }
 
 /**
- * 收起态简介：整段塞得进两行就原样返回，塞不下就裁到恰好放得下「…展开」。
- * 交给省略号自己截断的话，「展开」会被一起吃掉，只剩一个孤零零的省略号。
+ * 收起态简介裁剪：整段塞得进两行返回 null（可直接走完整富文本展示，无需「…展开」），
+ * 塞不下时返回恰好放得下「…展开」的前缀文本。
  */
-internal fun collapsedDescText(
+internal fun collapsedDescPrefix(
     measurer: TextMeasurer,
     preview: String,
     style: TextStyle,
     accent: Color,
     widthPx: Int,
-): AnnotatedString {
+): String? {
     val maxWidth = widthPx.coerceAtLeast(1)
     val plain = AnnotatedString(preview)
-    // 先按整段量一次：多数简介本来就塞得进两行，量完直接返回，不再逐字试探。
     val baseLayout = measurer.measure(
         text = plain,
         style = style,
         maxLines = DESC_COLLAPSED_LINES,
         constraints = Constraints(maxWidth = maxWidth),
     )
-    if (!baseLayout.hasVisualOverflow) return plain
+    if (!baseLayout.hasVisualOverflow) return null
 
     fun fits(text: AnnotatedString): Boolean = !measurer.measure(
         text = text,
@@ -268,7 +267,6 @@ internal fun collapsedDescText(
         withStyle(SpanStyle(color = accent)) { append("展开") }
     }
 
-    // 第二行末尾那一格就是上限。二分只在它附近的一小段里做，量次数从 log2(全文) 降到常数。
     val lastLine = (DESC_COLLAPSED_LINES - 1)
         .coerceAtMost((baseLayout.lineCount - 1).coerceAtLeast(0))
     val lineEnd = baseLayout.getLineEnd(lastLine, visibleEnd = true).coerceIn(0, preview.length)
@@ -286,9 +284,8 @@ internal fun collapsedDescText(
         val mid = (low + high + 1) / 2
         if (fits(withSuffix(mid))) low = mid else high = mid - 1
     }
-    // 别把代理对劈开。
     val end = if (low in 1 until preview.length && Character.isLowSurrogate(preview[low])) low - 1 else low
-    return withSuffix(end)
+    return preview.take(end)
 }
 
 /** 简介下面那一栏：左边缩略图，右边标题、UP 行与播放弹幕数（三点菜单在右下角）。 */

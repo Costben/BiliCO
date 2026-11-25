@@ -85,6 +85,8 @@ fun RichCommentText(
     style: TextStyle = COUITheme.textStyles.body2,
     color: Color = COUITheme.colorScheme.onSurface,
     prefixColor: Color = hyperlinkColor(),
+    suffixText: String? = null,
+    suffixColor: Color = prefixColor,
     maxLines: Int = Int.MAX_VALUE,
     onOpenUser: ((Long) -> Unit)? = null,
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
@@ -116,6 +118,8 @@ fun RichCommentText(
         badgeLabel,
         compactEmotes,
         prefixColor,
+        suffixText,
+        suffixColor,
         smallPx,
         largePx,
         enableTimestamps,
@@ -275,6 +279,10 @@ fun RichCommentText(
                     inline = inline,
                 )
             }
+        }
+        if (!suffixText.isNullOrEmpty()) {
+            builder.append("…")
+            builder.withStyle(SpanStyle(color = suffixColor)) { append(suffixText) }
         }
         builder.toAnnotatedString() to inline
     }

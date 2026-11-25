@@ -3,10 +3,13 @@ package erl.bilico.data.repository
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.VideoCollection
+import erl.bilico.data.model.VideoDescV2
 import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.model.VideoEpisode
+import erl.bilico.data.model.VideoOwner
 import erl.bilico.data.model.VideoPart
 import erl.bilico.data.model.VideoPreviewShot
+import erl.bilico.data.model.VideoStaff
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.network.WbiKeyManager
@@ -86,12 +89,19 @@ class VideoRepository(
                     VideoCollection(id = it, title = season.title, episodes = episodes)
                 }
             }
+            val (resolvedDesc, descMentions) = parseVideoDesc(
+                rawDesc = data.desc,
+                descV2 = data.descV2,
+                owner = data.owner,
+                staff = data.staff,
+            )
             VideoDetail(
                 bvid = data.bvid,
                 aid = data.aid,
                 cid = data.cid.takeIf { it > 0 } ?: pages.firstOrNull()?.cid ?: 0L,
                 title = data.title,
-                desc = data.desc,
+                desc = resolvedDesc,
+                descMentions = descMentions,
                 cover = data.pic,
                 pubdate = data.pubdate,
                 durationSec = data.duration,
@@ -113,6 +123,56 @@ class VideoRepository(
                     ?: 0f,
             )
         }
+    }
+
+    private fun parseVideoDesc(
+        rawDesc: String,
+        descV2: List<VideoDescV2>?,
+        owner: VideoOwner,
+        staff: List<VideoStaff>?,
+    ): Pair<String, Map<String, Long>> {
+        val mentions = LinkedHashMap<String, Long>()
+        descV2.orEmpty().forEach { item ->
+            if (item.type == 2 && item.bizId > 0L) {
+                val name = item.rawText.trim().removePrefix("@")
+                if (name.isNotEmpty()) mentions[name] = item.bizId
+            }
+        }
+        staff.orEmpty().forEach { member ->
+            val name = member.name.trim()
+            if (member.mid > 0L && name.isNotEmpty()) mentions.putIfAbsent(name, member.mid)
+        }
+        val ownerName = owner.name.trim()
+        if (owner.mid > 0L && ownerName.isNotEmpty()) mentions.putIfAbsent(ownerName, owner.mid)
+
+        val trimmedRaw = rawDesc.trim()
+        val structured = descV2.orEmpty()
+        val hasStructuredMentions = structured.any { it.type == 2 && it.rawText.isNotBlank() }
+        val rawHasAllMentions = !hasStructuredMentions || structured
+            .filter { it.type == 2 && it.rawText.isNotBlank() }
+            .all { item ->
+                val name = item.rawText.trim().removePrefix("@")
+                trimmedRaw.contains("@$name")
+            }
+        val resolved = if (structured.isNotEmpty() && (trimmedRaw.isEmpty() || trimmedRaw == "-" || !rawHasAllMentions)) {
+            buildString {
+                structured.forEach { item ->
+                    if (item.type == 2) {
+                        val name = item.rawText.trim().removePrefix("@")
+                        if (name.isNotEmpty()) {
+                            append('@')
+                            append(name)
+                            append(' ')
+                        }
+                    } else {
+                        append(item.rawText)
+                    }
+                }
+            }.trim()
+        } else {
+            rawDesc
+        }
+        return resolved to mentions
     }
 
     /**

@@ -62,6 +62,8 @@ data class VideoDetail(
     val cid: Long,
     val title: String,
     val desc: String,
+    /** 简介内 `@用户名 -> mid` 映射，来自接口 `desc_v2`（type = 2）及联合投稿/UP 兜底。 */
+    val descMentions: Map<String, Long> = emptyMap(),
     val cover: String,
     val pubdate: Long,
     val durationSec: Int,
