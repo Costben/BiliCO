@@ -258,10 +258,24 @@ internal fun BiliCommentItem(
                 onLike = onLike,
             )
 
+            CommentUpActionTags(
+                upLiked = comment.upLiked,
+                upReplied = !isSubReply && comment.upReplied,
+                isDark = isDark,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+
             if (!isSubReply && onOpenReplies != null &&
                 (comment.replies.isNotEmpty() || comment.replyCount > 0)
             ) {
-                val previewReplies = remember(comment.replies) { comment.replies.take(2) }
+                val previewReplies = remember(comment.replies) {
+                    val upReplies = comment.replies.filter { it.isUp }
+                    if (upReplies.isEmpty() || comment.replies.take(2).any { it.isUp }) {
+                        comment.replies.take(2)
+                    } else {
+                        (upReplies.take(1) + comment.replies.filterNot { it.isUp }).take(2)
+                    }
+                }
                 val entryLabel = remember(comment.subReplyEntryText, comment.replyCount) {
                     comment.subReplyEntryText.ifBlank { "共${comment.replyCount}条回复" }
                 }
@@ -282,6 +296,7 @@ internal fun BiliCommentItem(
                             emotes = reply.emotes,
                             mentions = reply.mentions,
                             prefixUserName = reply.userName,
+                            prefixIsUp = reply.isUp,
                             compactEmotes = true,
                             style = COUITheme.textStyles.body2.copy(
                                 fontSize = 13.5.sp,

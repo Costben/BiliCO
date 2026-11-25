@@ -1,5 +1,7 @@
 package erl.bilico.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -14,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -31,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import erl.bilico.data.model.DynamicTextNode
 import erl.bilico.data.model.DynamicTextNodeKind
@@ -39,6 +43,7 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.ui.hyperlinkColor
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 internal val InlineGiftIcon: ImageVector by lazy {
@@ -121,6 +126,74 @@ internal fun AnnotatedString.Builder.appendIconLink(
         appendInlineContent(inlineKey, "\uFFFD")
         append(label)
     }
+}
+
+/** 评论正文内联描边徽章（如置顶 `TOP`）。 */
+internal fun AnnotatedString.Builder.appendInlineOutlineBadge(
+    inline: MutableMap<String, InlineTextContent>,
+    badgeLabel: String,
+    color: Color,
+) {
+    val badgeId = "comment-badge"
+    inline[badgeId] = InlineTextContent(
+        Placeholder(
+            width = 1.9.em,
+            height = 1.1.em,
+            placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .border(1.dp, color, SquircleShape(4.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = badgeLabel,
+                color = color,
+                fontSize = 10.sp,
+                lineHeight = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+        }
+    }
+    appendInlineContent(badgeId, badgeLabel)
+    append(" ")
+}
+
+/** 楼中楼预览里跟在 UP 主用户名后面的实心粉色「UP主」内联徽章。 */
+internal fun AnnotatedString.Builder.appendInlineUpBadge(
+    inline: MutableMap<String, InlineTextContent>,
+) {
+    val badgeId = "comment-up-badge"
+    inline[badgeId] = InlineTextContent(
+        Placeholder(
+            width = 2.55.em,
+            height = 1.05.em,
+            placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp)
+                .clip(SquircleShape(3.dp))
+                .background(Color(0xFFFB7299)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "UP主",
+                color = Color.White,
+                fontSize = 9.sp,
+                lineHeight = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+    }
+    appendInlineContent(badgeId, "UP主")
 }
 
 /**

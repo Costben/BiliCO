@@ -169,6 +169,8 @@ data class Comment(
     val subReplyEntryText: String = "",
     val isTop: Boolean = false,
     val isUp: Boolean = false,
+    val upLiked: Boolean = false,
+    val upReplied: Boolean = false,
     val emotes: Map<String, EmoteImage> = emptyMap(),
     val mentions: Map<String, Long> = emptyMap(),
     val pictures: List<DynamicImage> = emptyList(),

@@ -43,6 +43,7 @@ class CommentRepository(
         cursor: String?,
         type: Int = 1,
         sort: CommentSort = CommentSort.Hot,
+        fallbackUpMid: Long = 0L,
     ): Result<CommentPage> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -67,9 +68,9 @@ class CommentRepository(
             val response = runCatching { api.mainComments(signed) }.getOrNull()
 
             if (response != null && response.code == 0 && response.data?.hasContent() == true) {
-                response.data.toPage()
+                response.data.toPage(fallbackUpMid = fallbackUpMid)
             } else {
-                legacyFirstPage(oid, type, sort)
+                legacyFirstPage(oid, type, sort, fallbackUpMid = fallbackUpMid)
             }
         }
     }
@@ -83,6 +84,7 @@ class CommentRepository(
         page: Int,
         type: Int = 1,
         pageSize: Int = 20,
+        fallbackUpMid: Long = 0L,
     ): Result<CommentPage> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -99,7 +101,7 @@ class CommentRepository(
                 error(response.message.ifBlank { "评论加载失败(${response.code})" })
             }
             val data = response.data ?: return@runCatching CommentPage(emptyList(), null, true, 0)
-            val upMid = data.upper?.mid ?: 0L
+            val upMid = data.upper?.mid?.takeIf { it > 0L } ?: fallbackUpMid
             val items = data.replies.orEmpty().distinctBy { it.rpid }
             val total = maxOf(data.page.acount, data.page.count, items.size)
             CommentPage(
@@ -117,6 +119,7 @@ class CommentRepository(
         page: Int,
         pageSize: Int = 20,
         type: Int = 1,
+        fallbackUpMid: Long = 0L,
     ): Result<SubReplyPage> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -133,7 +136,7 @@ class CommentRepository(
                 error(response.message.ifBlank { "回复加载失败(${response.code})" })
             }
             val data = response.data
-            val upMid = data?.upper?.mid ?: 0L
+            val upMid = data?.upper?.mid?.takeIf { it > 0L } ?: fallbackUpMid
             val list = data?.replies.orEmpty().map { it.toComment(upMid = upMid) }
             val total = maxOf(data?.page?.count ?: 0, list.size)
             SubReplyPage(replies = list, total = total)
@@ -144,6 +147,7 @@ class CommentRepository(
         oid: Long,
         rootId: Long,
         type: Int = 1,
+        fallbackUpMid: Long = 0L,
     ): Comment? = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -157,7 +161,8 @@ class CommentRepository(
                 ),
             )
             if (response.code != 0) return@runCatching null
-            response.data?.root?.toComment()
+            val upMid = response.data?.upper?.mid?.takeIf { it > 0L } ?: fallbackUpMid
+            response.data?.root?.toComment(upMid = upMid)
         }.getOrNull()
     }
 
@@ -169,6 +174,7 @@ class CommentRepository(
         type: Int = 1,
         pictures: List<UploadedPicture> = emptyList(),
         atMids: Map<String, Long> = emptyMap(),
+        upMid: Long = 0L,
     ): Result<Comment> = withContext(Dispatchers.IO) {
         runCatching {
             buvid.ensure()
@@ -216,9 +222,10 @@ class CommentRepository(
             }
             val returned = response.data?.reply
             if (returned != null && returned.rpid > 0L) {
-                returned.toComment()
+                returned.toComment(upMid = upMid)
             } else {
                 val account = session.account.value
+                val authorMid = account?.mid ?: session.mid()
                 val rpid = response.data?.rpid?.takeIf { it > 0L } ?: System.currentTimeMillis()
                 Comment(
                     id = rpid,
@@ -232,7 +239,8 @@ class CommentRepository(
                     like = 0,
                     liked = false,
                     replyCount = 0,
-                    mid = account?.mid ?: session.mid(),
+                    mid = authorMid,
+                    isUp = upMid > 0L && authorMid == upMid,
                     pictures = pictures.map { DynamicImage(it.url, it.width, it.height) },
                     mentions = atMids
                         .mapKeys { (name, _) -> name.trim().removePrefix("@") }
@@ -400,7 +408,12 @@ class CommentRepository(
         }
     }
 
-    private suspend fun legacyFirstPage(oid: Long, type: Int, sort: CommentSort): CommentPage {
+    private suspend fun legacyFirstPage(
+        oid: Long,
+        type: Int,
+        sort: CommentSort,
+        fallbackUpMid: Long = 0L,
+    ): CommentPage {
         val response = api.legacyComments(
             mapOf(
                 "oid" to oid.toString(),
@@ -414,7 +427,7 @@ class CommentRepository(
             error(response.message.ifBlank { "评论加载失败(${response.code})" })
         }
         val data = response.data ?: return CommentPage(emptyList(), null, true, 0)
-        val upMid = data.upper?.mid ?: 0L
+        val upMid = data.upper?.mid?.takeIf { it > 0L } ?: fallbackUpMid
         val items = buildList {
             // 按时间排序时不能把「热门评论」混进来，否则最新列表头部还是热评。
             if (sort == CommentSort.Hot) addAll(data.hots.orEmpty())
@@ -437,8 +450,8 @@ class CommentRepository(
             upper?.top != null
     }
 
-    private fun ReplyData.toPage(): CommentPage {
-        val upMid = upper?.mid ?: 0L
+    private fun ReplyData.toPage(fallbackUpMid: Long = 0L): CommentPage {
+        val upMid = upper?.mid?.takeIf { it > 0L } ?: fallbackUpMid
         val topIds = buildSet {
             top?.upper?.rpid?.takeIf { it > 0L }?.let(::add)
             top?.admin?.rpid?.takeIf { it > 0L }?.let(::add)
@@ -508,6 +521,9 @@ class CommentRepository(
             }
         }
 
+        val authorMid = mid.takeIf { it > 0L } ?: member.mid.toLongOrNull() ?: 0L
+        val upLiked = (upAction?.like == true) || (replyControl?.upLike == true)
+        val upReplied = (upAction?.reply == true) || (replyControl?.upReply == true)
         return Comment(
             id = rpid,
             rootId = if (root > 0) root else rpid,
@@ -521,7 +537,7 @@ class CommentRepository(
             liked = action == 1,
             disliked = action == 2,
             replyCount = maxOf(count, rcount),
-            mid = mid,
+            mid = authorMid,
             location = replyControl?.location.orEmpty().trim(),
             vipColorHex = vipColor,
             officialType = member.officialVerify?.resolvedType() ?: -1,
@@ -529,7 +545,9 @@ class CommentRepository(
             sailing = sailing,
             subReplyEntryText = replyControl?.subReplyEntryText.orEmpty().trim(),
             isTop = isTop,
-            isUp = upMid > 0L && mid == upMid,
+            isUp = upMid > 0L && authorMid == upMid,
+            upLiked = upLiked,
+            upReplied = upReplied,
             emotes = content.emote.orEmpty()
                 .mapValues { (_, emote) ->
                     EmoteImage(

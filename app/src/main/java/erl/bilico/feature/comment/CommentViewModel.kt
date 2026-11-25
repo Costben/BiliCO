@@ -21,6 +21,7 @@ class CommentViewModel(
     private val type: Int = 1,
     private val targetRootId: Long = 0L,
     private val targetReplyId: Long = 0L,
+    private val upMid: Long = 0L,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CommentUiState())
@@ -52,7 +53,7 @@ class CommentViewModel(
                 cursor = null
                 newestPage = 0
             }
-            repository.mainComments(oid, null, type, sort)
+            repository.mainComments(oid, null, type, sort, fallbackUpMid = upMid)
                 .onSuccess { page ->
                     if (reqGen != refreshGeneration) return@onSuccess
                     cursor = page.nextOffset
@@ -65,9 +66,9 @@ class CommentViewModel(
                         val lookupRootId = if (targetRootId > 0L) targetRootId else targetReplyId
                         val existing = page.comments.firstOrNull { it.id == lookupRootId }
                         val resolvedRoot = existing
-                            ?: repository.rootComment(oid, lookupRootId, type)
+                            ?: repository.rootComment(oid, lookupRootId, type, fallbackUpMid = upMid)
                             ?: if (targetReplyId > 0L && targetReplyId != lookupRootId) {
-                                repository.rootComment(oid, targetReplyId, type)
+                                repository.rootComment(oid, targetReplyId, type, fallbackUpMid = upMid)
                             } else {
                                 null
                             }
@@ -142,7 +143,7 @@ class CommentViewModel(
         val offset = cursor ?: return
         _state.update { it.copy(isLoadingMore = true, error = null) }
         viewModelScope.launch {
-            repository.mainComments(oid, offset, type, current.sort)
+            repository.mainComments(oid, offset, type, current.sort, fallbackUpMid = upMid)
                 .onSuccess { page ->
                     cursor = page.nextOffset
                     _state.update { state ->
@@ -166,7 +167,7 @@ class CommentViewModel(
         val nextPage = newestPage + 1
         _state.update { it.copy(isLoadingMore = true, error = null) }
         viewModelScope.launch {
-            repository.newestPage(oid, nextPage, type)
+            repository.newestPage(oid, nextPage, type, fallbackUpMid = upMid)
                 .onSuccess { page ->
                     newestPage = nextPage
                     _state.update { state ->
@@ -195,7 +196,7 @@ class CommentViewModel(
         if (_state.value.isSending) return
         _state.update { it.copy(isSending = true) }
         viewModelScope.launch {
-            repository.addComment(oid = oid, message = content, type = type, pictures = pictures, atMids = atMids)
+            repository.addComment(oid = oid, message = content, type = type, pictures = pictures, atMids = atMids, upMid = upMid)
                 .onSuccess { created ->
                     _state.update { s ->
                         s.copy(
@@ -230,6 +231,7 @@ class CommentViewModel(
                 type = type,
                 pictures = pictures,
                 atMids = atMids,
+                upMid = upMid,
             )
                 .onSuccess { created ->
                     _state.update { it.copy(isSending = false) }

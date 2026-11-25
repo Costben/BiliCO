@@ -51,6 +51,7 @@ internal class ReplyDetailState(
     private val container: AppContainer,
     private val oid: Long,
     private val type: Int,
+    private val upMid: Long,
     initialRoot: Comment,
     private val scope: CoroutineScope,
     private val onSubReplyAdded: (Comment) -> Unit,
@@ -117,7 +118,7 @@ internal class ReplyDetailState(
         error = null
         scope.launch {
             if (targetSort == ReplySort.Hot || targetSort == ReplySort.Old) {
-                container.comments.replies(oid, rootId, page = 1, pageSize = SUB_REPLY_PAGE_SIZE, type = type)
+                container.comments.replies(oid, rootId, page = 1, pageSize = SUB_REPLY_PAGE_SIZE, type = type, fallbackUpMid = upMid)
                     .onSuccess { page ->
                         if (reqGen != generation) return@onSuccess
                         knownTotal = page.total
@@ -147,7 +148,7 @@ internal class ReplyDetailState(
             // 最新排序：x/v2/reply/reply 按时间正序分页，先确认总条数再从末页倒序拉取最新回复。
             var firstPageReplies: List<Comment>? = null
             if (knownTotal < 0) {
-                val probe = container.comments.replies(oid, rootId, page = 1, pageSize = SUB_REPLY_PAGE_SIZE, type = type)
+                val probe = container.comments.replies(oid, rootId, page = 1, pageSize = SUB_REPLY_PAGE_SIZE, type = type, fallbackUpMid = upMid)
                 if (reqGen != generation) return@launch
                 probe.onSuccess { page ->
                     knownTotal = page.total
@@ -179,12 +180,12 @@ internal class ReplyDetailState(
                 return@launch
             }
 
-            container.comments.replies(oid, rootId, page = lastPage, pageSize = SUB_REPLY_PAGE_SIZE, type = type)
+            container.comments.replies(oid, rootId, page = lastPage, pageSize = SUB_REPLY_PAGE_SIZE, type = type, fallbackUpMid = upMid)
                 .onSuccess { tailPage ->
                     if (reqGen != generation) return@onSuccess
                     val tailSorted = tailPage.replies.sortedByDescending { it.timeSec }
                     if (lastPage > 1 && tailSorted.size < 10) {
-                        val prev = container.comments.replies(oid, rootId, page = lastPage - 1, pageSize = SUB_REPLY_PAGE_SIZE, type = type)
+                        val prev = container.comments.replies(oid, rootId, page = lastPage - 1, pageSize = SUB_REPLY_PAGE_SIZE, type = type, fallbackUpMid = upMid)
                             .getOrNull()
                         if (reqGen != generation) return@onSuccess
                         val prevSorted = prev?.replies.orEmpty().sortedByDescending { it.timeSec }
@@ -224,7 +225,7 @@ internal class ReplyDetailState(
         scope.launch {
             if (activeSort == ReplySort.Hot || activeSort == ReplySort.Old) {
                 val next = forwardPage + 1
-                container.comments.replies(oid, rootId, page = next, pageSize = SUB_REPLY_PAGE_SIZE, type = type)
+                container.comments.replies(oid, rootId, page = next, pageSize = SUB_REPLY_PAGE_SIZE, type = type, fallbackUpMid = upMid)
                     .onSuccess { page ->
                         if (reqGen != generation) return@onSuccess
                         forwardPage = next
@@ -245,7 +246,7 @@ internal class ReplyDetailState(
                     isLoading = false
                     return@launch
                 }
-                container.comments.replies(oid, rootId, page = targetPage, pageSize = SUB_REPLY_PAGE_SIZE, type = type)
+                container.comments.replies(oid, rootId, page = targetPage, pageSize = SUB_REPLY_PAGE_SIZE, type = type, fallbackUpMid = upMid)
                     .onSuccess { page ->
                         if (reqGen != generation) return@onSuccess
                         nextNewPage = targetPage - 1
@@ -327,6 +328,7 @@ internal class ReplyDetailState(
                 parent = parentTarget.id,
                 type = type,
                 pictures = uploaded,
+                upMid = upMid,
             )
                 .onSuccess { created ->
                     isSending = false
@@ -372,17 +374,19 @@ internal fun rememberReplyDetailState(
     container: AppContainer,
     oid: Long,
     type: Int,
+    upMid: Long = 0L,
     comment: Comment,
     onSubReplyAdded: (Comment) -> Unit,
     onSubReplyDeleted: (Long) -> Unit,
     onRootDeleted: () -> Unit,
 ): ReplyDetailState {
     val scope = rememberCoroutineScope()
-    return remember(comment.id, oid, type) {
+    return remember(comment.id, oid, type, upMid) {
         ReplyDetailState(
             container = container,
             oid = oid,
             type = type,
+            upMid = upMid,
             initialRoot = comment,
             scope = scope,
             onSubReplyAdded = onSubReplyAdded,

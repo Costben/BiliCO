@@ -122,6 +122,7 @@ data class ReplyControl(
     @SerialName("time_desc") val timeDesc: String = "",
     @SerialName("sub_reply_entry_text") val subReplyEntryText: String = "",
     @SerialName("up_reply") val upReply: Boolean = false,
+    @SerialName("up_like") val upLike: Boolean = false,
 )
 
 @Serializable

@@ -157,7 +157,7 @@ fun DynamicDetailScreen(
     val commentType = currentItem?.commentType?.takeIf { it > 0 } ?: 17
     val commentViewModel: CommentViewModel? = if (commentOid > 0L) {
         viewModel(key = "dyn-comment-$commentType-$commentOid-$commentRootId-$commentTargetId") {
-            CommentViewModel(container.comments, commentOid, commentType, commentRootId, commentTargetId)
+            CommentViewModel(container.comments, commentOid, commentType, commentRootId, commentTargetId, upMid = currentItem?.authorMid ?: 0L)
         }
     } else {
         null
@@ -580,6 +580,7 @@ fun DynamicDetailScreen(
             container = container,
             oid = commentOid,
             type = commentType,
+            upMid = currentItem?.authorMid ?: 0L,
             latestItems = commentState?.items.orEmpty(),
             topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
             onOpenUser = { mid -> nav.push(Route.Space(mid)) },

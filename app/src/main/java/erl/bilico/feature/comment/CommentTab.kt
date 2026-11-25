@@ -81,6 +81,7 @@ fun CommentTab(
     onOpenUser: (Long) -> Unit,
     modifier: Modifier = Modifier,
     type: Int = 1,
+    upMid: Long = 0L,
     listState: LazyListState = rememberLazyListState(),
     topInset: Dp = 0.dp,
     topGap: Dp = 12.dp,
@@ -91,7 +92,7 @@ fun CommentTab(
 ) {
     BindScrollToTop(listState)
     val viewModel: CommentViewModel = viewModel(key = "comment-$type-$oid-$targetRootId-$targetReplyId") {
-        CommentViewModel(container.comments, oid, type, targetRootId, targetReplyId)
+        CommentViewModel(container.comments, oid, type, targetRootId, targetReplyId, upMid = upMid)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()
@@ -405,6 +406,7 @@ fun CommentTab(
             container = container,
             oid = oid,
             type = type,
+            upMid = upMid,
             latestItems = state.items,
             topInset = topInset,
             bottomInset = bottomInset,

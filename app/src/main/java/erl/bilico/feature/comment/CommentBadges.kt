@@ -1,20 +1,24 @@
 package erl.bilico.feature.comment
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -47,6 +51,7 @@ import coil3.compose.AsyncImage
 import erl.bilico.data.model.CommentSailing
 import erl.bilico.data.util.Formatters
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
@@ -184,40 +189,78 @@ internal fun BiliLevelBadge(level: Int, modifier: Modifier = Modifier) {
 }
 
 /**
- * 实心圆角 `UP` 几何徽章，与 `BiliLevelBadge` 严格同高居中对齐，避免字体 ascent/descent 偏移。
+ * 评论区「UP主」实心粉色徽章，紧跟在 UP 主 ID 之后展示。
  */
 @Composable
 internal fun BiliUpBadge(modifier: Modifier = Modifier) {
-    Canvas(modifier.size(width = 21.dp, height = 12.dp)) {
-        val r = 2.dp.toPx()
-        drawRoundRect(color = Color(0xFFFB7299), cornerRadius = CornerRadius(r, r))
-        val strokeW = 1.35.dp.toPx()
-        val stroke = Stroke(width = strokeW, cap = StrokeCap.Square, join = StrokeJoin.Miter)
-        val top = size.height * 0.24f
-        val bottom = size.height * 0.76f
-        val midY = (top + bottom) * 0.5f
-        val glyphW = size.width * 0.25f
-        val gap = size.width * 0.11f
-        val startX = (size.width - glyphW * 2f - gap) * 0.5f
+    Box(
+        modifier = modifier
+            .clip(SquircleShape(3.dp))
+            .background(Color(0xFFFB7299))
+            .padding(horizontal = 4.dp, vertical = 1.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "UP主",
+            fontSize = 9.5.sp,
+            lineHeight = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            maxLines = 1,
+            softWrap = false,
+        )
+    }
+}
 
-        val uPath = Path().apply {
-            moveTo(startX, top)
-            lineTo(startX, bottom)
-            lineTo(startX + glyphW, bottom)
-            lineTo(startX + glyphW, top)
+/**
+ * 评论区 UP 主互动标签行：参照 PiliPlus 紧凑圆角胶囊样式，展示「UP主赞过」与「UP主评论了」。
+ */
+@Composable
+internal fun CommentUpActionTags(
+    upLiked: Boolean,
+    upReplied: Boolean,
+    isDark: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (!upLiked && !upReplied) return
+    val bgColor = if (isDark) Color(0xFF2B2D31) else Color(0xFFF2F3F5)
+    val textColor = if (isDark) Color(0xFFA6ABB5) else Color(0xFF61666D)
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (upLiked) {
+            CommentUpActionPill(text = "UP主赞过", bgColor = bgColor, textColor = textColor)
         }
-        drawPath(uPath, Color.White, style = stroke)
+        if (upReplied) {
+            CommentUpActionPill(text = "UP主评论了", bgColor = bgColor, textColor = textColor)
+        }
+    }
+}
 
-        val px0 = startX + glyphW + gap
-        val px1 = px0 + glyphW
-        val pPath = Path().apply {
-            moveTo(px0, bottom)
-            lineTo(px0, top)
-            lineTo(px1, top)
-            lineTo(px1, midY + strokeW * 0.15f)
-            lineTo(px0, midY + strokeW * 0.15f)
-        }
-        drawPath(pPath, Color.White, style = stroke)
+@Composable
+private fun CommentUpActionPill(
+    text: String,
+    bgColor: Color,
+    textColor: Color,
+) {
+    Box(
+        modifier = Modifier
+            .clip(SquircleShape(4.dp))
+            .background(bgColor)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = textColor,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
@@ -459,7 +502,7 @@ internal fun UserNameWithBadges(
         fontWeight = FontWeight.Medium,
     )
     val badgesWidthPx = with(density) {
-        ((if (level > 0) 28.dp else 0.dp) + (if (isUp) 25.dp else 0.dp)).roundToPx()
+        ((if (isUp) 38.dp else 0.dp) + (if (level > 0) 28.dp else 0.dp)).roundToPx()
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
@@ -513,13 +556,13 @@ internal fun UserNameWithBadges(
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (level > 0) {
-                Spacer(Modifier.width(4.dp))
-                BiliLevelBadge(level = level)
-            }
             if (isUp) {
                 Spacer(Modifier.width(4.dp))
                 BiliUpBadge()
+            }
+            if (level > 0) {
+                Spacer(Modifier.width(4.dp))
+                BiliLevelBadge(level = level)
             }
         }
     }
