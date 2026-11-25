@@ -485,6 +485,7 @@ data class SearchVideo(
     val playText: String,
     val durationText: String,
     val pubdateText: String,
+    val aid: Long = 0L,
 )
 
 data class SearchUser(

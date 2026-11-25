@@ -231,6 +231,9 @@ internal fun SearchPanelBody(
             val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
             val bottomPadding = maxOf(16.dp + navBottomPadding(), imeBottom + 16.dp)
             val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
+            val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
+            val searchHotGrid by container.settings.searchHotGrid.collectAsStateWithLifecycle()
+            val searchResultGrid by container.settings.searchResultGrid.collectAsStateWithLifecycle()
             val visibleState = remember(state, blocks) {
                 state.copy(
                     allVideos = state.allVideos.filter { blocks.shouldShowSearchVideo(it) },
@@ -274,6 +277,7 @@ internal fun SearchPanelBody(
                             searchHomeSection(
                                 hot = state.hot,
                                 hotLoading = state.hotLoading,
+                                hotGrid = searchHotGrid,
                                 history = history,
                                 onPick = activeSelectKeyword,
                                 onDeleteHistory = { container.settings.removeSearchHistory(it) },
@@ -286,6 +290,9 @@ internal fun SearchPanelBody(
                             nav = nav,
                             rowScrollState = rowScrollState,
                             topBarBounds = barBounds,
+                            gridMode = searchResultGrid,
+                            coverAspect = coverAspect,
+                            onToggleGrid = { container.settings.setSearchResultGrid(!searchResultGrid) },
                             onRetry = viewModel::retry,
                         )
                     }

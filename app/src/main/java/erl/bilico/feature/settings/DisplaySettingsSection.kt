@@ -27,6 +27,8 @@ internal fun displaySettingsEntries(
     coverAspect: CoverAspect,
     feedColumns: Int,
     feedRefreshCount: Int,
+    searchHotGrid: Boolean,
+    searchResultGrid: Boolean,
     homeTabsSummary: String,
     showVideoDislike: Boolean,
     returnBounce: Boolean,
@@ -38,6 +40,8 @@ internal fun displaySettingsEntries(
     onCoverAspectChange: (CoverAspect) -> Unit,
     onFeedColumnsChange: (Int) -> Unit,
     onFeedRefreshCountChange: (Int) -> Unit,
+    onSearchHotGridChange: (Boolean) -> Unit,
+    onSearchResultGridChange: (Boolean) -> Unit,
     onOpenHomeTabs: () -> Unit,
     onShowVideoDislikeChange: (Boolean) -> Unit,
     onReturnBounceChange: (Boolean) -> Unit,
@@ -145,6 +149,36 @@ internal fun displaySettingsEntries(
                 modifier = Modifier.testTag("settings_feed_columns"),
                 cardListPosition = pos,
                 onSelectedIndexChange = { index -> onFeedColumnsChange(FeedPreferences.MIN_COLUMNS + index) },
+            )
+        },
+        SettingsEntry(
+            id = "search_hot_grid",
+            title = "热搜网格布局",
+            summary = "搜索框下的热搜词条以双列网格显示，关闭后为单列排布",
+            keywords = "搜索 热搜 词条 网格 列表 双列 单列 排版",
+        ) { pos ->
+            SwitchPreference(
+                checked = searchHotGrid,
+                onCheckedChange = onSearchHotGridChange,
+                title = "热搜网格布局",
+                summary = "搜索框下的热搜词条以双列网格显示，关闭后为单列排布",
+                modifier = Modifier.testTag("settings_search_hot_grid"),
+                cardListPosition = pos,
+            )
+        },
+        SettingsEntry(
+            id = "search_result_grid",
+            title = "搜索结果网格布局",
+            summary = "搜索视频结果以双列网格显示，也可在搜索结果页随时切换",
+            keywords = "搜索 结果 视频 网格 列表 双列 单列 排版",
+        ) { pos ->
+            SwitchPreference(
+                checked = searchResultGrid,
+                onCheckedChange = onSearchResultGridChange,
+                title = "搜索结果网格布局",
+                summary = "搜索视频结果以双列网格显示，也可在搜索结果页随时切换",
+                modifier = Modifier.testTag("settings_search_result_grid"),
+                cardListPosition = pos,
             )
         },
         SettingsEntry(

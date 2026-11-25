@@ -50,6 +50,8 @@ import erl.bilico.data.settings.SettingsKeys.KEY_PREDICTIVE_BACK_FOLLOW
 import erl.bilico.data.settings.SettingsKeys.KEY_QUALITY
 import erl.bilico.data.settings.SettingsKeys.KEY_RETURN_BOUNCE
 import erl.bilico.data.settings.SettingsKeys.KEY_SEARCH_HISTORY
+import erl.bilico.data.settings.SettingsKeys.KEY_SEARCH_HOT_GRID
+import erl.bilico.data.settings.SettingsKeys.KEY_SEARCH_RESULT_GRID
 import erl.bilico.data.settings.SettingsKeys.KEY_SHOW_VIDEO_DISLIKE
 import erl.bilico.data.settings.SettingsKeys.KEY_SKIPPED_UPDATE
 import erl.bilico.data.settings.SettingsKeys.KEY_SPEED_LOCKED
@@ -106,6 +108,14 @@ class SettingsRepository(
 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
+
+    /** 搜索框下热搜词条是否使用双列网格排版。 */
+    private val _searchHotGrid = MutableStateFlow(true)
+    val searchHotGrid: StateFlow<Boolean> = _searchHotGrid.asStateFlow()
+
+    /** 搜索视频结果是否使用双列网格排版。 */
+    private val _searchResultGrid = MutableStateFlow(false)
+    val searchResultGrid: StateFlow<Boolean> = _searchResultGrid.asStateFlow()
 
     private val _danmakuSettings = MutableStateFlow(DanmakuSettings())
     val danmakuSettings: StateFlow<DanmakuSettings> = _danmakuSettings.asStateFlow()
@@ -253,6 +263,8 @@ class SettingsRepository(
                 ?.filter { it.isNotBlank() }
                 ?.take(HISTORY_LIMIT)
                 .orEmpty()
+            _searchHotGrid.value = prefs[KEY_SEARCH_HOT_GRID] ?: true
+            _searchResultGrid.value = prefs[KEY_SEARCH_RESULT_GRID] ?: false
             val dm = DanmakuSettings(
                 enabled = prefs[KEY_DANMAKU_ENABLED] ?: true,
                 allowScroll = prefs[KEY_DM_ALLOW_SCROLL] ?: true,
@@ -667,6 +679,16 @@ class SettingsRepository(
         val resolved = mode.coerceIn(0, 1)
         _feedSource.value = resolved
         scope.launch { context.biliDataStore.edit { it[KEY_FEED_SOURCE] = resolved } }
+    }
+
+    fun setSearchHotGrid(grid: Boolean) {
+        _searchHotGrid.value = grid
+        scope.launch { context.biliDataStore.edit { it[KEY_SEARCH_HOT_GRID] = grid } }
+    }
+
+    fun setSearchResultGrid(grid: Boolean) {
+        _searchResultGrid.value = grid
+        scope.launch { context.biliDataStore.edit { it[KEY_SEARCH_RESULT_GRID] = grid } }
     }
 
     fun addSearchHistory(keyword: String) {

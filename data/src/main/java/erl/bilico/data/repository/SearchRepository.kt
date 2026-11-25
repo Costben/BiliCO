@@ -266,6 +266,7 @@ class SearchRepository(
             playText = Formatters.formatStat(play.toLong()),
             durationText = if (seconds > 0) Formatters.formatDuration(seconds.toLong()) else "",
             pubdateText = Formatters.formatTimeAgo(pubdate),
+            aid = aid.takeIf { it > 0L } ?: id.takeIf { it > 0L } ?: 0L,
         )
     }
 

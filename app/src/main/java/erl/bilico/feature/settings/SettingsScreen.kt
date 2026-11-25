@@ -64,6 +64,8 @@ fun SettingsScreen(
     val coverAspect by container.settings.feed.coverAspect.collectAsStateWithLifecycle()
     val feedColumns by container.settings.feed.columns.collectAsStateWithLifecycle()
     val feedRefreshCount by container.settings.feed.refreshCount.collectAsStateWithLifecycle()
+    val searchHotGrid by container.settings.searchHotGrid.collectAsStateWithLifecycle()
+    val searchResultGrid by container.settings.searchResultGrid.collectAsStateWithLifecycle()
     val homeTabsLayout by container.settings.feed.homeTabs.collectAsStateWithLifecycle()
     val topBarLayoutFullscreen by container.settings.playerTopBar.fullscreen.collectAsStateWithLifecycle()
     val topBarLayoutPortrait by container.settings.playerTopBar.portrait.collectAsStateWithLifecycle()
@@ -136,6 +138,8 @@ fun SettingsScreen(
                     coverAspect = coverAspect,
                     feedColumns = feedColumns,
                     feedRefreshCount = feedRefreshCount,
+                    searchHotGrid = searchHotGrid,
+                    searchResultGrid = searchResultGrid,
                     homeTabsSummary = homeTabsSummary,
                     showVideoDislike = showVideoDislike,
                     returnBounce = returnBounce,
@@ -147,6 +151,8 @@ fun SettingsScreen(
                     onCoverAspectChange = container.settings.feed::setCoverAspect,
                     onFeedColumnsChange = container.settings.feed::setColumns,
                     onFeedRefreshCountChange = container.settings.feed::setRefreshCount,
+                    onSearchHotGridChange = container.settings::setSearchHotGrid,
+                    onSearchResultGridChange = container.settings::setSearchResultGrid,
                     onOpenHomeTabs = { showHomeTabsSettings = true },
                     onShowVideoDislikeChange = container.settings::setShowVideoDislike,
                     onReturnBounceChange = container.settings::setReturnBounce,

@@ -279,6 +279,7 @@ private fun cleanHtmlSegment(raw: String): String =
 internal fun LazyListScope.searchHomeSection(
     hot: List<String>,
     hotLoading: Boolean,
+    hotGrid: Boolean = true,
     history: List<String>,
     onPick: (String) -> Unit,
     onDeleteHistory: (String) -> Unit,
@@ -336,7 +337,7 @@ internal fun LazyListScope.searchHomeSection(
                 if (hot.isEmpty()) {
                     EmptyState("暂时没有热搜")
                 } else {
-                    HotKeywordChips(keywords = hot, onPick = onPick)
+                    HotKeywordChips(keywords = hot, gridMode = hotGrid, onPick = onPick)
                 }
             }
         }
@@ -503,73 +504,50 @@ private fun HistoryChip(
 }
 
 @Composable
-private fun HotKeywordChips(keywords: List<String>, onPick: (String) -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        keywords.forEachIndexed { index, keyword ->
-            val rank = index + 1
-            val interactionSource = remember { MutableInteractionSource() }
-            val isPressed by interactionSource.collectIsPressedAsState()
-            val pressScale by animateFloatAsState(
-                targetValue = if (isPressed) 0.96f else 1.0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = 438.65f,
-                ),
-                label = "hot-chip-press-scale",
-            )
-            val baseBg = COUITheme.colorScheme.surfaceContainerHigh
-            val pressedBg = remember(baseBg) {
-                Color(
-                    red = (baseBg.red * 0.72f + 0.28f).coerceIn(0f, 1f),
-                    green = (baseBg.green * 0.72f + 0.28f).coerceIn(0f, 1f),
-                    blue = (baseBg.blue * 0.72f + 0.28f).coerceIn(0f, 1f),
-                    alpha = baseBg.alpha,
+private fun HotKeywordChips(
+    keywords: List<String>,
+    gridMode: Boolean,
+    onPick: (String) -> Unit,
+) {
+    if (!gridMode) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("search_hot_list"),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            keywords.forEachIndexed { index, keyword ->
+                HotKeywordGridCell(
+                    rank = index + 1,
+                    keyword = keyword,
+                    onPick = onPick,
+                    fullWidth = false,
                 )
             }
-            val animatedBg by animateColorAsState(
-                targetValue = if (isPressed) pressedBg else baseBg,
-                animationSpec = tween(durationMillis = 150),
-                label = "hot-chip-bg",
-            )
+        }
+        return
+    }
+    val rows = remember(keywords) { keywords.chunked(2) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("search_hot_grid"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        rows.forEachIndexed { rowIndex, pair ->
             Row(
-                modifier = Modifier
-                    .height(32.dp)
-                    .graphicsLayer {
-                        scaleX = pressScale
-                        scaleY = pressScale
-                    }
-                    .clip(COUISmoothCapsuleShape())
-                    .background(animatedBg)
-                    .clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                        onClick = remember(keyword, onPick) { { onPick(keyword) } },
-                    )
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    text = "$rank",
-                    fontSize = 12.sp,
-                    fontWeight = if (rank <= 3) FontWeight.Bold else FontWeight.Normal,
-                    color = when (rank) {
-                        1 -> Color(0xFFFF3B30)
-                        2 -> Color(0xFFFF9500)
-                        3 -> Color(0xFFFFCC00)
-                        else -> COUITheme.colorScheme.onSurfaceSecondary
-                    },
-                )
-                Text(
-                    text = keyword,
-                    fontSize = 13.sp,
-                    color = COUITheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                pair.forEachIndexed { colIndex, keyword ->
+                    HotKeywordGridCell(
+                        rank = rowIndex * 2 + colIndex + 1,
+                        keyword = keyword,
+                        onPick = onPick,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }

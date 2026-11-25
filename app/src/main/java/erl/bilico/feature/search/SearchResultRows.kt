@@ -20,7 +20,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,12 +35,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.SearchArticle
 import erl.bilico.data.model.SearchVideo
+import erl.bilico.data.settings.CoverAspect
 import erl.bilico.data.util.Formatters
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.RowScrollState
 import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.attachToRow
+import erl.bilico.ui.components.CouiPopupMenu
 import erl.bilico.ui.components.CoverImage
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
@@ -47,6 +52,8 @@ import erl.bilico.ui.rememberExpandOrigin
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -63,6 +70,9 @@ internal fun LazyListScope.searchResultItems(
     nav: NavState,
     rowScrollState: RowScrollState,
     topBarBounds: TopBarBounds,
+    gridMode: Boolean = false,
+    coverAspect: CoverAspect = CoverAspect.WIDE,
+    onToggleGrid: (() -> Unit)? = null,
     onRetry: () -> Unit,
 ) {
     if (state.isLoading) return
@@ -130,22 +140,64 @@ internal fun LazyListScope.searchResultItems(
                     )
                 }
             }
-            searchVideoItems(
-                videos = state.allVideos,
-                keyPrefix = "all_video",
-                nav = nav,
-                rowScrollState = rowScrollState,
-                topBarBounds = topBarBounds,
-            )
+            if (state.allVideos.isNotEmpty() && onToggleGrid != null) {
+                item(key = "all_layout_toggle", contentType = "search-layout-toggle") {
+                    SearchLayoutToggleRow(
+                        orderLabel = state.videoOrder.label,
+                        gridMode = gridMode,
+                        onToggleGrid = onToggleGrid,
+                    )
+                }
+            }
+            if (gridMode) {
+                searchVideoGridItems(
+                    videos = state.allVideos,
+                    keyPrefix = "all_video",
+                    nav = nav,
+                    rowScrollState = rowScrollState,
+                    topBarBounds = topBarBounds,
+                    coverAspect = coverAspect,
+                )
+            } else {
+                searchVideoItems(
+                    videos = state.allVideos,
+                    keyPrefix = "all_video",
+                    nav = nav,
+                    rowScrollState = rowScrollState,
+                    topBarBounds = topBarBounds,
+                )
+            }
         }
 
-        SearchTab.Video -> searchVideoItems(
-            videos = state.videos,
-            keyPrefix = "video",
-            nav = nav,
-            rowScrollState = rowScrollState,
-            topBarBounds = topBarBounds,
-        )
+        SearchTab.Video -> {
+            if (state.videos.isNotEmpty() && onToggleGrid != null) {
+                item(key = "video_layout_toggle", contentType = "search-layout-toggle") {
+                    SearchLayoutToggleRow(
+                        orderLabel = state.videoOrder.label,
+                        gridMode = gridMode,
+                        onToggleGrid = onToggleGrid,
+                    )
+                }
+            }
+            if (gridMode) {
+                searchVideoGridItems(
+                    videos = state.videos,
+                    keyPrefix = "video",
+                    nav = nav,
+                    rowScrollState = rowScrollState,
+                    topBarBounds = topBarBounds,
+                    coverAspect = coverAspect,
+                )
+            } else {
+                searchVideoItems(
+                    videos = state.videos,
+                    keyPrefix = "video",
+                    nav = nav,
+                    rowScrollState = rowScrollState,
+                    topBarBounds = topBarBounds,
+                )
+            }
+        }
 
         SearchTab.Bangumi -> items(
             items = state.bangumis,
@@ -260,64 +312,93 @@ private fun SearchVideoRow(
         Formatters.sizedImageUrl(video.cover, coverWidthPx, coverHeightPx)
     }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(8.dp),
-        onClick = onClick,
-    ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .width(SearchVideoCoverWidth)
-                    .height(SearchVideoCoverHeight)
-                    .clip(SquircleShape(8.dp)),
-            ) {
-                CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
-                SearchVideoCoverBadges(playText = video.playText, durationText = video.durationText)
-            }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = SearchVideoCoverHeight)
-                    .padding(start = 10.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = video.title,
-                    fontSize = 14.sp,
-                    lineHeight = 19.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = COUITheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Column(
-                    modifier = Modifier.padding(top = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+    val pressState = rememberPreciseClickState()
+    var longPressMenuExpanded by remember { mutableStateOf(false) }
+    val menuItems = rememberSearchVideoMenuItems(video)
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .preciseClickAnchor(pressState),
+            insideMargin = PaddingValues(8.dp),
+            onClick = onClick,
+            onLongPress = { longPressMenuExpanded = true },
+        ) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .width(SearchVideoCoverWidth)
+                        .height(SearchVideoCoverHeight)
+                        .clip(SquircleShape(8.dp)),
                 ) {
-                    if (video.pubdateText.isNotBlank()) {
-                        Text(
-                            text = video.pubdateText,
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    CoverImage(url = coverUrl, modifier = Modifier.fillMaxSize())
+                    SearchVideoCoverBadges(playText = video.playText, durationText = video.durationText)
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = SearchVideoCoverHeight)
+                        .padding(start = 10.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
                     Text(
-                        text = video.author.ifBlank { "未知 UP" },
-                        fontSize = 12.sp,
-                        lineHeight = 12.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                        maxLines = 1,
+                        text = video.title,
+                        fontSize = 14.sp,
+                        lineHeight = 19.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = COUITheme.colorScheme.onSurface,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            if (video.pubdateText.isNotBlank()) {
+                                Text(
+                                    text = video.pubdateText,
+                                    fontSize = 11.sp,
+                                    lineHeight = 13.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(
+                                text = video.author.ifBlank { "未知 UP" },
+                                fontSize = 12.sp,
+                                lineHeight = 12.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = COUITheme.colorScheme.onSurfaceSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        SearchVideoMoreButton(
+                            items = menuItems,
+                            buttonSize = 22.dp,
+                            iconSize = 17.dp,
+                        )
+                    }
                 }
             }
         }
+
+        CouiPopupMenu(
+            show = longPressMenuExpanded,
+            onDismiss = { longPressMenuExpanded = false },
+            items = menuItems,
+            preciseClickState = pressState,
+        )
     }
 }
 

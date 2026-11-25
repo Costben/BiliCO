@@ -18,6 +18,8 @@ internal object SettingsKeys {
     val KEY_CDN = stringPreferencesKey("playback_cdn")
     val KEY_FEED_SOURCE = intPreferencesKey("feed_source")
     val KEY_SEARCH_HISTORY = stringPreferencesKey("search_history")
+    val KEY_SEARCH_HOT_GRID = booleanPreferencesKey("search_hot_grid")
+    val KEY_SEARCH_RESULT_GRID = booleanPreferencesKey("search_result_grid")
     val KEY_DANMAKU_ENABLED = booleanPreferencesKey("danmaku_enabled")
     val KEY_ADVANCED_PLUS_ONE = booleanPreferencesKey("danmaku_advanced_plus_one")
     val KEY_DANMAKU_OPACITY = intPreferencesKey("danmaku_opacity")

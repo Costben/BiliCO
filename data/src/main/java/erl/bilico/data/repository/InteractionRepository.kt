@@ -131,6 +131,15 @@ class InteractionRepository(
         )
     }
 
+    suspend fun addToWatchLaterByBvid(bvid: String): Result<Unit> = post {
+        api.addWatchLater(
+            mapOf(
+                "bvid" to bvid,
+                "csrf" to csrf(),
+            )
+        )
+    }
+
     suspend fun follow(mid: Long, following: Boolean): Result<Unit> = post {
         api.modifyRelation(
             mapOf(
