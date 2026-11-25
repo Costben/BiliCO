@@ -113,6 +113,42 @@ class FavoriteRepository(
             }
         }
 
+    /** 新建收藏夹；[isPrivate] 为 true 时设为仅自己可见（privacy = 1）。 */
+    suspend fun createFolder(
+        title: String,
+        intro: String = "",
+        isPrivate: Boolean = false,
+    ): Result<FavoriteFolder> = withContext(Dispatchers.IO) {
+        runCatching {
+            val trimmedTitle = title.trim()
+            require(trimmedTitle.isNotEmpty()) { "请输入收藏夹名称" }
+            buvid.ensure()
+            val csrf = session.csrf()
+            check(csrf.isNotBlank()) { "登录后可用" }
+            val response = api.createFavFolder(
+                mapOf(
+                    "title" to trimmedTitle,
+                    "intro" to intro.trim(),
+                    "privacy" to if (isPrivate) "1" else "0",
+                    "csrf" to csrf,
+                ),
+            )
+            if (response.code != 0) {
+                error(response.message.ifBlank { "创建收藏夹失败(${response.code})" })
+            }
+            val folder = response.data ?: error("收藏夹创建结果异常")
+            val mediaId = folder.id.takeIf { it > 0L } ?: folder.fid
+            check(mediaId > 0L) { "未获取到新收藏夹标识" }
+            FavoriteFolder(
+                mediaId = mediaId,
+                title = Formatters.decodeHtmlEntities(folder.title.ifBlank { trimmedTitle }),
+                cover = Formatters.normalizeImageUrl(folder.cover),
+                countText = "${Formatters.formatStat(folder.media_count.toLong())}个内容",
+                favorited = false,
+            )
+        }
+    }
+
     private companion object {
         const val PAGE_SIZE = 20
         const val COVER_LIMIT = 4

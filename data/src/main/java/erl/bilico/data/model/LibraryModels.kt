@@ -31,6 +31,13 @@ data class FavFolder(
 )
 
 @Serializable
+data class FavFolderCreateResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: FavFolder? = null,
+)
+
+@Serializable
 data class FavResourceResponse(
     val code: Int = 0,
     val message: String = "",

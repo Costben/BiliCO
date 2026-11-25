@@ -27,6 +27,7 @@ import erl.bilico.data.model.TripleResponse
 import erl.bilico.data.model.UpdateFaceResponse
 import erl.bilico.data.model.UserRelationResponse
 import erl.bilico.data.model.VideoRelationResponse
+import erl.bilico.data.model.FavFolderCreateResponse
 import erl.bilico.data.model.FavFolderResponse
 import erl.bilico.data.model.FavResourceResponse
 import erl.bilico.data.model.FollowingsResponse
@@ -433,6 +434,10 @@ interface BiliApi {
     @FormUrlEncoded
     @POST("x/v3/fav/resource/batch-del")
     suspend fun batchDelFavorite(@FieldMap fields: Map<String, String>): BaseResponse
+
+    @FormUrlEncoded
+    @POST("x/v3/fav/folder/add")
+    suspend fun createFavFolder(@FieldMap fields: Map<String, String>): FavFolderCreateResponse
 
     @FormUrlEncoded
     @POST("x/v2/history/toview/add")

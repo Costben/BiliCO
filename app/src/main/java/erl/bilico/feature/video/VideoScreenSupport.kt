@@ -305,6 +305,7 @@ internal fun VideoScreenDialogs(
     favoriteFolders: List<FavoriteFolder>?,
     onConfirmFavorite: (addMediaIds: List<Long>, delMediaIds: List<Long>, nowFavorited: Boolean) -> Unit,
     onDismissFavorite: () -> Unit,
+    onCreateFavoriteFolder: (suspend (title: String, intro: String, isPrivate: Boolean) -> Result<FavoriteFolder>)? = null,
     danmakuSettingsDialogVisible: Boolean = false,
     danmakuSettings: DanmakuSettings? = null,
     settingsRepository: SettingsRepository? = null,
@@ -343,6 +344,7 @@ internal fun VideoScreenDialogs(
                 folders = folders,
                 onConfirm = onConfirmFavorite,
                 onDismiss = onDismissFavorite,
+                onCreateFolder = onCreateFavoriteFolder,
             )
         }
     }

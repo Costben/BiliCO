@@ -579,6 +579,9 @@ fun VideoScreen(
             favoriteFolders = favoriteFolders,
             onConfirmFavorite = { add, del, fav -> favoriteFolders = null; viewModel.favorite(add, del, fav) },
             onDismissFavorite = { favoriteFolders = null },
+            onCreateFavoriteFolder = { title, intro, isPrivate ->
+                container.favorites.createFolder(title, intro, isPrivate)
+            },
             danmakuSettingsDialogVisible = danmakuSettingsDialogVisible,
             danmakuSettings = if (danmakuSettingsDialogVisible) container.settings.danmakuSettings.collectAsStateWithLifecycle().value else null,
             settingsRepository = container.settings,
