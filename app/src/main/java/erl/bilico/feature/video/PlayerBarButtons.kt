@@ -214,7 +214,7 @@ internal fun ControlLabel(
     )
 }
 
-internal val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+internal val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f)
 
 @Composable
 internal fun SpeedLockMenuRow(

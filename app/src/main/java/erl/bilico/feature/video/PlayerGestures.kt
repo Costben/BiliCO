@@ -44,7 +44,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import erl.bilico.data.util.Formatters
+import erl.bilico.data.model.VideoChapter
 import erl.bilico.ui.components.BrightnessIcon
 import erl.bilico.ui.components.FullscreenExitIcon
 import erl.bilico.ui.components.FullscreenIcon
@@ -81,6 +81,10 @@ internal fun PlayerGestureLayer(
     seekEnabled: Boolean = true,
     longPressSpeed: LongPressSpeedController? = null,
     longPressSpeedMode: LongPressSpeedMode = LongPressSpeedMode.FIXED,
+    zoomState: PlayerZoomState? = null,
+    seekPreview: SeekPreviewController? = null,
+    chapters: List<VideoChapter> = emptyList(),
+    onSeekStart: () -> Unit = {},
     fullscreen: Boolean,
     hapticEnabled: Boolean,
     volumeBrightnessEnabled: Boolean,
@@ -118,9 +122,12 @@ internal fun PlayerGestureLayer(
     val currentOnLongPressAdjust by rememberUpdatedState(longPressSpeed?.onAdjust ?: {})
     val currentOnLongPressLock by rememberUpdatedState(longPressSpeed?.onLockChange ?: {})
     val currentOnSeek by rememberUpdatedState(onSeek)
+    val currentOnSeekStart by rememberUpdatedState(onSeekStart)
+    val currentZoomState by rememberUpdatedState(zoomState)
     val currentOnFullscreen by rememberUpdatedState(onFullscreenChange)
     val adjustingSpeedRef = remember { booleanArrayOf(false) }
     val longPressHeldRef = remember { booleanArrayOf(false) }
+    val multiTouchRef = remember { booleanArrayOf(false) }
 
     var dragMode by remember { mutableStateOf(DragMode.NONE) }
     var seekPreviewMs by remember { mutableLongStateOf(0L) }
@@ -140,6 +147,7 @@ internal fun PlayerGestureLayer(
                     onPress = {
                         longPressed = false
                         longPressHeldRef[0] = false
+                        multiTouchRef[0] = false
                         val released = tryAwaitRelease()
                         if (currentHasLongPressSpeed && longPressed && (released || !adjustingSpeedRef[0])) {
                             longPressed = false
@@ -150,10 +158,16 @@ internal fun PlayerGestureLayer(
                             }
                         }
                     },
-                    onTap = { offset -> currentOnTap(offset) },
-                    onDoubleTap = { currentOnDoubleTap() },
+                    onTap = { offset ->
+                        if (!multiTouchRef[0] && currentZoomState?.pinching != true) currentOnTap(offset)
+                    },
+                    onDoubleTap = {
+                        if (!multiTouchRef[0] && currentZoomState?.pinching != true) currentOnDoubleTap()
+                    },
                     onLongPress = {
-                        if (!currentHasLongPressSpeed) return@detectTapGestures
+                        if (!currentHasLongPressSpeed || multiTouchRef[0] || currentZoomState?.pinching == true) {
+                            return@detectTapGestures
+                        }
                         if (currentLongPressLocked) {
                             if (currentHapticEnabled) haptic(CouiHapticEffect.Short)
                             currentOnLongPress(false)
@@ -247,8 +261,12 @@ internal fun PlayerGestureLayer(
                             break
                         }
                         if (event.changes.count { it.pressed } > 1) {
+                            multiTouchRef[0] = true
                             activeMode = DragMode.NONE
                             dragMode = DragMode.NONE
+                            currentZoomState?.let { zoom ->
+                                handlePinchZoom(event, zoom, width, height)
+                            }
                             break
                         }
 
@@ -270,6 +288,7 @@ internal fun PlayerGestureLayer(
                                         if (currentSeekEnabled && currentDuration > 0L) {
                                             seekBaseMs = currentPosition.coerceIn(0L, currentDuration)
                                             seekPreviewMs = seekBaseMs
+                                            currentOnSeekStart()
                                             DragMode.SEEK
                                         } else {
                                             break
@@ -418,22 +437,20 @@ internal fun PlayerGestureLayer(
         when (dragMode) {
             DragMode.SEEK -> {
                 val deltaSec = (seekPreviewMs - seekBaseMs) / 1000
-                val sign = if (deltaSec >= 0) "+" else ""
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .clip(SquircleShape(10.dp))
-                        .background(Color(0xCC000000))
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                ) {
-                    Text(
-                        text = "${Formatters.formatDuration(seekPreviewMs / 1000)} / " +
-                            "${Formatters.formatDuration(durationMs / 1000)} (${sign}${deltaSec}s)",
-                        style = COUITheme.textStyles.body2,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White,
-                    )
+                val cardModifier = if (seekPreview?.shot != null) {
+                    Modifier.align(Alignment.Center).width(if (currentFullscreen) 176.dp else 144.dp)
+                } else {
+                    Modifier.align(Alignment.Center)
                 }
+                SeekPreviewCard(
+                    positionMs = seekPreviewMs,
+                    durationMs = durationMs,
+                    preview = seekPreview,
+                    chapters = chapters,
+                    deltaSec = deltaSec,
+                    compact = !currentFullscreen,
+                    modifier = cardModifier,
+                )
             }
 
             // 亮度贴左 1/3，音量贴右 1/3，各自居中显示

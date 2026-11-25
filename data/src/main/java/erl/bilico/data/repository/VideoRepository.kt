@@ -6,6 +6,7 @@ import erl.bilico.data.model.VideoCollection
 import erl.bilico.data.model.VideoDetail
 import erl.bilico.data.model.VideoEpisode
 import erl.bilico.data.model.VideoPart
+import erl.bilico.data.model.VideoPreviewShot
 import erl.bilico.data.network.BiliApi
 import erl.bilico.data.network.BuvidManager
 import erl.bilico.data.network.WbiKeyManager
@@ -204,6 +205,29 @@ class VideoRepository(
                 .firstOrNull()
                 ?: segment.url
         }
+    }
+
+    /** 获取视频进度条预览雪碧图（按需调用，不支持或失败时返回 null，由 UI 静默回退为纯时间气泡）。 */
+    suspend fun videoshot(bvid: String, cid: Long): VideoPreviewShot? = withContext(Dispatchers.IO) {
+        if (bvid.isBlank() || cid <= 0L) return@withContext null
+        runCatching {
+            buvid.ensure()
+            val response = api.videoshot(bvid = bvid, cid = cid, index = 1)
+            val data = response.data ?: return@runCatching null
+            if (response.code != 0) return@runCatching null
+            val urls = data.image.orEmpty()
+                .map { Formatters.normalizeImageUrl(it) }
+                .filter { it.isNotBlank() }
+            if (urls.isEmpty()) return@runCatching null
+            VideoPreviewShot(
+                images = urls,
+                index = data.index.orEmpty(),
+                imgXLen = data.imgXLen.coerceAtLeast(1),
+                imgYLen = data.imgYLen.coerceAtLeast(1),
+                imgXSize = data.imgXSize.coerceAtLeast(1),
+                imgYSize = data.imgYSize.coerceAtLeast(1),
+            )
+        }.getOrNull()
     }
 
     /** 简介下面那一栏「其他推荐视频」：接口按相关度给一串，字段和推荐流卡片对得上。 */

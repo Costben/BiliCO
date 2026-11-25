@@ -146,3 +146,81 @@ data class RelatedItem(
     val owner: VideoOwner = VideoOwner(),
     val stat: VideoStat = VideoStat(),
 )
+
+@Serializable
+data class VideoshotResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: VideoshotData? = null,
+)
+
+@Serializable
+data class VideoshotData(
+    val pvdata: String = "",
+    @SerialName("img_x_len") val imgXLen: Int = 10,
+    @SerialName("img_y_len") val imgYLen: Int = 10,
+    @SerialName("img_x_size") val imgXSize: Int = 160,
+    @SerialName("img_y_size") val imgYSize: Int = 90,
+    val image: List<String>? = null,
+    val index: List<Int>? = null,
+)
+
+data class VideoPreviewFrame(
+    val sheetUrl: String,
+    val col: Int,
+    val row: Int,
+    val xLen: Int,
+    val yLen: Int,
+    val cellWidth: Int,
+    val cellHeight: Int,
+)
+
+data class VideoPreviewShot(
+    val images: List<String>,
+    val index: List<Int>,
+    val imgXLen: Int,
+    val imgYLen: Int,
+    val imgXSize: Int,
+    val imgYSize: Int,
+) {
+    fun resolveFrame(positionMs: Long, durationMs: Long): VideoPreviewFrame? {
+        if (images.isEmpty() || imgXLen <= 0 || imgYLen <= 0) return null
+        val perSheet = imgXLen * imgYLen
+        val totalSlots = images.size * perSheet
+        if (totalSlots <= 0) return null
+
+        val targetSec = (positionMs.coerceAtLeast(0L) / 1000L).toInt()
+        val rawFrame = if (index.isNotEmpty()) {
+            var lo = 0
+            var hi = index.size
+            while (lo < hi) {
+                val mid = (lo + hi) ushr 1
+                if (index[mid] <= targetSec) lo = mid + 1 else hi = mid
+            }
+            val matched = (lo - 1).coerceAtLeast(0)
+            if (index.size >= 2 && index[0] == 0 && index[1] == 0) {
+                (matched - 1).coerceAtLeast(0)
+            } else {
+                matched
+            }
+        } else if (durationMs > 0L) {
+            val fraction = (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 0.9999f)
+            (fraction * totalSlots).toInt()
+        } else {
+            0
+        }
+
+        val frameIndex = rawFrame.coerceIn(0, totalSlots - 1)
+        val sheetIndex = (frameIndex / perSheet).coerceIn(0, images.lastIndex)
+        val inSheet = frameIndex % perSheet
+        return VideoPreviewFrame(
+            sheetUrl = images[sheetIndex],
+            col = inSheet % imgXLen,
+            row = inSheet / imgXLen,
+            xLen = imgXLen,
+            yLen = imgYLen,
+            cellWidth = imgXSize.coerceAtLeast(1),
+            cellHeight = imgYSize.coerceAtLeast(1),
+        )
+    }
+}

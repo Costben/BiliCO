@@ -11,13 +11,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -29,8 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -38,7 +31,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -52,21 +44,14 @@ import erl.bilico.data.model.SubtitleTrack
 import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.settings.PlayerTopBarLayout
 import erl.bilico.data.settings.PlayerTopBarMode
-import erl.bilico.data.util.Formatters
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.LocalRouteMinimized
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.PlayerStateOverlay
 import erl.bilico.ui.layerBackdropIf
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Pause
-import io.github.suqi8.coui.kmp.icon.extended.Play
-import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 
 /**
@@ -151,7 +136,9 @@ internal fun VideoPlayer(
     overlay: @Composable () -> Unit = {},
     danmakuComposer: (@Composable (onFocusChange: (Boolean) -> Unit) -> Unit)? = null,
     danmakuActions: DanmakuActionCallbacks? = null,
+    seekPreview: SeekPreviewController? = null,
 ) {
+    val zoomState = rememberPlayerZoomState()
     var controlsVisible by remember { mutableStateOf(false) }
     var activeMenu by remember { mutableStateOf(PlayerPopupMenu.NONE) }
     var lastBottomMenu by remember { mutableStateOf(PlayerPopupMenu.SPEED) }
@@ -179,7 +166,11 @@ internal fun VideoPlayer(
             topBarSettingsVisible = false
             sponsorAssistVisible = false
             selectedDanmaku = null
+            zoomState.reset()
         }
+    }
+    LaunchedEffect(source?.videoUrl) {
+        zoomState.reset()
     }
     LaunchedEffect(inPipMode, danmakuActions == null) {
         if (inPipMode || danmakuActions == null) selectedDanmaku = null
@@ -209,6 +200,7 @@ internal fun VideoPlayer(
     val showChrome = !inPipMode && (controlsVisible || errorMessage != null)
     LaunchedEffect(fullscreen, showChrome) {
         if (!showChrome) activeMenu = PlayerPopupMenu.NONE
+        if (showChrome && !liveMode) seekPreview?.ensureLoaded(positionMs, durationMs)
     }
     val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
     // 顶栏按当前模式取一份配置：全屏（横屏 / 竖屏视频全屏）与竖屏各管各的。
@@ -312,10 +304,11 @@ internal fun VideoPlayer(
                     surfaceHost.value = view
                     view.player = if (isTop) player else null
                     view.resizeMode = resizeMode
+                    applyVideoZoomToPlayerView(view, zoomState)
                     // 舞台用替身帧或黑听纯音频期间把视频画面隐藏，避免帧残留或黑屏闪烁。
                     view.visibility = if (minimized || frozenVideo || audioOnly) View.INVISIBLE else View.VISIBLE
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().clipToBounds(),
             )
         }
 
@@ -336,6 +329,10 @@ internal fun VideoPlayer(
                 seekEnabled = !liveMode,
                 longPressSpeed = if (liveMode) null else longPressSpeed,
                 longPressSpeedMode = longPressSpeedMode,
+                zoomState = if (audioOnly) null else zoomState,
+                seekPreview = if (liveMode) null else seekPreview,
+                chapters = chapters,
+                onSeekStart = { if (!liveMode) seekPreview?.ensureLoaded(positionMs, durationMs) },
                 fullscreen = fullscreen,
                 hapticEnabled = hapticEnabled,
                 volumeBrightnessEnabled = volumeBrightnessEnabled,
@@ -452,109 +449,78 @@ internal fun VideoPlayer(
             autoNextOverlay(bottomChromePad, horizontalBarPad)
         }
 
-        AnimatedVisibility(
-            visible = showChrome,
-            enter = fadeIn(tween(200, easing = ColorOSMoveEase)) +
-                slideInVertically(tween(200, easing = ColorOSMoveEase)) { it / 3 },
-            exit = fadeOut(tween(150)) + slideOutVertically(tween(150)) { it / 3 },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                // 全屏发弹幕时软键盘会把底栏顶走，整条跟着键盘抬起来。
-                .imePadding(),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
-                    .padding(horizontal = horizontalBarPad, vertical = 6.dp),
-            ) {
-                if (!liveMode && chapters.isNotEmpty()) {
-                    PlayerChapterStrip(
-                        chapters = chapters,
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        onSelectChapter = { chapter ->
-                            onSeek(chapter.fromMs)
-                            if (!isPlaying) onPlayPause()
-                        },
-                    )
-                }
-                if (!liveMode) {
-                    PlayerProgress(
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        bufferedMs = bufferedMs,
-                        isPlaying = isPlaying,
-                        isBuffering = isBuffering,
-                        conicLightEnabled = conicLightEnabled,
-                        holdToSpeedUp = longPressSpeed?.active == true,
-                        hapticEnabled = hapticEnabled,
-                        sponsorSegments = sponsorSegments,
-                        chapters = chapters,
-                        onScrubPositionChange = { scrubbingPositionMs = it },
-                        onSeek = onSeek,
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    PlayerIconButton(
-                        icon = if (isPlaying) COUIIcons.Pause else COUIIcons.Play,
-                        label = if (isPlaying) "暂停" else "播放",
-                        onClick = onPlayPause,
-                        buttonSize = if (fullscreen) 40.dp else 36.dp,
-                        iconPadding = if (fullscreen) 9.dp else 7.dp,
-                    )
-                    if (liveMode) {
-                        Text(
-                            text = statusText.orEmpty(),
-                            modifier = Modifier.padding(start = 6.dp),
-                            style = COUITheme.textStyles.footnote2,
-                            color = Color.White,
-                        )
-                    } else {
-                        Column(modifier = Modifier.padding(start = 2.dp)) {
-                            Text(
-                                text = Formatters.formatDuration((scrubbingPositionMs ?: positionMs) / 1000),
-                                style = COUITheme.textStyles.footnote2,
-                                color = Color.White,
-                                lineHeight = 15.sp,
-                            )
-                            Text(
-                                text = Formatters.formatDuration(durationMs / 1000),
-                                style = COUITheme.textStyles.footnote2,
-                                color = Color.White.copy(alpha = 0.6f),
-                                lineHeight = 15.sp,
-                            )
-                        }
-                    }
-                    if (showStageComposer) {
-                        Box(
-                            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { danmakuComposer { composerFocused = it } }
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                    }
-                    PlayerBottomTrailingControls(
-                        subtitleLabel = subtitleLabel, speed = speed, qualityLabel = qualityLabel,
-                        fullscreen = fullscreen, liveMode = liveMode, onSelectLine = onSelectLine,
-                        onSuperChatsClick = onSuperChatsClick?.let { open -> { controlsVisible = false; open() } },
-                        superChatCount = superChatCount, activeMenu = activeMenu,
-                        onOpenMenu = { menu -> if (menu != PlayerPopupMenu.MORE) lastBottomMenu = menu; activeMenu = menu },
-                        onDismissMenu = { activeMenu = PlayerPopupMenu.NONE },
-                        speedLocked = speedLocked, onToggleSpeedLock = onToggleSpeedLock,
-                        episodesMenuItems = episodesMenuItems, speedMenuItems = speedMenuItems,
-                        qualityMenuItems = qualityMenuItems, subtitleMenuItems = subtitleMenuItems,
-                        stageCoords = stageCoords,
-                        onEpisodesEndChange = { episodesEndMargin = it },
-                        onSubtitleEndChange = { subtitleEndMargin = it },
-                        onSpeedEndChange = { speedEndMargin = it },
-                        onQualityEndChange = { qualityEndMargin = it },
-                        onToggleFullscreen = onToggleFullscreen,
-                    )
-                }
-            }
+        if (!inPipMode && !audioOnly) {
+            PlayerZoomOverlay(
+                zoom = zoomState,
+                showChrome = showChrome,
+                topOffset = portraitTopPad,
+                hideResetPill = longPressSpeed?.active == true,
+            )
         }
+
+        val activeScrubMs = scrubbingPositionMs
+        if (!inPipMode && !liveMode && showChrome && activeScrubMs != null && durationMs > 0L) {
+            val previewBottomPad = if (chapters.isNotEmpty()) 112.dp else 82.dp
+            SeekPreviewFloatingOverlay(
+                scrubbingPositionMs = activeScrubMs,
+                durationMs = durationMs,
+                preview = seekPreview,
+                chapters = chapters,
+                fullscreen = fullscreen,
+                bottomPadding = previewBottomPad,
+                horizontalPad = horizontalBarPad,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
+        PlayerBottomChrome(
+            showChrome = showChrome,
+            liveMode = liveMode,
+            fullscreen = fullscreen,
+            horizontalBarPad = horizontalBarPad,
+            chapters = chapters,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            bufferedMs = bufferedMs,
+            scrubbingPositionMs = scrubbingPositionMs,
+            isPlaying = isPlaying,
+            isBuffering = isBuffering,
+            conicLightEnabled = conicLightEnabled,
+            holdToSpeedUp = longPressSpeed?.active == true,
+            hapticEnabled = hapticEnabled,
+            sponsorSegments = sponsorSegments,
+            statusText = statusText,
+            showStageComposer = showStageComposer,
+            danmakuComposer = danmakuComposer,
+            onComposerFocusedChange = { composerFocused = it },
+            onScrubPositionChange = { pos ->
+                if (pos != null) seekPreview?.ensureLoaded(pos, durationMs)
+                scrubbingPositionMs = pos
+            },
+            onPlayPause = onPlayPause,
+            onSeek = onSeek,
+            subtitleLabel = subtitleLabel,
+            speed = speed,
+            qualityLabel = qualityLabel,
+            onSelectLine = onSelectLine,
+            onSuperChatsClick = onSuperChatsClick?.let { open -> { controlsVisible = false; open() } },
+            superChatCount = superChatCount,
+            activeMenu = activeMenu,
+            onOpenMenu = { menu -> if (menu != PlayerPopupMenu.MORE) lastBottomMenu = menu; activeMenu = menu },
+            onDismissMenu = { activeMenu = PlayerPopupMenu.NONE },
+            speedLocked = speedLocked,
+            onToggleSpeedLock = onToggleSpeedLock,
+            episodesMenuItems = episodesMenuItems,
+            speedMenuItems = speedMenuItems,
+            qualityMenuItems = qualityMenuItems,
+            subtitleMenuItems = subtitleMenuItems,
+            stageCoords = stageCoords,
+            onEpisodesEndChange = { episodesEndMargin = it },
+            onSubtitleEndChange = { subtitleEndMargin = it },
+            onSpeedEndChange = { speedEndMargin = it },
+            onQualityEndChange = { qualityEndMargin = it },
+            onToggleFullscreen = onToggleFullscreen,
+        )
         }
 
         if (fullscreen) {

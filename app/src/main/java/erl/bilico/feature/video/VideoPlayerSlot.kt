@@ -102,6 +102,11 @@ internal fun BoxScope.VideoPlayerSlot(
         onSelectPart = onSelectPart,
         onSelectEpisode = onSelectEpisode,
     )
+    val seekPreview = rememberSeekPreviewController(
+        repository = container.video,
+        bvid = if (state.offlineMode) "" else bvid,
+        cid = state.selectedCid,
+    )
 
     VideoPlayer(
         player = player,
@@ -244,6 +249,7 @@ internal fun BoxScope.VideoPlayerSlot(
             onShowMessage = viewModel::showMessage,
             onShowLoginHint = viewModel::showLoginHint,
         ),
+        seekPreview = seekPreview,
     )
 
     if (fullscreen) {

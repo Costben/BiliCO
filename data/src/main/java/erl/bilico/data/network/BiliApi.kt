@@ -72,6 +72,7 @@ import erl.bilico.data.model.SpaceVideoResponse
 import erl.bilico.data.model.UpStatResponse
 import erl.bilico.data.model.UploadBfsResponse
 import erl.bilico.data.model.VideoInfoResponse
+import erl.bilico.data.model.VideoshotResponse
 import erl.bilico.data.model.WatchLaterResponse
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -131,6 +132,13 @@ interface BiliApi {
 
     @GET("x/player/v2")
     suspend fun playerInfoLegacy(@QueryMap params: Map<String, String>): PlayerInfoResponse
+
+    @GET("x/player/videoshot")
+    suspend fun videoshot(
+        @Query("bvid") bvid: String,
+        @Query("cid") cid: Long,
+        @Query("index") index: Int = 1,
+    ): VideoshotResponse
 
     @GET("x/v2/reply/wbi/main")
     suspend fun mainComments(@QueryMap params: Map<String, String>): ReplyResponse

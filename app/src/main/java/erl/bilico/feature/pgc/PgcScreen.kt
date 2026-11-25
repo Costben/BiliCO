@@ -52,6 +52,7 @@ import erl.bilico.feature.video.rememberDanmakuActions
 import erl.bilico.feature.video.rememberLongPressSpeedController
 import erl.bilico.feature.video.resolveLongPressSpeedMode
 import erl.bilico.feature.video.rememberPlayerFullscreenController
+import erl.bilico.feature.video.rememberSeekPreviewController
 import erl.bilico.feature.video.rememberVideoBarBackdrops
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
@@ -512,6 +513,7 @@ fun PgcScreen(
                     onShowMessage = { danmakuActionMessage = it },
                     onShowLoginHint = { danmakuActionMessage = "请先登录后再操作" },
                 ),
+                seekPreview = rememberSeekPreviewController(container.video, episode?.bvid.orEmpty(), episode?.cid ?: 0L),
             )
             if (fullscreen) {
                 VideoMessageToast(message = message, inPipMode = inPipMode, inFullscreen = true)
