@@ -45,6 +45,9 @@ val LocalOpenUrl = compositionLocalOf<((String, String?) -> Unit)?> { null }
 /** 正文内点击 `#话题#` 时跳转搜索对应话题。 */
 val LocalOpenTopic = compositionLocalOf<((String) -> Unit)?> { null }
 
+/** 正文内点击未附带 mid 的纯文本 `@用户名` 时，按昵称解析并跳转对应用户主页。 */
+val LocalOpenUserName = compositionLocalOf<((String) -> Unit)?> { null }
+
 /** 评论正文内点击时间戳（如 `02: 24`）时跳转播放进度（毫秒）。 */
 val LocalCommentSeek = compositionLocalOf<((Long) -> Unit)?> { null }
 
@@ -98,15 +101,18 @@ fun RichCommentText(
     val openBvidCallback = LocalOpenBvid.current
     val openUrlCallback = LocalOpenUrl.current
     val openTopicCallback = LocalOpenTopic.current
+    val openUserNameCallback = LocalOpenUserName.current
     val commentSeekCallback = LocalCommentSeek.current
     val currentOpenBvid by rememberUpdatedState(openBvidCallback)
     val currentOpenUrl by rememberUpdatedState(openUrlCallback)
     val currentOpenTopic by rememberUpdatedState(openTopicCallback)
+    val currentOpenUserName by rememberUpdatedState(openUserNameCallback)
     val currentSeek by rememberUpdatedState(commentSeekCallback)
     val currentUriHandler by rememberUpdatedState(uriHandler)
     val currentOpenUser by rememberUpdatedState(onOpenUser)
     val enableTimestamps = commentSeekCallback != null
     val enableUserLinks = onOpenUser != null && mentions.isNotEmpty()
+    val enableUserNameLinks = openUserNameCallback != null
 
     val rawDisplay = content.ifBlank { if (emotes.isEmpty()) "[图片评论]" else "" }
     val (annotated, inlineMap) = remember(
@@ -124,6 +130,7 @@ fun RichCommentText(
         largePx,
         enableTimestamps,
         enableUserLinks,
+        enableUserNameLinks,
     ) {
         val openUrlAction: (String, String?) -> Unit = { url, title ->
             val opener = currentOpenUrl
@@ -156,6 +163,11 @@ fun RichCommentText(
         } else {
             null
         }
+        val openUserNameAction: ((String) -> Unit)? = if (enableUserNameLinks) {
+            { name -> currentOpenUserName?.invoke(name) }
+        } else {
+            null
+        }
         val sortedMentionNames = mentions.keys.sortedByDescending { it.length }
         val inline = LinkedHashMap<String, InlineTextContent>()
         val builder = AnnotatedString.Builder()
@@ -182,6 +194,7 @@ fun RichCommentText(
                 fontWeight = FontWeight.Medium,
                 mentions = mentions,
                 onOpenUser = openUserAction,
+                onOpenUserName = openUserNameAction,
                 onOpenTopic = openTopicAction,
             )
             builder.append(": ")
@@ -189,9 +202,9 @@ fun RichCommentText(
         } else {
             rawDisplay
         }
-        if (emotes.isEmpty()) {
+        fun appendSegment(seg: String) {
             builder.appendRichSegment(
-                segment = display,
+                segment = seg,
                 mentionColor = prefixColor,
                 onOpenBvid = openBvidAction,
                 onOpenUrl = openUrlAction,
@@ -200,25 +213,18 @@ fun RichCommentText(
                 mentions = mentions,
                 mentionNames = sortedMentionNames,
                 onOpenUser = openUserAction,
+                onOpenUserName = openUserNameAction,
                 inline = inline,
             )
+        }
+        if (emotes.isEmpty()) {
+            appendSegment(display)
         } else {
             var cursor = 0
             var index = 0
             EmoteTokenRegex.findAll(display).forEach { match ->
                 if (match.range.first > cursor) {
-                    builder.appendRichSegment(
-                        segment = display.substring(cursor, match.range.first),
-                        mentionColor = prefixColor,
-                        onOpenBvid = openBvidAction,
-                        onOpenUrl = openUrlAction,
-                        onOpenTopic = openTopicAction,
-                        onSeekTimeMs = seekAction,
-                        mentions = mentions,
-                        mentionNames = sortedMentionNames,
-                        onOpenUser = openUserAction,
-                        inline = inline,
-                    )
+                    appendSegment(display.substring(cursor, match.range.first))
                 }
                 val token = match.value
                 val emote = emotes[token]
@@ -250,34 +256,12 @@ fun RichCommentText(
                         )
                     }
                 } else {
-                    builder.appendRichSegment(
-                        segment = token,
-                        mentionColor = prefixColor,
-                        onOpenBvid = openBvidAction,
-                        onOpenUrl = openUrlAction,
-                        onOpenTopic = openTopicAction,
-                        onSeekTimeMs = seekAction,
-                        mentions = mentions,
-                        mentionNames = sortedMentionNames,
-                        onOpenUser = openUserAction,
-                        inline = inline,
-                    )
+                    appendSegment(token)
                 }
                 cursor = match.range.last + 1
             }
             if (cursor < display.length) {
-                builder.appendRichSegment(
-                    segment = display.substring(cursor),
-                    mentionColor = prefixColor,
-                    onOpenBvid = openBvidAction,
-                    onOpenUrl = openUrlAction,
-                    onOpenTopic = openTopicAction,
-                    onSeekTimeMs = seekAction,
-                    mentions = mentions,
-                    mentionNames = sortedMentionNames,
-                    onOpenUser = openUserAction,
-                    inline = inline,
-                )
+                appendSegment(display.substring(cursor))
             }
         }
         if (!suffixText.isNullOrEmpty()) {
@@ -363,9 +347,11 @@ private fun AnnotatedString.Builder.appendMentionToken(
     fontWeight: FontWeight?,
     mentions: Map<String, Long>,
     onOpenUser: ((Long) -> Unit)?,
+    onOpenUserName: ((String) -> Unit)? = null,
     onOpenTopic: ((String) -> Unit)? = null,
 ) {
     val targetMid = if (token.startsWith("@")) resolveMentionMid(token, mentions) else null
+    val mentionName = if (token.startsWith("@")) token.removePrefix("@").trim() else ""
     val topicQuery = if (token.startsWith("#") && token.endsWith("#")) token.trim('#').trim() else ""
     when {
         targetMid != null && targetMid > 0L && onOpenUser != null -> withLink(
@@ -373,6 +359,16 @@ private fun AnnotatedString.Builder.appendMentionToken(
                 tag = "user:$targetMid",
                 styles = TextLinkStyles(style = SpanStyle(color = mentionColor, fontWeight = fontWeight)),
                 linkInteractionListener = { onOpenUser(targetMid) },
+            ),
+        ) {
+            append(token)
+        }
+
+        mentionName.isNotEmpty() && onOpenUserName != null -> withLink(
+            LinkAnnotation.Clickable(
+                tag = "username:$mentionName",
+                styles = TextLinkStyles(style = SpanStyle(color = mentionColor, fontWeight = fontWeight)),
+                linkInteractionListener = { onOpenUserName(mentionName) },
             ),
         ) {
             append(token)
@@ -404,6 +400,7 @@ internal fun AnnotatedString.Builder.appendRichSegment(
     mentions: Map<String, Long>,
     mentionNames: List<String>,
     onOpenUser: ((Long) -> Unit)?,
+    onOpenUserName: ((String) -> Unit)? = null,
     inline: MutableMap<String, InlineTextContent>,
 ) {
     val urlStyles = TextLinkStyles(
@@ -512,6 +509,7 @@ internal fun AnnotatedString.Builder.appendRichSegment(
                     fontWeight = if (token.startsWith("@")) FontWeight.Medium else null,
                     mentions = mentions,
                     onOpenUser = onOpenUser,
+                    onOpenUserName = onOpenUserName,
                     onOpenTopic = onOpenTopic,
                 )
                 cursor = range.last + 1

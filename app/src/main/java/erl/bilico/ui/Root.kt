@@ -98,6 +98,7 @@ import erl.bilico.ui.components.InAppWebScreen
 import erl.bilico.ui.components.LocalOpenBvid
 import erl.bilico.ui.components.LocalOpenTopic
 import erl.bilico.ui.components.LocalOpenUrl
+import erl.bilico.ui.components.LocalOpenUserName
 import erl.bilico.update.AppUpdater
 import erl.bilico.update.UpdateCheckInterval
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -268,6 +269,9 @@ internal fun BiliCoRoot(
         LocalOpenTopic provides { topic ->
             val query = topic.trim()
             if (query.isNotEmpty()) nav.push(Route.Search(query))
+        },
+        LocalOpenUserName provides { rawName ->
+            openUserByName(rawName, nav, container, scope)
         },
         LocalLiveRepository provides container.live,
         LocalAppContainer provides container,

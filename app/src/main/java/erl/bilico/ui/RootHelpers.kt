@@ -51,12 +51,15 @@ import androidx.compose.ui.util.lerp
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import erl.bilico.di.AppContainer
 import erl.bilico.feature.video.findActivity
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.squircle.SquircleDefaults
 import io.github.suqi8.coui.kmp.squircle.addSquircleRect
 import io.github.suqi8.coui.kmp.utils.PredictiveBackMotionDefaults
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.pow
 
@@ -557,6 +560,27 @@ internal fun SyncStatusBarAppearance(
         val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         if (controller != null && controller.isAppearanceLightStatusBars != lightStatusBars) {
             controller.isAppearanceLightStatusBars = lightStatusBars
+        }
+    }
+}
+
+/** 点击无 mid 的纯文本 `@用户名` 时，按用户搜索精确匹配昵称直接进主页，否则回退搜索页。 */
+internal fun openUserByName(
+    rawName: String,
+    nav: NavState,
+    container: AppContainer,
+    scope: CoroutineScope,
+) {
+    val name = rawName.trim().removePrefix("@")
+    if (name.isEmpty()) return
+    scope.launch {
+        val exactMid = container.search.searchUsers(name, page = 1).getOrNull()?.items
+            ?.firstOrNull { it.name.equals(name, ignoreCase = true) }
+            ?.mid
+        if (exactMid != null && exactMid > 0L) {
+            nav.push(Route.Space(exactMid))
+        } else {
+            nav.push(Route.Search(name))
         }
     }
 }
