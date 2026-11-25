@@ -52,6 +52,8 @@ import erl.bilico.ui.components.PlayerStateOverlay
 import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
+import io.github.suqi8.coui.kmp.utils.CouiHapticEffect
+import io.github.suqi8.coui.kmp.utils.rememberCouiHaptic
 import kotlinx.coroutines.delay
 
 /**
@@ -139,6 +141,8 @@ internal fun VideoPlayer(
     seekPreview: SeekPreviewController? = null,
 ) {
     val zoomState = rememberPlayerZoomState()
+    val haptic = rememberCouiHaptic()
+    val screenLock = rememberPlayerScreenLockState(fullscreen = fullscreen, inPipMode = inPipMode)
     var controlsVisible by remember { mutableStateOf(false) }
     var activeMenu by remember { mutableStateOf(PlayerPopupMenu.NONE) }
     var lastBottomMenu by remember { mutableStateOf(PlayerPopupMenu.SPEED) }
@@ -161,6 +165,7 @@ internal fun VideoPlayer(
         if (prevFullscreen != fullscreen) {
             prevFullscreen = fullscreen
             controlsVisible = false
+            screenLock.reset()
             activeMenu = PlayerPopupMenu.NONE
             statsVisible = false
             topBarSettingsVisible = false
@@ -196,8 +201,9 @@ internal fun VideoPlayer(
     }
 
     // 只看「要不要显示控件」这一个开关。暂停、缓冲、网络抖动都不能把控件顶回来，
-    // 否则点一下屏幕看到控件纹丝不动，像是点不动。
-    val showChrome = !inPipMode && (controlsVisible || errorMessage != null)
+    // 否则点一下屏幕看到控件纹丝不动，像是点不动。全屏锁屏期间强制隐藏顶底控制栏。
+    val effectiveLocked = fullscreen && !inPipMode && screenLock.locked
+    val showChrome = !inPipMode && !effectiveLocked && (controlsVisible || errorMessage != null)
     LaunchedEffect(fullscreen, showChrome) {
         if (!showChrome) activeMenu = PlayerPopupMenu.NONE
         if (showChrome && !liveMode) seekPreview?.ensureLoaded(positionMs, durationMs)
@@ -323,44 +329,51 @@ internal fun VideoPlayer(
         subtitleOverlay(showChrome)
 
         if (!inPipMode) {
-            PlayerGestureLayer(
-                positionMs = positionMs,
-                durationMs = durationMs,
-                seekEnabled = !liveMode,
-                longPressSpeed = if (liveMode) null else longPressSpeed,
-                longPressSpeedMode = longPressSpeedMode,
-                zoomState = if (audioOnly) null else zoomState,
-                seekPreview = if (liveMode) null else seekPreview,
-                chapters = chapters,
-                onSeekStart = { if (!liveMode) seekPreview?.ensureLoaded(positionMs, durationMs) },
-                fullscreen = fullscreen,
-                hapticEnabled = hapticEnabled,
-                volumeBrightnessEnabled = volumeBrightnessEnabled,
-                fullscreenHintEnabled = fullscreenHintEnabled,
-                onTap = { offset ->
-                    val hit = if (selectedDanmaku == null && danmakuActions != null) {
-                        danmakuInteraction.hitTest?.invoke(offset)
-                    } else {
-                        null
-                    }
-                    when {
-                        selectedDanmaku != null -> selectedDanmaku = null
-                        hit != null -> {
-                            selectedDanmaku = hit
-                            controlsVisible = false
+            if (effectiveLocked) {
+                PlayerLockedTouchShield(
+                    onTap = screenLock::toggleHint,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                PlayerGestureLayer(
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    seekEnabled = !liveMode,
+                    longPressSpeed = if (liveMode) null else longPressSpeed,
+                    longPressSpeedMode = longPressSpeedMode,
+                    zoomState = if (audioOnly) null else zoomState,
+                    seekPreview = if (liveMode) null else seekPreview,
+                    chapters = chapters,
+                    onSeekStart = { if (!liveMode) seekPreview?.ensureLoaded(positionMs, durationMs) },
+                    fullscreen = fullscreen,
+                    hapticEnabled = hapticEnabled,
+                    volumeBrightnessEnabled = volumeBrightnessEnabled,
+                    fullscreenHintEnabled = fullscreenHintEnabled,
+                    onTap = { offset ->
+                        val hit = if (selectedDanmaku == null && danmakuActions != null) {
+                            danmakuInteraction.hitTest?.invoke(offset)
+                        } else {
+                            null
                         }
-                        else -> controlsVisible = !controlsVisible
-                    }
-                },
-                onDoubleTap = {
-                    // 双击是播放/暂停，结果必须看得见：暂停时把控件亮出来。
-                    controlsVisible = true
-                    onPlayPause()
-                },
-                onSeek = onSeek,
-                onFullscreenChange = onFullscreenChange,
-                modifier = Modifier.fillMaxSize(),
-            )
+                        when {
+                            selectedDanmaku != null -> selectedDanmaku = null
+                            hit != null -> {
+                                selectedDanmaku = hit
+                                controlsVisible = false
+                            }
+                            else -> controlsVisible = !controlsVisible
+                        }
+                    },
+                    onDoubleTap = {
+                        // 双击是播放/暂停，结果必须看得见：暂停时把控件亮出来。
+                        controlsVisible = true
+                        onPlayPause()
+                    },
+                    onSeek = onSeek,
+                    onFullscreenChange = onFullscreenChange,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
 
         PlayerStatsFloatingOverlay(
@@ -449,12 +462,33 @@ internal fun VideoPlayer(
             autoNextOverlay(bottomChromePad, horizontalBarPad)
         }
 
-        if (!inPipMode && !audioOnly) {
+        if (!inPipMode && !audioOnly && !effectiveLocked) {
             PlayerZoomOverlay(
                 zoom = zoomState,
                 showChrome = showChrome,
                 topOffset = portraitTopPad,
                 hideResetPill = longPressSpeed?.active == true,
+            )
+        }
+
+        if (fullscreen && !inPipMode) {
+            PlayerScreenLockButton(
+                visible = if (effectiveLocked) screenLock.hintVisible else (showChrome && activeMenu == PlayerPopupMenu.NONE && !composerFocused),
+                locked = effectiveLocked,
+                startPad = horizontalBarPad,
+                onToggleLock = {
+                    if (hapticEnabled) haptic(CouiHapticEffect.Short)
+                    if (screenLock.locked) {
+                        screenLock.unlock()
+                        controlsVisible = true
+                    } else {
+                        screenLock.lock()
+                        controlsVisible = false
+                        activeMenu = PlayerPopupMenu.NONE
+                        selectedDanmaku = null
+                        longPressSpeed?.onActiveChange?.invoke(false)
+                    }
+                },
             )
         }
 
