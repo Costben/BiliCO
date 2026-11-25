@@ -437,7 +437,7 @@ internal fun ReplyDetailPage(
                             Text(
                                 text = "相关回复共${maxOf(detailState.totalCount, detailState.items.size)}条",
                                 style = COUITheme.textStyles.main.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
-                                color = COUITheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                                color = COUITheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp),
                             )
                             ReplySortTabRow(sort = detailState.sort, onSelectSort = detailState::selectSort)
                         }

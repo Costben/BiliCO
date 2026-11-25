@@ -2,13 +2,19 @@ package erl.bilico.feature.comment
 
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.Comment
 import erl.bilico.data.model.CommentSort
 import io.github.suqi8.coui.kmp.basic.TabRowDefaults
 import io.github.suqi8.coui.kmp.basic.TabRowWithContour
+import kotlin.math.ceil
 
 data class CommentUiState(
     val items: List<Comment> = emptyList(),
@@ -39,7 +45,7 @@ internal fun CommentSortTabRow(
         onSelectIndex = { index ->
             onSelectSort(if (index == 0) CommentSort.Hot else CommentSort.New)
         },
-        minWidth = 56.dp,
+        minWidth = 54.dp,
         modifier = modifier,
     )
 }
@@ -71,20 +77,44 @@ private fun MiniSortTabRow(
     minWidth: Dp,
     modifier: Modifier = Modifier,
 ) {
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    // COUI SegmentedControl 按 14sp（字号缩放上限 1.35x）+ Medium 渲染，
+    // 且 padding(horizontal) 两侧独立四舍五入；这里显式按实测像素宽加余量托底，
+    // 防止大字体或非整数倍密度下每段短 1~2px 触发「最...」截断。
+    val effectiveMinWidth = remember(tabs, minWidth, density, measurer) {
+        val adaptedFontScale = density.fontScale.coerceIn(1f, COUI_SEGMENT_MAX_FONT_SCALE)
+        val adaptedPx = 14f * density.density * adaptedFontScale
+        val measureStyle = TextStyle(
+            fontSize = with(density) { adaptedPx.toSp() },
+            fontWeight = FontWeight.Medium,
+        )
+        val maxLabelPx = tabs.maxOfOrNull { label ->
+            ceil(measurer.measure(text = label, style = measureStyle, maxLines = 1).size.width.toFloat()).toInt()
+        } ?: 0
+        val padPx = with(density) { MINI_SEGMENT_PADDING.roundToPx() * 2 }
+        val safetyPx = with(density) { MINI_SEGMENT_SAFETY_MARGIN.roundToPx() }
+        val requiredDp = with(density) { (maxLabelPx + padPx + safetyPx).toDp() }
+        maxOf(minWidth, requiredDp)
+    }
+
     TabRowWithContour(
         tabs = tabs,
         selectedTabIndex = selectedIndex,
         onTabSelected = onSelectIndex,
-        minWidth = minWidth,
+        minWidth = effectiveMinWidth,
         height = TabRowDefaults.TabRowWithContourTinyHeight,
         cornerRadius = TabRowDefaults.TabRowWithContourTinyCornerRadius,
         contourPadding = TabRowDefaults.TabRowWithContourTinyPadding,
-        segmentPadding = 10.dp,
+        segmentPadding = MINI_SEGMENT_PADDING,
         colors = TabRowDefaults.tabRowColors(),
         modifier = modifier.wrapContentWidth(unbounded = true),
     )
 }
 
+private const val COUI_SEGMENT_MAX_FONT_SCALE = 1.35f
+private val MINI_SEGMENT_PADDING = 8.dp
+private val MINI_SEGMENT_SAFETY_MARGIN = 6.dp
 private val COMMENT_SORT_TABS = listOf("最热", "最新")
 private val REPLY_SORT_TABS = listOf("最旧", "最热", "最新")
 private val REPLY_SORT_ORDER = listOf(ReplySort.Old, ReplySort.Hot, ReplySort.New)

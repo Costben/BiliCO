@@ -213,7 +213,7 @@ fun CommentTab(
                                     text = if (state.sort == CommentSort.New) "最新评论" else "最热评论",
                                     style = COUITheme.textStyles.body1,
                                     fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
                                 )
                                 CommentSortTabRow(
                                     sort = state.sort,
