@@ -1,0 +1,69 @@
+name: 💡 功能建议 / 体验优化（Feature Request）
+description: 提出新功能想法或交互手感改进建议（一个 Issue 只提一条建议）
+title: "[建议]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎提出改进建议！为了便于讨论、排期与追踪：
+        - **请一个 Issue 只提一条独立建议**，不要在同一个 Issue 中堆砌多条无关需求。
+        - BiliCO 追求轻、快、流畅与 COUI 17 风格一致，提交前请尽量写清使用场景与期望交互。
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: 涉及模块
+      options:
+        - 视频播放与手势
+        - 弹幕与字幕
+        - 评论区与楼中楼
+        - 视频简介与互动（点赞/投币/收藏）
+        - 首页与推荐/排行榜/番剧
+        - 直播
+        - 动态与专栏
+        - 搜索
+        - 收藏/历史/离线缓存/个人页
+        - 消息与私信
+        - 登录与账号
+        - 外观、动效与导航
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景 / 当前痛点
+      description: 你在什么操作场景下遇到了什么不便？
+      placeholder: 例如：视频收藏时只能选已有收藏夹，想临时归类到新专题还得先退出视频去收藏页新建。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的效果或改法
+      description: 具体描述你希望怎么交互、展示在什么位置
+      placeholder: 例如：在视频收藏弹窗顶部或底部增加「新建收藏夹」入口，创建完成后直接选中并可点完成收藏。
+    validations:
+      required: true
+
+  - type: textarea
+    id: reference
+    attributes:
+      label: 参考截图或案例（选填）
+      description: 如有参考对象（如 PiliPlus / B 站官方 / ColorOS），可附截图并说明具体参考画面中的哪一部分
+      placeholder: 粘贴截图并补充文字说明，避免只贴图不写指向
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 本 Issue 仅包含一条独立功能或优化建议（多个建议已拆分成多个 Issue）
+          required: true
+        - label: 已搜索现有 Issue，未找到重复建议
+          required: true

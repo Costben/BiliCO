@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📦 查看最新版本（Releases）
+    url: https://github.com/Costben/BiliCO/releases
+    about: 提交反馈前，请先确认是否已在最新版本或预发布版本中修复。

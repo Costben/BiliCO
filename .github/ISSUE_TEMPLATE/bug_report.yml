@@ -1,0 +1,93 @@
+name: 🐛 问题反馈（Bug Report）
+description: 反馈闪退、卡顿、显示错位或功能异常等具体问题（一个 Issue 只写一个问题）
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！为了便于快速定位与逐条关闭：
+        - **请一个 Issue 只反馈一个具体问题**，多个不相关的问题请分开发起。
+        - 提交前请先确认使用的是最新 [Release / 预发布版本](https://github.com/Costben/BiliCO/releases)。
+
+  - type: input
+    id: app_version
+    attributes:
+      label: 应用版本
+      description: 可在应用内「设置 → 关于」或安装包文件名中查看
+      placeholder: 例如：v0.3.14-pre
+    validations:
+      required: true
+
+  - type: input
+    id: device_os
+    attributes:
+      label: 设备型号与系统版本
+      description: 涉及显示错位、字体缩放、帧率或权限问题时尤其重要
+      placeholder: 例如：OnePlus 13 / ColorOS 15（Android 15），默认字体大小
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: 问题所属模块
+      options:
+        - 视频播放与手势
+        - 弹幕与字幕
+        - 评论区与楼中楼
+        - 视频简介与互动（点赞/投币/收藏）
+        - 首页与推荐/排行榜/番剧
+        - 直播
+        - 动态与专栏
+        - 搜索
+        - 收藏/历史/离线缓存/个人页
+        - 消息与私信
+        - 登录与账号
+        - 外观、动效与导航
+        - 检查更新与安装
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 说明实际发生的现象，以及你预期的正常表现
+      placeholder: 例如：在评论详情页（楼中楼）中，右侧「最旧 / 最热 / 最新」排序按钮文字全部被截断为「最...」。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 列出能稳定复现该问题的操作步骤
+      placeholder: |
+        1. 打开任意视频并切换到「评论」页
+        2. 点开一条包含多条回复的评论进入楼中楼
+        3. 观察右侧排序按钮显示
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 截图 / 录屏 / 日志（选填）
+      description: 涉及界面显示或闪退时，附上截图、录屏或崩溃日志能大幅加快修复
+      placeholder: 直接粘贴图片，或粘贴关键报错日志
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 本 Issue 仅包含一个独立问题（未把多个无关问题混在一起）
+          required: true
+        - label: 已在最新版本或最新预发布版本中确认问题仍存在
+          required: true
+        - label: 已搜索现有 Issue，未找到重复反馈
+          required: true
