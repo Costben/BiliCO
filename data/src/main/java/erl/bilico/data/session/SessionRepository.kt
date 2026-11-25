@@ -19,6 +19,8 @@ import erl.bilico.data.network.BiliClient
 import erl.bilico.data.network.PassportApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -173,16 +175,30 @@ class SessionRepository(
     suspend fun refreshProfile(): Account? {
         return runCatching {
             buvid.ensure()
-            val response = api.nav()
+            val (response, statData) = coroutineScope {
+                val statDeferred = async {
+                    runCatching { api.navStat() }.getOrNull()?.takeIf { it.code == 0 }?.data
+                }
+                api.nav() to statDeferred.await()
+            }
             val data = response.data
             if (response.code == 0 && data != null && data.isLogin && data.mid > 0L) {
-                val prevSign = _account.value?.takeIf { it.mid == data.mid }?.sign.orEmpty()
+                val prev = _account.value?.takeIf { it.mid == data.mid }
+                val prevSign = prev?.sign.orEmpty()
+                val levelInfo = data.levelInfo
                 val account = Account(
                     mid = data.mid,
                     name = data.uname,
                     face = data.face,
                     vip = data.vipStatus == 1,
                     sign = prevSign,
+                    level = levelInfo?.currentLevel ?: prev?.level ?: -1,
+                    currentExp = levelInfo?.currentExp ?: prev?.currentExp ?: 0,
+                    nextExp = if (levelInfo != null) levelInfo.nextExpOrNull() else prev?.nextExp,
+                    coins = data.money ?: prev?.coins,
+                    following = statData?.following ?: prev?.following,
+                    follower = statData?.follower ?: prev?.follower,
+                    dynamicCount = statData?.dynamicCount ?: prev?.dynamicCount,
                 )
                 _account.value = account
                 runCatching { persistAccount(account) }

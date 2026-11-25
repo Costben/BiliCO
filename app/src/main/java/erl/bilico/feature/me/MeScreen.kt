@@ -1,22 +1,15 @@
 package erl.bilico.feature.me
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,19 +25,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import erl.bilico.data.model.Account
-import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.login.LoginContent
 import erl.bilico.feature.login.LoginViewModel
@@ -52,7 +39,6 @@ import erl.bilico.ui.MeIconPalette
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.meEntryIconColor
-import erl.bilico.ui.components.Avatar
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.MeBangumiIcon
 import erl.bilico.ui.components.MeDownloadsIcon
@@ -65,14 +51,15 @@ import erl.bilico.ui.components.MeSettingsIcon
 import erl.bilico.ui.components.MeSwitchAccountIcon
 import erl.bilico.ui.components.MeWatchLaterIcon
 import erl.bilico.ui.components.navBottomPadding
+import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
+import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
@@ -101,6 +88,7 @@ fun MeScreen(
 
     LaunchedEffect(current?.mid) {
         if (current != null) {
+            container.session.refreshProfile()
             container.memberProfile.fetchEditableProfile()
         }
     }
@@ -154,7 +142,13 @@ fun MeScreen(
                 )
             }
         } else {
-            item(key = "profile") { ProfileCard(current) }
+            item(key = "profile") {
+                ProfileCard(
+                    account = current,
+                    onOpenSpace = { nav.push(Route.Space(current.mid)) },
+                    onOpenFollowing = { nav.push(Route.Following) },
+                )
+            }
         }
 
         item(key = "entries") {
@@ -196,14 +190,45 @@ fun MeScreen(
                 )
                 EntryRow(
                     title = "离线缓存",
-                    summary = when {
-                        activeDownloadCount > 0 -> "$activeDownloadCount 个任务下载中"
-                        completedDownloadCount > 0 -> "已缓存 $completedDownloadCount 个"
-                        else -> null
-                    },
                     icon = MeDownloadsIcon,
                     palette = MeIconPalette.Blue,
                     position = CardListPosition.Middle,
+                    endActionReplacement = when {
+                        activeDownloadCount > 0 -> {
+                            {
+                                Box(
+                                    modifier = Modifier.size(26.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(
+                                        size = 24.dp,
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Text(
+                                        text = activeDownloadCount.toString(),
+                                        fontSize = 10.sp,
+                                        lineHeight = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = COUITheme.colorScheme.primary,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+
+                        completedDownloadCount > 0 -> {
+                            {
+                                Text(
+                                    text = completedDownloadCount.toString(),
+                                    style = COUITheme.textStyles.body2,
+                                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+
+                        else -> null
+                    },
                     onClick = { nav.push(Route.Downloads) },
                 )
                 EntryRow(
@@ -291,34 +316,44 @@ fun MeScreen(
     }
 }
 
-/** 带图标的一行设置项：COUI 的箭头行，图标塞在 startAction 里。 */
+/** 带图标的一行设置项：默认用 COUI 箭头行，传入 [endActionReplacement] 时替换右侧箭头。 */
 @Composable
 private fun EntryRow(
     title: String,
     icon: ImageVector,
     palette: MeIconPalette,
     position: CardListPosition,
-    summary: String? = null,
     statusText: String? = null,
     showRedDot: Boolean = false,
+    endActionReplacement: (@Composable RowScope.() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    ArrowPreference(
-        title = title,
-        summary = summary,
-        statusText = statusText,
-        showRedDot = showRedDot,
-        cardListPosition = position,
-        startAction = {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = meEntryIconColor(palette),
-                modifier = Modifier.size(24.dp),
-            )
-        },
-        onClick = onClick,
-    )
+    val startIcon: @Composable () -> Unit = {
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            tint = meEntryIconColor(palette),
+            modifier = Modifier.size(24.dp),
+        )
+    }
+    if (endActionReplacement != null) {
+        BasicComponent(
+            title = title,
+            cardListPosition = position,
+            startAction = startIcon,
+            endActions = endActionReplacement,
+            onClick = onClick,
+        )
+    } else {
+        ArrowPreference(
+            title = title,
+            statusText = statusText,
+            showRedDot = showRedDot,
+            cardListPosition = position,
+            startAction = startIcon,
+            onClick = onClick,
+        )
+    }
 }
 
 @Composable
@@ -337,68 +372,5 @@ private fun LoginSection(
         state = loginState,
         onRefresh = loginViewModel::refreshQr,
         onWebLogin = onWebLogin,
-    )
-}
-
-@Composable
-private fun ProfileCard(account: Account) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = CardDefaults.GroupCornerRadius,
-        weight = CardDefaults.GroupWeight,
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val avatarUrl = remember(account.face) {
-                Formatters.sizedImageUrl(account.face, 168, 168)
-            }
-            Avatar(url = avatarUrl, size = 56.dp)
-            Spacer(Modifier.width(14.dp))
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = account.name,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = COUITheme.colorScheme.onSurface,
-                    )
-                    if (account.vip) {
-                        Spacer(Modifier.width(6.dp))
-                        VipBadge()
-                    }
-                }
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = "UID ${account.mid}",
-                    fontSize = 12.sp,
-                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                )
-                if (account.sign.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = account.sign,
-                        fontSize = 12.sp,
-                        color = COUITheme.colorScheme.onSurfaceSecondary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** 官方那枚粉色的「大会员」标识。接口只给 vipStatus，拿不到会员等级和到期时间。 */
-@Composable
-private fun VipBadge() {
-    Text(
-        text = "大会员",
-        modifier = Modifier
-            .clip(SquircleShape(4.dp))
-            .background(Brush.horizontalGradient(listOf(Color(0xFFFB7299), Color(0xFFFF9DBA))))
-            .padding(horizontal = 5.dp, vertical = 1.dp),
-        fontSize = 10.sp,
-        lineHeight = 12.sp,
-        color = Color.White,
     )
 }

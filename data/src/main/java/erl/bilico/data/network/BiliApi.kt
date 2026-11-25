@@ -50,6 +50,7 @@ import erl.bilico.data.model.MemberAccountResponse
 import erl.bilico.data.model.MemberCardResponse
 import erl.bilico.data.model.MemberReportResponse
 import erl.bilico.data.model.NavResponse
+import erl.bilico.data.model.NavStatResponse
 import erl.bilico.data.model.PlayUrlResponse
 import erl.bilico.data.model.PlayerInfoResponse
 import erl.bilico.data.model.QrCodeResponse
@@ -90,6 +91,9 @@ import retrofit2.http.QueryMap
 interface BiliApi {
     @GET("x/web-interface/nav")
     suspend fun nav(): NavResponse
+
+    @GET("x/web-interface/nav/stat")
+    suspend fun navStat(): NavStatResponse
 
     @GET("x/web-interface/wbi/index/top/feed/rcmd")
     suspend fun recommend(@QueryMap params: Map<String, String>): RecommendResponse

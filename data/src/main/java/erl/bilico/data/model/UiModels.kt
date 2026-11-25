@@ -218,6 +218,16 @@ data class Account(
     /** 大会员在有效期内。取流时用它决定清晰度菜单要不要列出会员档位。 */
     val vip: Boolean = false,
     val sign: String = "",
+    /** 账号等级（0~6），-1 表示旧缓存尚未拉取等级信息。 */
+    val level: Int = -1,
+    val currentExp: Int = 0,
+    /** 下一级所需总经验；LV6 满级时为 null。 */
+    val nextExp: Int? = null,
+    /** 硬币余额（支持 0.5 枚），null 表示尚未拉取。 */
+    val coins: Double? = null,
+    val following: Int? = null,
+    val follower: Int? = null,
+    val dynamicCount: Int? = null,
 )
 
 /** 个人中心可编辑资料模型，由 `x/member/web/account` 与当前账号状态合成。 */

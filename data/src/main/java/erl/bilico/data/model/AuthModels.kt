@@ -2,6 +2,7 @@ package erl.bilico.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonPrimitive
 
 @Serializable
 data class BaseResponse(
@@ -25,7 +26,34 @@ data class NavData(
     val mid: Long = 0,
     /** 1 = 大会员在有效期内。清晰度菜单按它决定要不要列出只有会员才能拿到的档位。 */
     @SerialName("vipStatus") val vipStatus: Int = 0,
+    val money: Double? = null,
+    @SerialName("level_info") val levelInfo: NavLevelInfo? = null,
     @SerialName("wbi_img") val wbiImg: WbiImg? = null,
+)
+
+@Serializable
+data class NavLevelInfo(
+    @SerialName("current_level") val currentLevel: Int = 0,
+    @SerialName("current_min") val currentMin: Int = 0,
+    @SerialName("current_exp") val currentExp: Int = 0,
+    @SerialName("next_exp") val nextExp: JsonPrimitive? = null,
+) {
+    /** LV6 时接口返回 `"--"`，其余等级返回升级所需经验数值。 */
+    fun nextExpOrNull(): Int? = nextExp?.content?.toIntOrNull()
+}
+
+@Serializable
+data class NavStatResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: NavStatData? = null,
+)
+
+@Serializable
+data class NavStatData(
+    val following: Int = 0,
+    val follower: Int = 0,
+    @SerialName("dynamic_count") val dynamicCount: Int = 0,
 )
 
 @Serializable
