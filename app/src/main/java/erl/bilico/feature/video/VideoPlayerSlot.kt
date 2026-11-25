@@ -183,6 +183,7 @@ internal fun BoxScope.VideoPlayerSlot(
                     undoNotice = sponsorController.undoNotice,
                     promptSegment = sponsorController.promptSegment,
                     poiSegment = sponsorController.poiSegment,
+                    poiRemainingSeconds = sponsorController.poiRemainingSeconds,
                     bottomPad = bottomPad,
                     startPad = startPad,
                     onUndoSkip = { sponsorController.undoSkip(player) },

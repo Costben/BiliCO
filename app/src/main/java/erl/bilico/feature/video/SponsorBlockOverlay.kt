@@ -32,6 +32,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -186,6 +187,7 @@ internal fun BoxScope.SponsorBlockPromptOverlay(
     undoNotice: UndoSkipNotice?,
     promptSegment: SponsorSegment?,
     poiSegment: SponsorSegment?,
+    poiRemainingSeconds: Int = 0,
     bottomPad: Dp,
     startPad: Dp,
     onUndoSkip: () -> Unit,
@@ -224,6 +226,7 @@ internal fun BoxScope.SponsorBlockPromptOverlay(
             dotColor = Color(poiSegment.category.colorArgb),
             text = "精彩时刻 ${Formatters.formatDuration(poiSegment.startMs / 1000)}",
             actionText = "空降",
+            countdownSeconds = poiRemainingSeconds.takeIf { it > 0 },
             onAction = onJumpPoi,
             onDismiss = onDismissPoi,
         )
@@ -236,6 +239,7 @@ private fun SponsorCapsule(
     dotColor: Color,
     text: String,
     actionText: String,
+    countdownSeconds: Int? = null,
     onAction: () -> Unit,
     onDismiss: (() -> Unit)?,
 ) {
@@ -259,11 +263,42 @@ private fun SponsorCapsule(
             style = COUITheme.textStyles.footnote2,
             color = Color.White,
         )
-        Text(
-            text = actionText,
-            style = COUITheme.textStyles.footnote2.copy(fontWeight = FontWeight.SemiBold),
-            color = COUITheme.colorScheme.primary,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            val actionStyle = COUITheme.textStyles.footnote2.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontFeatureSettings = "tnum",
+            )
+            Text(
+                text = actionText,
+                style = actionStyle,
+                color = COUITheme.colorScheme.primary,
+                maxLines = 1,
+                softWrap = false,
+            )
+            if (countdownSeconds != null && countdownSeconds > 0) {
+                // 用透明「10s」撑住等宽槽，倒计时 10s → 1s 时胶囊外框宽度完全不抖动。
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "10s",
+                        style = actionStyle,
+                        color = Color.Transparent,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.clearAndSetSemantics {},
+                    )
+                    Text(
+                        text = "${countdownSeconds}s",
+                        style = actionStyle,
+                        color = COUITheme.colorScheme.primary,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
         if (onDismiss != null) {
             Spacer(Modifier.width(2.dp))
             Text(

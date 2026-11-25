@@ -2,6 +2,7 @@ package erl.bilico.feature.video
 
 import android.os.SystemClock
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.media3.common.Player
@@ -11,6 +12,7 @@ import erl.bilico.data.model.SponsorSegment
 import erl.bilico.data.repository.SponsorBlockRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal data class UndoSkipNotice(
@@ -49,12 +51,19 @@ internal class SponsorBlockController(
     var poiSegment: SponsorSegment? by mutableStateOf(null)
         private set
 
+    /** 精彩时刻浮窗自动关闭倒计时（秒），10s 未点击则自动收起。 */
+    var poiRemainingSeconds: Int by mutableIntStateOf(0)
+        private set
+
     var submitDraft by mutableStateOf(SponsorSubmitDraft())
         private set
 
     private var currentBvid = ""
     private var currentCid = 0L
     private var fetchJob: Job? = null
+    private var poiCountdownJob: Job? = null
+    private var activePoiUuid: String? = null
+    private var poiExpiresAtMs = 0L
     private val handledUuids = HashSet<String>()
     private val dismissedPoiUuids = HashSet<String>()
     private var mutedBySponsor = false
@@ -101,11 +110,40 @@ internal class SponsorBlockController(
         fullSponsorMark = false
         promptSegment = null
         undoNotice = null
-        poiSegment = null
+        clearPoiState()
         submitDraft = SponsorSubmitDraft()
         handledUuids.clear()
         dismissedPoiUuids.clear()
         restoreMuteIfNeeded(player)
+    }
+
+    private fun clearPoiState() {
+        poiCountdownJob?.cancel()
+        poiCountdownJob = null
+        activePoiUuid = null
+        poiExpiresAtMs = 0L
+        poiSegment = null
+        poiRemainingSeconds = 0
+    }
+
+    private fun activatePoi(seg: SponsorSegment, now: Long) {
+        poiCountdownJob?.cancel()
+        activePoiUuid = seg.uuid
+        poiSegment = seg
+        poiExpiresAtMs = now + POI_AUTO_DISMISS_MS
+        poiRemainingSeconds = (POI_AUTO_DISMISS_MS / 1_000L).toInt()
+        poiCountdownJob = scope.launch {
+            while (activePoiUuid == seg.uuid) {
+                val remainingMs = poiExpiresAtMs - SystemClock.uptimeMillis()
+                if (remainingMs <= 0L) {
+                    dismissedPoiUuids.add(seg.uuid)
+                    clearPoiState()
+                    break
+                }
+                poiRemainingSeconds = ((remainingMs + 999L) / 1_000L).toInt().coerceIn(1, 10)
+                delay(200L)
+            }
+        }
     }
 
     fun onPosition(
@@ -117,7 +155,7 @@ internal class SponsorBlockController(
     ) {
         if (!enabled || segments.isEmpty()) {
             promptSegment = null
-            poiSegment = null
+            clearPoiState()
             undoNotice = null
             restoreMuteIfNeeded(player)
             return
@@ -172,7 +210,14 @@ internal class SponsorBlockController(
             promptSegment = null
         }
 
-        poiSegment = if (skipMode == MODE_MARK_ONLY) {
+        poiSegment?.let { activePoi ->
+            if (now >= poiExpiresAtMs) {
+                dismissedPoiUuids.add(activePoi.uuid)
+                clearPoiState()
+            }
+        }
+
+        val candidatePoi = if (skipMode == MODE_MARK_ONLY) {
             null
         } else {
             active.firstOrNull { seg ->
@@ -180,6 +225,10 @@ internal class SponsorBlockController(
                     seg.uuid !in dismissedPoiUuids &&
                     positionMs < seg.startMs - POI_LEAD_MS
             }
+        }
+        when {
+            candidatePoi == null -> clearPoiState()
+            candidatePoi.uuid != activePoiUuid -> activatePoi(candidatePoi, now)
         }
     }
 
@@ -216,21 +265,21 @@ internal class SponsorBlockController(
             segment.endMs
         }
         promptSegment = null
-        poiSegment = null
+        clearPoiState()
         player.seekTo(targetMs.coerceAtLeast(0L))
     }
 
     fun jumpToPoi(player: Player) {
         val seg = poiSegment ?: return
         dismissedPoiUuids.add(seg.uuid)
-        poiSegment = null
+        clearPoiState()
         player.seekTo(seg.startMs)
     }
 
     fun dismissPoi() {
         val seg = poiSegment ?: return
         dismissedPoiUuids.add(seg.uuid)
-        poiSegment = null
+        clearPoiState()
     }
 
     fun undoSkip(player: Player) {
@@ -307,6 +356,7 @@ internal class SponsorBlockController(
         const val SKIP_END_GUARD_MS = 400L
         const val MIN_HIT_SPAN_MS = 400L
         const val POI_LEAD_MS = 1_500L
+        const val POI_AUTO_DISMISS_MS = 10_000L
         const val UNDO_SHOW_MS = 4_000L
     }
 }
