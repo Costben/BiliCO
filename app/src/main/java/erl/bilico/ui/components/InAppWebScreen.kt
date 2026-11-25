@@ -1,12 +1,15 @@
 package erl.bilico.ui.components
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -31,6 +35,12 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -39,9 +49,11 @@ import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
+import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
-import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 private const val IN_APP_WEB_UA =
@@ -68,9 +80,11 @@ fun InAppWebScreen(
     url: String,
     defaultTitle: String = "网页",
 ) {
+    val context = LocalContext.current
     var canGoBack by remember { mutableStateOf(false) }
     var progress by remember { mutableIntStateOf(0) }
     var pageTitle by remember(url, defaultTitle) { mutableStateOf(defaultTitle.ifBlank { "网页" }) }
+    var currentUrl by remember(url) { mutableStateOf(url) }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
     BackHandler {
@@ -122,6 +136,9 @@ fun InAppWebScreen(
                         pageTitle = title
                     }
                 },
+                onUrlChanged = { nextUrl ->
+                    if (nextUrl.isNotBlank()) currentUrl = nextUrl
+                },
                 onCloseRequest = { nav.pop() },
             )
         }
@@ -138,11 +155,33 @@ fun InAppWebScreen(
                     }
                 },
                 actions = {
-                    TextButton(
-                        text = "刷新",
+                    HighlightedIconButton(
                         onClick = { webView?.reload() },
-                        modifier = Modifier.padding(end = 4.dp),
-                    )
+                        modifier = Modifier.couiTopAppBarActionItem(),
+                    ) {
+                        Icon(
+                            imageVector = WebRefreshIcon,
+                            contentDescription = "刷新",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    HighlightedIconButton(
+                        onClick = {
+                            val target = webView?.url?.takeIf { it.isNotBlank() } ?: currentUrl
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
+                            }.onFailure {
+                                Toast.makeText(context, "未找到可用的系统浏览器", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.couiTopAppBarActionItem(),
+                    ) {
+                        Icon(
+                            imageVector = OpenInBrowserIcon,
+                            contentDescription = "在浏览器中打开",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 },
             )
         }
@@ -159,12 +198,14 @@ private fun BiliInAppWebView(
     onBackAvailable: (Boolean) -> Unit,
     onProgressChanged: (Int) -> Unit,
     onTitleChanged: (String) -> Unit,
+    onUrlChanged: (String) -> Unit,
     onCloseRequest: () -> Unit,
 ) {
     val context = LocalContext.current
     val currentOnBackAvailable by rememberUpdatedState(onBackAvailable)
     val currentOnProgressChanged by rememberUpdatedState(onProgressChanged)
     val currentOnTitleChanged by rememberUpdatedState(onTitleChanged)
+    val currentOnUrlChanged by rememberUpdatedState(onUrlChanged)
     val currentOnCloseRequest by rememberUpdatedState(onCloseRequest)
 
     val webView = remember(url) {
@@ -206,10 +247,12 @@ private fun BiliInAppWebView(
 
                 override fun onPageCommitVisible(view: WebView, url: String?) {
                     currentOnBackAvailable(view.canGoBack())
+                    if (!url.isNullOrBlank()) currentOnUrlChanged(url)
                 }
 
                 override fun onPageFinished(view: WebView, url: String?) {
                     currentOnBackAvailable(view.canGoBack())
+                    if (!url.isNullOrBlank()) currentOnUrlChanged(url)
                 }
 
                 override fun doUpdateVisitedHistory(
@@ -218,6 +261,7 @@ private fun BiliInAppWebView(
                     isReload: Boolean,
                 ) {
                     currentOnBackAvailable(view.canGoBack())
+                    if (!url.isNullOrBlank()) currentOnUrlChanged(url)
                 }
             }
             loadUrl(url)
@@ -252,4 +296,64 @@ private fun syncBiliWebCookies(cookies: Map<String, String>) {
         }
         manager.flush()
     }
+}
+
+private val WebRefreshIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "WebRefresh",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        val stroke = SolidColor(Color.Black)
+        path(
+            stroke = stroke,
+            strokeLineWidth = 1.8f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // 顺时针环形刷新弧
+            moveTo(20f, 12f)
+            arcTo(8f, 8f, 0f, isMoreThanHalf = true, isPositiveArc = true, 12f, 4f)
+            arcTo(8f, 8f, 0f, isMoreThanHalf = false, isPositiveArc = true, 17.66f, 6.34f)
+            lineTo(19.6f, 8.2f)
+            // 右上角箭头
+            moveTo(19.6f, 3.8f)
+            lineTo(19.6f, 8.2f)
+            lineTo(15.2f, 8.2f)
+        }
+    }.build()
+}
+
+private val OpenInBrowserIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "OpenInBrowser",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        val stroke = SolidColor(Color.Black)
+        path(
+            stroke = stroke,
+            strokeLineWidth = 1.8f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // 外圆地球仪轮廓
+            moveTo(21f, 12f)
+            arcTo(9f, 9f, 0f, isMoreThanHalf = true, isPositiveArc = true, 3f, 12f)
+            arcTo(9f, 9f, 0f, isMoreThanHalf = true, isPositiveArc = true, 21f, 12f)
+            // 赤道与经线
+            moveTo(3.4f, 12f)
+            lineTo(20.6f, 12f)
+            moveTo(12f, 3f)
+            curveTo(14.5f, 5.6f, 15.8f, 8.7f, 15.8f, 12f)
+            curveTo(15.8f, 15.3f, 14.5f, 18.4f, 12f, 21f)
+            moveTo(12f, 3f)
+            curveTo(9.5f, 5.6f, 8.2f, 8.7f, 8.2f, 12f)
+            curveTo(8.2f, 15.3f, 9.5f, 18.4f, 12f, 21f)
+        }
+    }.build()
 }
