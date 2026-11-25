@@ -124,7 +124,7 @@ internal fun BoxScope.VideoPlayerSlot(
         fullscreen = fullscreen,
         portraitFullscreen = portraitFullscreen,
         onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
-        onSeek = { player.seekTo(it) },
+        onSeek = { clock.seekTo(player, it) },
         onToggleFullscreen = { onFullscreenChange(!fullscreen) },
         onFullscreenChange = onFullscreenChange,
         hapticEnabled = gestureHaptic,

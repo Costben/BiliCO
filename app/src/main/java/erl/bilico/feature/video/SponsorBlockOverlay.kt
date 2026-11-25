@@ -46,6 +46,8 @@ import io.github.suqi8.coui.kmp.basic.IntentSliderSize
 import io.github.suqi8.coui.kmp.basic.SliderDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlin.math.roundToLong
 
 /**
@@ -69,11 +71,26 @@ internal fun PlayerProgress(
 ) {
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubPositionMs by remember { mutableLongStateOf(0L) }
+    var pendingSeekTargetMs by remember { mutableStateOf<Long?>(null) }
     var dragHorizontalOffsetPx by remember { mutableFloatStateOf(0f) }
 
     val enabled = durationMs > 0L
     val effectiveDuration = durationMs.coerceAtLeast(1L)
-    val displayPos = (if (isScrubbing) scrubPositionMs else positionMs).coerceIn(0L, effectiveDuration)
+    val settledTarget = pendingSeekTargetMs
+    if (!isScrubbing && settledTarget != null && abs(positionMs - settledTarget) <= 1_500L) {
+        pendingSeekTargetMs = null
+    }
+    LaunchedEffect(pendingSeekTargetMs) {
+        if (pendingSeekTargetMs != null) {
+            delay(1200)
+            pendingSeekTargetMs = null
+        }
+    }
+    val displayPos = when {
+        isScrubbing -> scrubPositionMs
+        pendingSeekTargetMs != null -> pendingSeekTargetMs!!
+        else -> positionMs
+    }.coerceIn(0L, effectiveDuration)
     val playbackState = when {
         durationMs <= 0L -> IntentSliderPlaybackState.LoadingInitial
         isBuffering -> IntentSliderPlaybackState.LoadingBuffering
@@ -83,9 +100,12 @@ internal fun PlayerProgress(
     val trackPadding = 6.dp
 
     LaunchedEffect(enabled) {
-        if (!enabled && isScrubbing) {
-            isScrubbing = false
-            onScrubPositionChange(null)
+        if (!enabled) {
+            if (isScrubbing) {
+                isScrubbing = false
+                onScrubPositionChange(null)
+            }
+            pendingSeekTargetMs = null
         }
     }
 
@@ -98,6 +118,7 @@ internal fun PlayerProgress(
             onValueChange = { next ->
                 val target = next.roundToLong().coerceIn(0L, effectiveDuration)
                 isScrubbing = true
+                pendingSeekTargetMs = null
                 scrubPositionMs = target
                 onScrubPositionChange(target)
             },
@@ -112,7 +133,9 @@ internal fun PlayerProgress(
             secondaryValue = bufferedMs.coerceIn(0L, effectiveDuration).toFloat(),
             onValueChangeFinished = {
                 if (isScrubbing) {
-                    onSeek(scrubPositionMs)
+                    val target = scrubPositionMs
+                    pendingSeekTargetMs = target
+                    onSeek(target)
                     isScrubbing = false
                 }
                 onScrubPositionChange(null)

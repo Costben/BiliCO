@@ -1,5 +1,6 @@
 package erl.bilico.feature.video
 
+import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +24,7 @@ import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.ui.NavState
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 
 /**
  * 播放进度只在这里存一份。页面自己绝不读这两个值，只把实例交给真正要画进度的子组件：
@@ -33,6 +35,41 @@ internal class VideoPlaybackClock {
     var positionMs by mutableLongStateOf(0L)
     var durationMs by mutableLongStateOf(0L)
     var bufferedMs by mutableLongStateOf(0L)
+    private var pendingSeekTargetMs: Long = -1L
+    private var pendingSeekDeadlineMs: Long = 0L
+
+    /** 主动跳转时立即同步时钟，并在 ExoPlayer 落稳前屏蔽轮询回写旧位置，防止进度条松手回弹。 */
+    fun seekTo(player: ExoPlayer, targetMs: Long) {
+        val clamped = if (durationMs > 0L) targetMs.coerceIn(0L, durationMs) else targetMs.coerceAtLeast(0L)
+        positionMs = clamped
+        pendingSeekTargetMs = clamped
+        pendingSeekDeadlineMs = SystemClock.uptimeMillis() + SEEK_HOLD_WINDOW_MS
+        player.seekTo(clamped)
+    }
+
+    fun syncPolledPosition(polledMs: Long) {
+        val target = pendingSeekTargetMs
+        if (target >= 0L) {
+            val arrived = abs(polledMs - target) <= SEEK_SETTLE_TOLERANCE_MS
+            val expired = SystemClock.uptimeMillis() >= pendingSeekDeadlineMs
+            if (!arrived && !expired) return
+            pendingSeekTargetMs = -1L
+        }
+        positionMs = polledMs
+    }
+
+    fun reset() {
+        positionMs = 0L
+        durationMs = 0L
+        bufferedMs = 0L
+        pendingSeekTargetMs = -1L
+        pendingSeekDeadlineMs = 0L
+    }
+
+    private companion object {
+        const val SEEK_HOLD_WINDOW_MS = 1200L
+        const val SEEK_SETTLE_TOLERANCE_MS = 1500L
+    }
 }
 
 /**
@@ -190,10 +227,10 @@ internal fun VideoPlaybackEffects(
             )
             // 收进融合球之后界面不画进度，别再让每 500ms 的一拍去动 UI 状态。
             if (currentIsTop) {
-                clock.positionMs = position
+                clock.syncPolledPosition(position)
                 clock.durationMs = player.duration.coerceAtLeast(0L)
                 clock.bufferedMs = player.bufferedPosition.coerceAtLeast(0L)
-                danmakuController.onPosition(position)
+                danmakuController.onPosition(clock.positionMs)
             }
             delay(500)
         }

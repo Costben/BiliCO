@@ -303,8 +303,7 @@ fun VideoScreen(
         // 原地连播切到下一条时清掉上一条的播控与列表态，仅保留当前舞台与全屏朝向。
         player?.stop()
         player?.clearMediaItems()
-        clock.positionMs = 0L
-        clock.durationMs = 0L
+        clock.reset()
         isPlaying = false
         isBuffering = false
         playerError = null
@@ -523,7 +522,7 @@ fun VideoScreen(
                 onDownload = openDownload,
                 downloaded = currentPartCached,
                 onSeekCommentMs = { ms ->
-                    player?.seekTo(ms)
+                    player?.let { clock.seekTo(it, ms) }
                     if (player?.isPlaying == false) player.play()
                 },
                 onLike = viewModel::toggleLike, onTriple = viewModel::triple,
@@ -533,7 +532,7 @@ fun VideoScreen(
                 onOpenVideo = { nav.push(Route.Video(it)) },
                 chapters = subtitleController.chapters, positionMsProvider = { clock.positionMs },
                 onSelectChapter = {
-                    player?.seekTo(it.fromMs)
+                    player?.let { p -> clock.seekTo(p, it.fromMs) }
                     if (player?.isPlaying == false) player.play()
                 },
                 onOpenChapters = { chapterDialogVisible = true },
@@ -590,7 +589,7 @@ fun VideoScreen(
             positionMs = clock.positionMs,
             onSelectChapter = {
                 chapterDialogVisible = false
-                player?.seekTo(it.fromMs)
+                player?.let { p -> clock.seekTo(p, it.fromMs) }
                 if (player?.isPlaying == false) player.play()
             },
             onDismissChapter = { chapterDialogVisible = false },

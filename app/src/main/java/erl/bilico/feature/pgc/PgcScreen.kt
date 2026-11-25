@@ -424,7 +424,7 @@ fun PgcScreen(
                 onPlayPause = {
                     if (player.isPlaying) player.pause() else player.play()
                 },
-                onSeek = { player.seekTo(it) },
+                onSeek = { positionMs = it; player.seekTo(it) },
                 onToggleFullscreen = { applyFullscreen(!fullscreen) },
                 onFullscreenChange = applyFullscreen,
                 hapticEnabled = gestureHaptic,
