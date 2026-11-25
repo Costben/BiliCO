@@ -32,8 +32,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
+import erl.bilico.di.LocalAppContainer
 import erl.bilico.ui.components.ConfirmDialog
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -68,6 +70,16 @@ internal fun DanmakuSettingsDialog(
         return
     }
     var confirmReset by remember { mutableStateOf(false) }
+    var showBlockRules by remember { mutableStateOf(false) }
+    val blockRepo = LocalAppContainer.current?.blocks
+    val ruleCount = blockRepo?.snapshot?.collectAsStateWithLifecycle()?.value?.config?.danmakuKeywords?.size ?: 0
+    if (showBlockRules) {
+        DanmakuKeywordBlockDialog(
+            inlineInStage = inlineInStage,
+            onDismiss = { showBlockRules = false },
+        )
+        return
+    }
     PlayerModalHost(
         inlineInStage = inlineInStage,
         onDismiss = onDismiss,
@@ -155,6 +167,31 @@ internal fun DanmakuSettingsDialog(
                         selected = settings.massiveMode,
                         onClick = { repository.setDanmakuMassiveMode(!settings.massiveMode) },
                     )
+                }
+
+                if (blockRepo != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(SquircleShape(12.dp))
+                            .background(scheme.surfaceContainerHigh)
+                            .clickable { showBlockRules = true }
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .testTag("dm_block_rules_entry"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = "关键词与正则屏蔽",
+                            style = COUITheme.textStyles.body2,
+                            color = scheme.onSurface,
+                        )
+                        Text(
+                            text = if (ruleCount == 0) "管理 >" else "已设 $ruleCount 条 >",
+                            style = COUITheme.textStyles.footnote1,
+                            color = scheme.primary,
+                        )
+                    }
                 }
 
                 SectionHeader("显示区域")

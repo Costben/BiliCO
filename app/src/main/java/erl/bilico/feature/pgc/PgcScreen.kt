@@ -115,7 +115,7 @@ fun PgcScreen(
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
-    val danmakuController = remember { DanmakuController(container.danmaku, scope) }
+    val danmakuController = remember { DanmakuController(container.danmaku, scope, container.blocks.snapshot) }
     val subtitleController = remember { SubtitleController(container.subtitles, scope) }
 
     val context = LocalContext.current

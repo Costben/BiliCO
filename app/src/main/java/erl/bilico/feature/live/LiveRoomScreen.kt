@@ -83,9 +83,17 @@ fun LiveRoomScreen(
         context.getSharedPreferences("live_stream_prefs", Context.MODE_PRIVATE)
     }
     val viewModel: LiveRoomViewModel = viewModel(key = "live-$roomId") {
-        LiveRoomViewModel(container.live, container.client.okHttp, roomId, container.session.mid(), streamPrefs)
+        LiveRoomViewModel(
+            container.live,
+            container.client.okHttp,
+            roomId,
+            container.session.mid(),
+            streamPrefs,
+            blockSnapshotProvider = { container.blocks.snapshot.value },
+        )
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val blockSnapshot by container.blocks.snapshot.collectAsStateWithLifecycle()
 
     val danmakuEnabled by container.settings.danmakuEnabled.collectAsStateWithLifecycle()
     val danmakuSettings by container.settings.danmakuSettings.collectAsStateWithLifecycle()
@@ -278,6 +286,11 @@ fun LiveRoomScreen(
             return@LaunchedEffect
         }
         playerError = describePlaybackError(error)
+    }
+
+    LaunchedEffect(blockSnapshot) {
+        viewModel.pruneBlocked()
+        overlayItems.removeAll { !it.isSelf && blockSnapshot.matchesDanmaku(it.content) }
     }
 
     LaunchedEffect(state.danmakuSeq) {

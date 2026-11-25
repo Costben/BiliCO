@@ -33,6 +33,7 @@ enum class BlockKeywordScope(val label: String) {
     UP_NAME("UP 主名称"),
     COMMENT("评论内容"),
     DYNAMIC("动态内容"),
+    DANMAKU("弹幕内容"),
 }
 
 private class KeywordMatcher(val raw: String) {
@@ -61,6 +62,7 @@ data class BlockSnapshot(
     private val upMatchers = config.upKeywords.filter { it.isNotBlank() }.map(::KeywordMatcher)
     private val commentMatchers = config.commentKeywords.filter { it.isNotBlank() }.map(::KeywordMatcher)
     private val dynamicMatchers = config.dynamicKeywords.filter { it.isNotBlank() }.map(::KeywordMatcher)
+    private val danmakuMatchers = config.danmakuKeywords.filter { it.isNotBlank() }.map(::KeywordMatcher)
 
     fun isVideoBlocked(bvid: String): Boolean = bvid.isNotBlank() && bvid in blockedBvids
 
@@ -75,6 +77,8 @@ data class BlockSnapshot(
     fun matchesComment(text: String): Boolean = commentMatchers.any { it.matches(text) }
 
     fun matchesDynamic(text: String): Boolean = dynamicMatchers.any { it.matches(text) }
+
+    fun matchesDanmaku(text: String): Boolean = danmakuMatchers.any { it.matches(text) }
 
     fun shouldShowFeedVideo(video: FeedVideo, isRelated: Boolean = false): Boolean {
         if (isVideoBlocked(video.bvid)) return false
@@ -337,6 +341,7 @@ class BlockRepository(
                 BlockKeywordScope.UP_NAME -> if (clean in cfg.upKeywords) cfg else cfg.copy(upKeywords = listOf(clean) + cfg.upKeywords)
                 BlockKeywordScope.COMMENT -> if (clean in cfg.commentKeywords) cfg else cfg.copy(commentKeywords = listOf(clean) + cfg.commentKeywords)
                 BlockKeywordScope.DYNAMIC -> if (clean in cfg.dynamicKeywords) cfg else cfg.copy(dynamicKeywords = listOf(clean) + cfg.dynamicKeywords)
+                BlockKeywordScope.DANMAKU -> if (clean in cfg.danmakuKeywords) cfg else cfg.copy(danmakuKeywords = listOf(clean) + cfg.danmakuKeywords)
             }
         }
     }
@@ -348,6 +353,7 @@ class BlockRepository(
                 BlockKeywordScope.UP_NAME -> cfg.copy(upKeywords = cfg.upKeywords.filterNot { it == keyword })
                 BlockKeywordScope.COMMENT -> cfg.copy(commentKeywords = cfg.commentKeywords.filterNot { it == keyword })
                 BlockKeywordScope.DYNAMIC -> cfg.copy(dynamicKeywords = cfg.dynamicKeywords.filterNot { it == keyword })
+                BlockKeywordScope.DANMAKU -> cfg.copy(danmakuKeywords = cfg.danmakuKeywords.filterNot { it == keyword })
             }
         }
     }

@@ -11,6 +11,7 @@ import erl.bilico.data.model.LivePlayback
 import erl.bilico.data.model.LiveRoomDetail
 import erl.bilico.data.model.LiveStreamSelection
 import erl.bilico.data.model.LiveSuperChat
+import erl.bilico.data.repository.BlockSnapshot
 import erl.bilico.data.repository.LiveRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -72,6 +73,7 @@ class LiveRoomViewModel(
     private val roomId: Long,
     private val uid: Long,
     private val streamPrefs: SharedPreferences? = null,
+    private val blockSnapshotProvider: () -> BlockSnapshot = { BlockSnapshot() },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LiveRoomUiState())
@@ -284,25 +286,15 @@ class LiveRoomViewModel(
             it.copy(fullscreenSuperChat = null, fullscreenSuperChatEndSec = 0L, fullscreenSuperChatIsReplay = false)
         }
     }
-    fun blockUserTemporary(mid: Long) {
-        if (mid > 0L) blockedMids.add(mid)
-        pruneBlocked()
-    }
-    fun blockContentTemporary(text: String) {
-        val trimmed = text.trim()
-        if (trimmed.isNotEmpty()) blockedTexts.add(trimmed)
-        pruneBlocked()
-    }
-
+    fun blockUserTemporary(mid: Long) { if (mid > 0L) blockedMids.add(mid); pruneBlocked() }
+    fun blockContentTemporary(text: String) { text.trim().takeIf { it.isNotEmpty() }?.let(blockedTexts::add); pruneBlocked() }
     /** 仅在当前直播间临时屏蔽该发送者与该条弹幕全文。 */
     fun blockTemporary(mid: Long, text: String) {
         if (mid > 0L) blockedMids.add(mid)
-        val trimmed = text.trim()
-        if (trimmed.isNotEmpty()) blockedTexts.add(trimmed)
+        text.trim().takeIf { it.isNotEmpty() }?.let(blockedTexts::add)
         pruneBlocked()
     }
-
-    private fun pruneBlocked() {
+    fun pruneBlocked() {
         _state.update { state ->
             state.copy(
                 chatEntries = state.chatEntries.filterNot { entry ->
@@ -316,11 +308,8 @@ class LiveRoomViewModel(
             )
         }
     }
-
-    fun isBlocked(mid: Long, text: String): Boolean {
-        if (mid > 0L && mid in blockedMids) return true
-        return text.trim() in blockedTexts
-    }
+    fun isBlocked(mid: Long, text: String): Boolean =
+        (mid > 0L && mid in blockedMids) || text.trim() in blockedTexts || blockSnapshotProvider().matchesDanmaku(text)
 
     private fun connectDanmaku(realRoomId: Long) {
         viewModelScope.launch {

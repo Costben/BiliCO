@@ -5,8 +5,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import erl.bilico.data.model.DanmakuItem
 import erl.bilico.data.model.DanmakuType
+import erl.bilico.data.repository.BlockSnapshot
 import erl.bilico.data.repository.DanmakuRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -16,12 +18,14 @@ import kotlinx.coroutines.launch
 internal class DanmakuController(
     private val repository: DanmakuRepository,
     private val scope: CoroutineScope,
+    private val blocks: StateFlow<BlockSnapshot>? = null,
 ) {
     var items: List<DanmakuItem> by mutableStateOf(emptyList())
         private set
 
     private var cid = 0L
     private var rawItems: List<DanmakuItem> = emptyList()
+    private var blockSnapshot: BlockSnapshot? = blocks?.value
     private val loaded = HashSet<Int>()
     private val loading = HashSet<Int>()
     private val failed = HashSet<Int>()
@@ -30,6 +34,19 @@ internal class DanmakuController(
     private val blockedMidHashes = HashSet<String>()
     private val blockedTexts = HashSet<String>()
     private var nextLocalId = -1L
+
+    init {
+        if (blocks != null) {
+            scope.launch {
+                blocks.collect { snapshot ->
+                    blockSnapshot = snapshot
+                    if (rawItems.isNotEmpty()) {
+                        items = rawItems.filterNot(::isBlocked)
+                    }
+                }
+            }
+        }
+    }
 
     fun attach(newCid: Long) {
         if (newCid == cid) return
@@ -116,8 +133,10 @@ internal class DanmakuController(
     }
 
     private fun isBlocked(item: DanmakuItem): Boolean {
+        if (item.isSelf) return false
         if (item.midHash.isNotBlank() && item.midHash in blockedMidHashes) return true
-        return item.content.trim() in blockedTexts
+        if (item.content.trim() in blockedTexts) return true
+        return blockSnapshot?.matchesDanmaku(item.content) == true
     }
 
     private companion object {

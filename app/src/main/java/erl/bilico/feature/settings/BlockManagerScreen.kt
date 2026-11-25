@@ -144,6 +144,7 @@ fun BlockManagerScreen(
                             BlockKeywordScope.UP_NAME -> blockState.config.upKeywords
                             BlockKeywordScope.COMMENT -> blockState.config.commentKeywords
                             BlockKeywordScope.DYNAMIC -> blockState.config.dynamicKeywords
+                            BlockKeywordScope.DANMAKU -> blockState.config.danmakuKeywords
                         }
                         item(key = "kw-header-${kwScope.name}") {
                             SectionTitle(

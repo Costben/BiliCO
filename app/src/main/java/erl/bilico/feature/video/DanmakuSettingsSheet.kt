@@ -21,8 +21,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
+import erl.bilico.di.LocalAppContainer
 import erl.bilico.ui.components.ConfirmDialog
 import erl.bilico.ui.components.SectionTitle
 import io.github.suqi8.coui.kmp.basic.Card
@@ -35,6 +37,7 @@ import io.github.suqi8.coui.kmp.icon.extended.Refresh
 import io.github.suqi8.coui.kmp.layout.SheetActionButton
 import io.github.suqi8.coui.kmp.layout.SheetCloseCapsule
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
+import io.github.suqi8.coui.kmp.preference.ArrowPreference
 import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
 import io.github.suqi8.coui.kmp.preference.SliderPreference
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
@@ -54,6 +57,10 @@ internal fun DanmakuSettingsSheet(
 ) {
     var show by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
+    var showBlockRules by remember { mutableStateOf(false) }
+    val blockRepo = LocalAppContainer.current?.blocks
+    val blockSnapshot = blockRepo?.snapshot?.collectAsStateWithLifecycle()?.value
+    val ruleCount = blockSnapshot?.config?.danmakuKeywords?.size ?: 0
     LaunchedEffect(Unit) { show = true }
 
     OverlayBottomSheet(
@@ -187,8 +194,17 @@ internal fun DanmakuSettingsSheet(
                         checked = settings.massiveMode,
                         onCheckedChange = repository::setDanmakuMassiveMode,
                         title = "海量弹幕模式",
-                        cardListPosition = CardListPosition.Tail,
+                        cardListPosition = if (blockRepo != null) CardListPosition.Middle else CardListPosition.Tail,
                     )
+                    if (blockRepo != null) {
+                        ArrowPreference(
+                            title = "关键词与正则屏蔽",
+                            summary = if (ruleCount == 0) "按关键词或正则过滤弹幕" else "已添加 $ruleCount 条屏蔽规则",
+                            cardListPosition = CardListPosition.Tail,
+                            modifier = Modifier.testTag("dm_block_rules_entry"),
+                            onClick = { showBlockRules = true },
+                        )
+                    }
                 }
             }
 
@@ -245,6 +261,13 @@ internal fun DanmakuSettingsSheet(
 
             item(key = "bottom-space") { Spacer(Modifier.height(16.dp)) }
         }
+    }
+
+    if (showBlockRules) {
+        DanmakuKeywordBlockDialog(
+            inlineInStage = false,
+            onDismiss = { showBlockRules = false },
+        )
     }
 
     if (confirmReset) {

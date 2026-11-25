@@ -97,7 +97,7 @@ fun VideoScreen(
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
-    val danmakuController = remember { DanmakuController(container.danmaku, scope) }
+    val danmakuController = remember { DanmakuController(container.danmaku, scope, container.blocks.snapshot) }
     val subtitleController = remember { SubtitleController(container.subtitles, scope) }
     val sponsorController = remember { SponsorBlockController(container.sponsorBlock, scope) }
     // 播放进度不让页面自己读：只有播放器、字幕、进度条这些真正画它的组件才订阅。

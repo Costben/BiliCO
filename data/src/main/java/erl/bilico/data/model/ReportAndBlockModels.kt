@@ -149,6 +149,7 @@ data class BlockConfig(
     val upKeywords: List<String> = emptyList(),
     val commentKeywords: List<String> = emptyList(),
     val dynamicKeywords: List<String> = emptyList(),
+    val danmakuKeywords: List<String> = emptyList(),
     val minDurationSec: Int = 0,
     val minPlayCount: Int = 0,
     val minLikeRatioPercent: Int = 0,
