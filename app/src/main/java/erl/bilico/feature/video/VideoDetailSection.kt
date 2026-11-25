@@ -91,6 +91,8 @@ internal fun VideoDetailSection(
     backEnabled: Boolean = true,
     commentRootId: Long = 0L,
     commentTargetId: Long = 0L,
+    commentMatchAuthor: String = "",
+    commentMatchText: String = "",
     sponsorLabel: String? = null,
     promotedBadge: Boolean = false,
 ) {
@@ -222,6 +224,8 @@ internal fun VideoDetailSection(
                                 bottomInset = navBarBottom,
                                 targetRootId = commentRootId,
                                 targetReplyId = commentTargetId,
+                                targetMatchAuthor = commentMatchAuthor,
+                                targetMatchText = commentMatchText,
                                 replyThreadController = replyThread,
                                 modifier = Modifier.fillMaxSize(),
                             )

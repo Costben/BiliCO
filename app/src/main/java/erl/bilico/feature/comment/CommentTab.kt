@@ -88,11 +88,18 @@ fun CommentTab(
     bottomInset: Dp = navBottomPadding(),
     targetRootId: Long = 0L,
     targetReplyId: Long = 0L,
+    targetMatchAuthor: String = "",
+    targetMatchText: String = "",
     replyThreadController: ReplyThreadController? = null,
 ) {
     BindScrollToTop(listState)
-    val viewModel: CommentViewModel = viewModel(key = "comment-$type-$oid-$targetRootId-$targetReplyId") {
-        CommentViewModel(container.comments, oid, type, targetRootId, targetReplyId, upMid = upMid)
+    val viewModel: CommentViewModel = viewModel(
+        key = "comment-$type-$oid-$targetRootId-$targetReplyId-${targetMatchText.hashCode()}",
+    ) {
+        CommentViewModel(
+            container.comments, oid, type, targetRootId, targetReplyId,
+            upMid = upMid, targetMatchAuthor = targetMatchAuthor, targetMatchText = targetMatchText,
+        )
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val account by container.session.account.collectAsStateWithLifecycle()

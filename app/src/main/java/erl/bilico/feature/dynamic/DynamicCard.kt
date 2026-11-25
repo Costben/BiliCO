@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import erl.bilico.data.model.DynamicHotReply
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.model.DynamicKind
@@ -86,6 +87,7 @@ internal fun DynamicCard(
     currentMid: Long = 0L,
     onDelete: ((DynamicItemUi) -> Unit)? = null,
     onLike: ((DynamicItemUi) -> Unit)? = null,
+    onOpenHotReply: ((DynamicItemUi, DynamicHotReply, ExpandOrigin?) -> Unit)? = null,
     rowScrollState: RowScrollState? = null,
     rowKey: Any? = null,
 ) {
@@ -252,6 +254,7 @@ internal fun DynamicCard(
             DynamicHotReplies(
                 replies = item.hotReplies,
                 modifier = Modifier.padding(top = 8.dp),
+                onClickReply = onOpenHotReply?.let { handler -> { reply -> handler(item, reply, cardOrigin) } },
             )
         }
 

@@ -77,24 +77,18 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 /** 专栏详情。入口目前有两处：搜索结果与动态里的专栏卡片。 */
 @Composable
 fun ArticleScreen(
-    container: AppContainer,
-    nav: NavState,
-    cvId: Long,
-    initialTitle: String,
-    commentRootId: Long = 0L,
-    commentTargetId: Long = 0L,
+    container: AppContainer, nav: NavState, cvId: Long, initialTitle: String,
+    commentRootId: Long = 0L, commentTargetId: Long = 0L,
+    commentMatchAuthor: String = "", commentMatchText: String = "",
 ) {
     val viewModel: ArticleViewModel = viewModel(key = "article-$cvId") { ArticleViewModel() }
     LaunchedEffect(cvId) {
         viewModel.load(cvId) { container.articles.article(cvId) }
     }
     ArticlePage(
-        container = container,
-        nav = nav,
-        viewModel = viewModel,
-        initialTitle = initialTitle,
-        commentRootId = commentRootId,
-        commentTargetId = commentTargetId,
+        container = container, nav = nav, viewModel = viewModel, initialTitle = initialTitle,
+        commentRootId = commentRootId, commentTargetId = commentTargetId,
+        commentMatchAuthor = commentMatchAuthor, commentMatchText = commentMatchText,
         reload = { viewModel.load(cvId) { container.articles.article(cvId) } },
     )
 }
@@ -122,17 +116,14 @@ fun DynamicArticleScreen(
 
 @Composable
 private fun ArticlePage(
-    container: AppContainer,
-    nav: NavState,
-    viewModel: ArticleViewModel,
-    initialTitle: String,
-    commentRootId: Long = 0L,
-    commentTargetId: Long = 0L,
+    container: AppContainer, nav: NavState, viewModel: ArticleViewModel, initialTitle: String,
+    commentRootId: Long = 0L, commentTargetId: Long = 0L,
+    commentMatchAuthor: String = "", commentMatchText: String = "",
     reload: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var showComments by remember(commentRootId, commentTargetId) {
-        mutableStateOf(commentRootId > 0L || commentTargetId > 0L)
+    var showComments by remember(commentRootId, commentTargetId, commentMatchText) {
+        mutableStateOf(commentRootId > 0L || commentTargetId > 0L || commentMatchText.isNotBlank())
     }
     var viewer by remember { mutableStateOf<Pair<List<DynamicImage>, Int>?>(null) }
 
@@ -176,14 +167,11 @@ private fun ArticlePage(
         }
         if (showComments && article.commentOid > 0L) {
             ArticleCommentSheet(
-                container = container,
-                nav = nav,
-                oid = article.commentOid,
+                container = container, nav = nav, oid = article.commentOid,
                 type = if (article.commentType > 0) article.commentType else 12,
-                commentRootId = commentRootId,
-                commentTargetId = commentTargetId,
-                title = article.title,
-                commentCount = article.stats?.reply ?: 0L,
+                commentRootId = commentRootId, commentTargetId = commentTargetId,
+                commentMatchAuthor = commentMatchAuthor, commentMatchText = commentMatchText,
+                title = article.title, commentCount = article.stats?.reply ?: 0L,
                 onDismiss = { showComments = false },
             )
         }
@@ -548,15 +536,10 @@ private fun ArticleFooter(article: ArticleDetail, onOpenComments: () -> Unit) {
 /** 评论单独开一屏：正文页是 LazyColumn，评论也是，嵌套滚动会互相抢手势。 */
 @Composable
 private fun ArticleCommentSheet(
-    container: AppContainer,
-    nav: NavState,
-    oid: Long,
-    type: Int,
-    commentRootId: Long = 0L,
-    commentTargetId: Long = 0L,
-    title: String,
-    commentCount: Long,
-    onDismiss: () -> Unit,
+    container: AppContainer, nav: NavState, oid: Long, type: Int,
+    commentRootId: Long = 0L, commentTargetId: Long = 0L,
+    commentMatchAuthor: String = "", commentMatchText: String = "",
+    title: String, commentCount: Long, onDismiss: () -> Unit,
 ) {
     val parentOpenBvid = LocalOpenBvid.current
     val replyThread = remember(oid, type) { ReplyThreadController() }
@@ -582,6 +565,7 @@ private fun ArticleCommentSheet(
                     CommentTab(
                         container = container, oid = oid, type = type,
                         targetRootId = commentRootId, targetReplyId = commentTargetId,
+                        targetMatchAuthor = commentMatchAuthor, targetMatchText = commentMatchText,
                         onOpenUser = { mid -> nav.push(erl.bilico.ui.Route.Space(mid)) },
                         replyThreadController = replyThread,
                         modifier = Modifier.weight(1f).fillMaxWidth(),

@@ -182,6 +182,44 @@ internal fun SpaceTabPage(
                                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             }
                         },
+                        onOpenHotReply = { target, reply, origin ->
+                            val video = target.video
+                            val articleId = target.article?.articleId ?: 0L
+                            val dynId = target.dynamicId.ifBlank { target.article?.dynamicId.orEmpty() }
+                            val headerTitle = target.title.ifBlank { target.authorName }
+                            when {
+                                video != null -> nav.push(
+                                    Route.Video(
+                                        bvid = video.bvid,
+                                        commentRootId = reply.rpid,
+                                        commentMatchAuthor = reply.authorName,
+                                        commentMatchText = reply.contentText,
+                                    ),
+                                    origin,
+                                )
+
+                                articleId > 0L -> nav.push(
+                                    Route.Article(
+                                        cvId = articleId,
+                                        title = headerTitle,
+                                        commentRootId = reply.rpid,
+                                        commentMatchAuthor = reply.authorName,
+                                        commentMatchText = reply.contentText,
+                                    ),
+                                )
+
+                                dynId.isNotBlank() -> nav.push(
+                                    Route.Opus(
+                                        dynamicId = dynId,
+                                        title = headerTitle,
+                                        commentRootId = reply.rpid,
+                                        commentMatchAuthor = reply.authorName,
+                                        commentMatchText = reply.contentText,
+                                    ),
+                                    origin,
+                                )
+                            }
+                        },
                         rowScrollState = rowScrollState,
                         rowKey = "d-${dyn.dynamicId}",
                     )

@@ -150,6 +150,8 @@ sealed interface Route {
         val cid: Long = 0L,
         val commentRootId: Long = 0L,
         val commentTargetId: Long = 0L,
+        val commentMatchAuthor: String = "",
+        val commentMatchText: String = "",
         val offline: Boolean = false,
         /** 推荐流下发的商业推广（小火箭）内容，只在详情页标题前标注。 */
         val promoted: Boolean = false,
@@ -186,12 +188,16 @@ sealed interface Route {
         val title: String = "",
         val commentRootId: Long = 0L,
         val commentTargetId: Long = 0L,
+        val commentMatchAuthor: String = "",
+        val commentMatchText: String = "",
     ) : Route
     data class Opus(
         val dynamicId: String,
         val title: String = "",
         val commentRootId: Long = 0L,
         val commentTargetId: Long = 0L,
+        val commentMatchAuthor: String = "",
+        val commentMatchText: String = "",
     ) : Route
     data class Chat(val talkerId: Long, val talkerName: String = "", val talkerFace: String = "") : Route
     data class Search(val query: String = "") : Route

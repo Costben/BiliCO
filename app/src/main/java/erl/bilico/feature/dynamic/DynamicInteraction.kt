@@ -1,6 +1,7 @@
 package erl.bilico.feature.dynamic
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,8 +14,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.DynamicHotReply
@@ -26,12 +29,13 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 动态卡片下方的精选评论：左侧一条竖线，每行一个气泡图标加「昵称：内容」，
- * 最多两行截断。数据来自接口的 `module_interaction`，不是另外筛的。
+ * 最多两行截断。数据来自接口的 `module_interaction`，不是另外筛的；点击单条直接跳转到对应评论。
  */
 @Composable
 internal fun DynamicHotReplies(
     replies: List<DynamicHotReply>,
     modifier: Modifier = Modifier,
+    onClickReply: ((DynamicHotReply) -> Unit)? = null,
 ) {
     if (replies.isEmpty()) return
     val secondary = COUITheme.colorScheme.onSurfaceSecondary
@@ -53,7 +57,19 @@ internal fun DynamicHotReplies(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             replies.forEach { reply ->
-                Row {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .then(
+                            if (onClickReply != null) {
+                                Modifier.clickable { onClickReply(reply) }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(vertical = 2.dp),
+                ) {
                     Icon(
                         imageVector = COUIIcons.Community,
                         contentDescription = null,

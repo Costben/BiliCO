@@ -579,6 +579,8 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
             initialCid = route.cid,
             commentRootId = route.commentRootId,
             commentTargetId = route.commentTargetId,
+            commentMatchAuthor = route.commentMatchAuthor,
+            commentMatchText = route.commentMatchText,
             offline = route.offline,
             promoted = route.promoted,
         )
@@ -619,6 +621,8 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
             initialTitle = route.title,
             commentRootId = route.commentRootId,
             commentTargetId = route.commentTargetId,
+            commentMatchAuthor = route.commentMatchAuthor,
+            commentMatchText = route.commentMatchText,
         )
         is Route.Opus -> DynamicDetailScreen(
             container = container,
@@ -626,6 +630,8 @@ private fun RouteContent(route: Route, nav: NavState, container: AppContainer) {
             dynamicId = route.dynamicId,
             commentRootId = route.commentRootId,
             commentTargetId = route.commentTargetId,
+            commentMatchAuthor = route.commentMatchAuthor,
+            commentMatchText = route.commentMatchText,
         )
         is Route.Chat -> ChatScreen(container, nav, route.talkerId, route.talkerName, route.talkerFace)
         is Route.Search -> SearchScreen(container, nav, route.query)

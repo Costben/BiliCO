@@ -55,6 +55,8 @@ fun VideoScreen(
     initialCid: Long = 0L,
     commentRootId: Long = 0L,
     commentTargetId: Long = 0L,
+    commentMatchAuthor: String = "",
+    commentMatchText: String = "",
     offline: Boolean = false,
     promoted: Boolean = false,
 ) {
@@ -188,7 +190,7 @@ fun VideoScreen(
     // 简介 / 评论两页横向翻。直接读 detailPager.currentPage 同步驱动页签，
     // 跟手无延迟，与私信页完全一致；点标签时开翻页动画。
     val detailPager = rememberPagerState(
-        initialPage = if (commentRootId > 0L || commentTargetId > 0L) 1 else 0,
+        initialPage = if (commentRootId > 0L || commentTargetId > 0L || commentMatchText.isNotBlank()) 1 else 0,
         pageCount = { DETAIL_PAGES.size },
     )
     val infoListState = rememberLazyListState()
@@ -537,6 +539,7 @@ fun VideoScreen(
                 onOpenChapters = { chapterDialogVisible = true },
                 barBackdrops = barBackdrops, blurActive = blurActive, backEnabled = !fullscreen,
                 commentRootId = commentRootId, commentTargetId = commentTargetId,
+                commentMatchAuthor = commentMatchAuthor, commentMatchText = commentMatchText,
                 sponsorLabel = when {
                     !sponsorBadgeEnabled -> null
                     sponsorController.fullSponsorMark -> SPONSOR_BADGE_CONFIRMED

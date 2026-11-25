@@ -408,7 +408,7 @@ class DynamicRepository(
         val hotReplies = modules?.interaction?.items.orEmpty()
             .asSequence()
             .filter { it.type == 1 }
-            .mapNotNull { it.desc?.toHotReply() }
+            .mapNotNull { it.desc?.toHotReply(it.resolvedRpid) }
             .take(2)
             .toList()
 
@@ -545,9 +545,9 @@ class DynamicRepository(
 
     /**
      * 精选评论的 `desc.text` 有时只留了表情，昵称和正文都在 `rich_text_nodes` 里，
-     * 所以按节点拼一遍；节点为空才退回 `text`。
+     * 所以按节点拼一遍；节点为空才退回 `text`。同时拆分昵称与正文供跳转定位。
      */
-    private fun DynamicDesc.toHotReply(): DynamicHotReply? {
+    private fun DynamicDesc.toHotReply(rpid: Long = 0L): DynamicHotReply? {
         val nodes = richTextNodes
         val body = if (nodes.isNotEmpty()) {
             nodes.joinToString("") { it.text.ifBlank { it.origText } }.trim()
@@ -555,7 +555,18 @@ class DynamicRepository(
             text.trim()
         }
         if (body.isBlank()) return null
-        return DynamicHotReply(text = body, emotes = nodes.toEmoteMap())
+        val colonIdx = body.indexOf('：').takeIf { it > 0 }
+            ?: body.indexOf(':').takeIf { it > 0 && it <= 32 }
+            ?: -1
+        val authorName = if (colonIdx > 0) body.substring(0, colonIdx).trim() else ""
+        val contentText = if (colonIdx > 0) body.substring(colonIdx + 1).trim() else body
+        return DynamicHotReply(
+            text = body,
+            emotes = nodes.toEmoteMap(),
+            rpid = rpid,
+            authorName = authorName,
+            contentText = contentText,
+        )
     }
 
     /**

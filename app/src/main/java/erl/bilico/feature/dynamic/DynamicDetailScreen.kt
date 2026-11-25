@@ -113,11 +113,9 @@ private sealed interface DynComposeTarget {
  */
 @Composable
 fun DynamicDetailScreen(
-    container: AppContainer,
-    nav: NavState,
-    dynamicId: String,
-    commentRootId: Long = 0L,
-    commentTargetId: Long = 0L,
+    container: AppContainer, nav: NavState, dynamicId: String,
+    commentRootId: Long = 0L, commentTargetId: Long = 0L,
+    commentMatchAuthor: String = "", commentMatchText: String = "",
 ) {
     val cleanId = remember(dynamicId) { dynamicId.trim() }
     var item by remember(cleanId) { mutableStateOf(container.dynamic.peekSeed(cleanId)) }
@@ -156,8 +154,11 @@ fun DynamicDetailScreen(
     val commentOid = currentItem?.commentOid ?: 0L
     val commentType = currentItem?.commentType?.takeIf { it > 0 } ?: 17
     val commentViewModel: CommentViewModel? = if (commentOid > 0L) {
-        viewModel(key = "dyn-comment-$commentType-$commentOid-$commentRootId-$commentTargetId") {
-            CommentViewModel(container.comments, commentOid, commentType, commentRootId, commentTargetId, upMid = currentItem?.authorMid ?: 0L)
+        viewModel(key = "dyn-comment-$commentType-$commentOid-$commentRootId-$commentTargetId-${commentMatchText.hashCode()}") {
+            CommentViewModel(
+                container.comments, commentOid, commentType, commentRootId, commentTargetId,
+                upMid = currentItem?.authorMid ?: 0L, targetMatchAuthor = commentMatchAuthor, targetMatchText = commentMatchText,
+            )
         }
     } else {
         null

@@ -110,7 +110,19 @@ data class DynamicInteractionItem(
     @Serializable(with = FlexibleIntSerializer::class)
     val type: Int = 0,
     val desc: DynamicDesc? = null,
-)
+    @Serializable(with = FlexibleLongSerializer::class)
+    val rpid: Long = 0L,
+    @SerialName("rpid_str") val rpidStr: String = "",
+    @SerialName("comment_id")
+    @Serializable(with = FlexibleLongSerializer::class)
+    val commentId: Long = 0L,
+) {
+    val resolvedRpid: Long
+        get() = rpid.takeIf { it > 0L }
+            ?: rpidStr.trim().toLongOrNull()?.takeIf { it > 0L }
+            ?: commentId.takeIf { it > 0L }
+            ?: 0L
+}
 
 @Serializable
 data class DynamicAuthor(

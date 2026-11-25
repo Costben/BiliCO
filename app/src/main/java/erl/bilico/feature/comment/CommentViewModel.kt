@@ -22,6 +22,8 @@ class CommentViewModel(
     private val targetRootId: Long = 0L,
     private val targetReplyId: Long = 0L,
     private val upMid: Long = 0L,
+    private val targetMatchAuthor: String = "",
+    private val targetMatchText: String = "",
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CommentUiState())
@@ -61,22 +63,37 @@ class CommentViewModel(
                     var mergedItems = page.comments
                     var focusRootId = 0L
                     var pendingReplyDialog: Pair<Comment, Long>? = null
-                    if (!targetHandled && (targetRootId > 0L || targetReplyId > 0L) && sort == CommentSort.Hot) {
+                    if (!targetHandled && (targetRootId > 0L || targetReplyId > 0L || targetMatchText.isNotBlank()) && sort == CommentSort.Hot) {
                         targetHandled = true
-                        val lookupRootId = if (targetRootId > 0L) targetRootId else targetReplyId
-                        val existing = page.comments.firstOrNull { it.id == lookupRootId }
-                        val resolvedRoot = existing
-                            ?: repository.rootComment(oid, lookupRootId, type, fallbackUpMid = upMid)
-                            ?: if (targetReplyId > 0L && targetReplyId != lookupRootId) {
-                                repository.rootComment(oid, targetReplyId, type, fallbackUpMid = upMid)
-                            } else {
-                                null
+                        if (targetRootId > 0L || targetReplyId > 0L) {
+                            val lookupRootId = if (targetRootId > 0L) targetRootId else targetReplyId
+                            val existing = page.comments.firstOrNull { it.id == lookupRootId }
+                            val resolvedRoot = existing
+                                ?: repository.rootComment(oid, lookupRootId, type, fallbackUpMid = upMid)
+                                ?: if (targetReplyId > 0L && targetReplyId != lookupRootId) {
+                                    repository.rootComment(oid, targetReplyId, type, fallbackUpMid = upMid)
+                                } else {
+                                    null
+                                }
+                            if (resolvedRoot != null) {
+                                mergedItems = listOf(resolvedRoot) + page.comments.filterNot { it.id == resolvedRoot.id }
+                                focusRootId = resolvedRoot.id
+                                if (targetReplyId > 0L && targetReplyId != resolvedRoot.id) {
+                                    pendingReplyDialog = resolvedRoot to targetReplyId
+                                }
                             }
-                        if (resolvedRoot != null) {
-                            mergedItems = listOf(resolvedRoot) + page.comments.filterNot { it.id == resolvedRoot.id }
-                            focusRootId = resolvedRoot.id
-                            if (targetReplyId > 0L && targetReplyId != resolvedRoot.id) {
-                                pendingReplyDialog = resolvedRoot to targetReplyId
+                        } else {
+                            val matched = resolvePreviewMatchedComment(
+                                repository, oid, type, upMid,
+                                page.comments, page.nextOffset, page.isEnd,
+                                targetMatchAuthor, targetMatchText,
+                            )
+                            if (matched != null) {
+                                mergedItems = listOf(matched.root) + page.comments.filterNot { it.id == matched.root.id }
+                                focusRootId = matched.root.id
+                                if (matched.subReplyId > 0L && matched.subReplyId != matched.root.id) {
+                                    pendingReplyDialog = matched.root to matched.subReplyId
+                                }
                             }
                         }
                     }

@@ -278,10 +278,13 @@ data class DynamicLiveCard(
     val onlineCount: Long? = null,
 )
 
-/** 动态卡片下方外露的精选/热评：整段文字已经拼好，表情单独给图。 */
+/** 动态卡片下方外露的精选/热评：整段文字已经拼好，表情单独给图，并保留定位所需字段。 */
 data class DynamicHotReply(
     val text: String,
     val emotes: Map<String, EmoteImage> = emptyMap(),
+    val rpid: Long = 0L,
+    val authorName: String = "",
+    val contentText: String = "",
 )
 
 /** 卡片点开后要跳去哪：有 cv 号走专栏，否则把这个动态自己的 id 交给阅读页。 */

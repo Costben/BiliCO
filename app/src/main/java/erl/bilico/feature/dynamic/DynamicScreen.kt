@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
+import erl.bilico.data.model.DynamicHotReply
 import erl.bilico.data.model.DynamicVideoCard
 import erl.bilico.data.repository.DynamicFeedType
 import erl.bilico.di.AppContainer
@@ -216,6 +217,44 @@ fun DynamicScreen(
                                 if (!ok) Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                             }
                         },
+                        onOpenHotReply = { target, reply, origin ->
+                            val video = target.video
+                            val articleId = target.article?.articleId ?: 0L
+                            val dynId = target.dynamicId.ifBlank { target.article?.dynamicId.orEmpty() }
+                            val headerTitle = target.title.ifBlank { target.authorName }
+                            when {
+                                video != null -> nav.push(
+                                    Route.Video(
+                                        bvid = video.bvid,
+                                        commentRootId = reply.rpid,
+                                        commentMatchAuthor = reply.authorName,
+                                        commentMatchText = reply.contentText,
+                                    ),
+                                    origin,
+                                )
+
+                                articleId > 0L -> nav.push(
+                                    Route.Article(
+                                        cvId = articleId,
+                                        title = headerTitle,
+                                        commentRootId = reply.rpid,
+                                        commentMatchAuthor = reply.authorName,
+                                        commentMatchText = reply.contentText,
+                                    ),
+                                )
+
+                                dynId.isNotBlank() -> nav.push(
+                                    Route.Opus(
+                                        dynamicId = dynId,
+                                        title = headerTitle,
+                                        commentRootId = reply.rpid,
+                                        commentMatchAuthor = reply.authorName,
+                                        commentMatchText = reply.contentText,
+                                    ),
+                                    origin,
+                                )
+                            }
+                        },
                     )
                 }
             }
@@ -264,6 +303,7 @@ private fun DynamicContent(
     currentMid: Long,
     onDelete: (DynamicItemUi) -> Unit,
     onLike: (DynamicItemUi) -> Unit,
+    onOpenHotReply: (DynamicItemUi, DynamicHotReply, ExpandOrigin?) -> Unit,
 ) {
     BindScrollToTop(listState, enabled = active)
     val scope = rememberCoroutineScope()
@@ -387,6 +427,7 @@ private fun DynamicContent(
                             currentMid = currentMid,
                             onDelete = onDelete,
                             onLike = onLike,
+                            onOpenHotReply = onOpenHotReply,
                             rowScrollState = rowScrollState,
                             rowKey = item.id,
                         )
