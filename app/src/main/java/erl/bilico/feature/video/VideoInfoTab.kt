@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.LaunchedEffect
@@ -39,7 +38,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,23 +63,22 @@ import erl.bilico.ui.components.DownloadOutlineIcon
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.ExpandableSectionHeader
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.RichCommentText
 import erl.bilico.ui.components.ShareOutlineIcon
 import erl.bilico.ui.components.WatchLaterOutlineIcon
 import erl.bilico.ui.components.StarFilledIcon
 import erl.bilico.ui.components.StarOutlineIcon
 import erl.bilico.ui.components.StatLabel
+import erl.bilico.ui.hyperlinkColor
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.ExpandableList
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Download
 import io.github.suqi8.coui.kmp.icon.extended.Info
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import kotlinx.coroutines.delay
-import io.github.suqi8.coui.kmp.icon.extended.Share
-import io.github.suqi8.coui.kmp.icon.extended.Stopwatch
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
@@ -306,12 +303,8 @@ private fun InfoContent(
                         val textWidthPx = with(density) {
                             (maxWidth - DESC_ICON_SIZE - DESC_ICON_GAP - DESC_END_RESERVE).roundToPx()
                         }
-                        val descText = if (expanded) {
-                            AnnotatedString(desc)
-                        } else {
-                            remember(descPreview, accent, textWidthPx) {
-                                collapsedDescText(measurer, descPreview, descStyle, accent, textWidthPx)
-                            }
+                        val collapsedText = remember(descPreview, accent, textWidthPx) {
+                            collapsedDescText(measurer, descPreview, descStyle, accent, textWidthPx)
                         }
                         Row {
                             Icon(
@@ -323,12 +316,21 @@ private fun InfoContent(
                                 tint = COUITheme.colorScheme.onSurfaceSecondary,
                             )
                             Spacer(Modifier.width(DESC_ICON_GAP))
-                            SelectionContainer {
-                                Text(
-                                    text = descText,
+                            if (expanded) {
+                                RichCommentText(
+                                    content = desc,
+                                    emotes = emptyMap(),
+                                    selectable = true,
                                     style = descStyle,
                                     color = COUITheme.colorScheme.onSurfaceSecondary,
-                                    maxLines = if (expanded) Int.MAX_VALUE else DESC_COLLAPSED_LINES,
+                                    prefixColor = hyperlinkColor(),
+                                )
+                            } else {
+                                Text(
+                                    text = collapsedText,
+                                    style = descStyle,
+                                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                                    maxLines = DESC_COLLAPSED_LINES,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }

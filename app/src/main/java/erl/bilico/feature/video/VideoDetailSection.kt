@@ -127,7 +127,10 @@ internal fun VideoDetailSection(
             key = { DETAIL_PAGES[it] },
         ) { page ->
             when (page) {
-                0 -> Box(Modifier.fillMaxSize()) {
+                0 -> CompositionLocalProvider(
+                    LocalCommentSeek provides onSeekCommentMs,
+                ) {
+                Box(Modifier.fillMaxSize()) {
                     VideoInfoTab(
                         detail = state.detail,
                         isLoading = state.isLoading,
@@ -205,6 +208,7 @@ internal fun VideoDetailSection(
                             }
                         }
                     }
+                }
                 }
 
                 else -> {
