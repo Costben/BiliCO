@@ -71,12 +71,12 @@ internal fun LiveStreamDialog(
     onSelect: (LiveStreamSelection) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val scheme = COUITheme.colorScheme
     PlayerModalHost(
         inlineInStage = inlineInStage,
         onDismiss = onDismiss,
         maxWidth = 420.dp,
     ) {
+        val scheme = COUITheme.colorScheme
         val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier

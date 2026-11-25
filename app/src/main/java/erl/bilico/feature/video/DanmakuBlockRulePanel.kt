@@ -60,7 +60,6 @@ internal fun DanmakuKeywordBlockDialog(
 ) {
     val container = LocalAppContainer.current ?: return
     val context = LocalContext.current
-    val scheme = COUITheme.colorScheme
     val snapshot by container.blocks.snapshot.collectAsStateWithLifecycle()
     val rules = snapshot.config.danmakuKeywords
 
@@ -77,6 +76,7 @@ internal fun DanmakuKeywordBlockDialog(
         horizontalPadding = if (inlineInStage) 12.dp else 20.dp,
         cornerRadius = 24.dp,
     ) {
+        val scheme = COUITheme.colorScheme
         Column(
             modifier = Modifier
                 .fillMaxWidth()

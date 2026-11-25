@@ -48,7 +48,6 @@ fun CastSheet(
     val container = LocalAppContainer.current ?: return
     val controller = container.dlna
     val state by controller.state.collectAsState()
-    val scheme = COUITheme.colorScheme
 
     LaunchedEffect(Unit) {
         if (state.devices.isEmpty() && !state.scanning) {
@@ -61,6 +60,7 @@ fun CastSheet(
         onDismiss = onDismiss,
         maxWidth = 420.dp,
     ) {
+        val scheme = COUITheme.colorScheme
         val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier
