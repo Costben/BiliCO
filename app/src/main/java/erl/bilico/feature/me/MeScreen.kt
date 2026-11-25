@@ -23,13 +23,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
@@ -56,11 +53,8 @@ import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
-import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.preference.ArrowPreference
-import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
@@ -77,6 +71,20 @@ fun MeScreen(
     val downloadTasks by container.downloads.tasks.collectAsStateWithLifecycle()
     val activeDownloadCount = remember(downloadTasks) { downloadTasks.count { it.isActive } }
     val completedDownloadCount = remember(downloadTasks) { downloadTasks.count { it.isCompleted } }
+    val activeDownloadProgress = remember(downloadTasks) {
+        val active = downloadTasks.filter { it.isActive }
+        when {
+            active.isEmpty() -> 0f
+            active.all { it.totalBytes > 0L } -> {
+                val total = active.sumOf { it.totalBytes }.coerceAtLeast(1L)
+                (active.sumOf { it.downloadedBytes }.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+            }
+
+            else -> {
+                (active.sumOf { it.progress.toDouble() } / active.size).toFloat().coerceIn(0f, 1f)
+            }
+        }
+    }
     val current = account
     val scope = rememberCoroutineScope()
     var confirmLogout by remember { mutableStateOf(false) }
@@ -193,41 +201,12 @@ fun MeScreen(
                     icon = MeDownloadsIcon,
                     palette = MeIconPalette.Blue,
                     position = CardListPosition.Middle,
-                    endActionReplacement = when {
-                        activeDownloadCount > 0 -> {
-                            {
-                                Box(
-                                    modifier = Modifier.size(26.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        size = 24.dp,
-                                        strokeWidth = 2.dp,
-                                    )
-                                    Text(
-                                        text = activeDownloadCount.toString(),
-                                        fontSize = 10.sp,
-                                        lineHeight = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = COUITheme.colorScheme.primary,
-                                        maxLines = 1,
-                                    )
-                                }
-                            }
-                        }
-
-                        completedDownloadCount > 0 -> {
-                            {
-                                Text(
-                                    text = completedDownloadCount.toString(),
-                                    style = COUITheme.textStyles.body2,
-                                    color = COUITheme.colorScheme.onSurfaceSecondary,
-                                    maxLines = 1,
-                                )
-                            }
-                        }
-
-                        else -> null
+                    endActionReplacement = {
+                        OfflineCacheEndAction(
+                            activeCount = activeDownloadCount,
+                            completedCount = completedDownloadCount,
+                            progress = activeDownloadProgress,
+                        )
                     },
                     onClick = { nav.push(Route.Downloads) },
                 )
