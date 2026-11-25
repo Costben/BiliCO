@@ -29,10 +29,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.LocalRouteMinimized
 import erl.bilico.ui.Route
@@ -330,12 +334,26 @@ private class PlaybackPlayerHolder(
     }
 }
 
+@OptIn(UnstableApi::class)
 fun buildConfiguredExoPlayer(context: Context): ExoPlayer {
     val attrs = AudioAttributes.Builder()
         .setUsage(C.USAGE_MEDIA)
         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
         .build()
+    // 降低起播与跳转后的最小缓冲门槛（默认 2500ms / 5000ms），并保留 15 秒后向缓冲，
+    // 让拖动松手后能尽快继续播放、小幅回拖直接命中内存缓冲。
+    val loadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            15_000,
+            50_000,
+            500,
+            1_000,
+        )
+        .setBackBuffer(15_000, true)
+        .build()
     return ExoPlayer.Builder(context)
+        .setLoadControl(loadControl)
+        .setSeekParameters(SeekParameters.CLOSEST_SYNC)
         .setAudioAttributes(attrs, true)
         .setHandleAudioBecomingNoisy(true)
         .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)

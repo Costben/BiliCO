@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +33,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -70,9 +73,13 @@ internal fun PlayerProgress(
     onSeek: (Long) -> Unit,
 ) {
     var isScrubbing by remember { mutableStateOf(false) }
+    var pointerDown by remember { mutableStateOf(false) }
     var scrubPositionMs by remember { mutableLongStateOf(0L) }
+    var lastCommittedSeekMs by remember { mutableLongStateOf(-1L) }
     var pendingSeekTargetMs by remember { mutableStateOf<Long?>(null) }
     var dragHorizontalOffsetPx by remember { mutableFloatStateOf(0f) }
+    val currentOnSeek by rememberUpdatedState(onSeek)
+    val currentOnScrubPositionChange by rememberUpdatedState(onScrubPositionChange)
 
     val enabled = durationMs > 0L
     val effectiveDuration = durationMs.coerceAtLeast(1L)
@@ -105,22 +112,53 @@ internal fun PlayerProgress(
                 isScrubbing = false
                 onScrubPositionChange(null)
             }
+            pointerDown = false
+            lastCommittedSeekMs = -1L
             pendingSeekTargetMs = null
         }
     }
 
     Box(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val anyPressed = event.changes.any { it.pressed }
+                        if (anyPressed && !pointerDown) {
+                            pointerDown = true
+                            lastCommittedSeekMs = -1L
+                        } else if (!anyPressed && pointerDown) {
+                            pointerDown = false
+                            // 手指离开即刻发起 seek 并收起缩略图，不必等 IntentSlider 惯性滑行播完。
+                            if (isScrubbing) {
+                                val target = scrubPositionMs
+                                lastCommittedSeekMs = target
+                                pendingSeekTargetMs = target
+                                isScrubbing = false
+                                currentOnSeek(target)
+                                currentOnScrubPositionChange(null)
+                            }
+                        }
+                    }
+                }
+            },
         contentAlignment = Alignment.CenterStart,
     ) {
         IntentSlider(
             value = displayPos.toFloat(),
             onValueChange = { next ->
+                // 松手后已立刻提交本次拖动，忽略 IntentSlider 后续惯性滑行回调，避免越位与二次跳转卡顿。
+                if (!pointerDown && lastCommittedSeekMs >= 0L) return@IntentSlider
                 val target = next.roundToLong().coerceIn(0L, effectiveDuration)
                 isScrubbing = true
                 pendingSeekTargetMs = null
                 scrubPositionMs = target
-                onScrubPositionChange(target)
+                if (pointerDown) {
+                    currentOnScrubPositionChange(target)
+                }
             },
             modifier = Modifier.fillMaxWidth(),
             enabled = enabled,
@@ -132,13 +170,14 @@ internal fun PlayerProgress(
             valueRange = 0f..effectiveDuration.toFloat(),
             secondaryValue = bufferedMs.coerceIn(0L, effectiveDuration).toFloat(),
             onValueChangeFinished = {
-                if (isScrubbing) {
+                if (isScrubbing && lastCommittedSeekMs < 0L) {
                     val target = scrubPositionMs
                     pendingSeekTargetMs = target
-                    onSeek(target)
-                    isScrubbing = false
+                    currentOnSeek(target)
                 }
-                onScrubPositionChange(null)
+                isScrubbing = false
+                lastCommittedSeekMs = -1L
+                currentOnScrubPositionChange(null)
             },
             onDragHorizontalOffsetChange = { dragHorizontalOffsetPx = it },
             size = IntentSliderSize.Default,
