@@ -5,9 +5,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
@@ -26,21 +24,23 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -49,7 +49,13 @@ import androidx.compose.ui.util.lerp
 import erl.bilico.di.AppContainer
 import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.ScreenConfig
+import erl.bilico.platform.platformUsesOffscreenExpandCompositing
+import erl.bilico.platform.rememberPlatformScreenCornerRadius
+import erl.bilico.platform.rememberPlatformStatusBarTopPx
 import erl.bilico.platform.setStatusBarDarkIcons
+import io.github.suqi8.coui.kmp.basic.CardDefaults
+import io.github.suqi8.coui.kmp.squircle.SquircleDefaults
+import io.github.suqi8.coui.kmp.squircle.addSquircleRect
 import io.github.suqi8.coui.kmp.utils.PredictiveBackMotionDefaults
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -60,6 +66,7 @@ import kotlin.math.pow
 internal data class ExpandShape(
     private val heightPx: Float,
     private val radiusPx: Float,
+    private val weight: Float = SquircleDefaults.WeightNormal,
 ) : Shape {
     override fun createOutline(
         size: Size,
@@ -67,13 +74,20 @@ internal data class ExpandShape(
         density: Density,
     ): Outline {
         val height = heightPx.coerceIn(0f, size.height)
-        val r = radiusPx.coerceAtLeast(0f)
-        return Outline.Rounded(RoundRect(0f, 0f, size.width, height, r, r))
+        // 使用与屏幕 G2 圆角和卡片一致的超椭圆轮廓，避免转场起止瞬间在圆形角与超椭圆角之间跳变。
+        val path = Path()
+        path.addSquircleRect(
+            width = size.width,
+            height = height,
+            cornerRadius = radiusPx.coerceAtLeast(0f),
+            weight = weight,
+        )
+        return Outline.Generic(path)
     }
 }
 
 @Composable
-internal fun rememberScreenCornerRadius(): Dp = 52.dp
+internal fun rememberScreenCornerRadius(): Dp = rememberPlatformScreenCornerRadius()
 
 internal class FrozenPortrait {
     var configuration: ScreenConfig? = null
@@ -159,9 +173,7 @@ internal fun ExpandLayer(
         Box(Modifier.fillMaxSize()) { content() }
         return
     }
-    val density = LocalDensity.current
-    val statusBarTop = WindowInsets.statusBars.getTop(density).toFloat()
-        .takeIf { it > 0f } ?: with(density) { 44.dp.toPx() }
+    val statusBarTop = rememberPlatformStatusBarTopPx()
     val surface = pageContainerColor()
     val exiting = entry.exiting || entry.previewing
     fun frameProgress(p: Float): Float = when {
@@ -238,8 +250,10 @@ internal fun ExpandLayer(
                     1f
                 }
                 val radius = lerp(origin.cornerRadius.toPx(), screenCorner.toPx(), pClamped) / scale
+                val originWeight = if (entry.minimizingToOrb) SquircleDefaults.WeightNormal else CardDefaults.Weight
+                val cornerWeight = lerp(originWeight, SquircleDefaults.WeightNormal, pClamped)
                 if (p < 1f || dragOffset != Offset.Zero) {
-                    shape = ExpandShape(height / scale, radius)
+                    shape = ExpandShape(height / scale, radius, cornerWeight)
                     clip = true
                 } else {
                     clip = false
@@ -253,44 +267,95 @@ internal fun ExpandLayer(
                 val p = frameProgress(progress())
                 if (!exiting && p <= 0.0005f) return@drawWithContent
                 drawContent()
-                if (!exiting) return@drawWithContent
-                // 零 saveLayer：直接设置 origin.layer.alpha，避免 iOS Metal 每帧分配/释放离屏纹理。
+                if (!exiting || platformUsesOffscreenExpandCompositing) return@drawWithContent
+                // iOS Metal 零 saveLayer：直接设置 origin.layer.alpha，避免每帧分配/释放离屏纹理。
                 val cardAlpha = ((0.24f - p.coerceIn(0f, 1f)) / 0.18f).coerceIn(0f, 1f)
                 if (cardAlpha > 0f) drawCardSnapshot(origin.layer, bounds, alpha = cardAlpha, surface = surface)
             },
     ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .drawBehind {
-                    if (!entry.expand) return@drawBehind
-                    val p = frameProgress(progress())
-                    if (exiting) {
-                        if (p < 1f) drawRect(surface)
-                        return@drawBehind
+        if (platformUsesOffscreenExpandCompositing) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val transitioning = entry.expand && (exiting || progress() < 1f || enterContentAlpha() < 0.999f)
+                        compositingStrategy = if (transitioning && !entry.hasSurfaceView) {
+                            CompositingStrategy.Offscreen
+                        } else {
+                            CompositingStrategy.Auto
+                        }
                     }
-                    val ca = enterContentAlpha()
-                    if (p < 1f || ca < 0.999f) {
-                        drawRect(surface)
-                        if (ca < 0.999f) drawCardSnapshot(origin.layer, bounds, alpha = 1f, surface = null)
+                    .drawBehind {
+                        if (!entry.expand) return@drawBehind
+                        val p = frameProgress(progress())
+                        if (exiting) {
+                            if (p < 1f) drawRect(surface)
+                            return@drawBehind
+                        }
+                        val ca = enterContentAlpha()
+                        if (p < 1f || ca < 0.999f) {
+                            drawRect(surface)
+                            if (ca < 0.999f) drawCardSnapshot(origin.layer, bounds, alpha = 1f, surface = null)
+                        }
                     }
-                },
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    if (!entry.expand) {
-                        alpha = 1f
-                        translationY = 0f
-                        return@graphicsLayer
-                    }
-                    val pClamped = frameProgress(progress()).coerceIn(0f, 1f)
-                    alpha = if (exiting) 1f else enterContentAlpha()
-                    translationY = -statusBarTop * (1f - pClamped)
-                },
-        ) {
-            Box(Modifier.fillMaxSize().background(surface)) { content() }
+                    .drawWithContent {
+                        drawContent()
+                        if (!entry.expand || !exiting) return@drawWithContent
+                        val cardAlpha = ((0.24f - frameProgress(progress()).coerceIn(0f, 1f)) / 0.18f).coerceIn(0f, 1f)
+                        if (cardAlpha > 0f) drawCardSnapshot(origin.layer, bounds, alpha = cardAlpha, surface = surface)
+                    },
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            if (!entry.expand) {
+                                alpha = 1f
+                                translationY = 0f
+                                return@graphicsLayer
+                            }
+                            val pClamped = frameProgress(progress()).coerceIn(0f, 1f)
+                            alpha = if (exiting) 1f else enterContentAlpha()
+                            translationY = -statusBarTop * (1f - pClamped)
+                        },
+                ) {
+                    Box(Modifier.fillMaxSize().background(surface)) { content() }
+                }
+            }
+        } else {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        if (!entry.expand) return@drawBehind
+                        val p = frameProgress(progress())
+                        if (exiting) {
+                            if (p < 1f) drawRect(surface)
+                            return@drawBehind
+                        }
+                        val ca = enterContentAlpha()
+                        if (p < 1f || ca < 0.999f) {
+                            drawRect(surface)
+                            if (ca < 0.999f) drawCardSnapshot(origin.layer, bounds, alpha = 1f, surface = null)
+                        }
+                    },
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        if (!entry.expand) {
+                            alpha = 1f
+                            translationY = 0f
+                            return@graphicsLayer
+                        }
+                        val pClamped = frameProgress(progress()).coerceIn(0f, 1f)
+                        alpha = if (exiting) 1f else enterContentAlpha()
+                        translationY = -statusBarTop * (1f - pClamped)
+                    },
+            ) {
+                Box(Modifier.fillMaxSize().background(surface)) { content() }
+            }
         }
     }
 }
@@ -301,15 +366,28 @@ private fun DrawScope.drawCardSnapshot(layer: GraphicsLayer, bounds: Rect, alpha
     val k = size.width / bounds.width
     withTransform({ scale(k, k, pivot = Offset.Zero) }) {
         clipRect(0f, 0f, bounds.width, bounds.height) {
-            if (surface != null) {
-                drawRect(surface.copy(alpha = alpha), size = bounds.size)
-            }
-            val prevAlpha = layer.alpha
-            layer.alpha = alpha
-            try {
-                drawLayer(layer)
-            } finally {
-                layer.alpha = prevAlpha
+            if (platformUsesOffscreenExpandCompositing) {
+                if (surface == null) {
+                    drawLayer(layer)
+                } else {
+                    drawIntoCanvas { canvas ->
+                        canvas.saveLayer(Rect(0f, 0f, bounds.width, bounds.height), Paint().apply { this.alpha = alpha })
+                        drawRect(surface, size = bounds.size)
+                        drawLayer(layer)
+                        canvas.restore()
+                    }
+                }
+            } else {
+                if (surface != null) {
+                    drawRect(surface.copy(alpha = alpha), size = bounds.size)
+                }
+                val prevAlpha = layer.alpha
+                layer.alpha = alpha
+                try {
+                    drawLayer(layer)
+                } finally {
+                    layer.alpha = prevAlpha
+                }
             }
         }
     }

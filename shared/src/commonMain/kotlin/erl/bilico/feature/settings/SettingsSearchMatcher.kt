@@ -2,6 +2,9 @@ package erl.bilico.feature.settings
 
 import erl.bilico.platform.SynchronizedMap
 import erl.bilico.platform.getOrPut
+import erl.bilico.platform.hanCharToPinyin
+import erl.bilico.platform.normalizeNfkc
+import erl.bilico.platform.transliterateToSimplified
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -294,7 +297,7 @@ internal object SettingsSearchMatcher {
         }
     }
 
-    private fun normalizeBasic(input: String): String = input.lowercase()
+    private fun normalizeBasic(input: String): String = normalizeNfkc(input)
 
     private fun stripNonWord(input: String): String {
         val sb = StringBuilder(input.length)
@@ -338,8 +341,8 @@ internal object SettingsSearchMatcher {
     }
 
     private object IcuBridge {
-        fun toSimplified(text: String): String = text
-        fun hanToPinyin(ch: Char): String = ""
+        fun toSimplified(text: String): String = transliterateToSimplified(text)
+        fun hanToPinyin(ch: Char): String = hanCharToPinyin(ch)
     }
 
     /** 设置页高频多音字修正：同时收录主读音与常见次读音，避免 ICU 单读音漏匹配。 */

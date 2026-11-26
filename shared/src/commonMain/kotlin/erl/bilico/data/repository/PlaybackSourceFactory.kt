@@ -4,6 +4,7 @@ import erl.bilico.data.model.DashTrack
 import erl.bilico.data.model.PlayUrlData
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.QualityOption
+import erl.bilico.platform.platformSupportsAv1Dash
 
 /**
  * playurl 的 dash / durl 转成播放器直接能用的两种流。
@@ -56,10 +57,15 @@ internal fun PlayUrlData.toPlaybackSource(
             listOf(video.baseUrl) + video.backupUrl.orEmpty(),
             cdn,
         )
-        // 同清晰度的次选兼容编码轨（例如 AVC 节点卡住时回退 HVC1）一并加入备用列表，避免死等单条 CDN。
+        // 同清晰度的次选兼容编码轨（例如 AVC 节点卡住时回退 HVC1/AV1）一并加入备用列表，避免死等单条 CDN。
         val siblingCodecUrls = dashData.video
             .asSequence()
-            .filter { it.id == video.id && it !== video && it.baseUrl.isNotBlank() && !it.codecs.startsWith("av01", ignoreCase = true) }
+            .filter { track ->
+                track.id == video.id &&
+                    track !== video &&
+                    track.baseUrl.isNotBlank() &&
+                    (platformSupportsAv1Dash || !track.codecs.startsWith("av01", ignoreCase = true))
+            }
             .sortedBy(::videoCodecPriority)
             .flatMap { sibling ->
                 PlaybackCdn.candidates(listOf(sibling.baseUrl) + sibling.backupUrl.orEmpty(), cdn).asSequence()
@@ -120,9 +126,13 @@ private fun videoCodecPriority(track: DashTrack): Int {
 private fun pickDashVideo(videos: List<DashTrack>, targetQn: Int): DashTrack? {
     val playable = videos.filter { it.baseUrl.isNotBlank() }
     if (playable.isEmpty()) return null
-    // Apple AVPlayer 解码 av01 DASH 流会出现 0x0 黑屏：只要存在非 av01 轨道就优先排除 av01。
-    val preferredPool = playable.filterNot { it.codecs.startsWith("av01", ignoreCase = true) }
-        .ifEmpty { playable }
+    // Apple AVPlayer 解码 av01 DASH 流会出现 0x0 黑屏：仅在不支持 AV1 的平台优先排除 av01，
+    // Android ExoPlayer 保持全编码轨道池（优先 AVC，不因 AV1 而降级高画质）。
+    val preferredPool = if (platformSupportsAv1Dash) {
+        playable
+    } else {
+        playable.filterNot { it.codecs.startsWith("av01", ignoreCase = true) }.ifEmpty { playable }
+    }
     val within = preferredPool.filter { it.id <= targetQn }
     val comparator = if (within.isNotEmpty()) {
         compareByDescending<DashTrack> { it.id }

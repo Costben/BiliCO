@@ -1,5 +1,6 @@
 package erl.bilico.ui
 
+import erl.bilico.platform.platformUseCompactNavBarInset
 import erl.bilico.platform.uptimeMillis
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -331,16 +333,21 @@ internal fun FloatingBottomBar(
     }
 
     val density = LocalDensity.current
-    val bottomInset = if (WindowInsets.navigationBars.getBottom(density) > 0) {
-        BottomFloatingNavigationBarDefaults.MenuToScreenNaviDistance
+    val navInsetModifier = if (platformUseCompactNavBarInset) {
+        val bottomInset = if (WindowInsets.navigationBars.getBottom(density) > 0) {
+            BottomFloatingNavigationBarDefaults.MenuToScreenNaviDistance
+        } else {
+            0.dp
+        }
+        Modifier.padding(bottom = bottomInset)
     } else {
-        0.dp
+        Modifier.navigationBarsPadding()
     }
 
     Box(
         modifier
             .fillMaxWidth()
-            .padding(bottom = bottomInset),
+            .then(navInsetModifier),
         contentAlignment = Alignment.BottomCenter,
     ) {
         // 预先占住右下角融合球槽位坐标，首帧收起时就有精确落点。

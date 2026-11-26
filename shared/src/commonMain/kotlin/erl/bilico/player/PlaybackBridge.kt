@@ -193,6 +193,7 @@ object PlaybackBridge {
             activeMediaId = ""
         }
         currentIsPlaying = false
+        onSessionStop?.invoke()
     }
 
     fun stopPlayback(context: PlatformContext) {
@@ -278,7 +279,9 @@ fun BindPlaybackSession(
     val sessionOwner = remember { Any() }
     val routeEntry = LocalNavEntry.current
     val navState = LocalNavState.current
+    val inPipMode = LocalInPipMode.current
     val currentBackgroundPlay = rememberUpdatedState(backgroundPlay)
+    val currentInPipMode = rememberUpdatedState(inPipMode)
     val poppingOut = routeEntry?.exiting == true && !routeEntry.minimizingToOrb
 
     LaunchedEffect(activeSession, player, title, subtitle, artworkUrl, isPlaying, effectiveAutoPip, poppingOut) {
@@ -292,14 +295,20 @@ fun BindPlaybackSession(
             autoPip = effectiveAutoPip,
             owner = sessionOwner,
         )
+        PlaybackBridge.onSessionStart?.invoke()
     }
 
     DisposableEffect(player, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
                 if (!PlaybackBridge.isOwner(sessionOwner)) return@LifecycleEventObserver
-                if (!currentBackgroundPlay.value && player.isPlaying) {
-                    player.pause()
+                if (!currentInPipMode.value) {
+                    if (currentBackgroundPlay.value && player.isPlaying) {
+                        PlaybackBridge.onSessionPromote?.invoke()
+                    } else if (player.isPlaying) {
+                        player.pause()
+                        PlaybackBridge.onSessionStop?.invoke()
+                    }
                 }
             }
         }

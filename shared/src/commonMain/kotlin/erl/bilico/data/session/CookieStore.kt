@@ -5,6 +5,7 @@ import erl.bilico.platform.KeyValueStore
 import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.currentTimeMillis
 import erl.bilico.platform.ioDispatcher
+import erl.bilico.platform.logWarn
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -117,7 +118,7 @@ class CookieStore(
         return snap.entries.joinToString("; ") { "${it.key}=${it.value}" }
     }
 
-    fun saveSetCookieHeaders(headers: List<String>) {
+    fun saveSetCookieHeaders(headers: List<String>, sourceUrl: String = "") {
         if (headers.isEmpty()) return
         val changed = stateLock.withLock {
             ensureLoadedLocked()
@@ -131,6 +132,11 @@ class CookieStore(
                 if (name.isBlank()) return@forEach
                 val previous = values[name]
                 if (value.isEmpty() || value.equals("deleted", ignoreCase = true)) {
+                    if (name in PROTECTED_SESSION_COOKIES) {
+                        // 仅记录来源与 Cookie 键名，不记录任何凭证值；避免个别子接口下发过期头静默清空登录态。
+                        logWarn("BiliCookie", "Ignored server clear for $name from $sourceUrl")
+                        return@forEach
+                    }
                     if (previous != null) {
                         values.remove(name)
                         dirty = true
@@ -189,5 +195,6 @@ class CookieStore(
 
     private companion object {
         const val KEY_COOKIES = "cookies"
+        val PROTECTED_SESSION_COOKIES = setOf("SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5")
     }
 }

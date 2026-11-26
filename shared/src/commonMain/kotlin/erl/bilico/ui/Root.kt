@@ -63,6 +63,8 @@ import erl.bilico.platform.configurePlatformImageLoader
 import erl.bilico.platform.currentTimeMillis
 import erl.bilico.platform.imageCacheDirectoryPath
 import erl.bilico.platform.openExternalUrl
+import erl.bilico.platform.platformNeedsBackdropHoleFill
+import erl.bilico.platform.showToast
 import erl.bilico.platform.useEdgeSwipeBackOverlay
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
@@ -84,6 +86,7 @@ import kotlinx.coroutines.launch
 import okio.Path.Companion.toPath
 
 private val BareBvid = Regex("BV[0-9A-Za-z]{10}")
+private val AidTarget = Regex("""(?:^av|bilibili\.com/video/av)(\d+)""", RegexOption.IGNORE_CASE)
 
 private fun openVideoTarget(
     target: String,
@@ -91,16 +94,43 @@ private fun openVideoTarget(
     container: AppContainer,
     context: PlatformContext,
     scope: CoroutineScope,
+    startSec: Long = 0L,
 ) {
     val value = target.trim()
+    fun pushOrSeek(bvid: String) {
+        val current = nav.stack.lastOrNull { !it.exiting }?.route as? Route.Video
+        if (current?.bvid != bvid) {
+            nav.push(Route.Video(bvid, startSec = startSec))
+        } else if (startSec > 0L) {
+            val active = PlaybackBridge.activePlayer
+            if (active != null) {
+                active.seekTo(startSec * 1000L)
+                if (!active.isPlaying) active.play()
+            } else {
+                nav.replaceTop(Route.Video(bvid, startSec = startSec))
+            }
+        }
+    }
     if (BareBvid.matches(value)) {
-        nav.push(Route.Video(value))
+        pushOrSeek(value)
+        return
+    }
+    val aid = AidTarget.find(value)?.groupValues?.getOrNull(1)?.toLongOrNull()
+    if (aid != null && aid > 0L) {
+        scope.launch {
+            val bvid = container.messages.resolveBvid(aid).getOrNull()
+            if (bvid != null) {
+                pushOrSeek(bvid)
+            } else {
+                showToast(context, "无法打开此视频链接")
+            }
+        }
         return
     }
     scope.launch {
         val bvid = container.video.resolveShortLink(value)
         if (bvid != null) {
-            nav.push(Route.Video(bvid))
+            pushOrSeek(bvid)
         } else if (value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)) {
             nav.push(Route.WebPage(value))
         } else {
@@ -115,6 +145,7 @@ fun BiliCoRoot(
     container: AppContainer,
     externalBackDispatcher: BackDispatcher? = null,
     pendingVideoTarget: String? = null,
+    pendingVideoStartSec: Long = 0L,
     onPendingVideoHandled: () -> Unit = {},
 ) {
     setSingletonImageLoaderFactory { platformContext ->
@@ -143,9 +174,9 @@ fun BiliCoRoot(
     val scope = rememberCoroutineScope()
     val context = container.appContext
 
-    LaunchedEffect(pendingVideoTarget) {
+    LaunchedEffect(pendingVideoTarget, pendingVideoStartSec) {
         val target = pendingVideoTarget?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        openVideoTarget(target, nav, container, context, scope)
+        openVideoTarget(target, nav, container, context, scope, startSec = pendingVideoStartSec)
         onPendingVideoHandled()
     }
     val inAppBackgroundPlay by container.settings.inAppBackgroundPlay.collectAsStateWithLifecycle()
@@ -230,11 +261,15 @@ fun BiliCoRoot(
     } else {
         pageSurface
     }
-    // 显式传 onDraw 保持两趟录制（usesDefaultOnDraw = false）：既避免把整个 App 与 UIKitView
-    // 吞进单趟离屏层，又用 DstOver 填实 UIKitView 留下的 BlendMode.Clear 透明洞，防止弹窗模糊变成空洞或长条。
-    val rootBackdrop = rememberLayerBackdrop {
-        drawContent()
-        drawRect(rootBackdropBg, blendMode = BlendMode.DstOver)
+    // iOS 需显式传 onDraw 保持两趟录制并用 DstOver 填实 UIKitView 留下的透明洞；
+    // Android 保持单趟默认录制，避免全应用每帧双趟录制开销。
+    val rootBackdrop = if (platformNeedsBackdropHoleFill) {
+        rememberLayerBackdrop {
+            drawContent()
+            drawRect(rootBackdropBg, blendMode = BlendMode.DstOver)
+        }
+    } else {
+        rememberLayerBackdrop()
     }
 
     CompositionLocalProvider(

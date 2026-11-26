@@ -30,7 +30,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.settings.StatsOverlayField
 import erl.bilico.di.LocalAppContainer
+import erl.bilico.platform.BindPlatformPlayerBandwidth
 import erl.bilico.platform.formatFixedDecimal
+import erl.bilico.platform.readPlatformPlayerTelemetry
 import erl.bilico.player.BiliPlayer
 import erl.bilico.ui.components.FloatingWindowActiveIcon
 import erl.bilico.ui.components.FloatingWindowOutlineIcon
@@ -49,8 +51,11 @@ internal class PlayerStats {
 }
 
 @Composable
-internal fun rememberPlayerStats(player: BiliPlayer): PlayerStats =
-    remember(player) { PlayerStats() }
+internal fun rememberPlayerStats(player: BiliPlayer): PlayerStats {
+    val stats = remember(player) { PlayerStats() }
+    BindPlatformPlayerBandwidth(player) { kbps -> stats.bandwidthKbps = kbps }
+    return stats
+}
 
 internal data class StatsSnapshot(
     val quality: String?,
@@ -206,11 +211,11 @@ internal fun readSnapshot(
     stats: PlayerStats,
     previous: StatsSnapshot?,
 ): StatsSnapshot {
-    val videoSize = player.videoSize
-    val width = videoSize.width.takeIf { it > 0 } ?: 0
-    val height = videoSize.height.takeIf { it > 0 } ?: 0
-    val frameRate = source?.frameRate?.takeIf { it > 0f }
-    val videoUrl = source?.videoUrl
+    val telemetry = readPlatformPlayerTelemetry(player, source)
+    val width = telemetry.width
+    val height = telemetry.height
+    val frameRate = telemetry.frameRate
+    val videoUrl = telemetry.videoUrl
     return StatsSnapshot(
         quality = source?.qualities?.firstOrNull { it.quality == source.quality }?.label,
         resolution = if (width > 0 && height > 0) {
@@ -223,18 +228,18 @@ internal fun readSnapshot(
         } else {
             previous?.frameRate ?: "未知"
         },
-        videoCodec = "AVPlayer 硬件解码",
-        audioCodec = "AAC",
-        videoBitrate = "未知",
-        audioBitrate = "未知",
-        renderedFrames = 0L,
-        droppedDetail = "0",
+        videoCodec = telemetry.videoCodec,
+        audioCodec = telemetry.audioCodec,
+        videoBitrate = telemetry.videoBitrate,
+        audioBitrate = telemetry.audioBitrate,
+        renderedFrames = telemetry.renderedFrames,
+        droppedDetail = telemetry.droppedDetail,
         buffer = formatBuffer(player.bufferedPosition - player.currentPosition),
         bandwidth = bandwidthText(stats.bandwidthKbps),
         videoHost = hostOf(videoUrl),
         audioHost = hostOf(source?.audioUrl ?: videoUrl),
-        playerType = playerType(videoUrl),
-        speed = "${formatFixedDecimal(player.speed.toDouble(), 2)}x",
+        playerType = telemetry.playerType,
+        speed = "${formatFixedDecimal(telemetry.speed.toDouble(), 2)}x",
     )
 }
 
@@ -254,11 +259,4 @@ private fun hostOf(url: String?): String {
     if (afterScheme.isEmpty()) return "未知"
     val authority = afterScheme.substringBefore('/').substringBefore('?').substringBefore('#')
     return authority.ifBlank { "未知" }
-}
-
-private fun playerType(url: String?): String = when {
-    url == null -> "未知"
-    url.contains(".m3u8", ignoreCase = true) -> "HLS (AVPlayer)"
-    url.contains(".mpd", ignoreCase = true) -> "DASH (AVPlayer)"
-    else -> "MP4 / Progressive (AVPlayer)"
 }

@@ -32,6 +32,7 @@ data class ChatUiState(
 
 internal data class ChatImagePayload(
     val previewUri: String,
+    val previewBytes: ByteArray? = null,
     val readBytes: suspend () -> Triple<ByteArray, String, String>?,
 )
 
@@ -199,6 +200,7 @@ class ChatViewModel(
                 timeText = "发送中",
                 timestamp = nowSec,
                 imageUrl = item.previewUri,
+                previewBytes = item.previewBytes,
             )
         }
         _state.update { cur ->
@@ -241,6 +243,7 @@ class ChatViewModel(
                                         msg.copy(
                                             msgKey = msgKey,
                                             imageUrl = uploaded.url,
+                                            previewBytes = null,
                                             imageWidth = uploaded.width,
                                             imageHeight = uploaded.height,
                                             timeText = "刚刚",

@@ -143,6 +143,7 @@ data class ImMessageUi(
     val timeText: String,
     val timestamp: Long,
     val imageUrl: String = "",
+    val previewBytes: ByteArray? = null,
     val imageWidth: Int = 0,
     val imageHeight: Int = 0,
     val emotes: Map<String, EmoteImage> = emptyMap(),

@@ -173,6 +173,7 @@ fun ChatScreen(
             val name = photo.fileName.ifBlank { "chat_${currentTimeMillis()}_$index.$ext" }
             ChatImagePayload(
                 previewUri = "",
+                previewBytes = photo.bytes,
                 readBytes = { Triple(photo.bytes, name, mime) },
             )
         }
@@ -412,7 +413,7 @@ private fun ChatBubbleRow(
                 Spacer(Modifier.width(8.dp))
             }
 
-            if (message.imageUrl.isNotBlank()) {
+            if (message.imageUrl.isNotBlank() || message.previewBytes != null) {
                 val rawW = if (message.imageWidth > 0) message.imageWidth.toFloat() else 4f
                 val rawH = if (message.imageHeight > 0) message.imageHeight.toFloat() else 3f
                 val ratio = (rawW / rawH).coerceIn(0.5f, 2.2f)
@@ -423,10 +424,10 @@ private fun ChatBubbleRow(
                         .size(width = targetW, height = targetH)
                         .clip(bubbleShape)
                         .background(scheme.surfaceContainer)
-                        .clickable(onClick = onImageClick),
+                        .clickable(enabled = message.imageUrl.isNotBlank(), onClick = onImageClick),
                 ) {
                     AsyncImage(
-                        model = message.imageUrl,
+                        model = message.previewBytes ?: message.imageUrl,
                         contentDescription = "图片消息",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,

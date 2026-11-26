@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,6 +35,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import erl.bilico.platform.LocalPlatformContext
+import erl.bilico.platform.platformUseCompactNavBarInset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -293,15 +295,20 @@ internal fun SecondaryPlaybackOrbOverlay(
 
     PinnedBarDensity {
         val density = LocalDensity.current
-        val bottomInset = if (WindowInsets.navigationBars.getBottom(density) > 0) {
-            BottomFloatingNavigationBarDefaults.MenuToScreenNaviDistance
+        val navInsetModifier = if (platformUseCompactNavBarInset) {
+            val bottomInset = if (WindowInsets.navigationBars.getBottom(density) > 0) {
+                BottomFloatingNavigationBarDefaults.MenuToScreenNaviDistance
+            } else {
+                0.dp
+            }
+            Modifier.padding(bottom = bottomInset)
         } else {
-            0.dp
+            Modifier.navigationBarsPadding()
         }
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .padding(bottom = bottomInset),
+                .then(navInsetModifier),
             contentAlignment = Alignment.BottomEnd,
         ) {
             Box(

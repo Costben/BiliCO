@@ -340,7 +340,12 @@ internal fun CompactSendButton(
                 scaleX = scale
                 scaleY = scale
             }
-            .inputCapsuleGlass(backdrop = backdrop, isDark = isDark, fallbackColor = containerColor)
+            .inputCapsuleGlass(
+                backdrop = backdrop,
+                isDark = isDark,
+                cornerRadius = null,
+                fallbackColor = containerColor,
+            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

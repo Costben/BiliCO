@@ -1,6 +1,7 @@
 package erl.bilico.ui.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -45,7 +46,8 @@ internal fun PiliIcon(
     size: Dp = 22.dp,
     tint: Color = Color.White,
 ) {
-    val fontFamily = FontFamily(Font(Res.font.piliplus_custom_icons))
+    val iconFont = Font(Res.font.piliplus_custom_icons)
+    val fontFamily = remember(iconFont) { FontFamily(iconFont) }
     val fontSize = with(LocalDensity.current) { size.toSp() }
     Text(
         text = glyph,

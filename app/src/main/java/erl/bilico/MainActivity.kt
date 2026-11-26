@@ -39,7 +39,7 @@ import kotlin.math.abs
 class MainActivity : ComponentActivity() {
 
     private var inPipMode by mutableStateOf(false)
-    private var pendingVideoTarget by mutableStateOf<String?>(null)
+    private var pendingVideoLink by mutableStateOf<ExternalVideoLink?>(null)
 
     private val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
         inPipMode = info.isInPictureInPictureMode
@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AndroidPlatformBridge.init(this)
         AndroidPlatformBridge.setCurrentActivity(this)
-        pendingVideoTarget = ExternalVideoLink.fromIntent(intent)?.toTargetString()
+        pendingVideoLink = ExternalVideoLink.fromIntent(intent)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         enableEdgeToEdge()
         voteHighRefreshRate()
@@ -114,10 +114,14 @@ class MainActivity : ComponentActivity() {
                 }
                 CompositionLocalProvider(LocalInPipMode provides inPipMode) {
                     ScrollToTopHost {
+                        val activeLink = pendingVideoLink
                         BiliCoRoot(
                             container = container,
-                            pendingVideoTarget = pendingVideoTarget,
-                            onPendingVideoHandled = { pendingVideoTarget = null },
+                            pendingVideoTarget = activeLink?.toTargetString(),
+                            pendingVideoStartSec = activeLink?.startSec ?: 0L,
+                            onPendingVideoHandled = {
+                                if (pendingVideoLink === activeLink) pendingVideoLink = null
+                            },
                         )
                     }
                 }
@@ -128,7 +132,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        ExternalVideoLink.fromIntent(intent)?.toTargetString()?.let { pendingVideoTarget = it }
+        ExternalVideoLink.fromIntent(intent)?.let { pendingVideoLink = it }
     }
 
     override fun onResume() {

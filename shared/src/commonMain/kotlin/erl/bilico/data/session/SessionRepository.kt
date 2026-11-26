@@ -19,6 +19,7 @@ import erl.bilico.platform.currentTimeMillis
 import erl.bilico.platform.ioDispatcher
 import erl.bilico.platform.logWarn
 import erl.bilico.platform.parseUrlComponents
+import erl.bilico.platform.readWebAuthCookies
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -385,6 +386,14 @@ class SessionRepository(
     }
 
     private fun recoverMissingAuthCookies(preferredMid: Long) {
+        if (!cookies.get("SESSDATA").isNullOrBlank() && !cookies.get("bili_jct").isNullOrBlank()) return
+        val webCookies = readWebAuthCookies(AUTH_COOKIE_NAMES)
+        if (webCookies.isNotEmpty()) {
+            val missingFromWeb = webCookies.filterKeys { cookies.get(it).isNullOrBlank() }
+            if (missingFromWeb.isNotEmpty()) {
+                cookies.putAll(missingFromWeb)
+            }
+        }
         if (!cookies.get("SESSDATA").isNullOrBlank() && !cookies.get("bili_jct").isNullOrBlank()) return
         val targetMid = preferredMid.takeIf { it > 0L } ?: mid()
         val stored = _sessions.value.firstOrNull { session ->

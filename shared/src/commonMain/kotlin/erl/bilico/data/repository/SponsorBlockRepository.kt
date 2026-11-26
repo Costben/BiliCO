@@ -7,6 +7,7 @@ import erl.bilico.data.network.BiliClient
 import erl.bilico.platform.currentTimeMillis
 import erl.bilico.platform.ioDispatcher
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -67,6 +68,11 @@ class SponsorBlockRepository(
             if (bvid.isBlank() || cid <= 0L || categories.isEmpty()) return@runCatching emptyList()
             val categoriesJson = categories.joinToString(prefix = "[", postfix = "]") { "\"${it.id}\"" }
             val response = http.get(ENDPOINT) {
+                timeout {
+                    connectTimeoutMillis = 5_000
+                    socketTimeoutMillis = 6_000
+                    requestTimeoutMillis = 8_000
+                }
                 parameter("videoID", bvid)
                 parameter("cid", cid.toString())
                 parameter("categories", categoriesJson)
@@ -126,6 +132,11 @@ class SponsorBlockRepository(
             )
             val bodyJson = BiliClient.json.encodeToString(SubmitSegmentPayload.serializer(), payload)
             val response = http.post(ENDPOINT) {
+                timeout {
+                    connectTimeoutMillis = 5_000
+                    socketTimeoutMillis = 6_000
+                    requestTimeoutMillis = 8_000
+                }
                 header("Origin", "bilibili-sponsor-block")
                 header("x-ext-version", "0.5.0")
                 contentType(ContentType.Application.Json)

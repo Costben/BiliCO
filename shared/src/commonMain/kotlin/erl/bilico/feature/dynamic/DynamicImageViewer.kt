@@ -38,34 +38,45 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size as ComposeSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
+import erl.bilico.data.model.DynamicImage
+import erl.bilico.data.network.BiliClient
+import erl.bilico.data.util.Formatters
+import erl.bilico.di.LocalAppContainer
+import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.LocalScreenConfig
 import erl.bilico.platform.PlatformBackHandler
 import erl.bilico.platform.PlatformContext
+import erl.bilico.platform.PlatformPredictiveBackHandler
 import erl.bilico.platform.saveImageBytesToPhotos
 import erl.bilico.platform.setSystemBarsVisible
 import erl.bilico.platform.showToast
-import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.http.isSuccess
-import erl.bilico.platform.LocalPlatformContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import erl.bilico.data.model.DynamicImage
-import erl.bilico.data.util.Formatters
+import erl.bilico.platform.useEdgeSwipeBackOverlay
 import erl.bilico.ui.ExpandEasing
 import erl.bilico.ui.ImageViewerHost
 import erl.bilico.ui.ImageViewerSession
 import erl.bilico.ui.ImageZoomMillis
 import erl.bilico.ui.LocalImageOrigins
 import erl.bilico.ui.LocalImageViewerHost
+import io.ktor.client.HttpClient
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsBytes
+import io.ktor.http.isSuccess
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
@@ -118,6 +129,7 @@ internal fun ImageViewerOverlay(
 
     val origins = LocalImageOrigins.current
     val context = LocalPlatformContext.current
+    val biliClient = LocalAppContainer.current?.client
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     val configuration = LocalScreenConfig.current
@@ -152,7 +164,17 @@ internal fun ImageViewerOverlay(
     val pagerState = rememberPagerState(initialPage = start) { urls.size }
     val current = urls.getOrNull(pagerState.currentPage).orEmpty()
 
-    SideEffect { origins.viewing = current }
+    SideEffect {
+        origins.viewing = current
+        session.onPrepareClose = {
+            origins.alignOriginBelowBar(current, frame.host)
+        }
+    }
+    LaunchedEffect(current, session.progress.isRunning, session.exiting, session.previewing) {
+        if (!session.exiting && !session.previewing && !session.progress.isRunning && session.progress.value >= 0.999f) {
+            origins.alignOriginBelowBar(current, frame.host)
+        }
+    }
     DisposableEffect(session) {
         onDispose { origins.viewing = null }
     }
@@ -160,8 +182,42 @@ internal fun ImageViewerOverlay(
     ViewerSystemBars(visible = chrome)
 
     // 拖拽退出动画播放期间拦截返回键，防止重复触发收起。
-    PlatformBackHandler(enabled = !frame.dismiss.exiting) {
-        host.close(session)
+    PlatformBackHandler(enabled = frame.dismiss.exiting) { }
+
+    if (useEdgeSwipeBackOverlay) {
+        PlatformBackHandler(enabled = !frame.dismiss.exiting) {
+            host.close(session)
+        }
+    } else {
+        // Android 预测返回跟手随手指进度实时缩回原缩略图。
+        PlatformPredictiveBackHandler(enabled = !frame.dismiss.exiting) { events ->
+            var lastProgress = 1f
+            var moved = false
+            session.previewing = true
+            try {
+                events.collect { event ->
+                    val value = (1f - event.progress).coerceIn(0f, 1f)
+                    if (value < 0.98f) moved = true
+                    lastProgress = value
+                    session.progress.snapTo(value)
+                }
+                if (lastProgress <= 0.02f && moved) {
+                    host.completePredictiveClose(session)
+                } else {
+                    host.close(session)
+                }
+            } catch (cancelled: CancellationException) {
+                if (lastProgress <= 0.2f && moved) {
+                    host.completePredictiveClose(session)
+                    return@PlatformPredictiveBackHandler
+                }
+                withContext(NonCancellable) {
+                    session.progress.animateTo(1f, tween(180, easing = ExpandEasing))
+                    session.previewing = false
+                }
+                throw cancelled
+            }
+        }
     }
 
     Box(
@@ -189,7 +245,34 @@ internal fun ImageViewerOverlay(
             pageSpacing = 16.dp,
             beyondViewportPageCount = 1,
             userScrollEnabled = urls.size > 1 && !frame.dismiss.active && !frame.dismiss.exiting,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val d = frame.dismiss
+                    val clipFraction = when {
+                        d.exiting && d.exitHasThumb -> d.exitProgress.value.coerceIn(0f, 1f)
+                        !d.active && !d.exiting && progress() < 1f -> (1f - progress()).coerceIn(0f, 1f)
+                        else -> 0f
+                    }
+                    val limits = if (clipFraction > 0f && size.height > 0f) {
+                        origins.viewportLimitsInHost(current, frame.host)
+                    } else {
+                        null
+                    }
+                    if (limits != null) {
+                        val (vpTop, vpBottom) = limits
+                        val top = lerp(0f, vpTop, clipFraction)
+                        val bottom = if (vpBottom < Float.MAX_VALUE) {
+                            lerp(size.height, vpBottom, clipFraction)
+                        } else {
+                            size.height
+                        }
+                        shape = VerticalViewportShape(top, bottom)
+                        clip = true
+                    } else {
+                        clip = false
+                    }
+                },
         ) { page ->
             val keyUrl = urls[page]
             val requestUrl = if (originalPages[page] == true) {
@@ -290,7 +373,7 @@ internal fun ImageViewerOverlay(
                             downloading = true
                             val saveUrl = urls[currentPage]
                             scope.launch {
-                                val ok = saveImageToGallery(context, saveUrl)
+                                val ok = saveImageToGallery(context, saveUrl, biliClient)
                                 downloading = false
                                 showToast(context, if (ok) "已保存到相册" else "保存失败")
                             }
@@ -343,17 +426,40 @@ private fun ViewerSystemBars(visible: Boolean) {
     }
 }
 
-private suspend fun saveImageToGallery(context: PlatformContext, url: String): Boolean = withContext(erl.bilico.platform.ioDispatcher) {
-    if (url.isBlank()) return@withContext false
-    val client = HttpClient()
-    return@withContext try {
-        val resp = client.get(url)
-        if (!resp.status.isSuccess()) return@withContext false
-        val bytes = resp.bodyAsBytes()
-        saveImageBytesToPhotos(context, bytes).isSuccess
-    } catch (_: Throwable) {
-        false
-    } finally {
-        client.close()
+private class VerticalViewportShape(
+    private val top: Float,
+    private val bottom: Float,
+) : Shape {
+    override fun createOutline(
+        size: ComposeSize,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val clippedTop = top.coerceIn(0f, size.height)
+        val clippedBottom = bottom.coerceIn(clippedTop, size.height)
+        return Outline.Rectangle(Rect(0f, clippedTop, size.width, clippedBottom))
     }
+}
+
+private suspend fun saveImageToGallery(
+    context: PlatformContext,
+    url: String,
+    biliClient: BiliClient?,
+): Boolean = withContext(erl.bilico.platform.ioDispatcher) {
+    if (url.isBlank()) return@withContext false
+    val bytes = if (biliClient != null) {
+        runCatching { biliClient.fetchBytes(url) }.getOrNull()
+    } else {
+        val client = HttpClient()
+        try {
+            val resp = client.get(url)
+            if (!resp.status.isSuccess()) null else resp.bodyAsBytes()
+        } catch (_: Throwable) {
+            null
+        } finally {
+            client.close()
+        }
+    } ?: return@withContext false
+    if (bytes.isEmpty()) return@withContext false
+    saveImageBytesToPhotos(context, bytes).isSuccess
 }

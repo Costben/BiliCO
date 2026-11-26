@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -14,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,10 +30,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 import erl.bilico.di.AppContainer
-import erl.bilico.platform.BiliWebView
 import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.PlatformBackHandler
+import erl.bilico.platform.RichBiliWebView
 import erl.bilico.platform.openExternalUrl
+import erl.bilico.platform.platformMobileWebUserAgent
+import erl.bilico.platform.rememberBiliWebViewController
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.pageContainerColor
@@ -42,11 +45,19 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
-private const val IN_APP_WEB_UA =
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) " +
-        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+private val IN_APP_COOKIE_DOMAINS = listOf(
+    "https://www.bilibili.com",
+    "https://m.bilibili.com",
+    "https://t.bilibili.com",
+    "https://api.bilibili.com",
+    "https://mall.bilibili.com",
+    "https://live.bilibili.com",
+    "https://space.bilibili.com",
+)
 
+/** 通用应用内 H5 WebView 页面：自动同步 B 站登录 Cookie，支持互动抽奖、活动网页链接等直接访问。 */
 @Composable
 fun InAppWebScreen(
     container: AppContainer,
@@ -55,11 +66,14 @@ fun InAppWebScreen(
     defaultTitle: String = "网页",
 ) {
     val context = LocalPlatformContext.current
+    val controller = rememberBiliWebViewController()
+    var progress by remember { mutableIntStateOf(0) }
     var pageTitle by remember(url, defaultTitle) { mutableStateOf(defaultTitle.ifBlank { "网页" }) }
     var currentUrl by remember(url) { mutableStateOf(url) }
-    var reloadKey by remember { mutableIntStateOf(0) }
 
-    PlatformBackHandler { nav.pop() }
+    PlatformBackHandler {
+        if (!controller.goBack()) nav.pop()
+    }
 
     val pageColor = pageContainerColor()
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -77,24 +91,41 @@ fun InAppWebScreen(
                 .navigationBarsPadding()
                 .imePadding(),
         ) {
-            key(reloadKey) {
-                BiliWebView(
-                    url = url,
-                    initialCookies = remember(container) { container.session.webCookies() },
-                    userAgent = IN_APP_WEB_UA,
-                    onTitleChanged = { title ->
-                        if (title.isNotBlank() && !title.startsWith("http") && !title.contains("bilibili.com/")) {
-                            pageTitle = title
-                        }
-                    },
-                    onUrlChanged = { nextUrl ->
-                        if (nextUrl.isNotBlank()) currentUrl = nextUrl
-                    },
+            if (progress in 1..99) {
+                Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                )
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .background(COUITheme.colorScheme.dividerLine),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progress / 100f)
+                            .background(COUITheme.colorScheme.primary),
+                    )
+                }
             }
+            RichBiliWebView(
+                url = url,
+                initialCookies = remember(container) { container.session.webCookies() },
+                cookieDomains = IN_APP_COOKIE_DOMAINS,
+                userAgent = platformMobileWebUserAgent,
+                controller = controller,
+                onProgressChanged = { progress = it },
+                onTitleChanged = { title ->
+                    if (title.isNotBlank() && !title.startsWith("http") && !title.contains("bilibili.com/")) {
+                        pageTitle = title
+                    }
+                },
+                onUrlChanged = { nextUrl ->
+                    if (nextUrl.isNotBlank()) currentUrl = nextUrl
+                },
+                onCloseRequest = { nav.pop() },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            )
         }
 
         PinnedBarDensity {
@@ -103,10 +134,14 @@ fun InAppWebScreen(
                 modifier = Modifier.align(Alignment.TopCenter),
                 color = pageColor,
                 showDivider = true,
-                navigationIcon = { BackIconButton { nav.pop() } },
+                navigationIcon = {
+                    BackIconButton {
+                        if (!controller.goBack()) nav.pop()
+                    }
+                },
                 actions = {
                     HighlightedIconButton(
-                        onClick = { reloadKey++ },
+                        onClick = { controller.reload() },
                         modifier = Modifier.couiTopAppBarActionItem(),
                     ) {
                         Icon(
@@ -116,7 +151,10 @@ fun InAppWebScreen(
                         )
                     }
                     HighlightedIconButton(
-                        onClick = { openExternalUrl(context, currentUrl) },
+                        onClick = {
+                            val target = controller.currentUrl?.takeIf { it.isNotBlank() } ?: currentUrl
+                            openExternalUrl(context, target)
+                        },
                         modifier = Modifier.couiTopAppBarActionItem(),
                     ) {
                         Icon(

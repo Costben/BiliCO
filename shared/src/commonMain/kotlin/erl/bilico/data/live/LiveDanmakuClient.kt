@@ -1,7 +1,9 @@
 package erl.bilico.data.live
 
+import erl.bilico.data.model.EmoteImage
 import erl.bilico.data.model.LiveDanmakuMessage
 import erl.bilico.data.model.LiveSuperChat
+import erl.bilico.data.util.Formatters
 import erl.bilico.platform.logDebug
 import erl.bilico.platform.logWarn
 import io.ktor.client.HttpClient
@@ -162,7 +164,7 @@ class LiveDanmakuClient(
     private fun authBody(): ByteArray = buildString {
         append("{\"uid\":").append(uid)
         append(",\"roomid\":").append(roomId)
-        append(",\"protover\":").append(LiveDanmakuProtocol.PROTO_ZLIB)
+        append(",\"protover\":").append(LiveDanmakuProtocol.PROTO_BROTLI)
         append(",\"platform\":\"web\",\"type\":2")
         append(",\"key\":\"").append(token).append("\"}")
     }.encodeToByteArray()
@@ -231,25 +233,59 @@ class LiveDanmakuClient(
             ?: data["online_count"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
     }
 
+    /** `info` 是个位置敏感数组：1 是正文，2 是发送者，3 是粉丝牌，0 是原始元信息（含表情）。 */
     private fun parseDanmaku(obj: JsonObject): LiveDanmakuMessage? {
         val cmd = obj["cmd"]?.jsonPrimitive?.contentOrNull.orEmpty()
         if (!cmd.startsWith("DANMU_MSG")) return null
         val info = obj["info"]?.arrayOrNull() ?: return null
         val text = info.getOrNull(1)?.jsonPrimitive?.contentOrNull.orEmpty()
         if (text.isBlank()) return null
+        val trimmed = text.trim()
         val sender = info.getOrNull(2)?.arrayOrNull()
         val name = sender?.getOrNull(1)?.jsonPrimitive?.contentOrNull.orEmpty()
         val mid = sender?.getOrNull(0)?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
         val medal = info.getOrNull(3)?.arrayOrNull()
         val medalName = medal?.getOrNull(1)?.jsonPrimitive?.contentOrNull.orEmpty()
         val medalLevel = medal?.getOrNull(0)?.jsonPrimitive?.intOrNull ?: 0
+        val emotes = parseLiveEmotes(info.getOrNull(0)?.arrayOrNull(), trimmed)
         return LiveDanmakuMessage(
             name = name.ifBlank { "匿名" },
-            text = text.trim(),
+            text = trimmed,
             mid = mid,
             medalName = medalName,
             medalLevel = medalLevel,
+            emotes = emotes,
         )
+    }
+
+    private fun parseLiveEmotes(meta: JsonArray?, text: String): Map<String, EmoteImage> {
+        if (meta == null) return emptyMap()
+        val result = LinkedHashMap<String, EmoteImage>()
+        // info[0][13]：整条弹幕本身就是大表情包时带 url。
+        val stickerUrl = (meta.getOrNull(13) as? JsonObject)
+            ?.get("url")?.jsonPrimitive?.contentOrNull
+            ?.let(Formatters::normalizeImageUrl)
+            ?.takeIf { it.isNotBlank() }
+        if (stickerUrl != null) {
+            result[text] = EmoteImage(url = stickerUrl, large = true)
+        }
+        // info[0][15].extra：JSON 字符串里带 "emots": { "[热]": { "url": "..." } }。
+        val slot15 = meta.getOrNull(15) as? JsonObject
+        val extraObj = slot15?.get("extra")?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { json.parseToJsonElement(raw).jsonObject }.getOrNull() }
+        val emotsObj = (extraObj?.get("emots") as? JsonObject) ?: (slot15?.get("emots") as? JsonObject)
+        emotsObj?.forEach { (token, value) ->
+            val url = (value as? JsonObject)
+                ?.get("url")?.jsonPrimitive?.contentOrNull
+                ?.let(Formatters::normalizeImageUrl)
+                ?.takeIf { it.isNotBlank() }
+                ?: return@forEach
+            if (token !in result) {
+                result[token] = EmoteImage(url = url, large = false)
+            }
+        }
+        return result
     }
 
     private fun JsonElement?.arrayOrNull(): JsonArray? = this as? JsonArray
