@@ -298,7 +298,7 @@ actual fun currentAppVersionCode(context: PlatformContext): Long {
 
 actual fun currentAppVersionName(context: PlatformContext): String {
     val raw = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String
-    return raw?.ifBlank { null } ?: "0.3.15-pre"
+    return raw?.ifBlank { null } ?: "0.4.0"
 }
 
 private val ChipTabCausticDark = Color(0x33FFFFFF)

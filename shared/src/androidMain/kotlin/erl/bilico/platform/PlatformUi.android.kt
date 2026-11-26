@@ -272,7 +272,7 @@ actual fun currentAppVersionName(context: PlatformContext): String =
     runCatching {
         val pm = context.androidContext.packageManager
         pm.getPackageInfo(context.androidContext.packageName, 0).versionName
-    }.getOrNull()?.takeIf { it.isNotBlank() } ?: "0.3.15-pre"
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: "0.4.0"
 
 private val ChipTabCausticDark = Color(0x33FFFFFF)
 private val ChipTabCausticBottomOffset = 4.299988.dp
