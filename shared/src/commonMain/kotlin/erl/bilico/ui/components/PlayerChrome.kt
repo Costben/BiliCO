@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
+import erl.bilico.ui.LocalRouteIsTop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -134,7 +135,7 @@ internal fun BoxScope.PlayerStateOverlay(
                 color = Color.White,
             )
         }
-    } else if (isBuffering && !inPipMode) {
+    } else if (isBuffering && !inPipMode && LocalRouteIsTop.current) {
         CircularProgressIndicator(
             modifier = Modifier.align(Alignment.Center),
             size = 34.dp,

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.min
 import coil3.compose.AsyncImage
+import erl.bilico.ui.LocalRouteIsTop
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
@@ -61,6 +62,7 @@ import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButtonDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
 import io.github.suqi8.coui.kmp.basic.SearchBarActionButton
 import io.github.suqi8.coui.kmp.basic.SearchBarActionButtonDefaults
 import io.github.suqi8.coui.kmp.basic.SmallTitle
@@ -126,8 +128,14 @@ fun CoverImage(
 
 @Composable
 fun LoadingState(modifier: Modifier = Modifier) {
+    val isTop = LocalRouteIsTop.current
     Box(modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
+        // 被上层路由遮挡时卸载无限转圈动画，避免后台路由持续唤醒帧时钟导致 LTPO 无法降频。
+        if (isTop) {
+            CircularProgressIndicator()
+        } else {
+            Spacer(Modifier.size(ProgressIndicatorDefaults.DefaultCircularProgressIndicatorSize))
+        }
     }
 }
 

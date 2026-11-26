@@ -16,6 +16,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
+import erl.bilico.ui.LocalRouteIsTop
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -38,16 +39,18 @@ fun LoadingImage(
     /** 转圈颜色；纯黑看图页要传白色，浅色主题默认色会糊在黑底上。 */
     indicatorColor: Color? = null,
 ) {
+    val hasUrl = !url.isNullOrBlank()
+    val isTop = LocalRouteIsTop.current
     var loaded by remember(url) { mutableStateOf(false) }
     var showSpinner by remember(url) { mutableStateOf(false) }
-    LaunchedEffect(url) {
-        if (loaded) return@LaunchedEffect
+    LaunchedEffect(url, hasUrl) {
+        if (!hasUrl || loaded) return@LaunchedEffect
         delay(SPINNER_DELAY_MS)
         if (!loaded) showSpinner = true
     }
 
     Box(modifier.background(backgroundColor), contentAlignment = Alignment.Center) {
-        if (!url.isNullOrBlank()) {
+        if (hasUrl) {
             AsyncImage(
                 model = url,
                 contentDescription = contentDescription,
@@ -59,7 +62,7 @@ fun LoadingImage(
                 },
             )
         }
-        if (!loaded && showSpinner) {
+        if (hasUrl && !loaded && showSpinner && isTop) {
             CircularProgressIndicator(
                 size = 22.dp,
                 colors = if (indicatorColor != null) {

@@ -266,7 +266,8 @@ fun SecondaryPagerPage(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                beyondViewportPageCount = 1,
+                // 不预组合屏外未激活页签，避免未加载页签里的转圈动画常驻唤醒 Choreographer 拖高刷新率。
+                beyondViewportPageCount = 0,
             ) { index ->
                 page(index, measuredContentTop)
             }
