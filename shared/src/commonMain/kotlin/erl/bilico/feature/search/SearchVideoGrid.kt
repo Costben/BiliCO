@@ -203,10 +203,10 @@ internal fun LazyListScope.searchVideoGridItems(
     val rows = videos.chunked(2)
     items(
         items = rows,
-        key = { pair -> "${keyPrefix}_grid_${pair.first().bvid}_${pair.getOrNull(1)?.bvid.orEmpty()}" },
+        key = { pair -> "${keyPrefix}_grid_${pair.first().bvid.ifBlank { pair.first().aid.toString() }}" },
         contentType = { "search-video-grid-row" },
     ) { pair ->
-        val rowKey = "${keyPrefix}_grid_${pair.first().bvid}_${pair.getOrNull(1)?.bvid.orEmpty()}"
+        val rowKey = "${keyPrefix}_grid_${pair.first().bvid.ifBlank { pair.first().aid.toString() }}"
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -214,14 +214,15 @@ internal fun LazyListScope.searchVideoGridItems(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             pair.forEachIndexed { index, video ->
-                key(video.bvid.ifBlank { index }) {
+                val itemKey = "${index}_${video.bvid}"
+                key(itemKey) {
                     val origin = rememberExpandOrigin()
                     SideEffect {
                         origin.attachToRow(
                             listState = rowScrollState,
                             rowKey = rowKey,
                             topBar = topBarBounds,
-                            itemKey = "${index}_${video.bvid}",
+                            itemKey = itemKey,
                         )
                     }
                     SearchVideoGridCard(
@@ -230,7 +231,11 @@ internal fun LazyListScope.searchVideoGridItems(
                         modifier = Modifier
                             .weight(1f)
                             .expandOrigin(origin),
-                        onClick = { nav.push(Route.Video(video.bvid), origin) },
+                        onClick = {
+                            if (video.bvid.isNotBlank()) {
+                                nav.push(Route.Video(video.bvid), origin)
+                            }
+                        },
                     )
                 }
             }

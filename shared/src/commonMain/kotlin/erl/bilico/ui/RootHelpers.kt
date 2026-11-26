@@ -136,7 +136,7 @@ internal class ExpandOriginVisibility(
             val entry = stack[i]
             if (!entry.expand || entry.minimizingToOrb) continue
             if (entry.progress.value <= 0.0005f && !entry.exiting && !entry.previewing) continue
-            val active = entry.origin ?: continue
+            val active = entry.activeOrigin ?: continue
             if (active === origin) return true
             val sameRow = active.rowKey != null && active.rowKey == origin.rowKey
             if (!sameRow) continue
@@ -148,7 +148,8 @@ internal class ExpandOriginVisibility(
                 activeBounds != null &&
                     originBounds != null &&
                     abs(activeBounds.left - originBounds.left) < 2f &&
-                    abs(activeBounds.width - originBounds.width) < 2f
+                    abs(activeBounds.width - originBounds.width) < 2f &&
+                    abs(activeBounds.height - originBounds.height) < 2f
             }
             if (sameItem) return true
         }

@@ -291,7 +291,7 @@ private fun LazyListScope.searchVideoItems(
         val rowKey = "${keyPrefix}_${video.bvid}"
         val origin = rememberExpandOrigin()
         SideEffect {
-            origin.attachToRow(rowScrollState, rowKey, topBarBounds)
+            origin.attachToRow(rowScrollState, rowKey, topBarBounds, itemKey = video.bvid)
         }
         Box(Modifier.padding(horizontal = 16.dp)) {
             SearchVideoRow(

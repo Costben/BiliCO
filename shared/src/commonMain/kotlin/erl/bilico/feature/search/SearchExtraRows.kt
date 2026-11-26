@@ -287,7 +287,7 @@ internal fun SearchLiveRow(
 internal fun SearchUserRow(
     user: SearchUser,
     onClick: () -> Unit,
-    onVideoClick: (SearchVideo, ExpandOrigin?) -> Unit = { _, _ -> },
+    onVideoClick: (SearchVideo, ExpandOrigin?) -> Unit,
     rowScrollState: RowScrollState? = null,
     rowKey: Any? = null,
     topBarBounds: TopBarBounds? = null,
@@ -354,21 +354,24 @@ internal fun SearchUserRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     user.recentVideos.forEachIndexed { index, video ->
-                        key(video.bvid.ifBlank { index }) {
+                        val itemKey = "${index}_${video.bvid}"
+                        key(itemKey) {
                             val origin = rememberExpandOrigin(8.dp)
-                            if (rowScrollState != null && rowKey != null && topBarBounds != null) {
-                                SideEffect {
-                                    origin.attachToRow(
-                                        listState = rowScrollState,
-                                        rowKey = rowKey,
-                                        topBar = topBarBounds,
-                                        itemKey = "${index}_${video.bvid}",
-                                    )
-                                }
+                            SideEffect {
+                                origin.attachToRow(
+                                    listState = rowScrollState,
+                                    rowKey = rowKey,
+                                    topBar = topBarBounds,
+                                    itemKey = itemKey,
+                                )
                             }
                             UserRecentVideoCard(
                                 video = video,
-                                onClick = { onVideoClick(video, origin) },
+                                onClick = {
+                                    if (video.bvid.isNotBlank()) {
+                                        onVideoClick(video, origin)
+                                    }
+                                },
                                 modifier = Modifier
                                     .weight(1f)
                                     .expandOrigin(origin),
