@@ -32,6 +32,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -43,8 +44,48 @@ import erl.bilico.data.util.Formatters
 import erl.bilico.ui.hyperlinkColor
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Link
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
+
+/** 网页链接展示的最大字符数，超出部分截断并补省略号，点击仍打开完整原始地址。 */
+internal const val MAX_LINK_DISPLAY_CHARS = 40
+
+private const val GENERIC_WEB_LINK_LABEL = "网页链接"
+
+/** 将原始 URL 格式化为正文展示文案：保留原样，超长时按上限截断省略。 */
+internal fun formatWebLinkLabel(
+    url: String,
+    maxChars: Int = MAX_LINK_DISPLAY_CHARS,
+): String {
+    val trimmed = url.trim()
+    if (trimmed.length <= maxChars) return trimmed
+    val cut = if (maxChars in 1 until trimmed.length && trimmed[maxChars].isLowSurrogate()) {
+        maxChars - 1
+    } else {
+        maxChars
+    }
+    return trimmed.take(cut) + "…"
+}
+
+private fun isHumanReadableLinkTitle(rawText: String): Boolean {
+    val text = rawText.trim()
+    if (text.isEmpty() || text == GENERIC_WEB_LINK_LABEL) return false
+    return !text.startsWith("http://", ignoreCase = true) &&
+        !text.startsWith("https://", ignoreCase = true) &&
+        !text.startsWith("//")
+}
+
+/**
+ * 解析结构化网页/外链节点的展示文案：
+ * 服务端提供真实可读标题时保留原标题；为「网页链接」、空白或裸 URL 时按限长展示原始 URL。
+ */
+internal fun resolveWebLinkLabel(rawText: String, url: String): String {
+    if (isHumanReadableLinkTitle(rawText)) return rawText.trim()
+    val sourceUrl = url.trim().ifEmpty { rawText.trim() }
+    return if (sourceUrl.isNotEmpty()) formatWebLinkLabel(sourceUrl) else GENERIC_WEB_LINK_LABEL
+}
 
 internal val InlineGiftIcon: ImageVector by lazy {
     unifiedStrokeIcon(
@@ -59,15 +100,8 @@ internal val InlineGiftIcon: ImageVector by lazy {
     )
 }
 
-internal val InlineLinkIcon: ImageVector by lazy {
-    unifiedStrokeIcon(
-        name = "InlineLink",
-        paths = listOf(
-            "M9.8,13.2A5.2,5.2 0 0,0 17.64,13.74L20.64,10.74A5.2,5.2 0 0,0 13.26,3.36L11.55,5.08",
-            "M14.2,10.8A5.2,5.2 0 0,0 6.36,10.26L3.36,13.26A5.2,5.2 0 0,0 10.74,20.64L12.45,18.92",
-        ),
-    )
-}
+internal val InlineLinkIcon: ImageVector
+    get() = COUIIcons.Link
 
 internal val InlinePlayCircleIcon: ImageVector by lazy {
     unifiedStrokeIcon(
@@ -124,7 +158,9 @@ internal fun AnnotatedString.Builder.appendIconLink(
         }
     } else {
         appendInlineContent(inlineKey, "\uFFFD")
-        append(label)
+        withStyle(SpanStyle(color = color, fontWeight = fontWeight)) {
+            append(label)
+        }
     }
 }
 
@@ -198,7 +234,7 @@ internal fun AnnotatedString.Builder.appendInlineUpBadge(
 
 /**
  * 动态正文富文本：优先渲染结构化的 `rich_text_nodes`（互动抽奖 H5、网页链接、视频、@、#话题#、表情），
- * 普通文本片段复用 [appendRichSegment] 保持去下划线超链接与原网址转「网页链接」。
+ * 普通文本片段复用 [appendRichSegment] 保持去下划线超链接，网页链接统一带前导链接图标并以限长原网址展示。
  */
 @Composable
 fun RichDynamicText(
@@ -299,15 +335,17 @@ fun RichDynamicText(
 
                 DynamicTextNodeKind.WEB -> {
                     val target = node.target
+                    val label = resolveWebLinkLabel(node.text, target)
+                    val pageTitle = if (isHumanReadableLinkTitle(node.text)) node.text.trim() else "网页"
                     builder.appendIconLink(
                         inline = inline,
                         inlineKey = "dyn_icon_${iconCounter++}",
                         icon = InlineLinkIcon,
-                        label = "网页链接",
+                        label = label,
                         tag = "web:$target",
                         color = linkColor,
                         onClick = target.takeIf { it.isNotBlank() }?.let { url ->
-                            { openUrlAction(url, "网页") }
+                            { openUrlAction(url, pageTitle) }
                         },
                     )
                 }
@@ -378,17 +416,18 @@ fun RichDynamicText(
 
                 DynamicTextNodeKind.LINK -> {
                     val target = node.target
-                    val linkStyle = TextLinkStyles(style = SpanStyle(color = linkColor))
                     if (target.isNotBlank()) {
-                        builder.withLink(
-                            LinkAnnotation.Clickable(
-                                tag = "link:$target",
-                                styles = linkStyle,
-                                linkInteractionListener = { openUrlAction(target, node.text) },
-                            ),
-                        ) {
-                            append(node.text)
-                        }
+                        val label = resolveWebLinkLabel(node.text, target)
+                        val pageTitle = if (isHumanReadableLinkTitle(node.text)) node.text.trim() else "网页"
+                        builder.appendIconLink(
+                            inline = inline,
+                            inlineKey = "dyn_icon_${iconCounter++}",
+                            icon = InlineLinkIcon,
+                            label = label,
+                            tag = "link:$target",
+                            color = linkColor,
+                            onClick = { openUrlAction(target, pageTitle) },
+                        )
                     } else {
                         builder.append(node.text)
                     }
