@@ -1,6 +1,5 @@
 package erl.bilico.feature.video
 
-import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.readScreenBrightness
 import erl.bilico.platform.writeScreenBrightness
 import androidx.compose.animation.AnimatedVisibility
@@ -38,7 +37,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
-import erl.bilico.platform.LocalPlatformContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp

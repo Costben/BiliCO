@@ -48,7 +48,6 @@ import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.PlayerStateOverlay
 import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
-import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.utils.CouiHapticEffect
 import io.github.suqi8.coui.kmp.utils.rememberCouiHaptic
 import kotlinx.coroutines.delay
@@ -273,6 +272,7 @@ internal fun VideoPlayer(
                             scaleY = zoomState.scale
                             translationX = zoomState.offsetX
                             translationY = zoomState.offsetY
+                            rotationZ = zoomState.rotationDegrees
                         },
                 )
             } else {

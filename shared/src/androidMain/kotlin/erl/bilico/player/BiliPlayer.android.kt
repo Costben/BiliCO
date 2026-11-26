@@ -81,6 +81,8 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         }
 
     private var _videoSize = VideoDimensions()
+    internal var pixelWidthHeightRatio: Float = 1f
+        private set
 
     private val internalListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -102,8 +104,9 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             if (videoSize.width > 0 && videoSize.height > 0) {
                 _videoSize = VideoDimensions(videoSize.width, videoSize.height)
+                pixelWidthHeightRatio = videoSize.pixelWidthHeightRatio.takeIf { it > 0f } ?: 1f
                 attachedAspectLayout?.setAspectRatio(
-                    (videoSize.width.toFloat() * videoSize.pixelWidthHeightRatio) / videoSize.height.toFloat(),
+                    (videoSize.width.toFloat() * pixelWidthHeightRatio) / videoSize.height.toFloat(),
                 )
                 listeners.forEach { it.onVideoSizeChanged(videoSize.width, videoSize.height) }
             }
@@ -166,7 +169,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
             .setMediaId(videoUrl)
             .build()
 
-        val isHls = isLive || videoUrl.contains(".m3u8", ignoreCase = true)
+        val isHls = videoUrl.contains(".m3u8", ignoreCase = true)
         val mediaSource = if (isHls) {
             HlsMediaSource.Factory(dataSourceFactory).createMediaSource(videoItem)
         } else {
@@ -180,7 +183,12 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
             }
         }
 
-        exoPlayer.setMediaSource(mediaSource, startPositionMs.coerceAtLeast(0L))
+        if (isLive) {
+            exoPlayer.setMediaSource(mediaSource)
+            exoPlayer.seekToDefaultPosition()
+        } else {
+            exoPlayer.setMediaSource(mediaSource, startPositionMs.coerceAtLeast(0L))
+        }
         exoPlayer.playWhenReady = playWhenReady
         exoPlayer.prepare()
     }
@@ -309,7 +317,7 @@ actual fun BiliPlayerSurface(
             player.attachedTextureView = textureView
             val dim = player.videoSize
             if (dim.width > 0 && dim.height > 0) {
-                aspectLayout.setAspectRatio(dim.width.toFloat() / dim.height.toFloat())
+                aspectLayout.setAspectRatio((dim.width.toFloat() * player.pixelWidthHeightRatio) / dim.height.toFloat())
             }
             player.exoPlayer.setVideoTextureView(textureView)
             container
@@ -324,7 +332,7 @@ actual fun BiliPlayerSurface(
             }
             val dim = player.videoSize
             if (dim.width > 0 && dim.height > 0) {
-                aspectLayout.setAspectRatio(dim.width.toFloat() / dim.height.toFloat())
+                aspectLayout.setAspectRatio((dim.width.toFloat() * player.pixelWidthHeightRatio) / dim.height.toFloat())
             }
             if (player.attachedTextureView !== textureView) {
                 player.attachedAspectLayout = aspectLayout

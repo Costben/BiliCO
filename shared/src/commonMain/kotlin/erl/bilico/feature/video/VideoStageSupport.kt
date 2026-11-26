@@ -14,6 +14,7 @@ import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,6 +38,7 @@ import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.PlatformOrientation
 import erl.bilico.platform.setScreenOrientation
 import erl.bilico.platform.setSystemBarsVisible
+import erl.bilico.platform.useEdgeSwipeBackOverlay
 import erl.bilico.platform.useNativeFullscreenRotation
 import erl.bilico.player.BiliPlayer
 import erl.bilico.ui.BlurEffectsEnabled
@@ -222,7 +224,6 @@ internal fun StageWindowAttributesEffect(context: PlatformContext) {
     DisposableEffect(context) {
         onDispose {
             setScreenOrientation(context, PlatformOrientation.Portrait)
-            setSystemBarsVisible(context, true)
         }
     }
 }
@@ -239,6 +240,11 @@ internal fun rememberStageVideoBackdrop(
     active: Boolean,
     isPlaying: Boolean,
 ): LayerBackdrop {
+    // Android 上 TextureView 直接参与硬件 Canvas 合成，原生 rememberLayerBackdrop() 即可实时采集视频画面，
+    // 无需每 250ms 触发 textureView.bitmap 同步读回或叠加 DstOver 黑底。
+    if (!useEdgeSwipeBackOverlay) {
+        return rememberLayerBackdrop()
+    }
     var frame by remember(player) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(player, active, isPlaying) {
         if (!active) {
@@ -322,12 +328,22 @@ internal fun degreesToLandscapeOrientation(degrees: Float): PlatformOrientation 
 @Composable
 internal fun rememberStableStatusBarHeightPx(): Float {
     val density = LocalDensity.current
-    val top = WindowInsets.statusBars.getTop(density).toFloat()
-    return if (top > 0f) top else with(density) { 44.dp.toPx() }
+    var stableTopPx by remember(density) { mutableFloatStateOf(0f) }
+    val liveTop = WindowInsets.statusBars.getTop(density).toFloat()
+    if (liveTop > stableTopPx) stableTopPx = liveTop
+    return if (stableTopPx > 0f) {
+        stableTopPx
+    } else {
+        val fallbackDp = if (useEdgeSwipeBackOverlay) 44.dp else 28.dp
+        with(density) { fallbackDp.toPx() }
+    }
 }
 
 @Composable
 internal fun rememberStableNavBarBottomDp(): Dp {
     val density = LocalDensity.current
-    return with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
+    var stableBottomPx by remember(density) { mutableIntStateOf(0) }
+    val liveBottom = WindowInsets.navigationBars.getBottom(density)
+    if (liveBottom > stableBottomPx) stableBottomPx = liveBottom
+    return with(density) { stableBottomPx.toDp() }
 }
