@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.ui.Alignment
@@ -168,14 +169,15 @@ internal fun VideoTitleRow(
             erl.bilico.ui.components.PromotionBadge(fontSize = 11.sp)
             Spacer(Modifier.width(4.dp))
         }
-        Text(
-            text = detail.title,
-            modifier = Modifier.weight(1f),
-            style = COUITheme.textStyles.title3,
-            fontWeight = FontWeight.Bold,
-            maxLines = if (expanded) Int.MAX_VALUE else TITLE_COLLAPSED_LINES,
-            overflow = TextOverflow.Ellipsis,
-        )
+        SelectionContainer(modifier = Modifier.weight(1f)) {
+            Text(
+                text = detail.title,
+                style = COUITheme.textStyles.title3,
+                fontWeight = FontWeight.Bold,
+                maxLines = if (expanded) Int.MAX_VALUE else TITLE_COLLAPSED_LINES,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         if (detail.upMid > 0L) {
             Spacer(Modifier.width(6.dp))
             erl.bilico.ui.components.UserMoreMenu(

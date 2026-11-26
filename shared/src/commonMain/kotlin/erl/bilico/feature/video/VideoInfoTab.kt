@@ -321,7 +321,7 @@ private fun InfoContent(
                                 content = if (showFullDesc) desc else collapsedPrefix.orEmpty(),
                                 emotes = emptyMap(),
                                 mentions = detail.descMentions,
-                                selectable = expanded,
+                                selectable = showFullDesc,
                                 style = descStyle,
                                 color = COUITheme.colorScheme.onSurfaceSecondary,
                                 prefixColor = hyperlinkColor(),
@@ -429,44 +429,21 @@ private fun InfoContent(
                         ep.bvid == detail.bvid && (ep.cid <= 0L || ep.cid == selectedCid)
                     }
                 }
-                val colScrollModifier = rememberExpandedSelectionModifier(
+                ExpandableSelectionCard(
                     resetKey = detail.bvid,
+                    title = "${collection.title.ifBlank { "合集" }}（${collection.episodes.size}）",
+                    count = collection.episodes.size,
                     expanded = collectionExpanded,
+                    onExpandedChange = { collectionExpanded = it },
                     selectedIndex = selectedEpisodeIndex,
-                )
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(SquircleShape(12.dp))
-                        .background(COUITheme.colorScheme.surfaceContainer)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                ) {
-                    ExpandableList(
-                        groupCount = 1,
-                        childCount = { collection.episodes.size },
-                        expandedGroups = if (collectionExpanded) setOf(0) else emptySet(),
-                        onExpandedGroupsChange = { collectionExpanded = 0 in it },
-                        groupContent = { _, expanded ->
-                            ExpandableSectionHeader(
-                                text = "${collection.title.ifBlank { "合集" }}（${collection.episodes.size}）",
-                                expanded = expanded,
-                            )
-                        },
-                    ) { _, index ->
-                        val episode = collection.episodes[index]
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 6.dp)
-                                .then(if (index == selectedEpisodeIndex) colScrollModifier else Modifier),
-                        ) {
-                            CollectionRow(
-                                index = index + 1,
-                                episode = episode,
-                                selected = index == selectedEpisodeIndex,
-                                onClick = { onSelectEpisode(episode) },
-                            )
-                        }
-                    }
+                ) { index ->
+                    val episode = collection.episodes[index]
+                    CollectionRow(
+                        index = index + 1,
+                        episode = episode,
+                        selected = index == selectedEpisodeIndex,
+                        onClick = { onSelectEpisode(episode) },
+                    )
                 }
             }
         }
@@ -476,42 +453,19 @@ private fun InfoContent(
                 val selectedPartIndex = remember(detail.pages, selectedCid) {
                     detail.pages.indexOfFirst { it.cid == selectedCid }
                 }
-                val partScrollModifier = rememberExpandedSelectionModifier(
+                ExpandableSelectionCard(
                     resetKey = detail.bvid,
+                    title = "分P（${detail.pages.size}）",
+                    count = detail.pages.size,
                     expanded = partsExpanded,
+                    onExpandedChange = { partsExpanded = it },
                     selectedIndex = selectedPartIndex,
-                )
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(SquircleShape(12.dp))
-                        .background(COUITheme.colorScheme.surfaceContainer)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                ) {
-                    ExpandableList(
-                        groupCount = 1,
-                        childCount = { detail.pages.size },
-                        expandedGroups = if (partsExpanded) setOf(0) else emptySet(),
-                        onExpandedGroupsChange = { partsExpanded = 0 in it },
-                        groupContent = { _, expanded ->
-                            ExpandableSectionHeader(
-                                text = "分P（${detail.pages.size}）",
-                                expanded = expanded,
-                            )
-                        },
-                    ) { _, index ->
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 6.dp)
-                                .then(if (index == selectedPartIndex) partScrollModifier else Modifier),
-                        ) {
-                            PartRow(
-                                part = detail.pages[index],
-                                selected = index == selectedPartIndex,
-                                onClick = { onSelectPart(index) },
-                            )
-                        }
-                    }
+                ) { index ->
+                    PartRow(
+                        part = detail.pages[index],
+                        selected = index == selectedPartIndex,
+                        onClick = { onSelectPart(index) },
+                    )
                 }
             }
         }
@@ -534,6 +488,47 @@ private fun InfoContent(
                     onWatchLater = rememberWatchLaterAction(container, video),
                     onOpen = { onOpenVideo(video.bvid) },
                 )
+            }
+        }
+    }
+}
+
+/** 合集 / 分P 共用的可折叠选集卡片。 */
+@Composable
+private fun ExpandableSelectionCard(
+    resetKey: Any?,
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    selectedIndex: Int,
+    itemContent: @Composable (Int) -> Unit,
+) {
+    val scrollModifier = rememberExpandedSelectionModifier(
+        resetKey = resetKey,
+        expanded = expanded,
+        selectedIndex = selectedIndex,
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(SquircleShape(12.dp))
+            .background(COUITheme.colorScheme.surfaceContainer)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        ExpandableList(
+            groupCount = 1,
+            childCount = { count },
+            expandedGroups = if (expanded) setOf(0) else emptySet(),
+            onExpandedGroupsChange = { onExpandedChange(0 in it) },
+            groupContent = { _, isExpanded -> ExpandableSectionHeader(text = title, expanded = isExpanded) },
+        ) { _, index ->
+            Box(
+                modifier = Modifier
+                    .padding(top = 6.dp)
+                    .then(if (index == selectedIndex) scrollModifier else Modifier),
+            ) {
+                itemContent(index)
             }
         }
     }

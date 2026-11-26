@@ -134,7 +134,7 @@ fun KeywordBlockDialog(
 
 /**
  * UP 主 / 用户通用操作菜单（视频页关注旁 3 个点 & 个人空间右上角 3 个点）：
- * 顺序：复制简介（视频页有简介时） -> 关键词屏蔽 -> 本地屏蔽该 UP 主 -> 屏蔽该 UP 主（服务器黑名单） -> 举报 UP 主 -> 举报视频（视频页）。
+ * 顺序：复制标题 / 复制简介（视频页有内容时） -> 关键词屏蔽 -> 本地屏蔽该 UP 主 -> 屏蔽该 UP 主（服务器黑名单） -> 举报 UP 主 -> 举报视频（视频页）。
  */
 @Composable
 fun UserMoreMenu(
@@ -227,6 +227,19 @@ fun UserMoreMenu(
             show = expanded,
             onDismiss = { expanded = false },
             items = buildList {
+                val trimmedTitle = videoTitle.trim()
+                if (trimmedTitle.isNotEmpty()) {
+                    add(
+                        CouiMenuItem(
+                            label = "复制标题",
+                            group = 0,
+                            onClick = {
+                                clipboard.setText(AnnotatedString(trimmedTitle))
+                                showToast(context, "已复制标题")
+                            },
+                        ),
+                    )
+                }
                 val trimmedDesc = videoDesc.trim()
                 if (trimmedDesc.isNotEmpty()) {
                     add(

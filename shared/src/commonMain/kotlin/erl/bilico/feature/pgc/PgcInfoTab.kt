@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -124,12 +125,13 @@ private fun PgcInfoContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    text = detail.title,
-                    modifier = Modifier.weight(1f),
-                    style = COUITheme.textStyles.title3,
-                    fontWeight = FontWeight.Medium,
-                )
+                SelectionContainer(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = detail.title,
+                        style = COUITheme.textStyles.title3,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
                 if (onDownload != null) {
                     Box(
                         modifier = Modifier
@@ -295,12 +297,14 @@ private fun PgcInfoContent(
                         .clickable { descExpanded = !descExpanded }
                         .padding(12.dp),
                 ) {
-                    Text(
-                        text = desc,
-                        style = COUITheme.textStyles.body2,
-                        maxLines = if (descExpanded) Int.MAX_VALUE else 5,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = desc,
+                            style = COUITheme.textStyles.body2,
+                            maxLines = if (descExpanded) Int.MAX_VALUE else 5,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     if (!descExpanded && desc.length > 100) {
                         Text(
                             text = "展开",
