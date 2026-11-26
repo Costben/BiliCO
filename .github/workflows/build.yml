@@ -186,9 +186,9 @@ jobs:
             echo "org.gradle.console=plain"
             echo "org.gradle.configuration-cache=false"
             echo "org.gradle.workers.max=2"
-            echo "org.gradle.jvmargs=-Xmx3g -XX:+UseG1GC -Dfile.encoding=UTF-8"
-            echo "kotlin.daemon.jvmargs=-Xmx2g -XX:+UseG1GC -Dfile.encoding=UTF-8"
-            echo "kotlin.native.jvmArgs=-Xmx4g"
+            echo "org.gradle.jvmargs=-Xmx6g -XX:+UseG1GC -XX:G1PeriodicGCInterval=15000 -Dfile.encoding=UTF-8"
+            echo "kotlin.daemon.jvmargs=-Xmx1536m -XX:+UseG1GC -Dfile.encoding=UTF-8"
+            echo "kotlin.native.jvmArgs=-Xmx6g -XX:+UseG1GC"
           } >> gradle.properties
 
       - name: Build iOS Release app & package unsigned IPA
