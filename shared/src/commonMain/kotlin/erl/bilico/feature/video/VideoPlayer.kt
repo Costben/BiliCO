@@ -544,6 +544,7 @@ internal fun VideoPlayer(
                 activeMenu = activeMenu, lastBottomMenu = lastBottomMenu,
                 onDismiss = { activeMenu = PlayerPopupMenu.NONE }, hdrVideo = hdrVideo,
                 menuBackdrop = menuBackdrop, horizontalBarPad = horizontalBarPad,
+                portraitFullscreen = portraitFullscreen, portraitTopPad = portraitTopPad,
                 onHideControls = { controlsVisible = false }, playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = onSelectPlaybackEndMode,
                 onShare = onShare, onCast = onCast, onDownload = onDownload, onSelectLine = onSelectLine,
@@ -571,6 +572,7 @@ internal fun VideoPlayer(
         CompositionLocalProvider(LocalBackdrop provides if (BlurEffectsEnabled && fullscreen && !hdrVideo) menuBackdrop else null) {
             PlayerStageDialogs(
                 player = player, source = source, fullscreen = fullscreen,
+                portraitFullscreen = portraitFullscreen,
                 statsVisible = statsVisible, onDismissStats = { statsVisible = false },
                 sponsorAssistVisible = sponsorAssistVisible, sponsorSegments = sponsorSegments,
                 onJumpSponsorSegment = onJumpSponsorSegment, onSubmitSponsor = onSubmitSponsor,

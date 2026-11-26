@@ -195,6 +195,7 @@ internal fun PlayerStageDialogs(
     player: BiliPlayer,
     source: PlaybackSource?,
     fullscreen: Boolean,
+    portraitFullscreen: Boolean = false,
     statsVisible: Boolean,
     onDismissStats: () -> Unit,
     sponsorAssistVisible: Boolean,
@@ -244,6 +245,7 @@ internal fun PlayerStageDialogs(
             onMove = onMoveTopBarItem ?: { _, _, _ -> },
             onDismiss = onDismissTopBarSettings,
             inlineInStage = fullscreen,
+            portraitFullscreen = portraitFullscreen,
         )
     }
 }

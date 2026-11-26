@@ -40,6 +40,7 @@ import androidx.compose.ui.zIndex
 import erl.bilico.data.settings.PlayerTopBarItem
 import erl.bilico.data.settings.PlayerTopBarLayout
 import erl.bilico.data.settings.PlayerTopBarMode
+import erl.bilico.platform.LocalScreenConfig
 import erl.bilico.ui.components.SectionTitle
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
@@ -64,10 +65,16 @@ internal fun PlayerTopBarSettingsDialog(
     onMove: (PlayerTopBarMode, Int, Int) -> Unit,
     onDismiss: () -> Unit,
     inlineInStage: Boolean = false,
+    portraitFullscreen: Boolean = false,
 ) {
     if (!inlineInStage) {
         PlayerTopBarSettingsSheet(fullscreen, portrait, onToggle, onMove, onDismiss)
         return
+    }
+    val stageListMaxHeight = if (portraitFullscreen) {
+        (LocalScreenConfig.current.screenHeightDp.dp - 220.dp).coerceIn(320.dp, 660.dp)
+    } else {
+        320.dp
     }
     PlayerModalHost(
         inlineInStage = true,
@@ -99,7 +106,7 @@ internal fun PlayerTopBarSettingsDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 320.dp)
+                    .heightIn(max = stageListMaxHeight)
                     .scrollEndHaptic()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),

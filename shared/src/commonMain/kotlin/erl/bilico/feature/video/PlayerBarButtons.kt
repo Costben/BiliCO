@@ -40,6 +40,7 @@ import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.QualityOption
 import erl.bilico.data.model.SubtitleTrack
 import erl.bilico.feature.live.PlayerSuperChatButton
+import erl.bilico.platform.LocalScreenConfig
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.CouiPopupMenu
@@ -495,6 +496,8 @@ internal fun PlayerStagePopupMenus(
     hdrVideo: Boolean,
     menuBackdrop: LayerBackdrop,
     horizontalBarPad: Dp,
+    portraitFullscreen: Boolean = false,
+    portraitTopPad: Dp = 0.dp,
     onHideControls: () -> Unit,
     playbackEndMode: PlaybackEndMode,
     onSelectPlaybackEndMode: ((PlaybackEndMode) -> Unit)?,
@@ -542,11 +545,16 @@ internal fun PlayerStagePopupMenus(
             detailAutoPlay = detailAutoPlay,
             onToggleDetailAutoPlay = onToggleDetailAutoPlay,
         )
+        val screenHeight = LocalScreenConfig.current.screenHeightDp.dp
+        val moreTopMargin = if (portraitFullscreen) portraitTopPad + 54.dp else 54.dp
+        val moreMaxHeight = if (portraitFullscreen) (screenHeight - moreTopMargin - 88.dp).coerceIn(350.dp, 680.dp) else 350.dp
+        val bottomMenuMaxHeight = if (portraitFullscreen) (screenHeight - portraitTopPad - 120.dp).coerceIn(350.dp, 560.dp) else 350.dp
         CouiStagePopupMenu(
             show = activeMenu == PlayerPopupMenu.MORE,
             onDismiss = onDismiss,
-            topMargin = 54.dp,
+            topMargin = moreTopMargin,
             endMargin = horizontalBarPad,
+            maxHeight = moreMaxHeight,
             items = stageMoreItems,
         )
         val bottomMenuShown = activeMenu == PlayerPopupMenu.EPISODES ||
@@ -565,7 +573,7 @@ internal fun PlayerStagePopupMenus(
             },
             alignment = Alignment.BottomEnd,
             bottomMargin = 48.dp,
-            maxHeight = 350.dp,
+            maxHeight = bottomMenuMaxHeight,
             endMargin = when (shownMenu) {
                 PlayerPopupMenu.EPISODES -> episodesEndMargin
                 PlayerPopupMenu.SPEED -> speedEndMargin
