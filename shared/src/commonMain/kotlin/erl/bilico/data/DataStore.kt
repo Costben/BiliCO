@@ -1,7 +1,9 @@
 package erl.bilico.data
 
+import erl.bilico.platform.DownloadLock
 import erl.bilico.platform.KeyValueStore
 import erl.bilico.platform.PlatformContext
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -95,9 +97,14 @@ class PlatformDataStore internal constructor(
         }
 }
 
+private val sharedBiliDataStoreLock = DownloadLock()
+
+@Volatile
 private var sharedBiliDataStore: PlatformDataStore? = null
 
 val PlatformContext.biliDataStore: PlatformDataStore
-    get() = sharedBiliDataStore ?: PlatformDataStore(KeyValueStore(this, "bilico")).also {
-        sharedBiliDataStore = it
+    get() = sharedBiliDataStore ?: sharedBiliDataStoreLock.withLock {
+        sharedBiliDataStore ?: PlatformDataStore(KeyValueStore(this, "bilico")).also {
+            sharedBiliDataStore = it
+        }
     }

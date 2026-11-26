@@ -179,7 +179,11 @@ actual class KeyValueStore actual constructor(
     context: PlatformContext,
     name: String,
 ) {
-    private val prefs = context.androidContext.getSharedPreferences(name, Context.MODE_PRIVATE)
+    private val prefs = context.androidContext.getSharedPreferences(name, Context.MODE_PRIVATE).also {
+        if (name == DataStoreMigration.DEFAULT_STORE_NAME) {
+            DataStoreMigration.migrateIfNeeded(context.androidContext, it, name)
+        }
+    }
 
     actual fun contains(key: String): Boolean = prefs.contains(key)
 

@@ -1,14 +1,18 @@
 package erl.bilico.platform
 
 import android.net.Uri
+import erl.bilico.data.repository.DownloadHttpException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -130,6 +134,15 @@ actual fun dlFileUriToPath(uri: String): String {
     return runCatching { Uri.parse(uri).path ?: uri.removePrefix("file://") }.getOrElse { uri.removePrefix("file://") }
 }
 
+private fun parseContentRangeTotalAndroid(header: String?): Long? {
+    if (header.isNullOrBlank()) return null
+    val slash = header.lastIndexOf('/')
+    if (slash < 0 || slash == header.lastIndex) return null
+    val tail = header.substring(slash + 1).trim()
+    if (tail == "*") return null
+    return tail.toLongOrNull()
+}
+
 actual suspend fun dlProbeContentLength(
     url: String,
     headers: Map<String, String>,
@@ -141,17 +154,33 @@ actual suspend fun dlProbeContentLength(
             header("Range", "bytes=0-0")
         }
         .build()
-    runCatching {
-        downloadHttpClient.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful && resp.code != 206) return@use -1L
-            val contentRange = resp.header("Content-Range")
-            if (contentRange != null) {
-                val total = contentRange.substringAfterLast('/', "").trim().toLongOrNull()
-                if (total != null && total > 0L) return@use total
-            }
+    val call = downloadHttpClient.newCall(req)
+    val ctx = currentCoroutineContext()
+    val cancelHandle = ctx.job.invokeOnCompletion { cause ->
+        if (cause != null) call.cancel()
+    }
+    try {
+        ctx.ensureActive()
+        call.execute().use { resp ->
+            if (!resp.isSuccessful) return@use -1L
+            val contentRangeTotal = parseContentRangeTotalAndroid(resp.header("Content-Range"))
+            if (contentRangeTotal != null && contentRangeTotal > 0L) return@use contentRangeTotal
             resp.header("Content-Length")?.trim()?.toLongOrNull()?.takeIf { it > 0L } ?: -1L
         }
-    }.getOrDefault(-1L)
+    } catch (e: CancellationException) {
+        call.cancel()
+        throw e
+    } catch (e: IOException) {
+        if (!ctx.isActive || call.isCanceled()) {
+            ctx.ensureActive()
+            throw CancellationException("探测内容长度已取消", e)
+        }
+        -1L
+    } catch (_: Throwable) {
+        -1L
+    } finally {
+        cancelHandle.dispose()
+    }
 }
 
 actual suspend fun dlDownloadFileRange(
@@ -183,25 +212,31 @@ actual suspend fun dlDownloadFileRange(
 
     val call = downloadHttpClient.newCall(req)
     val ctx = currentCoroutineContext()
+    val cancelHandle = ctx.job.invokeOnCompletion { cause ->
+        if (cause != null) call.cancel()
+    }
     try {
+        ctx.ensureActive()
         call.execute().use { resp ->
             ctx.ensureActive()
-            if (resp.code == 416 && existing > 0L) {
-                if (dlMoveOrReplace(partPath, finalPath)) {
-                    onProgress(existing, existing, 0L)
-                    return@withContext existing
+            if (resp.code == 416) {
+                val total = parseContentRangeTotalAndroid(resp.header("Content-Range"))
+                if (total != null && total > 0L && existing >= total) {
+                    check(dlMoveOrReplace(partPath, finalPath)) { "无法保存缓存文件" }
+                    onProgress(total, total, 0L)
+                    return@withContext total
+                } else {
+                    dlDeleteFile(partPath)
+                    throw IllegalStateException("断点范围失效，重试")
                 }
             }
-            if (!resp.isSuccessful && resp.code != 206) {
-                error("HTTP ${resp.code}")
+            if (resp.code !in 200..299) {
+                throw DownloadHttpException(resp.code, "HTTP ${resp.code}")
             }
             val append = resp.code == 206 && existing > 0L
             if (!append) existing = 0L
 
-            val contentRangeTotal = resp.header("Content-Range")
-                ?.substringAfterLast('/', "")
-                ?.trim()
-                ?.toLongOrNull()
+            val contentRangeTotal = parseContentRangeTotalAndroid(resp.header("Content-Range"))
                 ?.takeIf { it > 0L }
             val bodyLen = resp.body.contentLength().takeIf { it > 0L } ?: -1L
             val totalBytes = contentRangeTotal ?: if (bodyLen > 0L) existing + bodyLen else -1L
@@ -245,5 +280,13 @@ actual suspend fun dlDownloadFileRange(
     } catch (e: CancellationException) {
         call.cancel()
         throw e
+    } catch (e: IOException) {
+        if (!ctx.isActive || call.isCanceled()) {
+            ctx.ensureActive()
+            throw CancellationException("下载已取消", e)
+        }
+        throw e
+    } finally {
+        cancelHandle.dispose()
     }
 }
