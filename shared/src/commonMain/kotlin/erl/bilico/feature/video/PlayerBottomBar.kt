@@ -91,8 +91,14 @@ internal fun BoxScope.PlayerBottomChrome(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
-            // 全屏发弹幕时软键盘会把底栏顶走，整条跟着键盘抬起来。
-            .imePadding(),
+            // 仅全屏且底栏内嵌弹幕输入框时跟随软键盘抬起，避免竖屏发评论/发弹幕时把视频底栏顶到视频顶部再闪现回落。
+            .then(
+                if (fullscreen && showStageComposer && danmakuComposer != null) {
+                    Modifier.imePadding()
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         Column(
             modifier = Modifier
