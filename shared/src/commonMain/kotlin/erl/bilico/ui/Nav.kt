@@ -40,8 +40,11 @@ val ExpandEasing = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)
 
 /** 进场曲线与时长参考系统桌面应用展开节奏，起止柔和不抢跳。 */
 val ExpandInEasing = CubicBezierEasing(0.32f, 0.08f, 0.18f, 1f)
+/** 缩进右下角融合球专用缓动：初段柔和减速，避免在百毫秒内骤缩产生卡顿感。 */
+val OrbMinimizeEasing = CubicBezierEasing(0.22f, 0f, 0.12f, 1f)
 const val ExpandEnterMillis = 420
 const val ExpandExitMillis = 320
+const val OrbMinimizeMillis = 440
 const val RouteSlideMillis = 320
 const val RouteParallaxDivisor = 4f
 const val FEED_TAB_INDEX = 0
@@ -396,24 +399,28 @@ class NavState {
         scope.launch {
             if (!minimize && entry.expand) alignCardBelowBar(entry.origin)
             val expand = entry.expand
-            val baseMillis = if (expand) ExpandExitMillis else RouteSlideMillis
+            val baseMillis = when {
+                minimize && expand -> OrbMinimizeMillis
+                expand -> ExpandExitMillis
+                else -> RouteSlideMillis
+            }
             val remaining = entry.progress.value.coerceIn(0f, 1f)
             val baseRemaining = (baseMillis * remaining).toInt().coerceAtLeast(1)
             val hasFlingOffset = entry.offset.value != Offset.Zero || initialOffsetVelocity != Offset.Zero
-            // 跟手甩出时至少留够回缩时间，避免偏移还没收回页面就落位。
-            val millis = if (expand && hasFlingOffset) {
-                maxOf(baseRemaining, PredictiveBackMotionDefaults.MIN_CARD_FLING_EXIT_MILLIS)
-            } else {
-                baseRemaining
+            // 跟手甩出或缩进融合球时留足平滑收尾时长，避免过快骤缩。
+            val millis = when {
+                minimize && expand -> maxOf(baseRemaining, 320)
+                expand && hasFlingOffset -> maxOf(baseRemaining, PredictiveBackMotionDefaults.MIN_CARD_FLING_EXIT_MILLIS)
+                else -> baseRemaining
             }
             coroutineScope {
                 launch {
-                    // 允许回弹时走桌面图标回弹弹簧，关闭或收进融合球时走平滑淡出。
+                    // 允许回弹时走桌面图标回弹弹簧，缩进融合球走柔和减速曲线。
                     val bounce = expand && !minimize && returnBounce()
-                    val spec: AnimationSpec<Float> = if (bounce) {
-                        ExpandReturnSpringSpec
-                    } else {
-                        tween(millis, easing = ExpandEasing)
+                    val spec: AnimationSpec<Float> = when {
+                        bounce -> ExpandReturnSpringSpec
+                        minimize && expand -> tween(millis, easing = OrbMinimizeEasing)
+                        else -> tween(millis, easing = ExpandEasing)
                     }
                     entry.progress.animateTo(
                         targetValue = 0f,

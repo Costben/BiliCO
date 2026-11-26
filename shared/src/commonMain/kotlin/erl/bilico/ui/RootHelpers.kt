@@ -108,6 +108,7 @@ internal class FrozenPortrait {
 }
 
 internal const val LandedProgress = 0.2f
+private const val OrbFadeTailProgress = 0.28f
 
 internal val ExpandReturnSpringSpec: SpringSpec<Float> = spring(
     dampingRatio = 0.78f,
@@ -182,17 +183,16 @@ internal fun ExpandLayer(
     val parentSurfaceAlpha = LocalPlayerSurfaceAlpha.current
     val surfaceAlphaProvider: () -> Float = remember(entry, parentSurfaceAlpha) {
         {
-            val routeAlpha = if (entry.minimizingToOrb && (entry.exiting || entry.previewing)) {
-                (progress() / LandedProgress).coerceIn(0f, 1f)
+            val routeAlpha = if (!platformUsesOffscreenExpandCompositing &&
+                entry.minimizingToOrb &&
+                (entry.exiting || entry.previewing)
+            ) {
+                (progress() / OrbFadeTailProgress).coerceIn(0f, 1f)
             } else 1f
             (parentSurfaceAlpha() * routeAlpha).coerceIn(0f, 1f)
         }
     }
-    fun frameProgress(p: Float): Float = when {
-        !exiting -> p
-        entry.minimizingToOrb -> if (p < 0f) p else ((p - LandedProgress) / (1f - LandedProgress)).coerceIn(0f, 1f)
-        else -> p
-    }
+    fun frameProgress(p: Float): Float = if (exiting && entry.minimizingToOrb) p.coerceIn(0f, 1f) else p
     fun enterContentAlpha(): Float = ((fade() - 0.02f) / 0.24f).coerceIn(0f, 1f)
 
     Box(
@@ -241,11 +241,13 @@ internal fun ExpandLayer(
                 } else {
                     width = lerp(bounds.width, size.width, p)
                     val cardH = if (bounds.width > 0f) bounds.height * (width / bounds.width) else lerp(bounds.height, size.height, p)
-                    height = if (exiting) {
-                        val t = ((p - 0.24f) / 0.76f).coerceIn(0f, 1f)
-                        lerp(cardH, size.height, t.pow(1.6f))
-                    } else {
-                        lerp(bounds.height, size.height, p)
+                    height = when {
+                        exiting && entry.minimizingToOrb -> lerp(cardH, size.height, p.pow(1.2f))
+                        exiting -> {
+                            val t = ((p - 0.24f) / 0.76f).coerceIn(0f, 1f)
+                            lerp(cardH, size.height, t.pow(1.6f))
+                        }
+                        else -> lerp(bounds.height, size.height, p)
                     }
                     left = lerp(bounds.left, 0f, p) + dragOffset.x
                     top = lerp(bounds.top, 0f, p) + dragOffset.y
@@ -257,7 +259,7 @@ internal fun ExpandLayer(
                 scaleX = scale
                 scaleY = scale
                 alpha = if (entry.minimizingToOrb && exiting) {
-                    (progress() / LandedProgress).coerceIn(0f, 1f)
+                    (progress() / OrbFadeTailProgress).coerceIn(0f, 1f)
                 } else {
                     1f
                 }
@@ -279,7 +281,7 @@ internal fun ExpandLayer(
                 val p = frameProgress(progress())
                 if (!exiting && p <= 0.0005f) return@drawWithContent
                 drawContent()
-                if (!exiting || platformUsesOffscreenExpandCompositing) return@drawWithContent
+                if (!exiting || entry.minimizingToOrb || platformUsesOffscreenExpandCompositing) return@drawWithContent
                 // iOS Metal 零 saveLayer：直接设置 origin.layer.alpha，避免每帧分配/释放离屏纹理。
                 val cardAlpha = ((0.24f - p.coerceIn(0f, 1f)) / 0.18f).coerceIn(0f, 1f)
                 if (cardAlpha > 0f) drawCardSnapshot(origin.layer, bounds, alpha = cardAlpha, surface = surface)
@@ -312,7 +314,7 @@ internal fun ExpandLayer(
                     }
                     .drawWithContent {
                         drawContent()
-                        if (!entry.expand || !exiting) return@drawWithContent
+                        if (!entry.expand || !exiting || entry.minimizingToOrb) return@drawWithContent
                         val cardAlpha = ((0.24f - frameProgress(progress()).coerceIn(0f, 1f)) / 0.18f).coerceIn(0f, 1f)
                         if (cardAlpha > 0f) drawCardSnapshot(origin.layer, bounds, alpha = cardAlpha, surface = surface)
                     },
