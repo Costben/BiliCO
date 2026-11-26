@@ -1,0 +1,558 @@
+package erl.bilico.ui.components
+
+import erl.bilico.platform.formatFixedDecimal
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.toRect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.min
+import coil3.compose.AsyncImage
+import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
+import io.github.suqi8.coui.kmp.basic.FullPagePullToRefreshTexts
+import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
+import io.github.suqi8.coui.kmp.basic.HighlightedIconButtonDefaults
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.SearchBarActionButton
+import io.github.suqi8.coui.kmp.basic.SearchBarActionButtonDefaults
+import io.github.suqi8.coui.kmp.basic.SmallTitle
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.TextButton
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Back
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import io.github.suqi8.coui.kmp.theme.COUITheme
+
+@Composable
+fun Avatar(
+    url: String?,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    officialType: Int = -1,
+) {
+    val scheme = COUITheme.colorScheme
+    Box(modifier = modifier.size(size)) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(scheme.surfaceContainerHigh),
+        ) {
+            if (!url.isNullOrBlank()) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(size),
+                )
+            }
+        }
+        if (officialType == 0 || officialType == 1) {
+            OfficialVerifyBadge(
+                type = officialType,
+                size = (size * 0.34f).coerceIn(12.dp, 20.dp),
+                modifier = Modifier.align(Alignment.BottomEnd),
+            )
+        }
+    }
+}
+
+/** 按控件尺寸裁切的封面图；传入的 url 应已经过 [Formatters.sizedImageUrl] 取缩略图。 */
+@Composable
+fun CoverImage(
+    url: String?,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = null,
+) {
+    if (url.isNullOrBlank()) {
+        Box(modifier.background(COUITheme.colorScheme.surfaceContainerHigh))
+        return
+    }
+    AsyncImage(
+        model = url,
+        contentDescription = contentDescription,
+        contentScale = ContentScale.Crop,
+        modifier = modifier,
+    )
+}
+
+@Composable
+fun LoadingState(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
+    }
+}
+
+@Composable
+fun EmptyState(
+    text: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    action: (@Composable () -> Unit)? = null,
+) {
+    val scheme = COUITheme.colorScheme
+    Column(
+        modifier = modifier.fillMaxWidth().padding(vertical = 56.dp, horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (icon != null) {
+            Icon(icon, null, Modifier.size(44.dp), tint = scheme.onSurfaceSecondary)
+            Spacer(Modifier.height(12.dp))
+        }
+        Text(
+            text = text,
+            color = scheme.onSurfaceSecondary,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+        )
+        if (action != null) {
+            Spacer(Modifier.height(14.dp))
+            action()
+        }
+    }
+}
+
+@Composable
+fun ErrorState(
+    message: String,
+    modifier: Modifier = Modifier,
+    onRetry: () -> Unit,
+) {
+    val scheme = COUITheme.colorScheme
+    Column(
+        modifier = modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = message,
+            color = scheme.onSurfaceSecondary,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+        TextButton(text = "重试", onClick = onRetry)
+    }
+}
+
+/**
+ * 分组小标题（对齐 ColorOS 17 规范，复用 COUI [SmallTitle]）：
+ * 在带 8dp 项间距的列表中默认上留白 16dp、下留白 0dp，使视觉距离保持约 24dp:8dp，
+ * 紧贴下方所属卡片组；页面最顶部第一个分组传 `topPadding = 4.dp`。
+ */
+@Composable
+fun SectionTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+    horizontalPadding: Dp = 16.dp,
+    topPadding: Dp = 16.dp,
+    bottomPadding: Dp = 0.dp,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
+) {
+    if (trailing == null) {
+        SmallTitle(
+            text = text,
+            modifier = modifier,
+            insideMargin = PaddingValues(
+                start = horizontalPadding,
+                top = topPadding,
+                end = horizontalPadding,
+                bottom = bottomPadding,
+            ),
+        )
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(
+                    start = horizontalPadding,
+                    top = topPadding,
+                    end = horizontalPadding,
+                    bottom = bottomPadding,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                SmallTitle(
+                    text = text,
+                    insideMargin = PaddingValues(0.dp),
+                )
+            }
+            trailing()
+        }
+    }
+}
+
+@Composable
+fun ActionIcon(
+    icon: ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = COUITheme.colorScheme.onSurfaceSecondary,
+) {
+    Row(
+        modifier = modifier
+            .clip(SquircleShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(icon, text.ifBlank { null }, Modifier.size(17.dp), tint = tint)
+        if (text.isNotBlank()) {
+            Text(text, fontSize = 12.sp, color = tint)
+        }
+    }
+}
+
+@Composable
+fun BackIconButton(onClick: () -> Unit) {
+    HighlightedIconButton(onClick = onClick) {
+        Icon(COUIIcons.Back, "返回", Modifier.size(24.dp))
+    }
+}
+
+/** UP 主关注胶囊：未关注为主色实心，已关注为浅底次要文字；视频页与个人空间共用。 */
+@Composable
+fun FollowCapsuleButton(
+    following: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    followedBackground: Color = COUITheme.colorScheme.surfaceContainer,
+) {
+    val scheme = COUITheme.colorScheme
+    Text(
+        text = if (following) "已关注" else "关注",
+        modifier = modifier
+            .clip(COUISmoothCapsuleShape)
+            .background(if (following) followedBackground else scheme.primary)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        style = COUITheme.textStyles.footnote1,
+        fontWeight = FontWeight.Medium,
+        color = if (following) scheme.onSurfaceSecondary else scheme.onPrimary,
+    )
+}
+
+/** 顶栏胶囊文字按钮：高度与 [BackIconButton] 同为 40dp，材质深度一致。 */
+@Composable
+fun TopBarTextButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentColor: Color = SearchBarActionButtonDefaults.contentColor(),
+) {
+    val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
+    val containerColor = HighlightedIconButtonDefaults.fillCenter(isDark)
+        .copy(alpha = HighlightedIconButtonDefaults.FillAlpha)
+    SearchBarActionButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        containerColor = containerColor,
+        contentColor = contentColor,
+    )
+}
+
+/** 设置卡片里分隔两行的细线：从行标题左缘开始，右侧留同样的内缩。 */
+@Composable
+fun PreferenceDivider() {
+    val inset = BasicComponentDefaults.InsideMargin.calculateLeftPadding(LayoutDirection.Ltr)
+    HorizontalDivider(Modifier.padding(horizontal = inset))
+}
+
+/**
+ * 推荐流 / 动态流刷新后的拼接占位：占满一行、紧凑单行高度，
+ * 提示本轮刷新内容已看完，点一下回到顶部并重新刷新。
+ */
+@Composable
+fun RefreshDivider(
+    onBackToTop: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = COUITheme.colorScheme
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp),
+            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+            onClick = onBackToTop,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "本次刷新内容已看完 · ",
+                    fontSize = 13.sp,
+                    color = scheme.onSurfaceSecondary,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Text(
+                    text = "回到顶部并刷新",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = scheme.primary,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ClickableRow(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        content()
+    }
+}
+
+fun fmtCount(value: Int): String {
+    if (value <= 0) return "0"
+    if (value < 10000) return value.toString()
+    val wan = value / 10000.0
+    return if (wan >= 100) "${wan.toInt()}万" else "${formatFixedDecimal(wan, 1)}万"
+}
+
+val FullPageRefreshTexts = FullPagePullToRefreshTexts(
+    pulling = "下拉刷新",
+    thresholdReached = "松开刷新",
+    refreshing = "刷新中…",
+    complete = "刷新完成",
+)
+
+/** 成功提示停留时长；COUI 默认 800ms 拖沓。 */
+const val FullPageRefreshHoldMillis = 200L
+
+@Composable
+fun navBottomPadding(): Dp =
+    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+/**
+ * 搜索输入框内的清空按钮：
+ * 纯平中灰实心圆盘（18dp）+ 纯白小叉（8dp），36dp 触摸响应区，左右各留 4dp 内距以对齐 COUI 原生搜索栏。
+ */
+@Composable
+fun SearchClearButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val isDark = COUITheme.colorScheme.background.luminance() < 0.5f
+    val discColor = if (isDark) Color(0xFF696969) else Color(0x42000000)
+
+    Box(
+        modifier = modifier
+            .padding(start = 4.dp, end = 4.dp)
+            .size(36.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(discColor)
+                .graphicsLayer {
+                    alpha = if (isPressed) 0.65f else 1f
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(modifier = Modifier.size(8.dp)) {
+                val strokeWidth = 1.6.dp.toPx()
+                val cap = StrokeCap.Square
+                drawLine(
+                    color = Color.White,
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, size.height),
+                    strokeWidth = strokeWidth,
+                    cap = cap,
+                )
+                drawLine(
+                    color = Color.White,
+                    start = Offset(size.width, 0f),
+                    end = Offset(0f, size.height),
+                    strokeWidth = strokeWidth,
+                    cap = cap,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * ColorOS 17 Continuous-Curvature Capsule (G2 Smooth Corner Squircle).
+ * Based on ColorOS 17 cubic bezier easing formulation with zero curvature junction.
+ */
+open class COUISmoothCapsuleShape(
+    private val cornerRadius: Dp? = null,
+) : Shape {
+    companion object : COUISmoothCapsuleShape()
+
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val halfMin = size.minDimension / 2f
+        val radius = cornerRadius?.let { with(density) { it.toPx() } } ?: halfMin
+        val rect = size.toRect()
+        if (rect.height <= 0f || rect.width <= 0f) {
+            return Outline.Generic(Path())
+        }
+        if (rect.height >= rect.width) {
+            return Outline.Rounded(RoundRect(rect, CornerRadius(halfMin)))
+        }
+        val path = Path()
+        val r = min(radius, halfMin)
+        val tail = min(1.5f, rect.width / (2f * r))
+        val tailPx = tail * r
+        path.moveTo(rect.left + tailPx, rect.top)
+        path.lineTo(rect.right - tailPx, rect.top)
+
+        // Top-right to tip
+        path.addCapsuleCornerToTip(rect.right, rect.top, -1f, 1f, r, tail)
+        // Tip to bottom-right
+        path.addCapsuleCornerFromTip(rect.right, rect.bottom, -1f, -1f, r, tail)
+        // Bottom edge
+        path.lineTo(rect.left + tailPx, rect.bottom)
+        // Bottom-left to tip
+        path.addCapsuleCornerToTip(rect.left, rect.bottom, 1f, -1f, r, tail)
+        // Tip to top-left
+        path.addCapsuleCornerFromTip(rect.left, rect.top, 1f, 1f, r, tail)
+        path.close()
+        return Outline.Generic(path)
+    }
+
+    private fun Path.addCapsuleCornerFromTip(
+        cornerX: Float,
+        cornerY: Float,
+        signX: Float,
+        signY: Float,
+        radius: Float,
+        tail: Float,
+    ) {
+        val scaleX = signX * radius
+        val scaleY = signY * radius
+        cubicTo(
+            cornerX,
+            cornerY + scaleY * 0.7696933f,
+            cornerX + scaleX * 0.07949496f,
+            cornerY + scaleY * 0.5464456f,
+            cornerX + scaleX * 0.2250555f,
+            cornerY + scaleY * 0.3679707f,
+        )
+        cubicTo(
+            cornerX + scaleX * 0.5251651f,
+            cornerY,
+            cornerX + scaleX * min(0.9615864f, tail),
+            cornerY,
+            cornerX + scaleX * tail,
+            cornerY,
+        )
+    }
+
+    private fun Path.addCapsuleCornerToTip(
+        cornerX: Float,
+        cornerY: Float,
+        signX: Float,
+        signY: Float,
+        radius: Float,
+        tail: Float,
+    ) {
+        val scaleX = signX * radius
+        val scaleY = signY * radius
+        cubicTo(
+            cornerX + scaleX * min(0.9615864f, tail),
+            cornerY,
+            cornerX + scaleX * 0.5251651f,
+            cornerY,
+            cornerX + scaleX * 0.2250555f,
+            cornerY + scaleY * 0.3679707f,
+        )
+        cubicTo(
+            cornerX + scaleX * 0.07949496f,
+            cornerY + scaleY * 0.5464456f,
+            cornerX,
+            cornerY + scaleY * 0.7696933f,
+            cornerX,
+            cornerY + scaleY,
+        )
+    }
+
+    override fun equals(other: Any?): Boolean =
+        other is COUISmoothCapsuleShape && other.cornerRadius == cornerRadius
+
+    override fun hashCode(): Int = cornerRadius?.hashCode() ?: 0
+}
+

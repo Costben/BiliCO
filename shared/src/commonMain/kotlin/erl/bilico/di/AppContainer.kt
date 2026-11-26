@@ -1,0 +1,126 @@
+package erl.bilico.di
+
+import androidx.compose.runtime.staticCompositionLocalOf
+import erl.bilico.data.network.BiliClient
+import erl.bilico.data.network.TokenRefreshHelper
+import erl.bilico.data.repository.ArticleRepository
+import erl.bilico.data.repository.BlockRepository
+import erl.bilico.data.repository.CommentRepository
+import erl.bilico.data.repository.DanmakuRepository
+import erl.bilico.data.repository.DownloadRepository
+import erl.bilico.data.repository.DynamicRepository
+import erl.bilico.data.repository.FavoriteRepository
+import erl.bilico.data.repository.FeedRepository
+import erl.bilico.data.repository.HeartbeatReporter
+import erl.bilico.data.repository.HistoryRepository
+import erl.bilico.data.repository.ImRepository
+import erl.bilico.data.repository.InteractionRepository
+import erl.bilico.data.repository.LiveRepository
+import erl.bilico.data.repository.MemberProfileRepository
+import erl.bilico.data.repository.MessageRepository
+import erl.bilico.data.repository.PgcRepository
+import erl.bilico.data.repository.RankingRepository
+import erl.bilico.data.repository.RelationRepository
+import erl.bilico.data.repository.ReportRepository
+import erl.bilico.data.repository.SearchRepository
+import erl.bilico.data.repository.SpaceRepository
+import erl.bilico.data.repository.SponsorBlockRepository
+import erl.bilico.data.repository.SubtitleRepository
+import erl.bilico.data.repository.VideoRepository
+import erl.bilico.data.repository.WatchLaterRepository
+import erl.bilico.data.session.SessionRepository
+import erl.bilico.data.settings.SettingsRepository
+import erl.bilico.feature.cast.DlnaCastController
+import erl.bilico.platform.PlatformContext
+import erl.bilico.platform.ioDispatcher
+import erl.bilico.update.AppUpdateManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+
+/**
+ * 手写依赖容器：与 BiliCO 0.3.14-pre 对齐。
+ */
+class AppContainer(context: PlatformContext) {
+    val appContext: PlatformContext = context
+    val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
+
+    val client = BiliClient(appContext, scope)
+
+    val session = SessionRepository(
+        context = appContext,
+        cookies = client.cookieStore,
+        api = client.api,
+        passportApi = client.passportApi,
+        buvid = client.buvid,
+        scope = scope,
+    )
+
+    val settings = SettingsRepository(appContext, scope)
+
+    val tokenRefresh = TokenRefreshHelper(client.passportApi, session)
+
+    val feed = FeedRepository(client.api, client.wbi, client.buvid, session, client.cookieStore, tokenRefresh, settings)
+
+    val video = VideoRepository(client.api, client.wbi, client.buvid, session, client.redirectHttp)
+
+    val comments = CommentRepository(client.api, client.wbi, client.buvid, session)
+
+    val heartbeat = HeartbeatReporter(client.api, session)
+
+    val dynamic = DynamicRepository(client.api, client.buvid, session)
+
+    val articles = ArticleRepository(client.api, client.wbi, client.buvid)
+
+    val history = HistoryRepository(client.api, client.buvid, session)
+
+    val live = LiveRepository(client.api, client.wbi, client.buvid)
+
+    val updater = AppUpdateManager(appContext, settings, client.http)
+
+    val search = SearchRepository(client.api, client.wbi, client.buvid)
+
+    val space = SpaceRepository(client.api, client.wbi, client.buvid)
+
+    val memberProfile = MemberProfileRepository(client.api, client.buvid, session)
+
+    val favorites = FavoriteRepository(client.api, client.buvid, session)
+
+    val watchLater = WatchLaterRepository(client.api, client.buvid, session)
+
+    val relations = RelationRepository(client.api, client.buvid, session)
+
+    val danmaku = DanmakuRepository(client.api, client.buvid, session)
+
+    val pgc = PgcRepository(client.api, client.wbi, client.buvid, session)
+
+    val ranking = RankingRepository(client.api, client.wbi, client.buvid)
+
+    val interactions = InteractionRepository(client.api, client.buvid, session)
+
+    val messages = MessageRepository(client.api, client.buvid, session)
+
+    val im = ImRepository(client.api, space, session)
+
+    val subtitles = SubtitleRepository(client.api, client.wbi, client.buvid, client.http)
+
+    val sponsorBlock = SponsorBlockRepository(client.http)
+
+    val blocks = BlockRepository(appContext, scope, client.api, client.buvid, session)
+
+    val reports = ReportRepository(client.api, client.buvid, client.cookieStore, session)
+
+    val dlna = DlnaCastController(appContext, scope, client, video, pgc, settings)
+
+    val downloads = DownloadRepository(
+        context = appContext,
+        scope = scope,
+        client = client,
+        videoRepository = video,
+        pgcRepository = pgc,
+        danmakuRepository = danmaku,
+        subtitleRepository = subtitles,
+        settings = settings,
+    )
+}
+
+val LocalAppContainer = staticCompositionLocalOf<AppContainer?> { null }

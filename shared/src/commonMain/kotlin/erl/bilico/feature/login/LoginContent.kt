@@ -1,0 +1,110 @@
+package erl.bilico.feature.login
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import io.github.suqi8.coui.kmp.basic.Button
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.TextButton
+import io.github.suqi8.coui.kmp.theme.COUITheme
+
+@Composable
+fun LoginContent(
+    state: LoginUiState,
+    onRefresh: () -> Unit,
+    onWebLogin: () -> Unit = {},
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Card(
+            cornerRadius = 18.dp,
+            insideMargin = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text(text = "扫码登录", style = COUITheme.textStyles.title3)
+
+                if (state.qrCode != null) {
+                    Image(
+                        bitmap = state.qrCode,
+                        contentDescription = "登录二维码",
+                        modifier = Modifier.size(220.dp),
+                    )
+                } else {
+                    Spacer(Modifier.height(40.dp))
+                    CircularProgressIndicator(size = 28.dp)
+                    Spacer(Modifier.height(40.dp))
+                }
+
+                Text(
+                    text = state.statusText,
+                    style = COUITheme.textStyles.footnote1,
+                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                    textAlign = TextAlign.Center,
+                )
+
+                state.error?.let { message ->
+                    Text(
+                        text = message,
+                        style = COUITheme.textStyles.footnote2,
+                        color = COUITheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    if (state.isExpired || (state.qrCode == null && !state.isLoading)) {
+                        Button(onClick = onRefresh) { Text("刷新二维码") }
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    Button(
+                        onClick = onWebLogin,
+                        modifier = Modifier.testTag("btn_web_login"),
+                    ) {
+                        Text("网页登录")
+                    }
+                }
+
+                if (!state.isExpired && state.qrCode != null) {
+                    TextButton(
+                        text = "刷新二维码",
+                        onClick = onRefresh,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Text(
+            text = "支持 App 扫码与网页登录（短信验证码 / 密码），登录后默认 1080P",
+            style = COUITheme.textStyles.footnote2,
+            color = COUITheme.colorScheme.onSurfaceVariantSummary,
+            textAlign = TextAlign.Center,
+        )
+    }
+}

@@ -1,0 +1,70 @@
+plugins {
+    id("org.jetbrains.kotlin.multiplatform")
+    id("com.android.kotlin.multiplatform.library")
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.compose")
+}
+
+kotlin {
+    android {
+        compileSdk {
+            version = release(37) {
+                minorApiLevel = 0
+            }
+        }
+        minSdk = 26
+        namespace = "erl.bilico.shared"
+    }
+
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64(),
+    ).forEach { target ->
+        target.binaries.framework {
+            baseName = "shared"
+            isStatic = true
+        }
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            api("org.jetbrains.compose.runtime:runtime:1.11.1")
+            api("org.jetbrains.compose.foundation:foundation:1.11.1")
+            api("org.jetbrains.compose.ui:ui:1.11.1")
+            api("org.jetbrains.compose.animation:animation:1.11.1")
+            implementation("org.jetbrains.compose.components:components-resources:1.11.1")
+            api(libs.kotlinx.coroutines.core)
+            api(libs.kotlinx.serialization.json)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.client.websockets)
+            implementation(libs.ktor.serialization.json)
+            api(libs.coui.ui)
+            api(libs.coui.icons)
+            api(libs.coui.preference)
+            api(libs.coil.compose)
+            api(libs.coil.network.ktor3)
+            api(libs.lifecycle.runtime.compose)
+            api(libs.lifecycle.viewmodel.compose)
+            api(libs.navigationevent.compose)
+        }
+        androidMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+            implementation(libs.kotlinx.coroutines.android)
+            implementation(libs.androidx.core.ktx)
+            implementation(libs.androidx.activity.compose)
+            api(libs.media3.exoplayer)
+            api(libs.media3.exoplayer.dash)
+            api(libs.media3.exoplayer.hls)
+            api(libs.media3.ui)
+            implementation(libs.media3.datasource.okhttp)
+            implementation(libs.okhttp)
+            implementation(libs.zxing.core)
+            implementation(libs.brotli)
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
+        }
+    }
+}

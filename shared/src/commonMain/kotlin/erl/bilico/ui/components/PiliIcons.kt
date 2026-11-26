@@ -1,0 +1,190 @@
+package erl.bilico.ui.components
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.graphics.vector.group
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import bilico.shared.generated.resources.Res
+import bilico.shared.generated.resources.piliplus_custom_icons
+import io.github.suqi8.coui.kmp.basic.Text
+import org.jetbrains.compose.resources.Font
+
+/**
+ * PiliPlus 那套图标字体。
+ *
+ * 字形取自 PiliPlus 的 `custom_icon.ttf`：弹幕开关、弹幕设置、稍后再看这些 COUI 没有的
+ * 都在里面。个别通用图标（返回、首页、更多）继续用 COUIIcons，字体里也没有的一律用矢量补，
+ * 不硬塞别的字形顶替。
+ */
+internal object PiliGlyph {
+    const val DmOff = "\uE802"
+    const val DmOn = "\uE803"
+    const val DmSettings = "\uE804"
+    const val Repeat = "\uE810"
+    const val Share = "\uE811"
+    const val ViewHeadline = "\uE823"
+    const val WatchLater = "\uE824"
+}
+
+/** 字体图标按字号绘制，行高与字号一致，否则上下会多出半行留白。 */
+@Composable
+internal fun PiliIcon(
+    glyph: String,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    size: Dp = 22.dp,
+    tint: Color = Color.White,
+) {
+    val fontFamily = FontFamily(Font(Res.font.piliplus_custom_icons))
+    val fontSize = with(LocalDensity.current) { size.toSp() }
+    Text(
+        text = glyph,
+        modifier = modifier.semantics {
+            if (contentDescription != null) this.contentDescription = contentDescription
+        },
+        fontFamily = fontFamily,
+        fontSize = fontSize,
+        lineHeight = fontSize,
+        color = tint,
+        textAlign = TextAlign.Center,
+    )
+}
+
+/** 表情：Material 的 mood 路径，评论输入框的工具栏用。 */
+internal val EmojiIcon: ImageVector by lazy {
+    icon(
+        name = "Emoji",
+        path = "M11.99,2C6.47,2 2,6.48 2,12s4.47,10 9.99,10C17.52,22 22,17.52 22,12S17.52,2 11.99,2z" +
+            "M12,20c-4.42,0 -8,-3.58 -8,-8s3.58,-8 8,-8 8,3.58 8,8 -3.58,8 -8,8z" +
+            "M15.5,11c0.83,0 1.5,-0.67 1.5,-1.5S16.33,8 15.5,8 14,8.67 14,9.5s0.67,1.5 1.5,1.5z" +
+            "M8.5,11c0.83,0 1.5,-0.67 1.5,-1.5S9.33,8 8.5,8 7,8.67 7,9.5 7.67,11 8.5,11z" +
+            "M12,17.5c2.33,0 4.31,-1.46 5.11,-3.5H6.89c0.8,2.04 2.78,3.5 5.11,3.5z",
+    )
+}
+
+/** 空降助手：Material 的 skip_next，表示跳到下一个标记片段。 */
+internal val SkipSegmentIcon: ImageVector by lazy {
+    icon(
+        name = "SkipSegment",
+        path = "M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z",
+    )
+}
+
+/** 画中画：Material 的 picture_in_picture_alt 路径，字体里没有这个字形。 */
+internal val PipIcon: ImageVector by lazy {
+    icon(
+        name = "Pip",
+        path = "M19,11h-8v6h8v-6zM23,19V5c0,-1.1 -0.9,-2 -2,-2H3C1.9,3 1,3.9 1,5v14c0,1.1 " +
+            "0.9,2 2,2h18c1.1,0 2,-0.9 2,-2zM21,19.01H3V4.98h18V19.01z",
+    )
+}
+
+/** 亮度：手势调亮度时那根竖条上方的太阳。 */
+internal val BrightnessIcon: ImageVector by lazy {
+    icon(
+        name = "Brightness",
+        path = "M20,15.31L23.31,12L20,8.69V4h-4.69L12,0.69L8.69,4H4v4.69L0.69,12L4,15.31V20h4.69L12,23.31" +
+            "L15.31,20H20V15.31zM12,17.5c-3.04,0 -5.5,-2.46 -5.5,-5.5s2.46,-5.5 5.5,-5.5 5.5,2.46 5.5,5.5 " +
+            "-2.46,5.5 -5.5,5.5zM12,8.5c-1.93,0 -3.5,1.57 -3.5,3.5s1.57,3.5 3.5,3.5 3.5,-1.57 3.5,-3.5 " +
+            "-1.57,-3.5 -3.5,-3.5z",
+    )
+}
+
+/** 音量：手势调音量时那根竖条上方的小喇叭。 */
+internal val VolumeIcon: ImageVector by lazy {
+    icon(
+        name = "Volume",
+        path = "M3,9v6h4l5,5V4L7,9H3zM16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 " +
+            "2.5,-4.02zM14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 " +
+            "7,-8.77s-2.99,-7.86 -7,-8.77z",
+    )
+}
+
+/** 铃铛：系统消息/通知用矢量。 */
+internal val BellOutlineIcon: ImageVector by lazy {
+    icon(
+        name = "BellOutline",
+        path = "M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.9,2 2,2zm6,-6v-5c0,-3.07 -1.63,-5.64 -4.5,-6.32V4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68C7.64,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2zm-2,1H8v-6c0,-2.48 1.51,-4.5 4,-4.5s4,2.02 4,4.5v6z",
+    )
+}
+
+/** 艾特：@ 符号矢量，供「@我的」ChipTab 图标使用。 */
+internal val AtSignIcon: ImageVector by lazy {
+    icon(
+        name = "AtSign",
+        path = "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10h5v-2h-5c-4.34,0 -8,-3.66 -8,-8s3.66,-8 8,-8 8,3.66 8,8v1.43c0,0.79 -0.71,1.57 -1.5,1.57s-1.5,-0.78 -1.5,-1.57V12c0,-2.76 -2.24,-5 -5,-5s-5,2.24 -5,5 2.24,5 5,5c1.38,0 2.64,-0.56 3.54,-1.47 0.65,0.89 1.77,1.47 2.96,1.47 1.97,0 3.5,-1.6 3.5,-3.57V12c0,-5.52 -4.48,-10 -10,-10zm0,13c-1.66,0 -3,-1.34 -3,-3s1.34,-3 3,-3 3,1.34 3,3 -1.34,3 -3,3z",
+    )
+}
+
+/** 私信信封线性图标：Material 的 mail_outline 矢量。 */
+internal val MailOutlineIcon: ImageVector by lazy {
+    icon(
+        name = "MailOutline",
+        path = "M20,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2zm0,14H4V8l8,5 8,-5v10zm-8,-7L4,6h16l-8,5z",
+    )
+}
+
+/** 弹幕量统计图标：对齐 PiliPlus `StatType.danmaku` 使用的 Material `subtitles_outlined` 矢量。 */
+internal val DanmakuStatIcon: ImageVector by lazy {
+    icon(
+        name = "DanmakuStat",
+        path = "M20,4H4c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2zm0,14H4V6h16v12zM6,10h2v2H6zm0,4h8v2H6zm10,0h2v2h-2zm-6,-4h8v2h-8z",
+    )
+}
+
+/**
+ * 全屏 / 退出全屏：字体里的 `open_in_full_rotate_45` 其实画的是水平双向箭头，
+ * 拿来当全屏会读成「调整宽度」，所以这两个用 Material 的四角括号。
+ *
+ * Material 原路径只占 24 视口的 5..19，和 COUII 图标并排时小一圈，
+ * 这里绕中心放大 1.4 倍（占 2.2..21.8），视觉大小才和旁边的图标一致。
+ */
+internal val FullscreenIcon: ImageVector by lazy {
+    icon(
+        name = "Fullscreen",
+        path = "M5,14.8H2.2v7h7v-2.8H5v-4.2zM2.2,9.2h2.8V5h4.2V2.2H2.2v7z" +
+            "M19,19h-4.2v2.8h7v-7h-2.8v4.2zM14.8,2.2v2.8h4.2v4.2h2.8V2.2h-5.6z",
+    )
+}
+
+internal val FullscreenExitIcon: ImageVector by lazy {
+    icon(
+        name = "FullscreenExit",
+        path = "M2.2,17.6h4.2v4.2h2.8v-7H2.2v2.8zM6.4,6.4H2.2v2.8h7V2.2H6.4v4.2z" +
+            "M14.8,21.8h2.8v-4.2h4.2v-2.8h-7v7zM17.6,6.4V2.2h-2.8v7h7V6.4h-4.2z",
+    )
+}
+
+private fun icon(name: String, path: String, scale: Float = 1f): ImageVector =
+    ImageVector.Builder(
+        name = name,
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        // Material 的字形只占 4..20，COUI 那套铺到 2.1..21.9；放进底栏时按中心放大对齐。
+        if (scale != 1f) {
+            group(scaleX = scale, scaleY = scale, pivotX = 12f, pivotY = 12f) {
+                addPath(
+                    pathData = addPathNodes(path),
+                    fill = SolidColor(Color.Black),
+                )
+            }
+        } else {
+            addPath(
+                pathData = addPathNodes(path),
+                fill = SolidColor(Color.Black),
+            )
+        }
+    }.build()

@@ -41,5 +41,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "BiliCO"
+include(":shared")
 include(":app")
-include(":data")

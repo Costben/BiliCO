@@ -59,8 +59,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures {
@@ -82,40 +82,15 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
 dependencies {
-    implementation(project(":data"))
-
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.foundation)
-    implementation(libs.androidx.compose.animation)
-    implementation(libs.androidx.compose.material3)
+    implementation(project(":shared"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.profileinstaller)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-
-    implementation(libs.coui.ui)
-    implementation(libs.coui.icons)
-    implementation(libs.coui.preference)
-    implementation(libs.coui.kit.lib)
-
-    implementation(libs.coil.compose)
-    implementation(libs.coil.gif)
-    implementation(libs.coil.network.okhttp)
-
-    implementation(libs.media3.exoplayer)
-    implementation(libs.media3.exoplayer.dash)
-    implementation(libs.media3.exoplayer.hls)
-    implementation(libs.media3.ui)
     implementation(libs.media3.session)
-    implementation(libs.media3.datasource.okhttp)
-
-    implementation(libs.zxing.core)
+    implementation(libs.kotlinx.coroutines.android)
 }

@@ -11,7 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
-import kotlin.math.abs
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -26,18 +26,22 @@ import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import erl.bilico.feature.video.SystemRotationAnimation
+import erl.bilico.platform.AndroidPlatformBridge
+import erl.bilico.platform.BackDispatcher
+import erl.bilico.platform.PlatformContext
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.ui.BiliCoRoot
 import erl.bilico.ui.BiliCoTheme
 import erl.bilico.ui.isDarkTheme
 import io.github.suqi8.coui.kmp.basic.ScrollToTopHost
+import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
 
     private var inPipMode by mutableStateOf(false)
-    private var pendingVideoLink by mutableStateOf<ExternalVideoLink?>(null)
+    private var pendingVideoTarget by mutableStateOf<String?>(null)
+    private val backDispatcher = BackDispatcher()
 
     private val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
         inPipMode = info.isInPictureInPictureMode
@@ -45,21 +49,37 @@ class MainActivity : ComponentActivity() {
 
     private val playbackReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            val platformCtx = PlatformContext(context)
             when (intent.action) {
-                PlaybackBridge.ACTION_TOGGLE_PLAY -> PlaybackBridge.togglePlayPause(context)
-                PlaybackBridge.ACTION_STOP_BG -> PlaybackBridge.stopPlayback(context)
+                PlaybackBridge.ACTION_TOGGLE_PLAY -> PlaybackBridge.togglePlayPause(platformCtx)
+                PlaybackBridge.ACTION_STOP_BG -> PlaybackBridge.stopPlayback(platformCtx)
             }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        pendingVideoLink = ExternalVideoLink.fromIntent(intent)
-        // 整个 App 只有播放页会真的转成横屏（由 VideoFullscreenStage 申请），其余页面一律锁竖屏。
+        AndroidPlatformBridge.init(this)
+        AndroidPlatformBridge.setCurrentActivity(this)
+        pendingVideoTarget = ExternalVideoLink.fromIntent(intent)?.toTargetString()
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         enableEdgeToEdge()
         voteHighRefreshRate()
         addOnPictureInPictureModeChangedListener(pipListener)
+
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (!backDispatcher.dispatch()) {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                        isEnabled = true
+                    }
+                }
+            },
+        )
+
         val filter = IntentFilter().apply {
             addAction(PlaybackBridge.ACTION_TOGGLE_PLAY)
             addAction(PlaybackBridge.ACTION_STOP_BG)
@@ -84,8 +104,8 @@ class MainActivity : ComponentActivity() {
                     window.setBackgroundDrawable(
                         ColorDrawable(
                             if (dark) Color.rgb(0x30, 0x30, 0x30)
-                            else Color.rgb(0xF0, 0xF1, 0xF2)
-                        )
+                            else Color.rgb(0xF0, 0xF1, 0xF2),
+                        ),
                     )
                     enableEdgeToEdge(
                         statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
@@ -94,17 +114,10 @@ class MainActivity : ComponentActivity() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         window.isNavigationBarContrastEnforced = false
                     }
-                    // 系统栏的滑出行为在这里定一次就够：播放页每次进退再写一次，都是一次跨进程调用，
-                    // 会压在正常竖屏进出视频页的首帧上。
                     WindowCompat.getInsetsController(window, window.decorView).systemBarsBehavior =
                         WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                         window.attributes = window.attributes.apply {
-                            // 自绘转屏的机型在开窗这一刻就把系统转场设成无缝：等到进播放页再改，
-                            // 首帧要先走一次属性下发，正好压在手势起手那一帧上。
-                            if (SystemRotationAnimation.appDriven) {
-                                rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
-                            }
                             layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
                             } else {
@@ -116,9 +129,12 @@ class MainActivity : ComponentActivity() {
                 }
                 CompositionLocalProvider(LocalInPipMode provides inPipMode) {
                     ScrollToTopHost {
-                        BiliCoRoot(container, pendingVideoLink) { handled ->
-                            if (pendingVideoLink === handled) pendingVideoLink = null
-                        }
+                        BiliCoRoot(
+                            container = container,
+                            externalBackDispatcher = backDispatcher,
+                            pendingVideoTarget = pendingVideoTarget,
+                            onPendingVideoHandled = { pendingVideoTarget = null },
+                        )
                     }
                 }
             }
@@ -128,19 +144,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        ExternalVideoLink.fromIntent(intent)?.let { pendingVideoLink = it }
+        ExternalVideoLink.fromIntent(intent)?.toTargetString()?.let { pendingVideoTarget = it }
     }
 
     override fun onResume() {
         super.onResume()
+        AndroidPlatformBridge.setCurrentActivity(this)
         voteHighRefreshRate()
     }
 
-    /**
-     * 显式向系统与 OEM 调度器申请原生分辨率下的 120Hz 高刷新率模式：
-     * 1. 通过 preferredDisplayModeId + preferredRefreshRate 突破非白名单应用默认 60Hz/90Hz 上限；
-     * 2. 在 Android 15+ 上通过 decorView.setRequestedFrameRate(120f) 避免属性动画落入 60Hz 档。
-     */
     private fun voteHighRefreshRate() {
         val displayModes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             display?.supportedModes
@@ -172,12 +184,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        PlaybackBridge.onUserLeaveHint(this)
-    }
-
     override fun onDestroy() {
+        if (AndroidPlatformBridge.currentActivity() === this) {
+            AndroidPlatformBridge.setCurrentActivity(null)
+        }
         removeOnPictureInPictureModeChangedListener(pipListener)
         runCatching { unregisterReceiver(playbackReceiver) }
         super.onDestroy()
@@ -187,3 +197,6 @@ class MainActivity : ComponentActivity() {
         const val HIGH_REFRESH_RATE = 120f
     }
 }
+
+private fun ExternalVideoLink.toTargetString(): String? =
+    bvid ?: aid?.let { "https://www.bilibili.com/video/av$it" }

@@ -1,0 +1,314 @@
+package erl.bilico.feature.video
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import erl.bilico.data.model.VideoChapter
+import erl.bilico.data.model.VideoEpisode
+import erl.bilico.di.AppContainer
+import erl.bilico.feature.comment.CommentTab
+import erl.bilico.feature.comment.ReplyDetailOverlay
+import erl.bilico.feature.comment.ReplyThreadController
+import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalTopBarBounds
+import erl.bilico.ui.NavState
+import erl.bilico.ui.PinnedBarDensity
+import erl.bilico.ui.Route
+import erl.bilico.ui.TopBarBounds
+import erl.bilico.ui.components.LocalCommentSeek
+import erl.bilico.ui.layerBackdropIf
+import erl.bilico.ui.pageContainerColor
+import erl.bilico.ui.reportTopBarBottom
+import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBarDefaults
+import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarDefaults
+import io.github.suqi8.coui.kmp.basic.FloatingActionButton
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Playlist
+import io.github.suqi8.coui.kmp.icon.extended.Send
+import io.github.suqi8.coui.kmp.theme.COUITheme
+
+@Composable
+internal fun VideoDetailSection(
+    container: AppContainer,
+    nav: NavState,
+    state: VideoUiState,
+    detailPager: PagerState,
+    infoListState: LazyListState,
+    commentListState: LazyListState,
+    replyThread: ReplyThreadController,
+    replyListState: LazyListState,
+    danmakuEnabled: Boolean,
+    danmakuComposing: Boolean,
+    danmakuDraft: String,
+    onOpenDanmakuSettings: (() -> Unit)? = null,
+    onDanmakuDraftChange: (String) -> Unit,
+    onDanmakuComposingChange: (Boolean) -> Unit,
+    onSendDanmaku: () -> Unit,
+    onSelectPage: (Int) -> Unit,
+    onRetry: () -> Unit,
+    onSelectPart: (Int) -> Unit,
+    onSelectEpisode: (VideoEpisode) -> Unit,
+    onOpenQueue: () -> Unit,
+    onOpenCoin: () -> Unit,
+    onOpenFavorite: () -> Unit,
+    onShare: () -> Unit,
+    onDownload: (() -> Unit)? = null,
+    downloaded: Boolean = false,
+    onSeekCommentMs: (Long) -> Unit,
+    onLike: () -> Unit,
+    onTriple: (() -> Unit)? = null,
+    onDislike: () -> Unit,
+    showDislike: Boolean = true,
+    onWatchLater: () -> Unit,
+    onFollow: () -> Unit,
+    onOpenUser: (Long) -> Unit,
+    onOpenVideo: (String) -> Unit,
+    chapters: List<VideoChapter> = emptyList(),
+    positionMsProvider: () -> Long = { 0L },
+    onSelectChapter: (VideoChapter) -> Unit = {},
+    onOpenChapters: () -> Unit = {},
+    barBackdrops: VideoBarBackdrops? = null,
+    blurActive: Boolean = true,
+    backEnabled: Boolean = true,
+    commentRootId: Long = 0L,
+    commentTargetId: Long = 0L,
+    commentMatchAuthor: String = "",
+    commentMatchText: String = "",
+    sponsorLabel: String? = null,
+    promotedBadge: Boolean = false,
+) {
+    val navBarBottom = rememberStableNavBarBottomDp()
+    val fallbackBackdrop = rememberLayerBackdrop()
+    val detailLayerBackdrop = barBackdrops?.detail ?: fallbackBackdrop
+    val barMaterialBackdrop = barBackdrops?.barMaterial
+    val pageBg = pageContainerColor()
+    val statusBarDp = with(LocalDensity.current) { rememberStableStatusBarHeightPx().toDp() }
+    val firstRowHeight = statusBarDp + CollapsedBarHeight
+    val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + DETAIL_CONTENT_GAP
+    val barBlurActive = blurActive && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
+    val detailBarBounds = remember { TopBarBounds() }
+    var commentComposeTrigger by remember(state.detail?.aid) { mutableIntStateOf(0) }
+
+    CompositionLocalProvider(LocalTopBarBounds provides detailBarBounds) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(pageBg),
+        ) {
+            HorizontalPager(
+                state = detailPager,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .layerBackdropIf(BlurEffectsEnabled, detailLayerBackdrop)
+                    .background(pageBg),
+                beyondViewportPageCount = 0,
+                key = { DETAIL_PAGES[it] },
+            ) { page ->
+                when (page) {
+                    0 -> CompositionLocalProvider(
+                        LocalCommentSeek provides onSeekCommentMs,
+                    ) {
+                        VideoInfoTab(
+                            detail = state.detail,
+                            isLoading = state.isLoading,
+                            error = state.error,
+                            selectedCid = state.selectedCid,
+                            onRetry = onRetry,
+                            onSelectPart = onSelectPart,
+                            onSelectEpisode = onSelectEpisode,
+                            onOpenUser = onOpenUser,
+                            onOpenVideo = onOpenVideo,
+                            related = state.related,
+                            container = container,
+                            liked = state.liked,
+                            disliked = state.disliked,
+                            coined = state.coined,
+                            favorited = state.favorited,
+                            following = state.following,
+                            upFollowers = state.upFollowers,
+                            upOfficialType = state.upOfficialType,
+                            upOfficialDesc = state.upOfficialDesc,
+                            onLike = onLike,
+                            onTriple = onTriple,
+                            onDislike = onDislike,
+                            showDislike = showDislike,
+                            onCoin = onOpenCoin,
+                            onFavorite = onOpenFavorite,
+                            onWatchLater = onWatchLater,
+                            onFollow = onFollow,
+                            onShare = onShare,
+                            onDownload = onDownload,
+                            downloaded = downloaded,
+                            listState = infoListState,
+                            topInset = contentTop,
+                            bottomInset = navBarBottom,
+                            chapters = chapters,
+                            positionMsProvider = positionMsProvider,
+                            onSelectChapter = onSelectChapter,
+                            onOpenChapters = onOpenChapters,
+                            onTagClick = { tag ->
+                                val keyword = tag.trim()
+                                if (keyword.isNotEmpty()) nav.push(Route.Search(keyword))
+                            },
+                            sponsorLabel = sponsorLabel,
+                            promotedBadge = promotedBadge,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    else -> {
+                        val aid = state.detail?.aid ?: 0L
+                        if (aid > 0L) {
+                            CompositionLocalProvider(
+                                LocalCommentSeek provides onSeekCommentMs,
+                            ) {
+                                CommentTab(
+                                    container = container,
+                                    oid = aid,
+                                    onOpenUser = onOpenUser,
+                                    upMid = state.detail?.upMid ?: 0L,
+                                    listState = commentListState,
+                                    topInset = contentTop,
+                                    topGap = 0.dp,
+                                    bottomInset = navBarBottom,
+                                    targetRootId = commentRootId,
+                                    targetReplyId = commentTargetId,
+                                    targetMatchAuthor = commentMatchAuthor,
+                                    targetMatchText = commentMatchText,
+                                    replyThreadController = replyThread,
+                                    showFab = false,
+                                    composeTrigger = commentComposeTrigger,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 右下角悬浮按钮挂在 HorizontalPager 的 layerBackdrop 外层，不参与顶栏背景录制，避免滚动时闪烁。
+            val showQueueFab = detailPager.currentPage == 0 && nav.playQueue.items.isNotEmpty()
+            val showCommentFab = detailPager.currentPage == 1 && (state.detail?.aid ?: 0L) > 0L && replyThread.root == null
+            if (showQueueFab || showCommentFab) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = navBarBottom),
+                ) {
+                    PinnedBarDensity {
+                        Box(Modifier.fillMaxSize()) {
+                            if (showQueueFab) {
+                                FloatingActionButton(
+                                    onClick = onOpenQueue,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(
+                                            end = BottomFloatingAccessoryNavigationBarDefaults.PaddingHorizontal,
+                                            bottom = (BottomFloatingNavigationBarDefaults.MinHeightWithoutPaddingVertical -
+                                                BottomFloatingAccessoryNavigationBarDefaults.AccessorySize) / 2,
+                                        )
+                                        .size(BottomFloatingAccessoryNavigationBarDefaults.AccessorySize)
+                                        .semantics { contentDescription = "播放队列" },
+                                ) {
+                                    Icon(
+                                        imageVector = COUIIcons.Playlist,
+                                        contentDescription = "播放队列",
+                                        modifier = Modifier.size(24.dp),
+                                        tint = COUITheme.colorScheme.onPrimary,
+                                    )
+                                }
+                            } else {
+                                FloatingActionButton(
+                                    onClick = { commentComposeTrigger++ },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(
+                                            end = BottomFloatingAccessoryNavigationBarDefaults.PaddingHorizontal,
+                                            bottom = (BottomFloatingNavigationBarDefaults.MinHeightWithoutPaddingVertical -
+                                                BottomFloatingAccessoryNavigationBarDefaults.AccessorySize) / 2,
+                                        )
+                                        .size(BottomFloatingAccessoryNavigationBarDefaults.AccessorySize)
+                                        .semantics { contentDescription = "发送评论" },
+                                ) {
+                                    Icon(
+                                        imageVector = COUIIcons.Send,
+                                        contentDescription = "发送评论",
+                                        modifier = Modifier.size(24.dp),
+                                        tint = COUITheme.colorScheme.onPrimary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            DetailBarGlassSurface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .reportTopBarBottom(detailBarBounds),
+                containerColor = pageBg,
+                backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,
+                materialBackdrop = if (BlurEffectsEnabled) barMaterialBackdrop else null,
+                extraHeight = 0.dp,
+                topInset = firstRowHeight,
+            ) {
+                VideoDetailBar(
+                    selected = detailPager.currentPage,
+                    onSelect = onSelectPage,
+                    commentCount = state.detail?.reply ?: 0L,
+                    danmakuEnabled = danmakuEnabled,
+                    onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
+                    onOpenDanmakuSettings = onOpenDanmakuSettings,
+                    composing = danmakuComposing,
+                    draft = danmakuDraft,
+                    onDraftChange = onDanmakuDraftChange,
+                    onComposingChange = onDanmakuComposingChange,
+                    onSend = onSendDanmaku,
+                    backdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
+                )
+            }
+
+            val aid = state.detail?.aid ?: 0L
+            if (aid > 0L) {
+                CompositionLocalProvider(
+                    LocalCommentSeek provides onSeekCommentMs,
+                ) {
+                    ReplyDetailOverlay(
+                        controller = replyThread,
+                        container = container,
+                        oid = aid,
+                        upMid = state.detail?.upMid ?: 0L,
+                        listState = replyListState,
+                        topInset = firstRowHeight,
+                        bottomInset = navBarBottom,
+                        backEnabled = backEnabled,
+                        onOpenUser = onOpenUser,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+    }
+}
