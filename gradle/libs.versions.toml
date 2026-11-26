@@ -1,7 +1,7 @@
 [versions]
 agp = "9.3.2"
 kotlin = "2.4.10"
-compose-multiplatform = "1.11.1"
+compose-multiplatform = "1.12.2"
 coroutines = "1.11.0"
 serialization = "1.11.0"
 ktor = "3.5.1"
@@ -31,6 +31,8 @@ coui-ui = { group = "io.github.suqi8.coui.kmp", name = "coui-ui", version.ref = 
 coui-icons = { group = "io.github.suqi8.coui.kmp", name = "coui-icons", version.ref = "coui" }
 coui-preference = { group = "io.github.suqi8.coui.kmp", name = "coui-preference", version.ref = "coui" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+coil-gif = { group = "io.coil-kt.coil3", name = "coil-gif", version.ref = "coil" }
+coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 coil-network-ktor3 = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", version.ref = "coil" }
 lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }

@@ -20,6 +20,9 @@ kotlin {
         minSdk = 26
         namespace = "erl.bilico.shared"
         androidResources.enable = true
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        }
     }
 
     listOf(
@@ -35,11 +38,11 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            api("org.jetbrains.compose.runtime:runtime:1.11.1")
-            api("org.jetbrains.compose.foundation:foundation:1.11.1")
-            api("org.jetbrains.compose.ui:ui:1.11.1")
-            api("org.jetbrains.compose.animation:animation:1.11.1")
-            implementation("org.jetbrains.compose.components:components-resources:1.11.1")
+            api("org.jetbrains.compose.runtime:runtime:1.12.2")
+            api("org.jetbrains.compose.foundation:foundation:1.12.2")
+            api("org.jetbrains.compose.ui:ui:1.12.2")
+            api("org.jetbrains.compose.animation:animation:1.12.2")
+            implementation("org.jetbrains.compose.components:components-resources:1.12.2")
             api(libs.kotlinx.coroutines.core)
             api(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
@@ -50,13 +53,14 @@ kotlin {
             api(libs.coui.icons)
             api(libs.coui.preference)
             api(libs.coil.compose)
-            api(libs.coil.network.ktor3)
             api(libs.lifecycle.runtime.compose)
             api(libs.lifecycle.viewmodel.compose)
             api(libs.navigationevent.compose)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.coil.network.okhttp)
+            implementation(libs.coil.gif)
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.androidx.core.ktx)
             implementation(libs.androidx.activity.compose)
@@ -71,6 +75,7 @@ kotlin {
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
+            implementation(libs.coil.network.ktor3)
         }
     }
 }

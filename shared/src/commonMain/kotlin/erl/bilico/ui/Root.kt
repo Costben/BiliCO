@@ -45,7 +45,6 @@ import coil3.annotation.ExperimentalCoilApi
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
-import coil3.network.ktor3.KtorNetworkFetcherFactory
 import erl.bilico.di.AppContainer
 import erl.bilico.di.LocalAppContainer
 import erl.bilico.feature.dynamic.ImageViewerOverlay
@@ -60,6 +59,7 @@ import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.PlatformToastHost
 import erl.bilico.platform.ScreenConfig
 import erl.bilico.platform.SyncPictureInPictureParams
+import erl.bilico.platform.configurePlatformImageLoader
 import erl.bilico.platform.currentTimeMillis
 import erl.bilico.platform.imageCacheDirectoryPath
 import erl.bilico.platform.openExternalUrl
@@ -130,9 +130,7 @@ fun BiliCoRoot(
                     .maxSizeBytes(256L * 1024L * 1024L)
                     .build()
             }
-            .components {
-                add(KtorNetworkFetcherFactory(container.client.http))
-            }
+            .configurePlatformImageLoader(container.client)
             .build()
     }
 
