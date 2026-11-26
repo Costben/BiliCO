@@ -12,6 +12,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -29,7 +30,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -56,6 +59,8 @@ import kotlin.math.roundToInt
 internal val LocalStageScale = staticCompositionLocalOf<(Size) -> Float?> { { null } }
 
 internal val LocalStageOpaquePlayer = staticCompositionLocalOf { true }
+
+internal val LocalStageVideoAspect = compositionLocalOf { 0f }
 
 internal val LocalStagePlayerVisible = staticCompositionLocalOf { true }
 
@@ -359,6 +364,31 @@ internal const val DEFAULT_VIDEO_ASPECT = 16f / 9f
 
 internal fun fitContentWidth(aspect: Float, containerW: Float, containerH: Float): Float =
     min(containerW, containerH * aspect)
+
+/** 将视频渲染视图严格约束在视频自身内容比例内，避免 iOS UIKitView 把上下黑边挖洞带入退出全屏动画。 */
+internal fun Modifier.fitVideoSurfaceAspect(aspect: Float): Modifier = layout { measurable, constraints ->
+    val maxW = constraints.maxWidth
+    val maxH = constraints.maxHeight
+    val childConstraints = if (aspect > 0f &&
+        maxW != Constraints.Infinity &&
+        maxH != Constraints.Infinity &&
+        maxW > 0 &&
+        maxH > 0
+    ) {
+        val fitW = fitContentWidth(aspect, maxW.toFloat(), maxH.toFloat())
+        val fitH = (fitW / aspect).coerceAtMost(maxH.toFloat())
+        Constraints.fixed(
+            width = fitW.roundToInt().coerceIn(1, maxW),
+            height = fitH.roundToInt().coerceIn(1, maxH),
+        )
+    } else {
+        Constraints.fixed(maxW.coerceAtLeast(1), maxH.coerceAtLeast(1))
+    }
+    val placeable = measurable.measure(childConstraints)
+    layout(placeable.width, placeable.height) {
+        placeable.place(0, 0)
+    }
+}
 
 internal fun sideToDegrees(side: Int): Float = if (side < 0) -90f else 90f
 

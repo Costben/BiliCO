@@ -386,6 +386,7 @@ internal fun VideoFullscreenStage(
                     CompositionLocalProvider(
                         LocalStageScale provides stageScale,
                         LocalStageOpaquePlayer provides !portraitStage,
+                        LocalStageVideoAspect provides aspect,
                         LocalStageFrozenVideo provides frameHolder.frozen,
                         LocalStageFrameSource provides frameHolder.source,
                         LocalStagePlayerVisible provides playerVisible,

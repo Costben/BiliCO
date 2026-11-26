@@ -284,7 +284,9 @@ internal fun VideoPlayer(
         selectedKey = selectedSubtitleKey,
         onSelectSubtitle = { onSelectSubtitle(it); activeMenu = PlayerPopupMenu.NONE },
     )
-    val stageModifier = if (LocalStageOpaquePlayer.current && stagePlayerVisible) modifier.background(Color.Black) else modifier
+    val stageOpaquePlayer = LocalStageOpaquePlayer.current
+    val stageVideoAspect = LocalStageVideoAspect.current
+    val stageModifier = if (stageOpaquePlayer && stagePlayerVisible) modifier.background(Color.Black) else modifier
     RegisterSurfaceViewEntry(hdrVideo)
 
     Box(stageModifier.onGloballyPositioned { stageCoords = it }) {
@@ -294,25 +296,29 @@ internal fun VideoPlayer(
                 .layerBackdropIf(captureMenuBackdrop, menuBackdrop),
         ) {
             if (!minimized && !frozenVideo && stagePlayerVisible && !routeExiting && !audioOnly && isTop) {
-                BiliPlayerSurface(
-                    player = player,
-                    resizeMode = VideoResizeMode.FIT,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clipToBounds()
-                        .graphicsLayer {
-                            scaleX = zoomState.scale
-                            scaleY = zoomState.scale
-                            translationX = zoomState.offsetX
-                            translationY = zoomState.offsetY
-                            rotationZ = zoomState.rotationDegrees
-                        },
-                )
+                Box(
+                    modifier = Modifier.fillMaxSize().clipToBounds(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    BiliPlayerSurface(
+                        player = player,
+                        resizeMode = VideoResizeMode.FIT,
+                        modifier = Modifier
+                            .fitVideoSurfaceAspect(stageVideoAspect)
+                            .graphicsLayer {
+                                scaleX = zoomState.scale
+                                scaleY = zoomState.scale
+                                translationX = zoomState.offsetX
+                                translationY = zoomState.offsetY
+                                rotationZ = zoomState.rotationDegrees
+                            },
+                    )
+                }
             } else {
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(if (stagePlayerVisible) Color.Black else Color.Transparent),
+                        .background(if (stagePlayerVisible && stageOpaquePlayer) Color.Black else Color.Transparent),
                 )
             }
 
