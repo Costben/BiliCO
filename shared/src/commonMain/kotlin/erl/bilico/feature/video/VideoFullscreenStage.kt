@@ -117,6 +117,7 @@ internal fun VideoFullscreenStage(
     val frameHolder = rememberStageFrameHolder()
 
     StageWindowAttributesEffect(context)
+    StagePlatformWindowAttributesEffect()
 
     val isTop = LocalRouteIsTop.current
     val nav = LocalNavState.current

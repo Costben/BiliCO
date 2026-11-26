@@ -7,6 +7,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.UIKitView
+import erl.bilico.ui.LocalRouteIsTop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -144,12 +145,19 @@ actual fun keepScreenOn(context: PlatformContext, enabled: Boolean) {
     }
 }
 
-actual fun readScreenBrightness(): Float =
-    UIScreen.mainScreen.brightness.toFloat().coerceIn(0.02f, 1f)
+private var savedIosScreenBrightness: Double? = null
+
+actual fun readScreenBrightness(): Float = UIScreen.mainScreen.brightness.toFloat().coerceIn(0.02f, 1f)
 
 actual fun writeScreenBrightness(value: Float) {
     dispatch_async(dispatch_get_main_queue()) {
-        UIScreen.mainScreen.brightness = value.coerceIn(0.02f, 1f).toDouble()
+        if (value < 0f) {
+            savedIosScreenBrightness?.let { UIScreen.mainScreen.brightness = it }
+            savedIosScreenBrightness = null
+        } else {
+            if (savedIosScreenBrightness == null) savedIosScreenBrightness = UIScreen.mainScreen.brightness
+            UIScreen.mainScreen.brightness = value.coerceIn(0.02f, 1f).toDouble()
+        }
     }
 }
 
@@ -255,6 +263,7 @@ private fun postNotification(name: String, key: String, value: NSNumber) {
 }
 
 actual fun setScreenOrientation(context: PlatformContext, orientation: PlatformOrientation) {
+    // UIInterfaceOrientationMaskLandscapeRight = 逆时针 90°（听筒/刘海在左），LandscapeLeft = 顺时针 90°（听筒/刘海在右）。
     val mask = when (orientation) {
         PlatformOrientation.Portrait -> UIInterfaceOrientationMaskPortrait
         PlatformOrientation.Landscape -> UIInterfaceOrientationMaskLandscape
@@ -270,11 +279,7 @@ actual fun setSystemBarsVisible(context: PlatformContext, visible: Boolean) {
 }
 
 actual fun setStatusBarDarkIcons(context: PlatformContext, darkIcons: Boolean?) {
-    val styleValue = when (darkIcons) {
-        true -> 1
-        false -> 0
-        null -> -1
-    }
+    val styleValue = when (darkIcons) { true -> 1; false -> 0; null -> -1 }
     postNotification("BiliCoStatusBarStyleChanged", "darkIcons", NSNumber(int = styleValue))
 }
 
@@ -450,7 +455,7 @@ actual fun BiliWebView(
 @OptIn(ExperimentalForeignApi::class)
 @Composable
 actual fun rememberDeviceOrientationSide(mode: Int): Int {
-    if (mode == 0) return 0
+    if (mode == 0 || !LocalRouteIsTop.current) return 0
     var side by remember { mutableIntStateOf(0) }
     DisposableEffect(mode) {
         val manager = CMMotionManager()

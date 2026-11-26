@@ -11,24 +11,26 @@ import erl.bilico.platform.keepScreenOn
 import erl.bilico.player.BiliPlayer
 import erl.bilico.player.BiliPlayerListener
 import erl.bilico.player.PlayerStates
-import erl.bilico.player.hasPlayIntent
+
+private fun BiliPlayer.hasActivePlaybackForScreenOn(): Boolean =
+    isPlaying || (playWhenReady && playbackState != PlayerStates.STATE_ENDED && playbackState != PlayerStates.STATE_IDLE)
 
 @Composable
 internal fun rememberPlaybackScreenOn(player: BiliPlayer): Boolean {
-    var active by remember(player) { mutableStateOf(player.hasPlayIntent) }
+    var active by remember(player) { mutableStateOf(player.hasActivePlaybackForScreenOn()) }
     DisposableEffect(player) {
-        active = player.hasPlayIntent
+        active = player.hasActivePlaybackForScreenOn()
         val listener = object : BiliPlayerListener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                active = player.hasPlayIntent || isPlaying
+                active = player.hasActivePlaybackForScreenOn()
             }
 
             override fun onPlayIntentChanged(hasPlayIntent: Boolean) {
-                active = hasPlayIntent
+                active = player.hasActivePlaybackForScreenOn()
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                active = player.playWhenReady && state != PlayerStates.STATE_ENDED && state != PlayerStates.STATE_IDLE
+                active = player.hasActivePlaybackForScreenOn()
             }
         }
         player.addListener(listener)
@@ -37,11 +39,20 @@ internal fun rememberPlaybackScreenOn(player: BiliPlayer): Boolean {
     return active
 }
 
+private var keepScreenOnHolders = 0
+
 @Composable
 internal fun KeepScreenOnEffect(enabled: Boolean) {
     val context = LocalPlatformContext.current
     DisposableEffect(context, enabled) {
-        keepScreenOn(context, enabled)
-        onDispose { keepScreenOn(context, false) }
+        if (enabled) {
+            if (keepScreenOnHolders++ == 0) keepScreenOn(context, true)
+        }
+        onDispose {
+            if (enabled) {
+                keepScreenOnHolders = (keepScreenOnHolders - 1).coerceAtLeast(0)
+                if (keepScreenOnHolders == 0) keepScreenOn(context, false)
+            }
+        }
     }
 }

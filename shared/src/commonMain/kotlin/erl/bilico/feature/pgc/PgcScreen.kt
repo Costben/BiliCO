@@ -47,6 +47,8 @@ import erl.bilico.feature.video.rememberVideoBarBackdrops
 import erl.bilico.feature.video.resolveLongPressSpeedMode
 import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.PlatformBackHandler
+import erl.bilico.platform.canEnterPip
+import erl.bilico.platform.enterPipNow
 import erl.bilico.player.BiliPlayerListener
 import erl.bilico.player.BindPlaybackSession
 import erl.bilico.player.LocalInPipMode
@@ -64,7 +66,6 @@ import erl.bilico.feature.video.rememberStageVideoBackdrop
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
-import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -449,7 +450,7 @@ fun PgcScreen(
                 subtitleTracks = subtitleController.tracks,
                 selectedSubtitleKey = subtitleController.selectedTrackKey,
                 onSelectSubtitle = subtitleController::selectTrack,
-                onEnterPip = null,
+                onEnterPip = if (canEnterPip(context)) { { enterPipNow(context) } } else null,
                 onHome = returnHome,
                 onCast = if ((viewModel.currentEpisode?.epId ?: epId) > 0L || (viewModel.currentEpisode?.cid ?: 0L) > 0L) {
                     { castDialogVisible = true }

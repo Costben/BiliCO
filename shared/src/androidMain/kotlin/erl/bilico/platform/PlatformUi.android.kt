@@ -10,6 +10,10 @@ import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import android.graphics.RuntimeShader
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -20,7 +24,6 @@ import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
-import android.view.OrientationEventListener
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -31,14 +34,7 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
@@ -52,23 +48,25 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
+import erl.bilico.ui.LocalRouteIsTop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.atan2
+import kotlin.math.roundToInt
 
 private val mainHandler = Handler(Looper.getMainLooper())
 
 private fun runOnMain(block: () -> Unit) {
-    if (Looper.myLooper() == Looper.getMainLooper()) {
-        block()
-    } else {
-        mainHandler.post(block)
-    }
+    if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
 }
 
 actual fun uptimeMillis(): Long = SystemClock.uptimeMillis()
@@ -80,13 +78,8 @@ actual fun copyToClipboard(context: PlatformContext, text: String, label: String
 
 actual fun openExternalUrl(context: PlatformContext, url: String) {
     val parsed = runCatching { Uri.parse(url) }.getOrNull() ?: return
-    val intent = Intent(Intent.ACTION_VIEW, parsed).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    runCatching {
-        val host = AndroidPlatformBridge.currentActivity() ?: context.androidContext
-        host.startActivity(intent)
-    }
+    val intent = Intent(Intent.ACTION_VIEW, parsed).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+    runCatching { (AndroidPlatformBridge.currentActivity() ?: context.androidContext).startActivity(intent) }
 }
 
 actual fun shareText(context: PlatformContext, text: String, title: String) {
@@ -95,13 +88,8 @@ actual fun shareText(context: PlatformContext, text: String, title: String) {
         putExtra(Intent.EXTRA_TEXT, text)
         if (title.isNotBlank()) putExtra(Intent.EXTRA_SUBJECT, title)
     }
-    val chooser = Intent.createChooser(send, title.ifBlank { "分享" }).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    runCatching {
-        val host = AndroidPlatformBridge.currentActivity() ?: context.androidContext
-        host.startActivity(chooser)
-    }
+    val chooser = Intent.createChooser(send, title.ifBlank { "分享" }).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+    runCatching { (AndroidPlatformBridge.currentActivity() ?: context.androidContext).startActivity(chooser) }
 }
 
 actual suspend fun saveImageBytesToPhotos(context: PlatformContext, bytes: ByteArray): Result<Unit> =
@@ -163,33 +151,26 @@ actual fun generateQrCodeBitmap(content: String, sizePx: Int): ImageBitmap? {
 actual fun keepScreenOn(context: PlatformContext, enabled: Boolean) {
     runOnMain {
         val window = AndroidPlatformBridge.currentActivity()?.window ?: return@runOnMain
-        if (enabled) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
+        if (enabled) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 }
 
 actual fun readScreenBrightness(): Float {
     val activity = AndroidPlatformBridge.currentActivity()
     val windowValue = activity?.window?.attributes?.screenBrightness ?: -1f
-    if (windowValue in 0f..1f) return windowValue.coerceIn(0.02f, 1f)
-    val ctx = activity ?: runCatching { AndroidPlatformBridge.requireAppContext() }.getOrNull()
-        ?: return 0.5f
-    val raw = runCatching {
-        Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-    }.getOrDefault(128)
+    if (windowValue in 0.01f..1f) return windowValue.coerceIn(0.02f, 1f)
+    val ctx = activity ?: runCatching { AndroidPlatformBridge.requireAppContext() }.getOrNull() ?: return 0.5f
+    val raw = runCatching { Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS) }.getOrDefault(128)
     return (raw / 255f).coerceIn(0.02f, 1f)
 }
 
 actual fun writeScreenBrightness(value: Float) {
-    val clamped = value.coerceIn(0.02f, 1f)
     runOnMain {
         val window = AndroidPlatformBridge.currentActivity()?.window ?: return@runOnMain
-        window.attributes = window.attributes.apply {
-            screenBrightness = clamped
-        }
+        val target = if (value < 0f) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else value.coerceIn(0.02f, 1f)
+        if (window.attributes.screenBrightness == target) return@runOnMain
+        window.attributes = window.attributes.apply { screenBrightness = target }
     }
 }
 
@@ -205,20 +186,33 @@ actual fun writeSystemVolume(value: Float) {
     val ctx = runCatching { AndroidPlatformBridge.requireAppContext() }.getOrNull() ?: return
     val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
     val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-    val target = (value.coerceIn(0f, 1f) * max).toInt().coerceIn(0, max)
-    runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0) }
+    val target = (value.coerceIn(0f, 1f) * max).roundToInt().coerceIn(0, max)
+    if (am.getStreamVolume(AudioManager.STREAM_MUSIC) != target) {
+        runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0) }
+    }
 }
 
-actual val useNativeFullscreenRotation: Boolean = false
+private val COLOROS_ROTATION_VENDORS = setOf("oppo", "oneplus", "realme")
 
+internal val isColorOsRotationVendor: Boolean = run {
+    val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
+    val brand = Build.BRAND.orEmpty().lowercase()
+    manufacturer in COLOROS_ROTATION_VENDORS || brand in COLOROS_ROTATION_VENDORS
+}
+
+actual val useNativeFullscreenRotation: Boolean = !isColorOsRotationVendor
+
+// 方向语义与 UIInterfaceOrientation / degreesToLandscapeOrientation 对齐：
+// LandscapeRight (+90°) = 手机逆时针横屏（听筒在左，Android 标准 LANDSCAPE）；
+// LandscapeLeft  (-90°) = 手机顺时针横屏（听筒在右，Android REVERSE_LANDSCAPE）。
 actual fun setScreenOrientation(context: PlatformContext, orientation: PlatformOrientation) {
     runOnMain {
         val activity = AndroidPlatformBridge.currentActivity() ?: return@runOnMain
         activity.requestedOrientation = when (orientation) {
             PlatformOrientation.Portrait -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             PlatformOrientation.Landscape -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            PlatformOrientation.LandscapeLeft -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            PlatformOrientation.LandscapeRight -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            PlatformOrientation.LandscapeRight -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            PlatformOrientation.LandscapeLeft -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
             PlatformOrientation.Unspecified -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
@@ -431,44 +425,96 @@ actual fun BiliWebView(
 
 @Composable
 actual fun rememberDeviceOrientationSide(mode: Int): Int {
-    if (mode == 0) return 0
+    val isTop = LocalRouteIsTop.current
+    if (mode == 0 || !isTop) return 0
     val platformCtx = LocalPlatformContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var side by remember { mutableIntStateOf(0) }
-    DisposableEffect(mode, platformCtx) {
+    DisposableEffect(platformCtx, lifecycleOwner, mode) {
+        val sm = platformCtx.androidContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+            ?: return@DisposableEffect onDispose {}
+        val gravity = sm.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        val sensor = gravity ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            ?: return@DisposableEffect onDispose {}
+        val useGravity = gravity != null
+        val filtered = FloatArray(3)
+        var hasFiltered = false
+        var registered = false
+        var pendingRunnable: Runnable? = null
         var pendingTarget: Int? = null
-        var pendingTicks = 0
-        val listener = object : OrientationEventListener(platformCtx.androidContext) {
-            override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN) return
-                val delta = when (mode) {
-                    1 -> 30
-                    2 -> 38
-                    else -> 45
+        val delta = when (mode) {
+            1 -> 30
+            2 -> 38
+            else -> 45
+        }
+        val cancelPending = {
+            pendingRunnable?.let { mainHandler.removeCallbacks(it) }
+            pendingRunnable = null
+            pendingTarget = null
+        }
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val v = if (useGravity) event.values else {
+                    if (!hasFiltered) {
+                        for (i in 0..2) filtered[i] = event.values[i]
+                        hasFiltered = true
+                    } else {
+                        for (i in 0..2) filtered[i] += 0.2f * (event.values[i] - filtered[i])
+                    }
+                    filtered
                 }
-                val target = when {
-                    orientation in (270 - delta)..(270 + delta) -> 1
-                    orientation in (90 - delta)..(90 + delta) -> -1
-                    orientation <= (90 - delta - 10) || orientation >= (270 + delta + 10) -> 0
+                val x = -v[0]
+                val y = -v[1]
+                val z = -v[2]
+                val xySq = x * x + y * y
+                if (xySq <= 0f || !(xySq * 14f >= z * z)) return
+                var deg = 90 - Math.toDegrees(atan2(-y.toDouble(), x.toDouble())).roundToInt()
+                while (deg >= 360) deg -= 360
+                while (deg < 0) deg += 360
+                val pMargin = 90 - delta - 10
+                val target: Int? = when {
+                    deg in (270 - delta)..(270 + delta) -> 1
+                    deg in (90 - delta)..(90 + delta) -> -1
+                    deg in 0..pMargin || deg in (360 - pMargin)..359 || deg in (90 + delta + 10)..(270 - delta - 10) -> 0
                     else -> null
                 }
                 if (target == null || target == side) {
-                    pendingTarget = null
-                    pendingTicks = 0
-                } else if (pendingTarget == target) {
-                    pendingTicks++
-                    if (pendingTicks >= 2) {
-                        side = target
-                        pendingTarget = null
-                        pendingTicks = 0
-                    }
-                } else {
+                    cancelPending()
+                } else if (pendingTarget != target) {
+                    cancelPending()
                     pendingTarget = target
-                    pendingTicks = 1
+                    val task = Runnable { side = target; pendingRunnable = null; pendingTarget = null }
+                    pendingRunnable = task
+                    mainHandler.postDelayed(task, 300L)
                 }
             }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
-        if (listener.canDetectOrientation()) listener.enable()
-        onDispose { listener.disable() }
+        fun register() {
+            if (registered) return
+            hasFiltered = false
+            registered = sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI, mainHandler)
+        }
+        fun unregister() {
+            if (!registered) return
+            registered = false
+            hasFiltered = false
+            sm.unregisterListener(listener)
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> register()
+                Lifecycle.Event.ON_PAUSE -> { cancelPending(); unregister() }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) register()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            cancelPending()
+            unregister()
+        }
     }
     return side
 }

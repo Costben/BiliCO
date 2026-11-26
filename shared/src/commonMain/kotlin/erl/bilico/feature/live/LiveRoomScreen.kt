@@ -45,6 +45,8 @@ import erl.bilico.feature.video.rememberStableNavBarBottomDp
 import erl.bilico.platform.KeyValueStore
 import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.PlatformBackHandler
+import erl.bilico.platform.canEnterPip
+import erl.bilico.platform.enterPipNow
 import erl.bilico.platform.uptimeMillis
 import erl.bilico.player.BiliPlayerListener
 import erl.bilico.player.BindPlaybackSession
@@ -63,7 +65,6 @@ import erl.bilico.feature.video.rememberStageVideoBackdrop
 import erl.bilico.ui.layerBackdropIf
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
-import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -439,7 +440,7 @@ fun LiveRoomScreen(
                 danmakuEnabled = danmakuEnabled,
                 onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
                 onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
-                onEnterPip = null,
+                onEnterPip = if (canEnterPip(context)) { { enterPipNow(context) } } else null,
                 onHome = returnHome,
                 onCast = if (castStreamUrl.isNotBlank()) {
                     { castDialogVisible = true }

@@ -26,6 +26,8 @@ import erl.bilico.di.AppContainer
 import erl.bilico.feature.comment.ReplyThreadController
 import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.PlatformBackHandler
+import erl.bilico.platform.canEnterPip
+import erl.bilico.platform.enterPipNow
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.player.PlayerStates
@@ -449,7 +451,7 @@ fun VideoScreen(
                     downloadDialog = renderDownload, onDownload = openDownload,
                     reportVideoDialog = renderReportVideo, onReportVideo = openReportVideo,
                     onFullscreenChange = applyFullscreen,
-                    onEnterPip = null,
+                    onEnterPip = if (canEnterPip(context)) { { enterPipNow(context) } } else null,
                     autoNextController = autoNextController,
                     showAutoNextInPlayer = fullscreen || playbackEntry?.collapsedBarVisible != true,
                 )
