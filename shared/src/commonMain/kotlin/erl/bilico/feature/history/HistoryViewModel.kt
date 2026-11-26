@@ -7,6 +7,7 @@ import erl.bilico.data.model.HistoryItem
 import erl.bilico.data.model.HistoryStat
 import erl.bilico.data.repository.HistoryRepository
 import erl.bilico.data.util.Formatters
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,8 +34,10 @@ private data class HistoryTabCursor(
     val nextMax: Long = 0L,
     val nextViewAt: Long = 0L,
     val nextBusiness: String = "",
-    val inFlight: Boolean = false,
+    val inFlightFirstPage: Boolean = false,
+    val inFlightLoadMore: Boolean = false,
     val initialized: Boolean = false,
+    val stale: Boolean = false,
 )
 
 data class HistoryUiState(
@@ -68,13 +71,16 @@ class HistoryViewModel(
     val state: StateFlow<HistoryUiState> = _state.asStateFlow()
 
     private val cursors = HistoryTab.entries.associateWith { HistoryTabCursor() }.toMutableMap()
+    private val tabJobs = mutableMapOf<HistoryTab, Job>()
+    private val tabGenerations = HistoryTab.entries.associateWith { 0L }.toMutableMap()
 
     private val statQueue = Channel<HistoryItem>(Channel.UNLIMITED)
     private val statRequested = mutableSetOf<String>()
 
+    private var accountSynced = false
+    private var activeMid: Long? = null
+
     init {
-        ensureTabLoaded(HistoryTab.VIDEO)
-        refreshPauseState()
         viewModelScope.launch {
             for (item in statQueue) {
                 if (item.businessType != HistoryBusiness.VIDEO) continue
@@ -85,6 +91,25 @@ class HistoryViewModel(
         }
     }
 
+    /** 账号登录、退出或切换时重置缓存状态，避免沿用上一账号的历史记录。 */
+    fun syncAccount(mid: Long?) {
+        if (accountSynced && activeMid == mid) return
+        val hadAccount = accountSynced
+        accountSynced = true
+        activeMid = mid
+        if (!hadAccount && mid != null) return
+        cancelAllTabLoads()
+        statRequested.clear()
+        HistoryTab.entries.forEach { tab ->
+            cursors[tab] = HistoryTabCursor()
+        }
+        _state.value = HistoryUiState(
+            tabs = HistoryTab.entries.associateWith {
+                HistoryTabState(isInitialLoading = mid != null)
+            },
+        )
+    }
+
     fun refreshPauseState() {
         viewModelScope.launch {
             repository.isPaused().onSuccess { paused ->
@@ -93,33 +118,86 @@ class HistoryViewModel(
         }
     }
 
+    /**
+     * 重新进入历史页或从视频/直播/专栏返回栈顶时调用：
+     * - 其他已加载页签标记为待刷新，切过去时静默补拉；
+     * - 当前页签若已有数据则静默刷新（不闪全屏加载态），否则走首次加载。
+     */
+    fun onEnterOrReturn(activeTab: HistoryTab) {
+        HistoryTab.entries.forEach { tab ->
+            if (tab != activeTab) {
+                val cur = cursors.getValue(tab)
+                if (cur.initialized) cursors[tab] = cur.copy(stale = true)
+            }
+        }
+        refreshPauseState()
+        val cur = cursors.getValue(activeTab)
+        if (cur.initialized) {
+            silentRefresh(activeTab)
+        } else {
+            ensureTabLoaded(activeTab)
+        }
+    }
+
     fun ensureTabLoaded(tab: HistoryTab) {
         val cursor = cursors.getValue(tab)
-        if (cursor.initialized || cursor.inFlight) return
+        if (cursor.stale) {
+            silentRefresh(tab)
+            return
+        }
+        if (cursor.initialized || cursor.inFlightFirstPage) return
         cursors[tab] = cursor.copy(initialized = true)
-        loadTab(tab, firstPage = true)
+        loadTab(tab, firstPage = true, silent = false)
+    }
+
+    /** 静默刷新第一页：已有列表时保留原画面与滚动位置，不弹出刷新指示器。 */
+    fun silentRefresh(tab: HistoryTab) {
+        val cursor = cursors.getValue(tab)
+        if (cursor.inFlightFirstPage) return
+        if (cursor.inFlightLoadMore) {
+            tabJobs.remove(tab)?.cancel()
+        }
+        val hasItems = _state.value.tabs[tab]?.items?.isNotEmpty() == true
+        cursors[tab] = cursor.copy(
+            initialized = true,
+            stale = false,
+            inFlightLoadMore = false,
+        )
+        if (!hasItems) {
+            updateTabState(tab) {
+                it.copy(isInitialLoading = true, isLoadingMore = false, error = null)
+            }
+        }
+        loadTab(tab, firstPage = true, silent = hasItems)
     }
 
     fun refresh(tab: HistoryTab) {
+        tabJobs.remove(tab)?.cancel()
         val cursor = cursors.getValue(tab)
-        if (cursor.inFlight) return
-        cursors[tab] = cursor.copy(initialized = true)
+        cursors[tab] = cursor.copy(
+            initialized = true,
+            stale = false,
+            inFlightFirstPage = false,
+            inFlightLoadMore = false,
+        )
         updateTabState(tab) {
             it.copy(
                 isInitialLoading = it.items.isEmpty(),
                 isRefreshing = it.items.isNotEmpty(),
+                isLoadingMore = false,
                 error = null,
             )
         }
-        loadTab(tab, firstPage = true)
+        refreshPauseState()
+        loadTab(tab, firstPage = true, silent = false)
     }
 
     fun loadMore(tab: HistoryTab) {
         val cursor = cursors.getValue(tab)
         val tabState = _state.value.tabs[tab] ?: return
-        if (cursor.inFlight || tabState.isEnd || tabState.items.isEmpty()) return
+        if (cursor.inFlightFirstPage || cursor.inFlightLoadMore || tabState.isEnd || tabState.items.isEmpty()) return
         updateTabState(tab) { it.copy(isLoadingMore = true) }
-        loadTab(tab, firstPage = false)
+        loadTab(tab, firstPage = false, silent = false)
     }
 
     fun requestStats(items: List<HistoryItem>, visibleIndices: List<Int>) {
@@ -143,6 +221,7 @@ class HistoryViewModel(
     suspend fun clearAllHistory(): Result<Unit> {
         val result = repository.clearAll()
         if (result.isSuccess) {
+            cancelAllTabLoads()
             HistoryTab.entries.forEach { tab ->
                 cursors[tab] = HistoryTabCursor(initialized = true)
                 updateTabState(tab) {
@@ -166,10 +245,23 @@ class HistoryViewModel(
         return result
     }
 
-    private fun loadTab(tab: HistoryTab, firstPage: Boolean) {
+    private fun cancelAllTabLoads() {
+        HistoryTab.entries.forEach { tab ->
+            tabJobs.remove(tab)?.cancel()
+            tabGenerations[tab] = (tabGenerations[tab] ?: 0L) + 1L
+        }
+    }
+
+    private fun loadTab(tab: HistoryTab, firstPage: Boolean, silent: Boolean) {
         val cur = cursors.getValue(tab)
-        cursors[tab] = cur.copy(inFlight = true)
-        viewModelScope.launch {
+        val generation = (tabGenerations[tab] ?: 0L) + 1L
+        tabGenerations[tab] = generation
+        cursors[tab] = cur.copy(
+            inFlightFirstPage = firstPage,
+            inFlightLoadMore = !firstPage,
+            stale = false,
+        )
+        tabJobs[tab] = viewModelScope.launch {
             repository.page(
                 max = if (firstPage) 0L else cur.nextMax,
                 viewAt = if (firstPage) 0L else cur.nextViewAt,
@@ -177,36 +269,81 @@ class HistoryViewModel(
                 business = if (firstPage) null else cur.nextBusiness.ifBlank { null },
             )
                 .onSuccess { page ->
-                    cursors[tab] = cur.copy(
-                        nextMax = page.max,
-                        nextViewAt = page.viewAt,
-                        nextBusiness = page.business,
-                        inFlight = false,
-                        initialized = true,
-                    )
-                    updateTabState(tab) { state ->
-                        val merged = if (firstPage) {
-                            page.items.distinctBy { it.key }
+                    if (tabGenerations[tab] != generation) return@onSuccess
+                    val latestCursor = cursors.getValue(tab)
+                    val existingItems = _state.value.tabs[tab]?.items.orEmpty()
+                    val dedupedFirstPage = if (firstPage) page.items.distinctBy { it.key } else emptyList()
+                    val preservedTail = if (
+                        firstPage &&
+                        silent &&
+                        page.hasMore &&
+                        dedupedFirstPage.isNotEmpty() &&
+                        existingItems.size > dedupedFirstPage.size
+                    ) {
+                        val freshKeys = dedupedFirstPage.mapTo(HashSet()) { it.key }
+                        if (existingItems.any { it.key in freshKeys }) {
+                            val cutoffViewAt = dedupedFirstPage.minOf { it.viewAtSec }
+                            existingItems.filter { it.key !in freshKeys && it.viewAtSec <= cutoffViewAt }
                         } else {
-                            (state.items + page.items).distinctBy { it.key }
+                            emptyList()
                         }
+                    } else {
+                        emptyList()
+                    }
+                    cursors[tab] = if (firstPage && preservedTail.isNotEmpty()) {
+                        latestCursor.copy(
+                            inFlightFirstPage = false,
+                            inFlightLoadMore = false,
+                            initialized = true,
+                            stale = false,
+                        )
+                    } else {
+                        latestCursor.copy(
+                            nextMax = page.max,
+                            nextViewAt = page.viewAt,
+                            nextBusiness = page.business,
+                            inFlightFirstPage = false,
+                            inFlightLoadMore = false,
+                            initialized = true,
+                            stale = false,
+                        )
+                    }
+                    updateTabState(tab) { state ->
+                        val merged = when {
+                            firstPage && preservedTail.isNotEmpty() -> dedupedFirstPage + preservedTail
+                            firstPage -> dedupedFirstPage
+                            else -> (state.items + page.items).distinctBy { it.key }
+                        }
+                        val isEnd = if (firstPage && preservedTail.isNotEmpty()) state.isEnd else !page.hasMore
                         state.copy(
                             items = merged,
                             isInitialLoading = false,
                             isRefreshing = false,
                             isLoadingMore = false,
-                            isEnd = !page.hasMore,
+                            isEnd = isEnd,
+                            error = null,
                         )
                     }
                 }
                 .onFailure { error ->
-                    cursors[tab] = cur.copy(inFlight = false, initialized = true)
+                    if (tabGenerations[tab] != generation) return@onFailure
+                    val latestCursor = cursors.getValue(tab)
+                    val hasItems = _state.value.tabs[tab]?.items?.isNotEmpty() == true
+                    cursors[tab] = latestCursor.copy(
+                        inFlightFirstPage = false,
+                        inFlightLoadMore = false,
+                        initialized = hasItems,
+                    )
                     updateTabState(tab) { state ->
                         state.copy(
                             isInitialLoading = false,
                             isRefreshing = false,
                             isLoadingMore = false,
-                            error = if (firstPage) error.message ?: "历史记录加载失败" else state.error,
+                            error = if (firstPage && !silent && state.items.isEmpty()) {
+                                error.message ?: "历史记录加载失败"
+                            } else {
+                                state.error
+                            },
                         )
                     }
                 }
