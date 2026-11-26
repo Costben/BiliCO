@@ -374,13 +374,15 @@ internal fun VideoFullscreenStage(
                             windowLandscape || !portraitResizable || collapseAlpha() < 0.99f
                         }
                     }
-                    val playerAlphaProvider: () -> Float = remember {
+                    val parentSurfaceAlpha = LocalPlayerSurfaceAlpha.current
+                    val playerAlphaProvider: () -> Float = remember(parentSurfaceAlpha) {
                         {
-                            if (!windowLandscape && portraitResizable) {
+                            val own = if (!windowLandscape && portraitResizable) {
                                 (1f - collapseAlpha()).coerceIn(0f, 1f)
                             } else {
                                 1f
                             }
+                            (own * parentSurfaceAlpha()).coerceIn(0f, 1f)
                         }
                     }
                     CompositionLocalProvider(

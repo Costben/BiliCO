@@ -60,6 +60,9 @@ val LocalRouteTransition = staticCompositionLocalOf<RouteTransition?> { null }
 /** 当前路由是否在栈顶。窗口级的状态（比如状态栏图标颜色）只该由栈顶页面接管。 */
 val LocalRouteIsTop = compositionLocalOf { true }
 
+/** 当前路由是否继续持有视频播放表面：栈顶、跟手预览以及退场动画（未被另一视频页接管）期间均保持可见。 */
+val LocalRouteKeepSurface = compositionLocalOf { true }
+
 /** 当前路由是否已最小化收进底栏融合球。收起期间只保活音频与会话，跳过画布与视频纹理渲染。 */
 val LocalRouteMinimized = compositionLocalOf { false }
 

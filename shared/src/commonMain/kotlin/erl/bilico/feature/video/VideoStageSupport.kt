@@ -46,10 +46,12 @@ import erl.bilico.platform.useEdgeSwipeBackOverlay
 import erl.bilico.platform.useNativeFullscreenRotation
 import erl.bilico.player.BiliPlayer
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.NavEntry
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
@@ -361,6 +363,34 @@ internal fun Modifier.stageCounterScale(): Modifier {
 }
 
 internal const val DEFAULT_VIDEO_ASPECT = 16f / 9f
+private const val CARD_CROSSFADE_START_PROGRESS = 0.24f
+
+/** 跟手返回拖拽期间保持继续播放；直到拖进卡片淡入淡出交接区才暂停，若拖回取消则自动恢复。 */
+@Composable
+internal fun RoutePreviewCrossfadePauseEffect(
+    player: BiliPlayer,
+    entry: NavEntry?,
+) {
+    if (entry == null) return
+    LaunchedEffect(player, entry) {
+        var pausedByPreview = false
+        snapshotFlow {
+            val previewCollapse = entry.previewing && !entry.exiting && !entry.minimizingToOrb && entry.expand
+            val inCrossfade = previewCollapse && entry.progress.value <= CARD_CROSSFADE_START_PROGRESS
+            inCrossfade to entry.exiting
+        }.distinctUntilChanged().collect { (inCrossfade, exiting) ->
+            if (inCrossfade) {
+                if (!pausedByPreview && player.isPlaying) {
+                    pausedByPreview = true
+                    player.pause()
+                }
+            } else if (pausedByPreview) {
+                pausedByPreview = false
+                if (!exiting) player.play()
+            }
+        }
+    }
+}
 
 internal fun fitContentWidth(aspect: Float, containerW: Float, containerH: Float): Float =
     min(containerW, containerH * aspect)

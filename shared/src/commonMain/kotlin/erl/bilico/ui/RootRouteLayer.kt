@@ -68,6 +68,10 @@ internal fun RouteLayer(
     val activeTop = nav.stack.lastOrNull { !it.exiting }
     val activeBelowTop = nav.stack.filter { !it.exiting }.let { if (it.size >= 2) it[it.size - 2] else null }
     val isTop = !isMinimized && entry === activeTop
+    val keepSurface = isTop || (
+        !isMinimized && entry.exiting &&
+            !(entry.route is Route.Video && activeTop?.route is Route.Video)
+        )
     val belowTop = !isMinimized && entry === activeBelowTop
     val slideDriver = nav.stack.lastOrNull { it.exiting } ?: activeTop
     val topProgress: () -> Float = { slideDriver?.progress?.value ?: 1f }
@@ -147,20 +151,22 @@ internal fun RouteLayer(
     CompositionLocalProvider(
         LocalRouteTransition provides transition,
         LocalRouteIsTop provides isTop,
+        LocalRouteKeepSurface provides keepSurface,
         LocalRouteMinimized provides isMinimized,
         LocalNavEntry provides entry,
         LocalScreenConfig provides layerConfig,
         LocalNavigationEventDispatcherOwner provides routeDispatcherOwner,
     ) {
+        val bypassExitSnapshot = entry.hasSurfaceView || entry.route.isPlayback()
         Box(layer.then(freezeLayout)) {
             if (entry.hasExpandOrigin || entry.route.isPlayback() || entry.route is Route.Opus) {
                 ExpandLayer(entry, screenCorner, progress, { entry.fade.value }, { entry.offset.value }) {
-                    ExitSnapshotHost(exiting = entry.exiting, hasSurfaceView = entry.hasSurfaceView) {
+                    ExitSnapshotHost(exiting = entry.exiting, hasSurfaceView = bypassExitSnapshot) {
                         RouteContent(entry.route, nav, container)
                     }
                 }
             } else {
-                ExitSnapshotHost(exiting = entry.exiting, hasSurfaceView = entry.hasSurfaceView) {
+                ExitSnapshotHost(exiting = entry.exiting, hasSurfaceView = bypassExitSnapshot) {
                     RouteContent(entry.route, nav, container)
                 }
             }

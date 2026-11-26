@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -53,6 +54,7 @@ import erl.bilico.platform.platformUsesOffscreenExpandCompositing
 import erl.bilico.platform.rememberPlatformScreenCornerRadius
 import erl.bilico.platform.rememberPlatformStatusBarTopPx
 import erl.bilico.platform.setStatusBarDarkIcons
+import erl.bilico.player.LocalPlayerSurfaceAlpha
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.squircle.SquircleDefaults
 import io.github.suqi8.coui.kmp.squircle.addSquircleRect
@@ -177,6 +179,15 @@ internal fun ExpandLayer(
     val statusBarTop = rememberPlatformStatusBarTopPx()
     val surface = pageContainerColor()
     val exiting = entry.exiting || entry.previewing
+    val parentSurfaceAlpha = LocalPlayerSurfaceAlpha.current
+    val surfaceAlphaProvider: () -> Float = remember(entry, parentSurfaceAlpha) {
+        {
+            val routeAlpha = if (entry.minimizingToOrb && (entry.exiting || entry.previewing)) {
+                (progress() / LandedProgress).coerceIn(0f, 1f)
+            } else 1f
+            (parentSurfaceAlpha() * routeAlpha).coerceIn(0f, 1f)
+        }
+    }
     fun frameProgress(p: Float): Float = when {
         !exiting -> p
         entry.minimizingToOrb -> if (p < 0f) p else ((p - LandedProgress) / (1f - LandedProgress)).coerceIn(0f, 1f)
@@ -320,7 +331,9 @@ internal fun ExpandLayer(
                             translationY = -statusBarTop * (1f - pClamped)
                         },
                 ) {
-                    Box(Modifier.fillMaxSize().background(surface)) { content() }
+                    CompositionLocalProvider(LocalPlayerSurfaceAlpha provides surfaceAlphaProvider) {
+                        Box(Modifier.fillMaxSize().background(surface)) { content() }
+                    }
                 }
             }
         } else {
@@ -355,7 +368,9 @@ internal fun ExpandLayer(
                         translationY = -statusBarTop * (1f - pClamped)
                     },
             ) {
-                Box(Modifier.fillMaxSize().background(surface)) { content() }
+                CompositionLocalProvider(LocalPlayerSurfaceAlpha provides surfaceAlphaProvider) {
+                    Box(Modifier.fillMaxSize().background(surface)) { content() }
+                }
             }
         }
     }
@@ -572,16 +587,10 @@ internal fun openUserByName(
     container: AppContainer,
     scope: CoroutineScope,
 ) {
-    val name = rawName.trim().removePrefix("@")
-    if (name.isEmpty()) return
+    val name = rawName.trim().removePrefix("@").ifEmpty { return }
     scope.launch {
         val exactMid = container.search.searchUsers(name, page = 1).getOrNull()?.items
-            ?.firstOrNull { it.name.equals(name, ignoreCase = true) }
-            ?.mid
-        if (exactMid != null && exactMid > 0L) {
-            nav.push(Route.Space(exactMid))
-        } else {
-            nav.push(Route.Search(name))
-        }
+            ?.firstOrNull { it.name.equals(name, ignoreCase = true) }?.mid
+        if (exactMid != null && exactMid > 0L) nav.push(Route.Space(exactMid)) else nav.push(Route.Search(name))
     }
 }

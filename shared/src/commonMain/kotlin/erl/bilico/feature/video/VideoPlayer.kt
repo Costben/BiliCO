@@ -48,9 +48,10 @@ import erl.bilico.player.BiliPlayerSurface
 import erl.bilico.player.SleepTimerState
 import erl.bilico.player.VideoResizeMode
 import erl.bilico.ui.BlurEffectsEnabled
+import erl.bilico.ui.LocalNavEntry
 import erl.bilico.ui.LocalRouteIsTop
+import erl.bilico.ui.LocalRouteKeepSurface
 import erl.bilico.ui.LocalRouteMinimized
-import erl.bilico.ui.LocalRouteTransition
 import erl.bilico.ui.components.CouiMenuItem
 import erl.bilico.ui.components.PlayerStateOverlay
 import erl.bilico.ui.layerBackdropIf
@@ -263,10 +264,11 @@ internal fun VideoPlayer(
         isPlaying = isPlaying,
     )
     val isTop = LocalRouteIsTop.current
+    val keepSurface = LocalRouteKeepSurface.current
     val minimized = LocalRouteMinimized.current
     val frozenVideo = LocalStageFrozenVideo.current
     val stagePlayerVisible = LocalStagePlayerVisible.current
-    val routeExiting = LocalRouteTransition.current?.exiting() == true
+    RoutePreviewCrossfadePauseEffect(player = player, entry = LocalNavEntry.current)
     val keepScreenOn = isTop && !inPipMode && rememberPlaybackScreenOn(player)
     KeepScreenOnEffect(keepScreenOn)
 
@@ -295,7 +297,7 @@ internal fun VideoPlayer(
                 .fillMaxSize()
                 .layerBackdropIf(captureMenuBackdrop, menuBackdrop),
         ) {
-            if (!minimized && !frozenVideo && stagePlayerVisible && !routeExiting && !audioOnly && isTop) {
+            if (!minimized && !frozenVideo && stagePlayerVisible && !audioOnly && keepSurface) {
                 Box(
                     modifier = Modifier.fillMaxSize().clipToBounds(),
                     contentAlignment = Alignment.Center,
