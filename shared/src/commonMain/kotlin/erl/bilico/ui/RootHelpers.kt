@@ -108,7 +108,7 @@ internal class FrozenPortrait {
 }
 
 internal const val LandedProgress = 0.2f
-private const val OrbFadeTailProgress = 0.28f
+private const val OrbFadeTailProgress = 0.14f
 
 internal val ExpandReturnSpringSpec: SpringSpec<Float> = spring(
     dampingRatio = 0.78f,

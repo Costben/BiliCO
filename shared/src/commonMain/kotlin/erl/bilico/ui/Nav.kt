@@ -192,16 +192,11 @@ sealed interface Route {
 fun Route.isPlayback(): Boolean = this is Route.Video || this is Route.Pgc || this is Route.LiveRoom
 
 /** 该页面上允许展示或退回右下角播放融合球（排除其他播放页及登录/聊天等独立模态页）。 */
-fun Route.supportsOrbOverlay(): Boolean =
-    this == Route.Main || (
-        !isPlayback() &&
-            this !is Route.Chat &&
-            this !is Route.Login &&
-            this !is Route.WebLogin &&
-            this !is Route.WebProfileEdit &&
-            this !is Route.EmoteManager &&
-            this !is Route.WebPage
-        )
+fun Route.supportsOrbOverlay(): Boolean = this == Route.Main || (
+    !isPlayback() && this !is Route.Chat && this !is Route.Login &&
+        this !is Route.WebLogin && this !is Route.WebProfileEdit &&
+        this !is Route.EmoteManager && this !is Route.WebPage
+    )
 
 val LocalNavState = staticCompositionLocalOf<NavState?> { null }
 
@@ -238,7 +233,7 @@ class NavState {
 
     val current: Route get() = stack.last().route
 
-    val isMinimizingToOrb: Boolean get() = stack.any { it.exiting && it.minimizingToOrb }
+    val isMinimizingToOrb: Boolean get() = stack.any { (it.exiting || it.previewing) && it.minimizingToOrb }
 
     fun attach(scope: CoroutineScope, context: PlatformContext? = null) {
         host = scope
@@ -383,6 +378,7 @@ class NavState {
             }
             if (entry.expand) entry.origin?.let { it.refreshKey++ }
         }
+        val wasPreviewing = entry.previewing
         entry.exiting = true
         val scope = host
         if (scope == null) {
@@ -397,6 +393,7 @@ class NavState {
             return
         }
         scope.launch {
+            if (minimize && !wasPreviewing) withFrameNanos { }
             if (!minimize && entry.expand) alignCardBelowBar(entry.origin)
             val expand = entry.expand
             val baseMillis = when {
@@ -437,7 +434,13 @@ class NavState {
                     }
                 }
                 if (hasFlingOffset) {
-                    launch { entry.returnFlingOffset(initialOffsetVelocity) }
+                    launch {
+                        if (minimize && expand) {
+                            entry.offset.animateTo(Offset.Zero, tween(millis, easing = OrbMinimizeEasing))
+                        } else {
+                            entry.returnFlingOffset(initialOffsetVelocity)
+                        }
+                    }
                 }
             }
             if (minimize && entry.minimizingToOrb) {

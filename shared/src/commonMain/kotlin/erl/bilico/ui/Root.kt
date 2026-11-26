@@ -461,7 +461,7 @@ fun BiliCoRoot(
                 )
 
                 val showSecondaryOrb = !inPipMode &&
-                    nav.minimizedEntry != null &&
+                    (nav.minimizedEntry != null || nav.isMinimizingToOrb) &&
                     topRoute != null &&
                     topRoute != Route.Main &&
                     topRoute.supportsOrbOverlay()
