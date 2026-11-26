@@ -10,6 +10,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +24,7 @@ import erl.bilico.feature.video.CollapsedBarHeight
 import erl.bilico.feature.video.DETAIL_BAR_HEIGHT
 import erl.bilico.feature.video.DETAIL_CONTENT_GAP
 import erl.bilico.feature.video.DetailBarGlassSurface
+import erl.bilico.feature.video.LocalDetailTopRowVisible
 import erl.bilico.feature.video.VideoBarBackdrops
 import erl.bilico.feature.video.VideoDetailBar
 import erl.bilico.feature.video.rememberBarScrolled
@@ -76,13 +78,15 @@ internal fun PgcDetailSection(
     val navBarBottom = rememberStableNavBarBottomDp()
     val fallbackBackdrop = rememberLayerBackdrop()
     val detailLayerBackdrop = barBackdrops?.detail ?: fallbackBackdrop
-    val barMaterialBackdrop = barBackdrops?.barMaterial
     val pageBg = pageContainerColor()
     val statusBarDp = with(LocalDensity.current) { rememberStableStatusBarHeightPx().toDp() }
     val firstRowHeight = statusBarDp + CollapsedBarHeight
     val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + DETAIL_CONTENT_GAP
     // 与普通视频详情页一致：停在顶部时不启用毛玻璃。
     val barBlurActive = blurActive && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
+    LaunchedEffect(barBackdrops, barBlurActive) {
+        barBackdrops?.detailScrolled = barBlurActive
+    }
     val detailBarBounds = remember { TopBarBounds() }
 
     CompositionLocalProvider(LocalTopBarBounds provides detailBarBounds) {
@@ -152,10 +156,11 @@ internal fun PgcDetailSection(
                 .reportTopBarBottom(detailBarBounds),
             containerColor = pageBg,
             backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,
-            materialBackdrop = if (BlurEffectsEnabled) barMaterialBackdrop else null,
+            materialBackdrop = null,
             // 与视频详情页一致：模糊与渐隐都收在栏的下沿。
             extraHeight = 0.dp,
             topInset = firstRowHeight,
+            showTopRow = LocalDetailTopRowVisible.current,
         ) {
             VideoDetailBar(
                 selected = detailPager.currentPage,
@@ -169,7 +174,7 @@ internal fun PgcDetailSection(
                 onDraftChange = onDanmakuDraftChange,
                 onComposingChange = onDanmakuComposingChange,
                 onSend = onSendDanmaku,
-                backdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
+                backdrop = null,
             )
         }
 

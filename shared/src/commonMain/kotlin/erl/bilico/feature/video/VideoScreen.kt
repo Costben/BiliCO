@@ -409,6 +409,7 @@ fun VideoScreen(
         surfaceViewPlayer = hdrSurface,
         screenLocked = screenLocked,
         onScreenLockedChange = onScreenLockedChange,
+        freezeDetailHeight = replyThread.root == null,
         canExpand = {
             val list = when {
                 replyThread.root != null -> replyListState

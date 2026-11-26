@@ -75,6 +75,7 @@ private val SwipeDownLockThresholdDp = 44.dp
 internal fun PlayerGestureLayer(
     positionMs: Long,
     durationMs: Long,
+    positionMsProvider: (() -> Long)? = null,
     seekEnabled: Boolean = true,
     longPressSpeed: LongPressSpeedController? = null,
     longPressSpeedMode: LongPressSpeedMode = LongPressSpeedMode.FIXED,
@@ -101,6 +102,7 @@ internal fun PlayerGestureLayer(
     val currentOnVolumeChange by rememberUpdatedState(onVolumeChange)
 
     val currentPosition by rememberUpdatedState(positionMs)
+    val currentPositionProvider by rememberUpdatedState(positionMsProvider)
     val currentDuration by rememberUpdatedState(durationMs)
     val currentSeekEnabled by rememberUpdatedState(seekEnabled)
     val currentHasLongPressSpeed by rememberUpdatedState(longPressSpeed != null)
@@ -281,7 +283,7 @@ internal fun PlayerGestureLayer(
                                 activeMode = when {
                                     isHorizontal -> {
                                         if (currentSeekEnabled && currentDuration > 0L) {
-                                            seekBaseMs = currentPosition.coerceIn(0L, currentDuration)
+                                            seekBaseMs = (currentPositionProvider?.invoke() ?: currentPosition).coerceIn(0L, currentDuration)
                                             seekPreviewMs = seekBaseMs
                                             currentOnSeekStart()
                                             DragMode.SEEK

@@ -132,9 +132,11 @@ internal fun SubtitleOverlay(
     controlsVisible: Boolean,
     inPip: Boolean,
     modifier: Modifier = Modifier,
+    positionMsProvider: (() -> Long)? = null,
 ) {
     if (cues.isEmpty()) return
-    val text = remember(cues, positionMs / 100) { findActiveSubtitleText(cues, positionMs) }
+    val currentPosMs = positionMsProvider?.invoke() ?: positionMs
+    val text = remember(cues, currentPosMs / 100) { findActiveSubtitleText(cues, currentPosMs) }
     if (text.isBlank()) return
 
     val bottomPad = when {

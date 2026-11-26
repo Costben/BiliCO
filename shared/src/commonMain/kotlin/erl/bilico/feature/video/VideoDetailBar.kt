@@ -350,16 +350,25 @@ internal fun DetailBarGlassSurface(
     materialBackdrop: LayerBackdrop? = null,
     topInset: Dp = 0.dp,
     extraHeight: Dp = 6.dp,
+    showTopRow: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val isDark = containerColor.luminance() < 0.5f
     val blurEnabled = BlurEffectsEnabled && isBlurEnabled() && backdrop != null
     val density = LocalDensity.current
     val extraHeightPx = with(density) { extraHeight.roundToPx() }
-    val totalHeight = topInset + DETAIL_BAR_HEIGHT + extraHeight
+    val topInsetPx = with(density) { topInset.roundToPx() }
+    val materialTopPx = if (showTopRow || topInset <= 0.dp) 0 else topInsetPx
+    val barOnlyHeight = DETAIL_BAR_HEIGHT + extraHeight
+    val totalHeight = topInset + barOnlyHeight
     val isTwoRow = topInset > 0.dp
-    val blurStartFraction = remember(isTwoRow, topInset, totalHeight) {
-        if (isTwoRow && totalHeight > 0.dp) ((topInset + 5.dp) / totalHeight).coerceIn(0f, 0.85f) else 0.65f
+    val blurStartFraction = remember(isTwoRow, showTopRow, topInset, totalHeight, barOnlyHeight) {
+        when {
+            !isTwoRow -> 0.65f
+            !showTopRow && barOnlyHeight > 0.dp -> (5.dp / barOnlyHeight).coerceIn(0f, 0.85f)
+            totalHeight > 0.dp -> ((topInset + 5.dp) / totalHeight).coerceIn(0f, 0.85f)
+            else -> 0.65f
+        }
     }
     val blurCurve = if (isTwoRow) 2.2f else 3f
     val alphaMid = remember(isTwoRow, topInset, totalHeight) {
@@ -369,7 +378,7 @@ internal fun DetailBarGlassSurface(
         with(density) { (30f * 0.57735f / 0.45f).toDp().value }
     }
 
-    val gradientBrush = remember(containerColor, isDark, alphaMid) {
+    val gradientBrush = remember(containerColor, isDark, alphaMid, showTopRow) {
         if (alphaMid <= 0f) {
             Brush.verticalGradient(
                 0.00f to containerColor,
@@ -379,6 +388,24 @@ internal fun DetailBarGlassSurface(
                 0.96f to containerColor.copy(alpha = 0.15f),
                 1.00f to containerColor.copy(alpha = 0.00f),
             )
+        } else if (!showTopRow) {
+            if (isDark) {
+                Brush.verticalGradient(
+                    0.00f to containerColor.copy(alpha = 0.38f),
+                    0.25f to containerColor.copy(alpha = 0.32f),
+                    0.50f to containerColor.copy(alpha = 0.22f),
+                    0.75f to containerColor.copy(alpha = 0.10f),
+                    1.00f to containerColor.copy(alpha = 0f),
+                )
+            } else {
+                Brush.verticalGradient(
+                    0.00f to containerColor.copy(alpha = 0.74f),
+                    0.25f to containerColor.copy(alpha = 0.62f),
+                    0.50f to containerColor.copy(alpha = 0.44f),
+                    0.75f to containerColor.copy(alpha = 0.20f),
+                    1.00f to containerColor.copy(alpha = 0f),
+                )
+            }
         } else {
             val tail = 1f - alphaMid
             if (isDark) {
@@ -403,13 +430,9 @@ internal fun DetailBarGlassSurface(
         }
     }
 
-    // 即使在列表顶部暂未开启渐进模糊，也保持 materialBackdrop 常驻录制：
-    // 顶部折叠栏的 4 颗圆形按钮和切换栏胶囊持续采样它，摘掉录制层会让它们在回到顶部时发灰。
-    val recordMaterial = BlurEffectsEnabled && isBlurEnabled() && materialBackdrop != null
     val materialModifier = Modifier
         .layoutId("material")
         .fillMaxSize()
-        .then(if (recordMaterial) Modifier.layerBackdrop(materialBackdrop) else Modifier)
         .then(
             if (blurEnabled) {
                 Modifier.progressiveTextureBlur(
@@ -447,16 +470,17 @@ internal fun DetailBarGlassSurface(
             .measure(constraints.copy(minWidth = 0, minHeight = 0))
         val width = maxOf(contentPlaceable.width, constraints.minWidth)
         val height = maxOf(contentPlaceable.height, constraints.minHeight)
+        val materialHeight = (height + extraHeightPx - materialTopPx).coerceAtLeast(1)
         val materialPlaceable = measurables
             .firstOrNull { it.layoutId == "material" }
             ?.measure(
                 Constraints.fixed(
                     width = width,
-                    height = height + extraHeightPx,
+                    height = materialHeight,
                 ),
             )
         layout(width, height) {
-            materialPlaceable?.placeRelative(0, 0)
+            materialPlaceable?.placeRelative(0, materialTopPx)
             contentPlaceable.placeRelative(0, 0)
         }
     }

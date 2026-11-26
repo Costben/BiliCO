@@ -9,22 +9,24 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -44,11 +46,15 @@ import erl.bilico.player.BiliPlayer
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.LocalRouteMinimized
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.max
 
-private class DanmakuTextPair(
-    val stroke: TextLayoutResult?,
-    val fill: TextLayoutResult,
+private class DanmakuSpriteBitmap(
+    val bitmap: ImageBitmap,
+    val padX: Float,
+    val padY: Float,
+    val textWidth: Int,
+    val textHeight: Int,
 )
 
 /**
@@ -78,6 +84,7 @@ internal actual fun DanmakuOverlay(
     }
 
     val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
     val textMeasurer = rememberTextMeasurer(cacheSize = 512)
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var frameTick by remember { mutableLongStateOf(0L) }
@@ -100,9 +107,40 @@ internal actual fun DanmakuOverlay(
 
     val widthPx = canvasSize.width.toFloat()
     val heightPx = canvasSize.height.toFloat()
+    val lineHeightPx = (baseFontPx * settings.lineHeightRatio).coerceAtLeast(1f)
+    val scrollLanes = danmakuScrollLaneCount(
+        heightPx = heightPx,
+        fontPx = baseFontPx,
+        areaFraction = settings.areaFraction,
+        lineHeightRatio = settings.lineHeightRatio,
+        massiveMode = settings.massiveMode,
+    )
 
-    val widthMeasureCache = remember(baseFontPx, fontWeight) { HashMap<String, Float>(512) }
-    val measureWidth: (String, Float) -> Float = remember(baseFontPx, fontWeight, density, textMeasurer) {
+    // 尺寸变化时绝不重做过滤/合并，也绝不在单次排版中途清空宽度缓存，避免 2000+ 弹幕视频拖动时缓存抖动掉帧。
+    val filtered: List<FilteredDanmaku> = remember(
+        items,
+        settings.allowScroll,
+        settings.allowTop,
+        settings.allowBottom,
+        settings.allowColorful,
+        settings.allowSpecial,
+        settings.mergeDuplicates,
+        timeline != null,
+    ) {
+        if (items.isEmpty() || timeline != null) emptyList()
+        else filterAndMergeDanmaku(items, settings)
+    }
+    val hasBottomDanmaku = remember(filtered) {
+        filtered.any { it.item.type == DanmakuType.BOTTOM }
+    }
+    val bottomBucket = if (hasBottomDanmaku && heightPx > 0f) {
+        (heightPx / (lineHeightPx * 0.5f)).toInt()
+    } else {
+        0
+    }
+
+    val widthMeasureCache = remember(items, baseFontPx, fontWeight) { HashMap<String, Float>(2048) }
+    val measureWidth: (String, Float) -> Float = remember(widthMeasureCache, baseFontPx, fontWeight, density, textMeasurer) {
         { text, scale ->
             val key = if (scale == 1f) text else "$scale|$text"
             widthMeasureCache[key] ?: run {
@@ -112,8 +150,7 @@ internal actual fun DanmakuOverlay(
                     style = TextStyle(fontSize = sp, fontWeight = fontWeight),
                     maxLines = 1,
                 ).size.width.toFloat()
-                if (widthMeasureCache.size >= 1024) widthMeasureCache.clear()
-                widthMeasureCache[key] = measured
+                if (widthMeasureCache.size < 16384) widthMeasureCache[key] = measured
                 measured
             }
         }
@@ -123,20 +160,16 @@ internal actual fun DanmakuOverlay(
     var prevLiveItems by remember { mutableStateOf<List<DanmakuItem>>(emptyList()) }
 
     val placed: List<PlacedDanmaku> = remember(
+        filtered,
         items,
-        settings.allowScroll,
-        settings.allowTop,
-        settings.allowBottom,
-        settings.allowColorful,
-        settings.allowSpecial,
-        settings.mergeDuplicates,
         settings.area,
         settings.lineHeight,
         settings.speed,
         settings.massiveMode,
         settings.fontWeight,
         widthPx,
-        heightPx,
+        scrollLanes,
+        bottomBucket,
         baseFontPx,
         timeline != null,
     ) {
@@ -160,7 +193,6 @@ internal actual fun DanmakuOverlay(
             prevLiveItems = items
             updated
         } else {
-            val filtered = filterAndMergeDanmaku(items, settings)
             layoutDanmaku(
                 items = filtered,
                 measure = measureWidth,
@@ -176,17 +208,19 @@ internal actual fun DanmakuOverlay(
         }
     }
 
-    val layoutCache = remember(baseFontPx, fontWeight, settings.strokeWidth) {
-        LinkedHashMap<String, DanmakuTextPair>(256)
+    val currentPlaced by rememberUpdatedState(placed)
+    val currentWidthPx by rememberUpdatedState(widthPx)
+    val spriteCache = remember(baseFontPx, fontWeight, settings.strokeWidth) {
+        LinkedHashMap<String, DanmakuSpriteBitmap>(192)
     }
-    val layerPaint = remember { Paint() }
+    val spriteDrawScope = remember { CanvasDrawScope() }
 
-    DisposableEffect(interaction, placed, widthPx, scrollDurationMs, baseFontPx, settings.lineHeightRatio) {
+    DisposableEffect(interaction, scrollDurationMs, baseFontPx, settings.lineHeightRatio) {
         interaction?.hitTest = { offset ->
             findVisibleDanmakuAt(
-                placed = placed,
+                placed = currentPlaced,
                 nowMs = currentTimeMs,
-                screenWidth = widthPx,
+                screenWidth = currentWidthPx,
                 scrollDurationMs = scrollDurationMs,
                 textHeightPx = baseFontPx * settings.lineHeightRatio,
                 xPx = offset.x,
@@ -201,7 +235,7 @@ internal actual fun DanmakuOverlay(
     }
 
     val active = isPlaying && !minimized && isTop
-    LaunchedEffect(player, timeline, active, placed, maxWindowMs) {
+    LaunchedEffect(player, timeline, active, maxWindowMs) {
         if (timeline != null) {
             var lastWall = 0L
             while (true) {
@@ -246,9 +280,10 @@ internal actual fun DanmakuOverlay(
                         }
                     }
                     lastFrameNanos = nanos
-                    val endIdx = firstAfter(placed, renderMs.toLong() + 1L)
+                    val livePlaced = currentPlaced
+                    val endIdx = firstAfter(livePlaced, renderMs.toLong() + 1L)
                     val minStart = (renderMs - maxWindowMs - FADE_MS).toLong()
-                    val hasVisible = endIdx > 0 && placed[endIdx - 1].item.timeMs >= minStart
+                    val hasVisible = endIdx > 0 && livePlaced[endIdx - 1].item.timeMs >= minStart
                     if (hasVisible || hadVisible) {
                         hadVisible = hasVisible
                         currentTimeMs = renderMs
@@ -289,10 +324,12 @@ internal actual fun DanmakuOverlay(
         val selfBoxPadX = with(density) { 5.dp.toPx() }
         val selfBoxPadY = with(density) { 1.5.dp.toPx() }
         val selfBoxRadius = with(density) { 4.dp.toPx() }
+        val padPx = ceil(strokePx + 2f)
 
-        fun obtainPair(displayText: String, count: Int, rgb: Int): DanmakuTextPair {
+        // 离线合成单张精灵图，绘制阶段直接 drawImage 施加透明度，彻底消灭每帧每条弹幕的 saveLayer 离屏切换。
+        fun obtainSprite(displayText: String, count: Int, rgb: Int): DanmakuSpriteBitmap {
             val cacheKey = "$displayText|$count|$rgb"
-            return layoutCache[cacheKey] ?: run {
+            return spriteCache[cacheKey] ?: run {
                 val annotated = buildDanmakuAnnotated(displayText, count, countSp)
                 val fillStyle = TextStyle(
                     color = Color(rgb or 0xFF000000.toInt()),
@@ -309,12 +346,24 @@ internal actual fun DanmakuOverlay(
                     )
                     textMeasurer.measure(annotated, style = strokeStyle, maxLines = 1)
                 }
-                DanmakuTextPair(stroke = strokeLayout, fill = fillLayout).also { measured ->
-                    if (layoutCache.size >= 384) {
-                        val oldest = layoutCache.keys.firstOrNull()
-                        if (oldest != null) layoutCache.remove(oldest)
+                val textW = fillLayout.size.width.coerceAtLeast(1)
+                val textH = fillLayout.size.height.coerceAtLeast(1)
+                val padInt = padPx.toInt()
+                val bmpW = (textW + padInt * 2).coerceAtLeast(1)
+                val bmpH = (textH + padInt * 2).coerceAtLeast(1)
+                val bmp = ImageBitmap(bmpW, bmpH)
+                val canvas = Canvas(bmp)
+                spriteDrawScope.draw(density, layoutDirection, canvas, Size(bmpW.toFloat(), bmpH.toFloat())) {
+                    val origin = Offset(padPx, padPx)
+                    strokeLayout?.let { drawText(textLayoutResult = it, topLeft = origin) }
+                    drawText(textLayoutResult = fillLayout, topLeft = origin)
+                }
+                DanmakuSpriteBitmap(bmp, padPx, padPx, textW, textH).also { built ->
+                    if (spriteCache.size >= 192) {
+                        val oldest = spriteCache.keys.firstOrNull()
+                        if (oldest != null) spriteCache.remove(oldest)
                     }
-                    layoutCache[cacheKey] = measured
+                    spriteCache[cacheKey] = built
                 }
             }
         }
@@ -338,22 +387,20 @@ internal actual fun DanmakuOverlay(
             if (x + entry.width < 0f || x > width) continue
             if (entry.y < 0f || entry.y + baseFontPx > height) continue
 
-            val pair = obtainPair(entry.displayText, entry.count, entry.item.color and 0xFFFFFF)
+            val sprite = obtainSprite(entry.displayText, entry.count, entry.item.color and 0xFFFFFF)
             val combinedAlpha = (alphaBase * fade).coerceIn(0f, 1f)
-            drawDanmakuTextPair(
-                pair = pair,
-                topLeft = Offset(x, entry.y),
-                strokePad = strokePx + 2f,
+            drawImage(
+                image = sprite.bitmap,
+                topLeft = Offset(x - sprite.padX, entry.y - sprite.padY),
                 alpha = combinedAlpha,
-                layerPaint = layerPaint,
             )
             if (entry.item.isSelf) {
                 drawRoundRect(
                     color = Color(0xFF2196F3).copy(alpha = combinedAlpha),
                     topLeft = Offset(x - selfBoxPadX, entry.y - selfBoxPadY),
                     size = Size(
-                        pair.fill.size.width + selfBoxPadX * 2f,
-                        pair.fill.size.height + selfBoxPadY * 2f,
+                        sprite.textWidth + selfBoxPadX * 2f,
+                        sprite.textHeight + selfBoxPadY * 2f,
                     ),
                     cornerRadius = CornerRadius(selfBoxRadius, selfBoxRadius),
                     style = Stroke(width = selfBoxStrokePx),
@@ -383,13 +430,11 @@ internal actual fun DanmakuOverlay(
                 cornerRadius = CornerRadius(radius, radius),
                 style = Stroke(width = with(density) { 1.2.dp.toPx() }),
             )
-            val pair = obtainPair(pinnedHit.displayText, pinnedHit.count, pinnedHit.item.color and 0xFFFFFF)
-            drawDanmakuTextPair(
-                pair = pair,
-                topLeft = Offset(pinnedHit.boundsPx.left, pinnedHit.boundsPx.top),
-                strokePad = strokePx + 2f,
+            val sprite = obtainSprite(pinnedHit.displayText, pinnedHit.count, pinnedHit.item.color and 0xFFFFFF)
+            drawImage(
+                image = sprite.bitmap,
+                topLeft = Offset(pinnedHit.boundsPx.left - sprite.padX, pinnedHit.boundsPx.top - sprite.padY),
                 alpha = alphaBase,
-                layerPaint = layerPaint,
             )
         }
     }
@@ -408,29 +453,4 @@ private fun buildDanmakuAnnotated(
         }
         append(displayText)
     }
-}
-
-private fun DrawScope.drawDanmakuTextPair(
-    pair: DanmakuTextPair,
-    topLeft: Offset,
-    strokePad: Float,
-    alpha: Float,
-    layerPaint: Paint,
-) {
-    if (alpha >= 0.99f) {
-        pair.stroke?.let { drawText(textLayoutResult = it, topLeft = topLeft) }
-        drawText(textLayoutResult = pair.fill, topLeft = topLeft)
-        return
-    }
-    val bounds = Rect(
-        left = topLeft.x - strokePad,
-        top = topLeft.y - strokePad,
-        right = topLeft.x + pair.fill.size.width + strokePad,
-        bottom = topLeft.y + pair.fill.size.height + strokePad,
-    )
-    layerPaint.alpha = alpha
-    drawContext.canvas.saveLayer(bounds, layerPaint)
-    pair.stroke?.let { drawText(textLayoutResult = it, topLeft = topLeft) }
-    drawText(textLayoutResult = pair.fill, topLeft = topLeft)
-    drawContext.canvas.restore()
 }

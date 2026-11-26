@@ -136,7 +136,11 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
     private var cachedSpriteWeight: Int = -1
 
     private var filteredItems: List<FilteredDanmaku> = emptyList()
+    private var hasBottomDanmaku: Boolean = false
     private var placed: List<PlacedDanmaku> = emptyList()
+    private var lastLayoutWidth: Int = -1
+    private var lastScrollLanes: Int = -1
+    private var lastBottomBucket: Int = -1
     private val liveBuffer = LiveDanmakuBuffer()
 
     private var loopRunning = false
@@ -297,6 +301,12 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
+        if (timeline == null && width == lastLayoutWidth && width > 0 && height > 0) {
+            val fontPx = syncMeasureFontPx()
+            val lanes = danmakuScrollLaneCount(height.toFloat(), fontPx, settings.areaFraction, settings.lineHeightRatio, settings.massiveMode)
+            val bucket = if (hasBottomDanmaku) (height / (fontPx * settings.lineHeightRatio * 0.5f).coerceAtLeast(1f)).toInt() else 0
+            if (lanes == lastScrollLanes && bucket == lastBottomBucket) { invalidate(); return }
+        }
         relayout()
     }
 
@@ -307,6 +317,7 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
             return
         }
         filteredItems = filterAndMergeDanmaku(items, settings)
+        hasBottomDanmaku = filteredItems.any { it.item.type == DanmakuType.BOTTOM }
         relayout()
     }
 
@@ -372,6 +383,9 @@ internal class DanmakuSurfaceView(context: Context) : View(context), Choreograph
         }
         val density = resources.displayMetrics.density
         val fontPx = syncMeasureFontPx()
+        lastLayoutWidth = width
+        lastScrollLanes = danmakuScrollLaneCount(height.toFloat(), fontPx, settings.areaFraction, settings.lineHeightRatio, settings.massiveMode)
+        lastBottomBucket = if (hasBottomDanmaku) (height / (fontPx * settings.lineHeightRatio * 0.5f).coerceAtLeast(1f)).toInt() else 0
         placed = if (liveMode) {
             liveBuffer.rebuild(
                 items = items,

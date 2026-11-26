@@ -26,13 +26,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -47,6 +50,7 @@ import erl.bilico.platform.useNativeFullscreenRotation
 import erl.bilico.player.BiliPlayer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavEntry
+import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import kotlinx.coroutines.CancellationException
@@ -73,6 +77,10 @@ internal val CollapsedBarHeight = 52.dp
 internal val LocalPortraitSlotHeight = staticCompositionLocalOf<MutableFloatState> {
     mutableFloatStateOf(0f)
 }
+
+internal val LocalDetailBottomShiftPx = staticCompositionLocalOf<() -> Float> { { 0f } }
+
+internal val LocalDetailTopRowVisible = staticCompositionLocalOf { false }
 
 @Composable
 internal fun BoxScope.CollapsedBarSlot(
@@ -275,11 +283,27 @@ internal fun StageWindowAttributesEffect(context: PlatformContext) {
     }
 }
 
+private class SolidColorBackdrop(private val color: Color) : Backdrop {
+    override val isCoordinatesDependent: Boolean = false
+    override fun DrawScope.drawBackdrop(
+        density: Density,
+        coordinates: LayoutCoordinates?,
+        layerBlock: (GraphicsLayerScope.() -> Unit)?,
+        downscaleFactor: Int,
+    ) {
+        drawRect(color)
+    }
+}
+
 @Stable
 internal class VideoBarBackdrops(
     val detail: LayerBackdrop?,
-    val barMaterial: LayerBackdrop?,
-)
+    private val solid: Backdrop,
+) {
+    var detailScrolled by mutableStateOf(false)
+    val barMaterial: Backdrop?
+        get() = if (!BlurEffectsEnabled) null else if (detailScrolled) detail else solid
+}
 
 @Composable
 internal fun rememberStageVideoBackdrop(
@@ -338,16 +362,9 @@ private fun DrawScope.drawVideoFrameDstOver(frame: ImageBitmap) {
 @Composable
 internal fun rememberVideoBarBackdrops(pageBg: Color): VideoBarBackdrops {
     val detail = if (BlurEffectsEnabled) rememberLayerBackdrop() else null
-    val barMaterial = if (BlurEffectsEnabled && detail != null) {
-        rememberLayerBackdrop(upstream = detail) {
-            drawRect(pageBg)
-            drawContent()
-        }
-    } else {
-        null
-    }
-    return remember(detail, barMaterial) {
-        VideoBarBackdrops(detail = detail, barMaterial = barMaterial)
+    val solid = remember(pageBg) { SolidColorBackdrop(pageBg) }
+    return remember(detail, solid) {
+        VideoBarBackdrops(detail = detail, solid = solid)
     }
 }
 

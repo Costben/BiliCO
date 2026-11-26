@@ -45,6 +45,8 @@ internal fun BoxScope.PlayerBottomChrome(
     positionMs: Long,
     durationMs: Long,
     bufferedMs: Long,
+    positionMsProvider: (() -> Long)? = null,
+    bufferedMsProvider: (() -> Long)? = null,
     scrubbingPositionMs: Long?,
     isPlaying: Boolean,
     isBuffering: Boolean,
@@ -74,7 +76,7 @@ internal fun BoxScope.PlayerBottomChrome(
     speedMenuItems: List<CouiMenuItem>,
     qualityMenuItems: List<CouiMenuItem>,
     subtitleMenuItems: List<CouiMenuItem>,
-    stageCoords: LayoutCoordinates?,
+    stageCoords: () -> LayoutCoordinates?,
     onEpisodesEndChange: (Dp) -> Unit,
     onSubtitleEndChange: (Dp) -> Unit,
     onSpeedEndChange: (Dp) -> Unit,
@@ -98,10 +100,12 @@ internal fun BoxScope.PlayerBottomChrome(
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
                 .padding(horizontal = horizontalBarPad, vertical = 6.dp),
         ) {
+            val currentPosMs = positionMsProvider?.invoke() ?: positionMs
+            val currentBufMs = bufferedMsProvider?.invoke() ?: bufferedMs
             if (!liveMode && chapters.isNotEmpty()) {
                 PlayerChapterStrip(
                     chapters = chapters,
-                    positionMs = positionMs,
+                    positionMs = currentPosMs,
                     durationMs = durationMs,
                     onSelectChapter = { chapter ->
                         onSeek(chapter.fromMs)
@@ -111,9 +115,9 @@ internal fun BoxScope.PlayerBottomChrome(
             }
             if (!liveMode) {
                 PlayerProgress(
-                    positionMs = positionMs,
+                    positionMs = currentPosMs,
                     durationMs = durationMs,
-                    bufferedMs = bufferedMs,
+                    bufferedMs = currentBufMs,
                     isPlaying = isPlaying,
                     isBuffering = isBuffering,
                     conicLightEnabled = conicLightEnabled,
@@ -143,7 +147,7 @@ internal fun BoxScope.PlayerBottomChrome(
                 } else {
                     Column(modifier = Modifier.padding(start = 2.dp)) {
                         Text(
-                            text = Formatters.formatDuration((scrubbingPositionMs ?: positionMs) / 1000),
+                            text = Formatters.formatDuration((scrubbingPositionMs ?: currentPosMs) / 1000),
                             style = COUITheme.textStyles.footnote2,
                             color = Color.White,
                             lineHeight = 15.sp,

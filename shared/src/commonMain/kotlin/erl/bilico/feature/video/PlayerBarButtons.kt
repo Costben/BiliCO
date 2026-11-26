@@ -351,7 +351,7 @@ internal fun PlayerBottomMenuControl(
     items: List<CouiMenuItem>,
     headerContent: (@Composable () -> Unit)? = null,
     maxHeight: Dp? = null,
-    stageCoords: LayoutCoordinates?,
+    stageCoords: () -> LayoutCoordinates?,
     onAnchorEndChange: (Dp) -> Unit,
     modifier: Modifier = Modifier,
     horizontalPadding: Dp = 8.dp,
@@ -359,13 +359,13 @@ internal fun PlayerBottomMenuControl(
     val density = LocalDensity.current
     Box(
         modifier = modifier.onGloballyPositioned { coords ->
-            if (stageCoords != null && stageCoords.isAttached && coords.isAttached) {
-                val box = stageCoords.localBoundingBoxOf(coords)
-                onAnchorEndChange(with(density) { (stageCoords.size.width - box.right).coerceAtLeast(0f).toDp() })
+            val stage = stageCoords() ?: return@onGloballyPositioned
+            if (stage.isAttached && coords.isAttached) {
+                val box = stage.localBoundingBoxOf(coords)
+                onAnchorEndChange(with(density) { (stage.size.width - box.right).coerceAtLeast(0f).toDp() })
             }
         },
-    ) {
-        ControlLabel(text = text, onClick = onOpen, horizontalPadding = horizontalPadding)
+    ) { ControlLabel(text = text, onClick = onOpen, horizontalPadding = horizontalPadding)
         if (!fullscreen) {
             CouiPopupMenu(
                 show = menuOpen,
@@ -400,7 +400,7 @@ internal fun RowScope.PlayerBottomTrailingControls(
     speedMenuItems: List<CouiMenuItem>,
     qualityMenuItems: List<CouiMenuItem>,
     subtitleMenuItems: List<CouiMenuItem>,
-    stageCoords: LayoutCoordinates?,
+    stageCoords: () -> LayoutCoordinates?,
     onEpisodesEndChange: (Dp) -> Unit,
     onSubtitleEndChange: (Dp) -> Unit,
     onSpeedEndChange: (Dp) -> Unit,

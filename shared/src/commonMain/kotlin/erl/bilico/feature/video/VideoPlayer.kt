@@ -68,6 +68,8 @@ internal fun VideoPlayer(
     positionMs: Long,
     durationMs: Long,
     bufferedMs: Long = 0L,
+    positionMsProvider: (() -> Long)? = null,
+    bufferedMsProvider: (() -> Long)? = null,
     isBuffering: Boolean,
     errorMessage: String?,
     qualityLabel: String?,
@@ -155,7 +157,7 @@ internal fun VideoPlayer(
     var sleepTimerVisible by remember { mutableStateOf(false) }
     var selectedDanmaku by remember { mutableStateOf<DanmakuHit?>(null) }
     val danmakuInteraction = remember { DanmakuInteractionHost() }
-    var stageCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val stageCoordsRef = remember { arrayOfNulls<LayoutCoordinates>(1) }
     var episodesEndMargin by remember { mutableStateOf(224.dp) }
     var speedEndMargin by remember { mutableStateOf(120.dp) }
     var qualityEndMargin by remember { mutableStateOf(64.dp) }
@@ -221,7 +223,7 @@ internal fun VideoPlayer(
     val showChrome = !inPipMode && !effectiveLocked && (controlsVisible || errorMessage != null)
     LaunchedEffect(fullscreen, showChrome) {
         if (!showChrome) activeMenu = PlayerPopupMenu.NONE
-        if (showChrome && !liveMode) seekPreview?.ensureLoaded(positionMs, durationMs)
+        if (showChrome && !liveMode) seekPreview?.ensureLoaded(positionMsProvider?.invoke() ?: positionMs, durationMs)
     }
     val horizontalBarPad = if (fullscreen) 24.dp else 12.dp
     val topBarMode = if (fullscreen) PlayerTopBarMode.FULLSCREEN else PlayerTopBarMode.PORTRAIT
@@ -291,7 +293,7 @@ internal fun VideoPlayer(
     val stageModifier = if (stageOpaquePlayer && stagePlayerVisible) modifier.background(Color.Black) else modifier
     RegisterSurfaceViewEntry(hdrVideo)
 
-    Box(stageModifier.onGloballyPositioned { stageCoords = it }) {
+    Box(stageModifier.onGloballyPositioned { stageCoordsRef[0] = it }) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -344,13 +346,14 @@ internal fun VideoPlayer(
                     PlayerGestureLayer(
                         positionMs = positionMs,
                         durationMs = durationMs,
+                        positionMsProvider = positionMsProvider,
                         seekEnabled = !liveMode,
                         longPressSpeed = if (liveMode) null else longPressSpeed,
                         longPressSpeedMode = longPressSpeedMode,
                         zoomState = if (audioOnly) null else zoomState,
                         seekPreview = if (liveMode) null else seekPreview,
                         chapters = chapters,
-                        onSeekStart = { if (!liveMode) seekPreview?.ensureLoaded(positionMs, durationMs) },
+                        onSeekStart = { if (!liveMode) seekPreview?.ensureLoaded(positionMsProvider?.invoke() ?: positionMs, durationMs) },
                         fullscreen = fullscreen,
                         hapticEnabled = hapticEnabled,
                         volumeBrightnessEnabled = volumeBrightnessEnabled,
@@ -498,6 +501,8 @@ internal fun VideoPlayer(
                 positionMs = positionMs,
                 durationMs = durationMs,
                 bufferedMs = bufferedMs,
+                positionMsProvider = positionMsProvider,
+                bufferedMsProvider = bufferedMsProvider,
                 scrubbingPositionMs = scrubbingPositionMs,
                 isPlaying = isPlaying,
                 isBuffering = isBuffering,
@@ -530,7 +535,7 @@ internal fun VideoPlayer(
                 speedMenuItems = speedMenuItems,
                 qualityMenuItems = qualityMenuItems,
                 subtitleMenuItems = subtitleMenuItems,
-                stageCoords = stageCoords,
+                stageCoords = { stageCoordsRef[0] },
                 onEpisodesEndChange = { episodesEndMargin = it },
                 onSubtitleEndChange = { subtitleEndMargin = it },
                 onSpeedEndChange = { speedEndMargin = it },

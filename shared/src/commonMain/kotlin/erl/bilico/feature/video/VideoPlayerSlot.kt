@@ -19,9 +19,8 @@ import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
 import erl.bilico.ui.layerBackdropIf
-import io.github.suqi8.coui.kmp.blur.LayerBackdrop
+import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
-import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 
 @Composable
 internal fun BoxScope.VideoPlayerSlot(
@@ -117,9 +116,11 @@ internal fun BoxScope.VideoPlayerSlot(
         player = player,
         title = state.detail?.title.orEmpty(),
         isPlaying = isPlaying,
-        positionMs = clock.positionMs,
+        positionMs = 0L,
         durationMs = clock.durationMs.takeIf { it > 0L } ?: state.source?.durationMs ?: 0L,
-        bufferedMs = clock.bufferedMs,
+        bufferedMs = 0L,
+        positionMsProvider = { clock.positionMs },
+        bufferedMsProvider = { clock.bufferedMs },
         isBuffering = state.isPlaybackLoading || isBuffering,
         errorMessage = state.playbackError ?: playerError,
         qualityLabel = state.qualityLabel(),
@@ -220,7 +221,8 @@ internal fun BoxScope.VideoPlayerSlot(
         subtitleOverlay = { chromeVisible ->
             SubtitleOverlay(
                 cues = subtitleController.cues,
-                positionMs = clock.positionMs,
+                positionMs = 0L,
+                positionMsProvider = { clock.positionMs },
                 fullscreen = fullscreen,
                 controlsVisible = chromeVisible,
                 inPip = inPipMode,
@@ -299,7 +301,7 @@ internal fun VideoCollapsedBarSlot(
     nav: NavState,
     bvid: String,
     state: VideoUiState,
-    backdrop: LayerBackdrop?,
+    backdrop: Backdrop?,
     onCast: (() -> Unit)? = null,
     onDownload: (() -> Unit)? = null,
     onReportVideo: (() -> Unit)? = null,

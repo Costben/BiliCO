@@ -11,12 +11,14 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -100,13 +102,17 @@ internal fun VideoDetailSection(
     val navBarBottom = rememberStableNavBarBottomDp()
     val fallbackBackdrop = rememberLayerBackdrop()
     val detailLayerBackdrop = barBackdrops?.detail ?: fallbackBackdrop
-    val barMaterialBackdrop = barBackdrops?.barMaterial
     val pageBg = pageContainerColor()
     val statusBarDp = with(LocalDensity.current) { rememberStableStatusBarHeightPx().toDp() }
     val firstRowHeight = statusBarDp + CollapsedBarHeight
     val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + DETAIL_CONTENT_GAP
     val barBlurActive = blurActive && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
+    LaunchedEffect(barBackdrops, barBlurActive) {
+        barBackdrops?.detailScrolled = barBlurActive
+    }
     val detailBarBounds = remember { TopBarBounds() }
+    val detailBottomShiftPx = LocalDetailBottomShiftPx.current
+    val detailTopRowVisible = LocalDetailTopRowVisible.current
     var commentComposeTrigger by remember(state.detail?.aid) { mutableIntStateOf(0) }
 
     CompositionLocalProvider(LocalTopBarBounds provides detailBarBounds) {
@@ -213,6 +219,7 @@ internal fun VideoDetailSection(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .graphicsLayer { translationY = -detailBottomShiftPx() }
                         .padding(bottom = navBarBottom),
                 ) {
                     PinnedBarDensity {
@@ -270,9 +277,10 @@ internal fun VideoDetailSection(
                     .reportTopBarBottom(detailBarBounds),
                 containerColor = pageBg,
                 backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,
-                materialBackdrop = if (BlurEffectsEnabled) barMaterialBackdrop else null,
+                materialBackdrop = null,
                 extraHeight = 0.dp,
                 topInset = firstRowHeight,
+                showTopRow = detailTopRowVisible,
             ) {
                 VideoDetailBar(
                     selected = detailPager.currentPage,
@@ -286,7 +294,7 @@ internal fun VideoDetailSection(
                     onDraftChange = onDanmakuDraftChange,
                     onComposingChange = onDanmakuComposingChange,
                     onSend = onSendDanmaku,
-                    backdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
+                    backdrop = null,
                 )
             }
 

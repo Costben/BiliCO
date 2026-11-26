@@ -90,6 +90,20 @@ internal fun filterAndMergeDanmaku(
     return result
 }
 
+internal fun danmakuScrollLaneCount(
+    heightPx: Float,
+    fontPx: Float,
+    areaFraction: Float,
+    lineHeightRatio: Float = LINE_HEIGHT_RATIO,
+    massiveMode: Boolean = false,
+): Int {
+    if (heightPx <= 0f || fontPx <= 0f) return 0
+    val lineHeight = fontPx * lineHeightRatio
+    val effectiveArea = if (massiveMode) max(areaFraction, 0.75f) else areaFraction
+    val areaHeight = (heightPx * effectiveArea).coerceIn(lineHeight, heightPx)
+    return max(1, ((areaHeight - fontPx) / lineHeight).toInt() + 1)
+}
+
 internal class DanmakuTrackPlanner(
     private val widthPx: Float,
     heightPx: Float,
@@ -101,9 +115,13 @@ internal class DanmakuTrackPlanner(
     bottomInsetPx: Float,
 ) {
     private val lineHeight = fontPx * lineHeightRatio
-    private val effectiveArea = if (massiveMode) max(areaFraction, 0.75f) else areaFraction
-    private val areaHeight = (heightPx * effectiveArea).coerceIn(lineHeight, heightPx)
-    private val scrollLanes = max(1, ((areaHeight - fontPx) / lineHeight).toInt() + 1)
+    private val scrollLanes = danmakuScrollLaneCount(
+        heightPx = heightPx,
+        fontPx = fontPx,
+        areaFraction = areaFraction,
+        lineHeightRatio = lineHeightRatio,
+        massiveMode = massiveMode,
+    ).coerceAtLeast(1)
     private val topLanes = max(1, scrollLanes / 3)
     private val bottomLanes = max(1, scrollLanes / 3)
     private val scrollFree = LongArray(scrollLanes) { Long.MIN_VALUE }

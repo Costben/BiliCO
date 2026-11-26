@@ -76,6 +76,7 @@ internal fun VideoFullscreenStage(
     surfaceViewPlayer: Boolean = false,
     screenLocked: Boolean = false,
     onScreenLockedChange: ((Boolean) -> Unit)? = null,
+    freezeDetailHeight: Boolean = true,
 ) {
     val context = LocalPlatformContext.current
     val windowLandscape = LocalScreenConfig.current.isLandscape
@@ -274,6 +275,19 @@ internal fun VideoFullscreenStage(
         }
     }
 
+    val currentFreezeDetailHeight by rememberUpdatedState(freezeDetailHeight)
+    val detailBottomShiftPx: () -> Float = remember(minSlotPx) {
+        {
+            if (!portraitResizable || !currentFreezeDetailHeight || currentLandscapeForLayer) {
+                0f
+            } else {
+                val h = slotHeight.floatValue
+                val floor = slotFloor[0].takeIf { it > 0f } ?: minSlotPx
+                if (h <= 0f) 0f else (h - floor).coerceAtLeast(0f)
+            }
+        }
+    }
+
     Layout(
         content = {
             // 0: 简介 / 评论。视频未折叠时裁剪掉视频槽位背后的绘制，防止评论/卡片与 UIKitView 视频抢顶层。
@@ -300,7 +314,14 @@ internal fun VideoFullscreenStage(
                             }
                         }
                     },
-                content = detailContent,
+                content = {
+                    CompositionLocalProvider(
+                        LocalDetailBottomShiftPx provides detailBottomShiftPx,
+                        LocalDetailTopRowVisible provides barFading,
+                    ) {
+                        detailContent()
+                    }
+                },
             )
 
             // 1: 竖屏视频槽 + 全屏渐黑遮罩
@@ -473,9 +494,14 @@ internal fun VideoFullscreenStage(
         } else {
             (statusBarPx + videoH).roundToInt()
         }
+        val detailMeasureTop = if (portraitResizable && freezeDetailHeight) {
+            (slotFloor[0] - minSlotPx).roundToInt().coerceAtLeast(0)
+        } else {
+            detailTop
+        }
 
         val detail = measurables[0].measure(
-            Constraints.fixed(portW, (portH - detailTop).coerceAtLeast(1)),
+            Constraints.fixed(portW, (portH - detailMeasureTop).coerceAtLeast(1)),
         )
         val backdrop = measurables[1].measure(Constraints.fixed(winW, winH))
         val playerConstraints = when {
