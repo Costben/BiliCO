@@ -31,6 +31,7 @@ internal fun BiliPlayer.loadAttempt(
     attempt: PlaybackAttempt,
     speed: Float,
     seekMs: Long,
+    playWhenReady: Boolean = true,
 ) {
     setPlaybackSpeed(speed)
     setMedia(
@@ -38,7 +39,7 @@ internal fun BiliPlayer.loadAttempt(
         audioUrl = attempt.audioUrl,
         headers = headers,
         startPositionMs = seekMs,
-        playWhenReady = true,
+        playWhenReady = playWhenReady,
         isLive = false,
     )
 }
@@ -88,6 +89,7 @@ internal class PlaybackAttempts(
         headers: Map<String, String>,
         seekMs: Long,
         mediaId: String = "",
+        playWhenReady: Boolean = true,
     ) {
         this.headers = headers
         this.currentMediaId = mediaId
@@ -95,7 +97,7 @@ internal class PlaybackAttempts(
         index = 0
         val first = attempts.firstOrNull() ?: return
         val from = if (seekMs > 0L) seekMs else PlaybackPositions.last(mediaId)
-        player.loadAttempt(headers, first, speed(), from)
+        player.loadAttempt(headers, first, speed(), from, playWhenReady)
     }
 
     fun rememberPosition(positionMs: Long) {
@@ -113,7 +115,7 @@ internal class PlaybackAttempts(
         val next = index + 1
         if (next >= attempts.size) return false
         index = next
-        player.loadAttempt(headers, attempts[next], speed(), player.currentPosition)
+        player.loadAttempt(headers, attempts[next], speed(), player.currentPosition, player.playWhenReady)
         return true
     }
 }

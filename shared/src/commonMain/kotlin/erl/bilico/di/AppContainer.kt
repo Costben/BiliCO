@@ -33,6 +33,7 @@ import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.feature.cast.DlnaCastController
 import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.ioDispatcher
+import erl.bilico.player.SleepTimerController
 import erl.bilico.update.AppUpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -56,6 +57,8 @@ class AppContainer(context: PlatformContext) {
     )
 
     val settings = SettingsRepository(appContext, scope)
+
+    val sleepTimer = SleepTimerController(appContext, scope)
 
     val tokenRefresh = TokenRefreshHelper(client.passportApi, session)
 

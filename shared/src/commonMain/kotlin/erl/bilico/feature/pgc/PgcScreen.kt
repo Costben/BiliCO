@@ -109,6 +109,8 @@ fun PgcScreen(
     val playerConicLight by container.settings.playerConicLight.collectAsStateWithLifecycle()
     val speedLocked by container.settings.speedLocked.collectAsStateWithLifecycle()
     val lockedSpeed by container.settings.lockedSpeed.collectAsStateWithLifecycle()
+    val topBarLayoutFullscreen by container.settings.playerTopBar.fullscreen.collectAsStateWithLifecycle()
+    val topBarLayoutPortrait by container.settings.playerTopBar.portrait.collectAsStateWithLifecycle()
     val inPipMode = LocalInPipMode.current
 
     val scope = rememberCoroutineScope()
@@ -205,19 +207,15 @@ fun PgcScreen(
                     viewModel.markPlaybackStarted()
                 } else if (state == PlayerStates.STATE_ENDED) {
                     viewModel.flushHeartbeat(player.duration.coerceAtLeast(0L) / 1000, container.scope)
-                    when (playbackEndMode) {
-                        PlaybackEndMode.OFF -> Unit
-                        PlaybackEndMode.SINGLE_LOOP -> {
-                            player.seekTo(0L)
-                            player.play()
-                        }
-                        PlaybackEndMode.LIST_LOOP -> {
-                            if (!viewModel.playNextEpisode(loop = true)) {
-                                player.seekTo(0L)
-                                player.play()
+                    if (!container.sleepTimer.consumeAfterCurrentVideo(player)) {
+                        when (playbackEndMode) {
+                            PlaybackEndMode.OFF -> Unit
+                            PlaybackEndMode.SINGLE_LOOP -> { player.seekTo(0L); player.play() }
+                            PlaybackEndMode.LIST_LOOP -> {
+                                if (!viewModel.playNextEpisode(loop = true)) { player.seekTo(0L); player.play() }
                             }
+                            PlaybackEndMode.AUTO_NEXT -> viewModel.playNextEpisode()
                         }
-                        PlaybackEndMode.AUTO_NEXT -> viewModel.playNextEpisode()
                     }
                 }
             }
@@ -241,6 +239,7 @@ fun PgcScreen(
         subtitleController.attach(bvid = ep.bvid, aid = ep.aid, cid = ep.cid, preferLocal = state.offlineMode)
     }
 
+    var loadedEpCid by remember(seasonId) { mutableStateOf<Long?>(null) }
     LaunchedEffect(state.source) {
         val source = state.source ?: return@LaunchedEffect
         val currentEp = viewModel.currentEpisode
@@ -249,20 +248,26 @@ fun PgcScreen(
         } else {
             "https://www.bilibili.com/bangumi/play/ss$seasonId"
         }
-        val headers = container.client.mediaRequestHeaders().toMutableMap().apply {
-            put("Referer", referer)
-        }
+        val headers = container.client.mediaRequestHeaders().toMutableMap().apply { put("Referer", referer) }
         val resumeAt = viewModel.state.value.resumePositionMs
-        val mediaId = playbackMediaId(currentEp?.bvid.orEmpty(), currentEp?.cid ?: 0L, source.videoUrl)
-        if (player.playbackState != PlayerStates.STATE_IDLE &&
-            PlaybackBridge.activeMediaId == mediaId
-        ) {
+        val currentCid = currentEp?.cid ?: 0L
+        val mediaId = playbackMediaId(currentEp?.bvid.orEmpty(), currentCid, source.videoUrl)
+        if (player.playbackState != PlayerStates.STATE_IDLE && PlaybackBridge.activeMediaId == mediaId) {
+            loadedEpCid = currentCid
             playbackAttempts.adopt(source, headers, mediaId)
             return@LaunchedEffect
         }
+        val shouldPlay = when {
+            loadedEpCid == null || player.playbackState == PlayerStates.STATE_IDLE ->
+                container.settings.detailAutoPlay.value
+            loadedEpCid != currentCid && player.playbackState == PlayerStates.STATE_ENDED ->
+                true
+            else -> player.playWhenReady
+        }
+        loadedEpCid = currentCid
         playerError = null
         PlaybackBridge.activeMediaId = mediaId
-        playbackAttempts.start(source, headers, resumeAt, mediaId)
+        playbackAttempts.start(source, headers, resumeAt, mediaId, playWhenReady = shouldPlay)
         if (resumeAt > 0L) viewModel.consumeResumePosition()
     }
 
@@ -435,13 +440,13 @@ fun PgcScreen(
                     speed = value
                     if (speedLocked) container.settings.setLockedSpeed(value)
                 },
-                onBack = {
-                    if (fullscreen) applyFullscreen(false) else nav.pop()
-                },
+                topBarLayoutFullscreen = topBarLayoutFullscreen,
+                topBarLayoutPortrait = topBarLayoutPortrait,
+                onToggleTopBarItem = container.settings.playerTopBar::setVisible,
+                onMoveTopBarItem = container.settings.playerTopBar::moveItem,
+                onBack = { if (fullscreen) applyFullscreen(false) else nav.pop() },
                 onRetry = viewModel::retryPlayback,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .layerBackdropIf(captureStageBackdrop, stageBackdrop),
+                modifier = Modifier.fillMaxSize().layerBackdropIf(captureStageBackdrop, stageBackdrop),
                 inPipMode = inPipMode,
                 danmakuEnabled = danmakuEnabled,
                 onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
@@ -454,17 +459,12 @@ fun PgcScreen(
                 onHome = returnHome,
                 onCast = if ((viewModel.currentEpisode?.epId ?: epId) > 0L || (viewModel.currentEpisode?.cid ?: 0L) > 0L) {
                     { castDialogVisible = true }
-                } else {
-                    null
-                },
+                } else null,
                 onDownload = if (state.detail != null) ({ downloadDialogVisible = true }) else null,
                 playbackEndMode = playbackEndMode,
                 onSelectPlaybackEndMode = container.settings::setPlaybackEndMode,
                 longPressSpeed = longPressSpeed,
-                longPressSpeedMode = resolveLongPressSpeedMode(
-                    adjustableLongPressSpeed,
-                    swipeDownLockLongPressSpeed,
-                ),
+                longPressSpeedMode = resolveLongPressSpeedMode(adjustableLongPressSpeed, swipeDownLockLongPressSpeed),
                 subtitleOverlay = { chromeVisible ->
                     SubtitleOverlay(
                         cues = subtitleController.cues,

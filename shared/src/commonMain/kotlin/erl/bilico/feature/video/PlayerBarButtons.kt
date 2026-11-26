@@ -99,6 +99,10 @@ internal fun rememberPlayerMoreMenuItems(
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: (() -> Unit)? = null,
     onOpenTopBarSettings: (() -> Unit)? = null,
+    sleepTimerSummary: String? = null,
+    onOpenSleepTimer: (() -> Unit)? = null,
+    detailAutoPlay: Boolean = true,
+    onToggleDetailAutoPlay: (() -> Unit)? = null,
 ): List<CouiMenuItem> {
     val selectModeState by rememberUpdatedState(onSelectPlaybackEndMode)
     val shareState by rememberUpdatedState(onShare)
@@ -110,6 +114,8 @@ internal fun rememberPlayerMoreMenuItems(
     val submitSponsorState by rememberUpdatedState(onSubmitSponsor)
     val statsState by rememberUpdatedState(onShowStats)
     val topBarSettingsState by rememberUpdatedState(onOpenTopBarSettings)
+    val sleepTimerState by rememberUpdatedState(onOpenSleepTimer)
+    val toggleAutoPlayState by rememberUpdatedState(onToggleDetailAutoPlay)
     val hasPlaybackEnd = onSelectPlaybackEndMode != null
     val hasShare = onShare != null
     val hasCast = onCast != null
@@ -120,53 +126,57 @@ internal fun rememberPlayerMoreMenuItems(
     val hasSubmitSponsor = onSubmitSponsor != null
     val hasStats = onShowStats != null
     val hasTopBarSettings = onOpenTopBarSettings != null
+    val hasSleepTimer = onOpenSleepTimer != null
+    val hasDetailAutoPlay = onToggleDetailAutoPlay != null
     return remember(
         playbackEndMode, hasPlaybackEnd, hasShare, hasCast, hasDownload,
         hasSelectLine, audioOnly, hasToggleAudio, hasReportVideo, hasSubmitSponsor, hasStats,
-        hasTopBarSettings,
+        hasTopBarSettings, sleepTimerSummary, hasSleepTimer, detailAutoPlay, hasDetailAutoPlay,
     ) {
         buildList {
-            if (hasSelectLine) {
-                add(CouiMenuItem(label = "切换线路", onClick = { selectLineState?.invoke() }, group = 0))
-            }
+            if (hasSelectLine) add(CouiMenuItem(label = "切换线路", onClick = { selectLineState?.invoke() }, group = 0))
             if (hasToggleAudio) {
-                add(
-                    CouiMenuItem(
-                        label = if (audioOnly) "退出黑听（恢复画面）" else "黑听（仅听音频）",
-                        selected = audioOnly,
-                        onClick = { toggleAudioState?.invoke() },
-                        group = 0,
-                    ),
-                )
+                add(CouiMenuItem(
+                    label = if (audioOnly) "退出黑听（恢复画面）" else "黑听（仅听音频）",
+                    selected = audioOnly, onClick = { toggleAudioState?.invoke() }, group = 0,
+                ))
             }
             if (hasCast) add(CouiMenuItem(label = "投屏", onClick = { castState?.invoke() }, group = 0))
             if (hasDownload) add(CouiMenuItem(label = "离线缓存", onClick = { downloadState?.invoke() }, group = 0))
+            if (hasSleepTimer) {
+                add(CouiMenuItem(
+                    label = "定时关闭", summary = sleepTimerSummary,
+                    selected = !sleepTimerSummary.isNullOrBlank() && sleepTimerSummary != "未开启",
+                    onClick = { sleepTimerState?.invoke() }, group = 0,
+                ))
+            }
+            if (hasDetailAutoPlay) {
+                add(CouiMenuItem(
+                    label = "详情页自动播放", summary = if (detailAutoPlay) "已开启" else "已关闭",
+                    selected = detailAutoPlay, onClick = { toggleAutoPlayState?.invoke() }, group = 0,
+                ))
+            }
             if (hasPlaybackEnd) {
-                add(
-                    CouiMenuItem(
-                        label = "自动联播", summary = playbackEndMode.label, onClick = {}, group = 0,
-                        children = PlaybackEndMode.entries.map { option ->
-                            CouiMenuItem(
-                                label = option.label,
-                                selected = option == playbackEndMode,
-                                onClick = { selectModeState?.invoke(option) },
-                            )
-                        },
-                    ),
-                )
+                add(CouiMenuItem(
+                    label = "自动联播", summary = playbackEndMode.label, onClick = {}, group = 0,
+                    children = PlaybackEndMode.entries.map { option ->
+                        CouiMenuItem(
+                            label = option.label, selected = option == playbackEndMode,
+                            onClick = { selectModeState?.invoke(option) },
+                        )
+                    },
+                ))
             }
             if (hasShare) add(CouiMenuItem(label = "分享", onClick = { shareState?.invoke() }, group = 1))
             if (hasSubmitSponsor) add(CouiMenuItem(label = "提交空降片段", onClick = { submitSponsorState?.invoke() }, group = 1))
             if (hasReportVideo) add(CouiMenuItem(label = "举报视频", onClick = { reportVideoState?.invoke() }, group = 1))
-            if (hasTopBarSettings) {
-                add(CouiMenuItem(label = "顶栏设置", onClick = { topBarSettingsState?.invoke() }, group = 2))
-            }
+            if (hasTopBarSettings) add(CouiMenuItem(label = "顶栏设置", onClick = { topBarSettingsState?.invoke() }, group = 2))
             if (hasStats) add(CouiMenuItem(label = "视频信息统计", onClick = { statsState?.invoke() }, group = 2))
         }
     }
 }
 
-/** 顶栏右端的三个点：投屏、切换线路、黑听、自动联播、分享、空降提交、举报、顶栏设置与视频信息统计。 */
+/** 顶栏右端的三个点：投屏、切换线路、黑听、定时关闭、自动播放、自动联播、分享、空降提交、举报、顶栏设置与视频信息统计。 */
 @Composable
 internal fun PlayerMoreMenu(
     onShare: (() -> Unit)?,
@@ -181,12 +191,16 @@ internal fun PlayerMoreMenu(
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: (() -> Unit)? = null,
     onOpenTopBarSettings: (() -> Unit)? = null,
+    sleepTimerSummary: String? = null,
+    onOpenSleepTimer: (() -> Unit)? = null,
+    detailAutoPlay: Boolean = true,
+    onToggleDetailAutoPlay: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val items = rememberPlayerMoreMenuItems(
         playbackEndMode, onSelectPlaybackEndMode, onShare, onCast, onDownload,
         onSelectLine, audioOnly, onToggleAudioOnly, onReportVideo, onSubmitSponsor, onShowStats,
-        onOpenTopBarSettings,
+        onOpenTopBarSettings, sleepTimerSummary, onOpenSleepTimer, detailAutoPlay, onToggleDetailAutoPlay,
     )
     Box {
         PlayerTopBarIconButton(TopBarMoreIcon, "更多", onClick = { expanded = true })
@@ -287,24 +301,8 @@ internal fun rememberQualityMenuItems(
                 label = option.label.ifBlank { "${option.quality}P" },
                 selected = option.quality == activeQuality,
                 hint = when {
-                    option.needVip -> {
-                        {
-                            Text(
-                                text = "大会员",
-                                style = COUITheme.textStyles.footnote2,
-                                color = COUITheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                    option.needLogin -> {
-                        {
-                            Text(
-                                text = "登录",
-                                style = COUITheme.textStyles.footnote2,
-                                color = COUITheme.colorScheme.onSurfaceSecondary,
-                            )
-                        }
-                    }
+                    option.needVip -> ({ Text("大会员", style = COUITheme.textStyles.footnote2, color = COUITheme.colorScheme.primary) })
+                    option.needLogin -> ({ Text("登录", style = COUITheme.textStyles.footnote2, color = COUITheme.colorScheme.onSurfaceSecondary) })
                     else -> null
                 },
                 onClick = { onSelectState(option.quality) },
@@ -510,6 +508,10 @@ internal fun PlayerStagePopupMenus(
     onSubmitSponsor: (() -> Unit)? = null,
     onShowStats: () -> Unit,
     onOpenTopBarSettings: (() -> Unit)? = null,
+    sleepTimerSummary: String? = null,
+    onOpenSleepTimer: (() -> Unit)? = null,
+    detailAutoPlay: Boolean = true,
+    onToggleDetailAutoPlay: (() -> Unit)? = null,
     episodesMenuItems: List<CouiMenuItem>,
     speedMenuItems: List<CouiMenuItem>,
     qualityMenuItems: List<CouiMenuItem>,
@@ -525,18 +527,20 @@ internal fun PlayerStagePopupMenus(
         LocalBackdrop provides if (BlurEffectsEnabled && !hdrVideo) menuBackdrop else null,
     ) {
         val stageMoreItems = rememberPlayerMoreMenuItems(
-            playbackEndMode = playbackEndMode,
-            onSelectPlaybackEndMode = onSelectPlaybackEndMode,
+            playbackEndMode = playbackEndMode, onSelectPlaybackEndMode = onSelectPlaybackEndMode,
             onShare = onShare,
             onCast = onCast?.let { open -> { onHideControls(); open() } },
             onDownload = onDownload?.let { open -> { onHideControls(); open() } },
             onSelectLine = onSelectLine?.let { open -> { onHideControls(); open() } },
-            audioOnly = audioOnly,
-            onToggleAudioOnly = onToggleAudioOnly,
+            audioOnly = audioOnly, onToggleAudioOnly = onToggleAudioOnly,
             onReportVideo = onReportVideo?.let { open -> { onHideControls(); open() } },
             onSubmitSponsor = onSubmitSponsor?.let { open -> { onHideControls(); open() } },
             onShowStats = onShowStats,
             onOpenTopBarSettings = onOpenTopBarSettings?.let { open -> { onHideControls(); open() } },
+            sleepTimerSummary = sleepTimerSummary,
+            onOpenSleepTimer = onOpenSleepTimer?.let { open -> { onHideControls(); open() } },
+            detailAutoPlay = detailAutoPlay,
+            onToggleDetailAutoPlay = onToggleDetailAutoPlay,
         )
         CouiStagePopupMenu(
             show = activeMenu == PlayerPopupMenu.MORE,

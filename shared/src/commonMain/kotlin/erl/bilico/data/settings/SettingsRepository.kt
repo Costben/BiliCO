@@ -26,6 +26,7 @@ import erl.bilico.data.settings.SettingsKeys.KEY_DANMAKU_ENABLED
 import erl.bilico.data.settings.SettingsKeys.KEY_DANMAKU_FONT
 import erl.bilico.data.settings.SettingsKeys.KEY_DANMAKU_OPACITY
 import erl.bilico.data.settings.SettingsKeys.KEY_DARK_MODE
+import erl.bilico.data.settings.SettingsKeys.KEY_DETAIL_AUTO_PLAY
 import erl.bilico.data.settings.SettingsKeys.KEY_DM_ALLOW_BOTTOM
 import erl.bilico.data.settings.SettingsKeys.KEY_DM_ALLOW_COLORFUL
 import erl.bilico.data.settings.SettingsKeys.KEY_DM_ALLOW_SCROLL
@@ -142,6 +143,10 @@ class SettingsRepository(
 
     private val _backgroundPlay = MutableStateFlow(true)
     val backgroundPlay: StateFlow<Boolean> = _backgroundPlay.asStateFlow()
+
+    /** 进入视频或番剧详情页时是否自动起播。 */
+    private val _detailAutoPlay = MutableStateFlow(true)
+    val detailAutoPlay: StateFlow<Boolean> = _detailAutoPlay.asStateFlow()
 
     /** 一个视频播完是否自动接着播下一个（下一 P 或播放队列里的下一条）。 */
     private val _autoPlayNext = MutableStateFlow(true)
@@ -287,6 +292,7 @@ class SettingsRepository(
             _advancedPlusOne.value = prefs[KEY_ADVANCED_PLUS_ONE] ?: false
             _inAppBackgroundPlay.value = prefs[KEY_IN_APP_BACKGROUND_PLAY] ?: true
             _backgroundPlay.value = prefs[KEY_BACKGROUND_PLAY] ?: true
+            _detailAutoPlay.value = prefs[KEY_DETAIL_AUTO_PLAY] ?: true
             val legacyAutoPlay = prefs[KEY_AUTO_PLAY_NEXT] ?: true
             val resolvedEndMode = prefs[KEY_PLAYBACK_END_MODE]
                 ?.let(PlaybackEndMode::fromCode)
@@ -462,6 +468,11 @@ class SettingsRepository(
     fun setBackgroundPlay(enabled: Boolean) {
         _backgroundPlay.value = enabled
         scope.launch { context.biliDataStore.edit { it[KEY_BACKGROUND_PLAY] = enabled } }
+    }
+
+    fun setDetailAutoPlay(enabled: Boolean) {
+        _detailAutoPlay.value = enabled
+        scope.launch { context.biliDataStore.edit { it[KEY_DETAIL_AUTO_PLAY] = enabled } }
     }
 
     fun setAutoPlayNext(enabled: Boolean) {

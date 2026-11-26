@@ -27,6 +27,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.PlaybackSource
 import erl.bilico.data.model.QualityOption
@@ -35,10 +36,14 @@ import erl.bilico.data.model.SubtitleTrack
 import erl.bilico.data.model.VideoChapter
 import erl.bilico.data.settings.PlayerTopBarLayout
 import erl.bilico.data.settings.PlayerTopBarMode
+import erl.bilico.di.LocalAppContainer
+import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.readSystemVolume
+import erl.bilico.platform.showToast
 import erl.bilico.platform.writeSystemVolume
 import erl.bilico.player.BiliPlayer
 import erl.bilico.player.BiliPlayerSurface
+import erl.bilico.player.SleepTimerState
 import erl.bilico.player.VideoResizeMode
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalRouteIsTop
@@ -129,15 +134,21 @@ internal fun VideoPlayer(
     danmakuActions: DanmakuActionCallbacks? = null,
     seekPreview: SeekPreviewController? = null,
 ) {
+    val container = LocalAppContainer.current
+    val platformContext = LocalPlatformContext.current
+    val sleepTimerController = container?.sleepTimer
+    val sleepTimerState = sleepTimerController?.state?.collectAsStateWithLifecycle()?.value ?: SleepTimerState()
+    val detailAutoPlay = container?.settings?.detailAutoPlay?.collectAsStateWithLifecycle()?.value ?: true
     val zoomState = rememberPlayerZoomState()
     val haptic = rememberCouiHaptic()
     val screenLock = rememberPlayerScreenLockState(fullscreen = fullscreen, inPipMode = inPipMode)
-    var controlsVisible by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(!liveMode && !detailAutoPlay) }
     var activeMenu by remember { mutableStateOf(PlayerPopupMenu.NONE) }
     var lastBottomMenu by remember { mutableStateOf(PlayerPopupMenu.SPEED) }
     var statsVisible by remember { mutableStateOf(false) }
     var topBarSettingsVisible by remember { mutableStateOf(false) }
     var sponsorAssistVisible by remember { mutableStateOf(false) }
+    var sleepTimerVisible by remember { mutableStateOf(false) }
     var selectedDanmaku by remember { mutableStateOf<DanmakuHit?>(null) }
     val danmakuInteraction = remember { DanmakuInteractionHost() }
     var stageCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -158,6 +169,7 @@ internal fun VideoPlayer(
             statsVisible = false
             topBarSettingsVisible = false
             sponsorAssistVisible = false
+            sleepTimerVisible = false
             selectedDanmaku = null
             zoomState.reset()
         }
@@ -201,14 +213,18 @@ internal fun VideoPlayer(
     } else {
         topBarLayoutPortrait.visibleItems(topBarMode)
     }
-    val openTopBarSettings: (() -> Unit)? = if (onToggleTopBarItem != null) {
+    val openTopBarSettings: (() -> Unit)? = onToggleTopBarItem?.let {
+        { controlsVisible = false; activeMenu = PlayerPopupMenu.NONE; topBarSettingsVisible = true }
+    }
+    val openSleepTimer: (() -> Unit)? = sleepTimerController?.let {
+        { controlsVisible = false; activeMenu = PlayerPopupMenu.NONE; sleepTimerVisible = true }
+    }
+    val toggleDetailAutoPlay: (() -> Unit)? = if (liveMode) null else container?.settings?.let { settings ->
         {
-            controlsVisible = false
-            activeMenu = PlayerPopupMenu.NONE
-            topBarSettingsVisible = true
+            val next = !settings.detailAutoPlay.value
+            settings.setDetailAutoPlay(next)
+            showToast(platformContext, if (next) "已开启详情页自动播放" else "已关闭详情页自动播放")
         }
-    } else {
-        null
     }
     val showStageComposer = fullscreen && !portraitFullscreen && danmakuComposer != null
     val portraitTopPad = if (portraitFullscreen) {
@@ -222,7 +238,8 @@ internal fun VideoPlayer(
         activeMenu != PlayerPopupMenu.NONE ||
             statsVisible ||
             sponsorAssistVisible ||
-            topBarSettingsVisible
+            topBarSettingsVisible ||
+            sleepTimerVisible
         )
     val menuBackdrop = rememberStageVideoBackdrop(
         player = player,
@@ -355,52 +372,24 @@ internal fun VideoPlayer(
                 modifier = Modifier.align(Alignment.TopCenter),
             ) {
                 PlayerTopBar(
-                    title = title,
-                    items = topBarItems,
-                    fullscreen = fullscreen,
-                    portraitFullscreen = portraitFullscreen,
-                    danmakuEnabled = danmakuEnabled,
-                    audioOnly = audioOnly,
-                    horizontalBarPad = horizontalBarPad,
-                    portraitTopPad = portraitTopPad,
+                    title = title, items = topBarItems, fullscreen = fullscreen,
+                    portraitFullscreen = portraitFullscreen, danmakuEnabled = danmakuEnabled,
+                    audioOnly = audioOnly, horizontalBarPad = horizontalBarPad, portraitTopPad = portraitTopPad,
+                    sleepTimerState = sleepTimerState, detailAutoPlay = detailAutoPlay,
                     actions = PlayerTopBarActions(
-                        onBack = onBack,
-                        onWatchLater = onWatchLater,
-                        onDanmakuSettings = onDanmakuSettingsClick?.let { open ->
-                            {
-                                controlsVisible = false
-                                open()
-                            }
-                        },
-                        onToggleDanmaku = onToggleDanmaku,
-                        onShare = onShare,
-                        onCast = onCast?.let { cast ->
-                            {
-                                controlsVisible = false
-                                cast()
-                            }
-                        },
-                        onShowStats = {
-                            controlsVisible = false
-                            statsVisible = true
-                        },
+                        onBack = onBack, onWatchLater = onWatchLater,
+                        onDanmakuSettings = onDanmakuSettingsClick?.let { open -> { controlsVisible = false; open() } },
+                        onToggleDanmaku = onToggleDanmaku, onShare = onShare,
+                        onCast = onCast?.let { cast -> { controlsVisible = false; cast() } },
+                        onShowStats = { controlsVisible = false; statsVisible = true },
                         onOpenSponsor = if (onJumpSponsorSegment != null || onSubmitSponsor != null) {
-                            {
-                                controlsVisible = false
-                                sponsorAssistVisible = true
-                            }
-                        } else {
-                            null
-                        },
-                        onHome = onHome,
-                        onToggleAudioOnly = onToggleAudioOnly,
-                        onEnterPip = onEnterPip,
+                            { controlsVisible = false; sponsorAssistVisible = true }
+                        } else null,
+                        onOpenSleepTimer = openSleepTimer,
+                        onToggleDetailAutoPlay = toggleDetailAutoPlay,
+                        onHome = onHome, onToggleAudioOnly = onToggleAudioOnly, onEnterPip = onEnterPip,
                         onOpenMoreMenu = {
-                            activeMenu = if (activeMenu == PlayerPopupMenu.MORE) {
-                                PlayerPopupMenu.NONE
-                            } else {
-                                PlayerPopupMenu.MORE
-                            }
+                            activeMenu = if (activeMenu == PlayerPopupMenu.MORE) PlayerPopupMenu.NONE else PlayerPopupMenu.MORE
                         },
                         portraitMoreMenu = {
                             PlayerMoreMenu(
@@ -410,6 +399,8 @@ internal fun VideoPlayer(
                                 onSelectPlaybackEndMode = onSelectPlaybackEndMode,
                                 onSubmitSponsor = onSubmitSponsor, onShowStats = { statsVisible = true },
                                 onOpenTopBarSettings = openTopBarSettings,
+                                sleepTimerSummary = sleepTimerState.summary, onOpenSleepTimer = openSleepTimer,
+                                detailAutoPlay = detailAutoPlay, onToggleDetailAutoPlay = toggleDetailAutoPlay,
                             )
                         },
                     ),
@@ -535,6 +526,10 @@ internal fun VideoPlayer(
                 onReportVideo = onReportVideo, onSubmitSponsor = onSubmitSponsor,
                 onShowStats = { activeMenu = PlayerPopupMenu.NONE; statsVisible = true },
                 onOpenTopBarSettings = openTopBarSettings,
+                sleepTimerSummary = sleepTimerState.summary,
+                onOpenSleepTimer = openSleepTimer,
+                detailAutoPlay = detailAutoPlay,
+                onToggleDetailAutoPlay = toggleDetailAutoPlay,
                 episodesMenuItems = episodesMenuItems, speedMenuItems = speedMenuItems,
                 qualityMenuItems = qualityMenuItems, subtitleMenuItems = subtitleMenuItems,
                 episodesEndMargin = episodesEndMargin, speedEndMargin = speedEndMargin,
@@ -560,6 +555,13 @@ internal fun VideoPlayer(
                 onToggleTopBarItem = onToggleTopBarItem, onMoveTopBarItem = onMoveTopBarItem,
                 onDismissTopBarSettings = { topBarSettingsVisible = false },
             )
+            if (sleepTimerVisible && sleepTimerController != null) {
+                SleepTimerDialog(
+                    controller = sleepTimerController,
+                    onDismiss = { sleepTimerVisible = false },
+                    inlineInStage = fullscreen,
+                )
+            }
         }
     }
 }

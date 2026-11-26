@@ -3,10 +3,12 @@ package erl.bilico.feature.settings
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import erl.bilico.data.repository.CdnOption
 import erl.bilico.data.settings.AutoNextPreferences
 import erl.bilico.data.settings.DefaultQuality
 import erl.bilico.data.settings.StatsOverlayPreferences
+import erl.bilico.di.LocalAppContainer
 import erl.bilico.feature.video.rememberDraftIntSliderState
 import io.github.suqi8.coui.kmp.basic.DropdownEntry
 import io.github.suqi8.coui.kmp.basic.DropdownItem
@@ -102,6 +104,23 @@ internal fun playerSettingsEntries(
                 summary = cdnLabel,
                 cardListPosition = pos,
                 onClick = onPickCdn,
+            )
+        },
+        SettingsEntry(
+            id = "detail_auto_play",
+            title = "详情页自动播放",
+            summary = "关闭后进入视频或番剧详情页不会自动起播",
+            keywords = "自动播放 详情页 起播 暂停",
+        ) { pos ->
+            val settings = LocalAppContainer.current?.settings
+            val detailAutoPlay = settings?.detailAutoPlay?.collectAsStateWithLifecycle()?.value ?: true
+            SettingsSwitchRow(
+                checked = detailAutoPlay,
+                onCheckedChange = { settings?.setDetailAutoPlay(it) },
+                title = "详情页自动播放",
+                summary = "关闭后进入视频或番剧详情页不会自动起播",
+                modifier = Modifier.testTag("settings_detail_auto_play"),
+                cardListPosition = pos,
             )
         },
         SettingsEntry(

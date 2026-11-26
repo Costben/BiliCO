@@ -92,8 +92,18 @@ internal fun VideoPlaybackEffects(
     val autoPip by container.settings.autoPip.collectAsStateWithLifecycle()
     val playbackEndMode by container.settings.playbackEndMode.collectAsStateWithLifecycle()
     val sponsorBlockEnabled by container.settings.sponsorBlockEnabled.collectAsStateWithLifecycle()
+    val sleepTimerTriggerVersion by container.sleepTimer.triggerVersion.collectAsStateWithLifecycle()
     val currentIsTop by rememberUpdatedState(isTop)
     val headers = remember(bvid) { container.client.mediaRequestHeaders(bvid) }
+
+    var lastSleepTrigger by remember { mutableStateOf(sleepTimerTriggerVersion) }
+    LaunchedEffect(sleepTimerTriggerVersion) {
+        if (sleepTimerTriggerVersion > lastSleepTrigger) {
+            lastSleepTrigger = sleepTimerTriggerVersion
+            onCancelAutoNext?.invoke()
+            if (player.isPlaying) player.pause()
+        }
+    }
 
     BindPlaybackSession(
         player = player,
@@ -116,16 +126,20 @@ internal fun VideoPlaybackEffects(
             onError = onError,
             onVideoAspectChanged = onVideoAspectChanged,
             onPlaybackEnded = {
-                handleVideoPlaybackEnded(
-                    mode = playbackEndMode,
-                    player = player,
-                    viewModel = viewModel,
-                    nav = nav,
-                    state = state,
-                    bvid = bvid,
-                    blocks = container.blocks.snapshot.value,
-                    onPromptAutoNextRecommend = onPromptAutoNextRecommend,
-                )
+                if (container.sleepTimer.consumeAfterCurrentVideo(player)) {
+                    onCancelAutoNext?.invoke()
+                } else {
+                    handleVideoPlaybackEnded(
+                        mode = playbackEndMode,
+                        player = player,
+                        viewModel = viewModel,
+                        nav = nav,
+                        state = state,
+                        bvid = bvid,
+                        blocks = container.blocks.snapshot.value,
+                        onPromptAutoNextRecommend = onPromptAutoNextRecommend,
+                    )
+                }
             },
             onPlaybackLeaveEnded = onCancelAutoNext,
         )
@@ -150,6 +164,7 @@ internal fun VideoPlaybackEffects(
         }
     }
 
+    var loadedCid by remember(bvid) { mutableStateOf<Long?>(null) }
     LaunchedEffect(player, bvid, state.source, isTop) {
         if (!isTop) return@LaunchedEffect
         val source = state.source ?: return@LaunchedEffect
@@ -158,6 +173,7 @@ internal fun VideoPlaybackEffects(
         if (player.playbackState != PlayerStates.STATE_IDLE &&
             PlaybackBridge.activeMediaId == mediaId
         ) {
+            loadedCid = state.selectedCid
             currentAttempts.adopt(source, headers, mediaId)
             return@LaunchedEffect
         }
@@ -165,9 +181,17 @@ internal fun VideoPlaybackEffects(
             viewModel.applyServerResumeHint(source.lastPlayCid, source.lastPlayTimeMs)
         }
         val resumeAt = viewModel.state.value.resumePositionMs
+        val shouldPlay = when {
+            loadedCid == null || player.playbackState == PlayerStates.STATE_IDLE ->
+                container.settings.detailAutoPlay.value
+            loadedCid != state.selectedCid && player.playbackState == PlayerStates.STATE_ENDED ->
+                true
+            else -> player.playWhenReady
+        }
+        loadedCid = state.selectedCid
         onClearError()
         PlaybackBridge.activeMediaId = mediaId
-        currentAttempts.start(source, headers, resumeAt, mediaId)
+        currentAttempts.start(source, headers, resumeAt, mediaId, playWhenReady = shouldPlay)
         if (resumeAt > 0L) viewModel.consumeResumePosition()
     }
 

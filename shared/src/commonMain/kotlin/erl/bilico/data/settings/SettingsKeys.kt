@@ -39,6 +39,7 @@ internal object SettingsKeys {
     val KEY_IN_APP_BACKGROUND_PLAY = booleanPreferencesKey("in_app_background_play")
     val KEY_BACKGROUND_PLAY = booleanPreferencesKey("background_play")
     val KEY_AUTO_PIP = booleanPreferencesKey("auto_pip")
+    val KEY_DETAIL_AUTO_PLAY = booleanPreferencesKey("detail_auto_play")
     val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
     val KEY_PLAYBACK_END_MODE = intPreferencesKey("playback_end_mode")
     val KEY_GESTURE_HAPTIC = booleanPreferencesKey("gesture_haptic")

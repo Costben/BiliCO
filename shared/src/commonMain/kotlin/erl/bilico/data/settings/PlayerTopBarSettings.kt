@@ -94,6 +94,18 @@ enum class PlayerTopBarItem(
         summary = "快捷跳转社区标记的片段，也可以提交新片段",
         modes = BOTH_MODES,
     ),
+    SLEEP_TIMER(
+        id = "sleepTimer",
+        label = "定时关闭",
+        summary = "定时暂停播放或播完当前停止",
+        modes = BOTH_MODES,
+    ),
+    DETAIL_AUTO_PLAY(
+        id = "detailAutoPlay",
+        label = "自动播放",
+        summary = "开关进入详情页时是否自动起播",
+        modes = BOTH_MODES,
+    ),
     MORE(
         id = "more",
         label = "更多菜单",
