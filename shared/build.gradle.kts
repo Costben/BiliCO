@@ -19,6 +19,7 @@ kotlin {
         }
         minSdk = 26
         namespace = "erl.bilico.shared"
+        androidResources.enable = true
     }
 
     listOf(
