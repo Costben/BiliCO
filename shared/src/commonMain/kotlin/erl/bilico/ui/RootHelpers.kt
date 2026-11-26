@@ -3,10 +3,14 @@ package erl.bilico.ui
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -119,12 +123,20 @@ internal class ExpandOriginVisibility(
             if (!entry.expand || entry.minimizingToOrb) continue
             if (entry.progress.value <= 0.0005f && !entry.exiting && !entry.previewing) continue
             val active = entry.origin ?: continue
-            val sameRowBox = active.rowKey != null &&
-                active.rowKey == origin.rowKey &&
-                abs((active.bounds?.width ?: 0f) - (origin.bounds?.width ?: 0f)) < 2f
-            if (active === origin || sameRowBox) {
-                return true
+            if (active === origin) return true
+            val sameRow = active.rowKey != null && active.rowKey == origin.rowKey
+            if (!sameRow) continue
+            val sameItem = if (active.itemKey != null || origin.itemKey != null) {
+                active.itemKey == origin.itemKey
+            } else {
+                val activeBounds = active.bounds
+                val originBounds = origin.bounds
+                activeBounds != null &&
+                    originBounds != null &&
+                    abs(activeBounds.left - originBounds.left) < 2f &&
+                    abs(activeBounds.width - originBounds.width) < 2f
             }
+            if (sameItem) return true
         }
         return false
     }
@@ -401,10 +413,35 @@ internal fun ExitSnapshotHost(
     }
 }
 
-fun ExpandOrigin.attachToRow(listState: RowScrollState?, rowKey: Any?, topBar: TopBarBounds?) {
+/**
+ * 卡片所在列表的取用面：单列是 [LazyListState]，双列是 [LazyGridState]。
+ * 返回落点只用得到「这行还在不在屏幕上」和「滚一点」，两边各自实现一份。
+ */
+@Stable
+class RowScrollState(
+    val visibleKeys: () -> List<Any?>,
+    val scrollBy: suspend (Float) -> Float,
+)
+
+fun LazyListState.asRowScrollState(): RowScrollState =
+    RowScrollState({ layoutInfo.visibleItemsInfo.map { it.key } }, { scrollBy(it) })
+
+fun LazyGridState.asRowScrollState(): RowScrollState =
+    RowScrollState({ layoutInfo.visibleItemsInfo.map { it.key } }, { scrollBy(it) })
+
+fun LazyStaggeredGridState.asRowScrollState(): RowScrollState =
+    RowScrollState({ layoutInfo.visibleItemsInfo.map { it.key } }, { scrollBy(it) })
+
+fun ExpandOrigin.attachToRow(
+    listState: RowScrollState?,
+    rowKey: Any?,
+    topBar: TopBarBounds?,
+    itemKey: Any? = null,
+) {
     this.listState = listState
     this.rowKey = rowKey
     this.topBar = topBar
+    this.itemKey = itemKey
 }
 
 internal suspend fun alignCardBelowBar(origin: ExpandOrigin?) {

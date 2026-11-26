@@ -247,6 +247,10 @@ internal fun LazyListScope.searchResultItems(
                 SearchUserRow(
                     user = user,
                     onClick = { nav.push(Route.Space(user.mid)) },
+                    onVideoClick = { video, origin -> nav.push(Route.Video(video.bvid), origin) },
+                    rowScrollState = rowScrollState,
+                    rowKey = "user_${user.mid}",
+                    topBarBounds = topBarBounds,
                 )
             }
         }

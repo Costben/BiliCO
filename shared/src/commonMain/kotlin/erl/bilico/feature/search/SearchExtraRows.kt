@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -352,20 +353,27 @@ internal fun SearchUserRow(
                         .padding(top = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    user.recentVideos.forEach { video ->
-                        val origin = rememberExpandOrigin(8.dp)
-                        if (rowScrollState != null && rowKey != null && topBarBounds != null) {
-                            SideEffect {
-                                origin.attachToRow(rowScrollState, rowKey, topBarBounds)
+                    user.recentVideos.forEachIndexed { index, video ->
+                        key(video.bvid.ifBlank { index }) {
+                            val origin = rememberExpandOrigin(8.dp)
+                            if (rowScrollState != null && rowKey != null && topBarBounds != null) {
+                                SideEffect {
+                                    origin.attachToRow(
+                                        listState = rowScrollState,
+                                        rowKey = rowKey,
+                                        topBar = topBarBounds,
+                                        itemKey = "${index}_${video.bvid}",
+                                    )
+                                }
                             }
+                            UserRecentVideoCard(
+                                video = video,
+                                onClick = { onVideoClick(video, origin) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .expandOrigin(origin),
+                            )
                         }
-                        UserRecentVideoCard(
-                            video = video,
-                            onClick = { onVideoClick(video, origin) },
-                            modifier = Modifier
-                                .weight(1f)
-                                .expandOrigin(origin),
-                        )
                     }
                     if (user.recentVideos.size == 1) {
                         Spacer(Modifier.weight(1f))

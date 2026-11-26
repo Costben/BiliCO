@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -212,19 +213,26 @@ internal fun LazyListScope.searchVideoGridItems(
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            pair.forEach { video ->
-                val origin = rememberExpandOrigin()
-                SideEffect {
-                    origin.attachToRow(rowScrollState, rowKey, topBarBounds)
+            pair.forEachIndexed { index, video ->
+                key(video.bvid.ifBlank { index }) {
+                    val origin = rememberExpandOrigin()
+                    SideEffect {
+                        origin.attachToRow(
+                            listState = rowScrollState,
+                            rowKey = rowKey,
+                            topBar = topBarBounds,
+                            itemKey = "${index}_${video.bvid}",
+                        )
+                    }
+                    SearchVideoGridCard(
+                        video = video,
+                        coverAspect = coverAspect,
+                        modifier = Modifier
+                            .weight(1f)
+                            .expandOrigin(origin),
+                        onClick = { nav.push(Route.Video(video.bvid), origin) },
+                    )
                 }
-                SearchVideoGridCard(
-                    video = video,
-                    coverAspect = coverAspect,
-                    modifier = Modifier
-                        .weight(1f)
-                        .expandOrigin(origin),
-                    onClick = { nav.push(Route.Video(video.bvid), origin) },
-                )
             }
             if (pair.size == 1) {
                 Spacer(Modifier.weight(1f))

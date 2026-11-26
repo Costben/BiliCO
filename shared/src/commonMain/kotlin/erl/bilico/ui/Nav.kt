@@ -5,10 +5,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -90,28 +86,12 @@ class ExpandOrigin(
     /** 卡片在 [listState] 里的 key，用来确认它还在屏幕上。 */
     var rowKey: Any? = null
 
+    /** 同一行内多张卡片（如搜索 UP 主卡片里的两条视频、双列网格行）的独立标识。 */
+    var itemKey: Any? = null
+
     /** 栏自身的材质往下多画的像素。 */
     var clearancePx: Float = 0f
 }
-
-/**
- * 卡片所在列表的取用面：单列是 [LazyListState]，双列是 [LazyGridState]。
- * 返回落点只用得到「这行还在不在屏幕上」和「滚一点」，两边各自实现一份。
- */
-@Stable
-class RowScrollState(
-    val visibleKeys: () -> List<Any?>,
-    val scrollBy: suspend (Float) -> Float,
-)
-
-fun LazyListState.asRowScrollState(): RowScrollState =
-    RowScrollState({ layoutInfo.visibleItemsInfo.map { it.key } }, { scrollBy(it) })
-
-fun LazyGridState.asRowScrollState(): RowScrollState =
-    RowScrollState({ layoutInfo.visibleItemsInfo.map { it.key } }, { scrollBy(it) })
-
-fun LazyStaggeredGridState.asRowScrollState(): RowScrollState =
-    RowScrollState({ layoutInfo.visibleItemsInfo.map { it.key } }, { scrollBy(it) })
 
 @Composable
 fun rememberExpandOrigin(cornerRadius: Dp = 17.dp): ExpandOrigin {
