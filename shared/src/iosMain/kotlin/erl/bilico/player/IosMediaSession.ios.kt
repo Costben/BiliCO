@@ -131,7 +131,8 @@ internal object IosMediaSession {
             }
             activePlayer = player
             activeLayer = layer
-            rebuildPipController(layer)
+            destroyPipController()
+            syncAutoPipFlag()
         }
     }
 
@@ -140,9 +141,7 @@ internal object IosMediaSession {
             if (activeLayer !== layer) return@dispatch_async
             if (pipActive || pipStarting) return@dispatch_async
             if (detachedLayerForBg === layer) detachedLayerForBg = null
-            pipController?.delegate = null
-            pipController = null
-            pipDelegate = null
+            destroyPipController()
             activeLayer = null
             activePlayer = null
         }
@@ -160,16 +159,33 @@ internal object IosMediaSession {
     fun startPipNow(): Boolean {
         install()
         if (!isPipSupported()) return false
-        val controller = pipController ?: activeLayer?.let { rebuildPipController(it) } ?: return false
+        val layer = activeLayer ?: return false
+        val controller = pipController ?: rebuildPipController(layer) ?: return false
         if (controller.isPictureInPictureActive()) return true
-        if (!controller.isPictureInPicturePossible()) {
-            logWarn(TAG, "startPipNow skipped: isPictureInPicturePossible=false")
-            return false
-        }
-        ensurePlaybackAudioSession()
+        ensurePlaybackAudioSession(audioOnlyMode = false)
         pipStarting = true
-        controller.startPictureInPicture()
+        if (controller.isPictureInPicturePossible()) {
+            controller.startPictureInPicture()
+        } else {
+            attemptManualPipStart(controller, retriesLeft = 12)
+        }
         return true
+    }
+
+    private fun attemptManualPipStart(controller: AVPictureInPictureController, retriesLeft: Int) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50_000_000L), dispatch_get_main_queue()) {
+            if (pipController !== controller || !pipStarting) return@dispatch_after
+            if (controller.isPictureInPictureActive()) return@dispatch_after
+            if (controller.isPictureInPicturePossible()) {
+                controller.startPictureInPicture()
+            } else if (retriesLeft > 0) {
+                attemptManualPipStart(controller, retriesLeft - 1)
+            } else {
+                pipStarting = false
+                logWarn(TAG, "startPipNow timeout: isPictureInPicturePossible=false")
+                syncAutoPipFlag()
+            }
+        }
     }
 
     fun refreshNowPlaying() {
@@ -184,7 +200,8 @@ internal object IosMediaSession {
             sessionActive = true
             UIApplication.sharedApplication.beginReceivingRemoteControlEvents()
             PlaybackBridge.activePlayer?.setBackgroundPlaybackAllowed(PlaybackBridge.backgroundPlayEnabled)
-            ensurePlaybackAudioSession()
+            syncAutoPipFlag()
+            ensurePlaybackAudioSession(audioOnlyMode = !shouldKeepPipController())
             startRefreshTimer()
             refreshNowPlayingOnMain()
         }
@@ -195,6 +212,7 @@ internal object IosMediaSession {
             sessionActive = true
             UIApplication.sharedApplication.beginReceivingRemoteControlEvents()
             PlaybackBridge.activePlayer?.setBackgroundPlaybackAllowed(PlaybackBridge.backgroundPlayEnabled)
+            syncAutoPipFlag()
             ensurePlaybackAudioSession(audioOnlyMode = !pipActive && !pipStarting)
             startRefreshTimer()
             refreshNowPlayingOnMain()
@@ -212,22 +230,39 @@ internal object IosMediaSession {
         }
     }
 
+    private fun shouldKeepPipController(): Boolean =
+        pipActive || pipStarting || (autoPipAllowed && PlaybackBridge.autoPipEnabled)
+
+    private fun destroyPipController() {
+        pipController?.canStartPictureInPictureAutomaticallyFromInline = false
+        pipController?.delegate = null
+        pipController = null
+        pipDelegate = null
+    }
+
     private fun rebuildPipController(layer: AVPlayerLayer): AVPictureInPictureController? {
         if (!isPipSupported()) return null
-        pipController?.delegate = null
+        destroyPipController()
         val controller = AVPictureInPictureController(playerLayer = layer)
         val delegate = PipDelegate()
         controller.delegate = delegate
+        controller.canStartPictureInPictureAutomaticallyFromInline = autoPipAllowed && PlaybackBridge.autoPipEnabled
         pipDelegate = delegate
         pipController = controller
-        syncAutoPipFlag()
         return controller
     }
 
+    // 关闭「自动画中画」时不常驻 AVPictureInPictureController，彻底杜绝 iOS 系统上滑回桌面时自动抢占进画中画；
+    // 用户点击手动画中画按钮时再按需创建。
     private fun syncAutoPipFlag() {
-        val controller = pipController ?: return
-        val allow = autoPipAllowed && PlaybackBridge.autoPipEnabled && activeLayer != null
-        controller.canStartPictureInPictureAutomaticallyFromInline = allow
+        val allowAuto = autoPipAllowed && PlaybackBridge.autoPipEnabled && activeLayer != null
+        if (!allowAuto && !pipActive && !pipStarting) {
+            destroyPipController()
+            return
+        }
+        val layer = activeLayer ?: return
+        val controller = pipController ?: rebuildPipController(layer) ?: return
+        controller.canStartPictureInPictureAutomaticallyFromInline = allowAuto
     }
 
     private fun setupRemoteCommands() {
@@ -288,34 +323,11 @@ internal object IosMediaSession {
 
     private fun observeAppLifecycle() {
         val nc = NSNotificationCenter.defaultCenter
-        nc.addObserverForName(
-            UIApplicationWillResignActiveNotification,
-            null,
-            NSOperationQueue.mainQueue,
-        ) { _ ->
-            handleWillResignActive()
-        }
-        nc.addObserverForName(
-            UIApplicationDidEnterBackgroundNotification,
-            null,
-            NSOperationQueue.mainQueue,
-        ) { _ ->
-            handleDidEnterBackground()
-        }
-        nc.addObserverForName(
-            UIApplicationWillEnterForegroundNotification,
-            null,
-            NSOperationQueue.mainQueue,
-        ) { _ ->
-            handleWillEnterForeground()
-        }
-        nc.addObserverForName(
-            UIApplicationDidBecomeActiveNotification,
-            null,
-            NSOperationQueue.mainQueue,
-        ) { _ ->
-            handleWillEnterForeground()
-        }
+        val q = NSOperationQueue.mainQueue
+        nc.addObserverForName(UIApplicationWillResignActiveNotification, null, q) { _ -> handleWillResignActive() }
+        nc.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, q) { _ -> handleDidEnterBackground() }
+        nc.addObserverForName(UIApplicationWillEnterForegroundNotification, null, q) { _ -> handleWillEnterForeground() }
+        nc.addObserverForName(UIApplicationDidBecomeActiveNotification, null, q) { _ -> handleWillEnterForeground() }
     }
 
     private fun handleWillResignActive() {
@@ -326,6 +338,7 @@ internal object IosMediaSession {
         if (wasPlayingBeforeBackground && PlaybackBridge.backgroundPlayEnabled) {
             transitioningToBackground = true
             sessionActive = true
+            if (!shouldKeepPipController()) ensurePlaybackAudioSession(audioOnlyMode = true)
             refreshNowPlayingOnMain(forcePlayingState = true)
         }
     }
@@ -388,10 +401,11 @@ internal object IosMediaSession {
         if (layer != null && player != null) {
             layer.player = player.avPlayer
             detachedLayerForBg = null
-            rebuildPipController(layer)
+            destroyPipController()
+            syncAutoPipFlag()
         }
         if (sessionActive) {
-            ensurePlaybackAudioSession(audioOnlyMode = false)
+            ensurePlaybackAudioSession(audioOnlyMode = !shouldKeepPipController())
             refreshNowPlayingOnMain()
         }
     }
@@ -508,18 +522,14 @@ internal object IosMediaSession {
     }
 
     private class PipDelegate : NSObject(), AVPictureInPictureControllerDelegateProtocol {
-        override fun pictureInPictureControllerWillStartPictureInPicture(
-            pictureInPictureController: AVPictureInPictureController,
-        ) {
+        override fun pictureInPictureControllerWillStartPictureInPicture(pictureInPictureController: AVPictureInPictureController) {
             pipStarting = true
             pipActive = true
             ensurePlaybackAudioSession()
             logDebug(TAG, "PiP willStart")
         }
 
-        override fun pictureInPictureControllerDidStartPictureInPicture(
-            pictureInPictureController: AVPictureInPictureController,
-        ) {
+        override fun pictureInPictureControllerDidStartPictureInPicture(pictureInPictureController: AVPictureInPictureController) {
             pipStarting = false
             pipActive = true
             refreshNowPlaying()
@@ -532,20 +542,18 @@ internal object IosMediaSession {
         ) {
             pipStarting = false
             pipActive = false
+            syncAutoPipFlag()
             logWarn(TAG, "PiP failedToStart err=${failedToStartPictureInPictureWithError.localizedDescription}")
         }
 
-        override fun pictureInPictureControllerWillStopPictureInPicture(
-            pictureInPictureController: AVPictureInPictureController,
-        ) {
+        override fun pictureInPictureControllerWillStopPictureInPicture(pictureInPictureController: AVPictureInPictureController) {
             logDebug(TAG, "PiP willStop")
         }
 
-        override fun pictureInPictureControllerDidStopPictureInPicture(
-            pictureInPictureController: AVPictureInPictureController,
-        ) {
+        override fun pictureInPictureControllerDidStopPictureInPicture(pictureInPictureController: AVPictureInPictureController) {
             pipStarting = false
             pipActive = false
+            syncAutoPipFlag()
             refreshNowPlaying()
             logDebug(TAG, "PiP didStop")
         }
