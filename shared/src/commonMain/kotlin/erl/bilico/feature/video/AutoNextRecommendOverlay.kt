@@ -67,7 +67,7 @@ import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 
-/** 管理非分批连播时下一个推荐视频的倒计时弹窗状态。 */
+/** 管理非分P或合集连播时下一个推荐视频的倒计时弹窗状态。 */
 @Stable
 internal class AutoNextRecommendController {
     var target by mutableStateOf<FeedVideo?>(null)

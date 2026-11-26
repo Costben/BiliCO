@@ -24,6 +24,8 @@ import erl.bilico.data.model.FavoriteFolder
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.PlaybackEndMode
 import erl.bilico.data.model.VideoChapter
+import erl.bilico.data.model.VideoDetail
+import erl.bilico.data.model.VideoEpisode
 import erl.bilico.data.repository.BlockSnapshot
 import erl.bilico.data.settings.DanmakuSettings
 import erl.bilico.data.settings.SettingsRepository
@@ -361,6 +363,75 @@ internal fun BoxScope.VideoMessageToast(
     }
 }
 
+/** 在合集剧集列表里定位当前正在播放的条目索引。 */
+internal fun findCurrentCollectionEpisodeIndex(
+    episodes: List<VideoEpisode>,
+    currentBvid: String,
+    currentCid: Long,
+): Int {
+    if (episodes.isEmpty()) return -1
+    if (currentCid > 0L) {
+        val exact = episodes.indexOfFirst { it.bvid == currentBvid && it.cid == currentCid }
+        if (exact >= 0) return exact
+    }
+    val byBvidNoCid = episodes.indexOfFirst { it.bvid == currentBvid && it.cid <= 0L }
+    if (byBvidNoCid >= 0) return byBvidNoCid
+    // 同一视频有多个分 P，合集只登记了首 P 的 cid：播到末 P 时按 bvid 回退定位当前集。
+    val byBvid = episodes.indexOfLast { it.bvid == currentBvid }
+    if (byBvid >= 0) return byBvid
+    return if (currentCid > 0L) episodes.indexOfFirst { it.cid == currentCid } else -1
+}
+
+/** 按自动连播或列表循环规则解析合集里的下一集；不在合集内或已是末集且不循环时返回 null。 */
+internal fun resolveNextCollectionEpisode(
+    detail: VideoDetail?,
+    currentBvid: String,
+    currentCid: Long,
+    loop: Boolean,
+): VideoEpisode? {
+    val episodes = detail?.collection?.episodes ?: return null
+    if (episodes.size <= 1) return null
+    val resolvedBvid = detail.bvid.ifBlank { currentBvid }
+    val currentIndex = findCurrentCollectionEpisodeIndex(episodes, resolvedBvid, currentCid)
+    if (currentIndex < 0) return null
+    val nextIndex = currentIndex + 1
+    return when {
+        nextIndex in episodes.indices -> episodes[nextIndex]
+        loop -> episodes.first()
+        else -> null
+    }
+}
+
+private fun playNextCollectionEpisode(
+    state: VideoUiState,
+    bvid: String,
+    loop: Boolean,
+    player: BiliPlayer,
+    viewModel: VideoViewModel,
+    nav: NavState,
+    onAutoNavigateVideo: ((String) -> Unit)?,
+): Boolean {
+    val detail = state.detail ?: return false
+    val resolvedBvid = detail.bvid.ifBlank { bvid }
+    val currentCid = state.selectedCid.takeIf { it > 0L } ?: detail.cid
+    val nextEpisode = resolveNextCollectionEpisode(detail, resolvedBvid, currentCid, loop) ?: return false
+    if (nextEpisode.bvid == resolvedBvid) {
+        val targetCid = nextEpisode.cid.takeIf { it > 0L } ?: detail.pages.firstOrNull()?.cid ?: 0L
+        if (targetCid > 0L && targetCid != currentCid && viewModel.playPartByCid(targetCid)) {
+            return true
+        }
+        if (loop) {
+            player.seekTo(0L)
+            player.play()
+            return true
+        }
+        return false
+    }
+    onAutoNavigateVideo?.invoke(nextEpisode.bvid)
+    nav.replaceTop(Route.Video(nextEpisode.bvid, 0L, nextEpisode.cid))
+    return true
+}
+
 internal fun handleVideoPlaybackEnded(
     mode: PlaybackEndMode,
     player: BiliPlayer,
@@ -370,8 +441,10 @@ internal fun handleVideoPlaybackEnded(
     bvid: String = viewModel.currentBvid,
     blocks: BlockSnapshot = BlockSnapshot(),
     onPromptAutoNextRecommend: ((FeedVideo) -> Unit)? = null,
+    onAutoNavigateVideo: ((String) -> Unit)? = null,
 ) {
     PlaybackBridge.activeMediaId.takeIf { it.isNotEmpty() }?.let(PlaybackPositions::forget)
+    val liveState = if (viewModel.currentBvid == bvid) viewModel.state.value else state
     when (mode) {
         PlaybackEndMode.OFF -> Unit
         PlaybackEndMode.SINGLE_LOOP -> {
@@ -379,31 +452,35 @@ internal fun handleVideoPlaybackEnded(
             player.play()
         }
         PlaybackEndMode.LIST_LOOP -> {
-            if (!viewModel.playNextPart(loop = true)) {
-                val queued = nav.playQueue.next(loop = true)
-                if (queued != null) {
-                    nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
-                } else {
-                    player.seekTo(0L)
-                    player.play()
-                }
+            if (viewModel.playNextPart(loop = false)) return
+            val queued = nav.playQueue.next(loop = true)
+            if (queued != null) {
+                onAutoNavigateVideo?.invoke(queued.video.bvid)
+                nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
+                return
             }
+            if (playNextCollectionEpisode(liveState, bvid, loop = true, player, viewModel, nav, onAutoNavigateVideo)) return
+            if (viewModel.playNextPart(loop = true)) return
+            player.seekTo(0L)
+            player.play()
         }
         PlaybackEndMode.AUTO_NEXT -> {
-            if (!viewModel.playNextPart()) {
-                val queued = nav.playQueue.next()
-                if (queued != null) {
-                    nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
-                } else {
-                    val next = state.related.firstOrNull { candidate ->
-                        candidate.bvid != bvid && blocks.shouldShowFeedVideo(candidate, isRelated = true)
-                    } ?: return
-                    if (onPromptAutoNextRecommend != null) {
-                        onPromptAutoNextRecommend(next)
-                    } else {
-                        nav.replaceTop(Route.Video(next.bvid, 0L))
-                    }
-                }
+            if (viewModel.playNextPart(loop = false)) return
+            val queued = nav.playQueue.next()
+            if (queued != null) {
+                onAutoNavigateVideo?.invoke(queued.video.bvid)
+                nav.replaceTop(Route.Video(queued.video.bvid, queued.startSec))
+                return
+            }
+            if (playNextCollectionEpisode(liveState, bvid, loop = false, player, viewModel, nav, onAutoNavigateVideo)) return
+            val next = liveState.related.firstOrNull { candidate ->
+                candidate.bvid != bvid && blocks.shouldShowFeedVideo(candidate, isRelated = true)
+            } ?: return
+            if (onPromptAutoNextRecommend != null) {
+                onPromptAutoNextRecommend(next)
+            } else {
+                onAutoNavigateVideo?.invoke(next.bvid)
+                nav.replaceTop(Route.Video(next.bvid, 0L))
             }
         }
     }

@@ -95,6 +95,7 @@ internal fun VideoPlaybackEffects(
     val sleepTimerTriggerVersion by container.sleepTimer.triggerVersion.collectAsStateWithLifecycle()
     val currentIsTop by rememberUpdatedState(isTop)
     val headers = remember(bvid) { container.client.mediaRequestHeaders(bvid) }
+    var pendingAutoPlayBvid by remember { mutableStateOf<String?>(null) }
 
     var lastSleepTrigger by remember { mutableStateOf(sleepTimerTriggerVersion) }
     LaunchedEffect(sleepTimerTriggerVersion) {
@@ -138,6 +139,7 @@ internal fun VideoPlaybackEffects(
                         bvid = bvid,
                         blocks = container.blocks.snapshot.value,
                         onPromptAutoNextRecommend = onPromptAutoNextRecommend,
+                        onAutoNavigateVideo = { pendingAutoPlayBvid = it },
                     )
                 }
             },
@@ -181,7 +183,10 @@ internal fun VideoPlaybackEffects(
             viewModel.applyServerResumeHint(source.lastPlayCid, source.lastPlayTimeMs)
         }
         val resumeAt = viewModel.state.value.resumePositionMs
+        val isAutoAdvance = pendingAutoPlayBvid == bvid
+        if (isAutoAdvance) pendingAutoPlayBvid = null
         val shouldPlay = when {
+            isAutoAdvance -> true
             loadedCid == null || player.playbackState == PlayerStates.STATE_IDLE ->
                 container.settings.detailAutoPlay.value
             loadedCid != state.selectedCid && player.playbackState == PlayerStates.STATE_ENDED ->

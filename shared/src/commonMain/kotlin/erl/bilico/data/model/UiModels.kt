@@ -183,11 +183,11 @@ data class Comment(
 enum class PlaybackEndMode(val code: Int, val label: String) {
     /** 播完当前视频后停止。 */
     OFF(0, "关闭"),
-    /** 播完自动接下一 P、队列或推荐视频。 */
-    AUTO_NEXT(1, "自动联播"),
+    /** 播完自动接下一 P、合集下一集、队列或推荐视频。 */
+    AUTO_NEXT(1, "自动连播"),
     /** 循环播放当前视频或当前分 P。 */
     SINGLE_LOOP(2, "循环播放"),
-    /** 按分 P 或播单顺序播放，到末尾回到开头循环。 */
+    /** 按分 P、合集或播单顺序播放，到末尾回到开头循环。 */
     LIST_LOOP(3, "列表循环"),
     ;
 

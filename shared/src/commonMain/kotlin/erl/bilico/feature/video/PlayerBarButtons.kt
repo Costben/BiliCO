@@ -83,7 +83,7 @@ internal fun PlayerIconButton(
 }
 
 /**
- * 组装播放器「更多」菜单项，含「自动联播」二级菜单，并缓存列表实例以防播放进度刷新时闪烁。
+ * 组装播放器「更多」菜单项，含「自动连播」二级菜单，并缓存列表实例以防播放进度刷新时闪烁。
  */
 @Composable
 internal fun rememberPlayerMoreMenuItems(
@@ -158,7 +158,7 @@ internal fun rememberPlayerMoreMenuItems(
             }
             if (hasPlaybackEnd) {
                 add(CouiMenuItem(
-                    label = "自动联播", summary = playbackEndMode.label, onClick = {}, group = 0,
+                    label = "自动连播", summary = playbackEndMode.label, onClick = {}, group = 0,
                     children = PlaybackEndMode.entries.map { option ->
                         CouiMenuItem(
                             label = option.label, selected = option == playbackEndMode,
@@ -176,7 +176,7 @@ internal fun rememberPlayerMoreMenuItems(
     }
 }
 
-/** 顶栏右端的三个点：投屏、切换线路、黑听、定时关闭、自动播放、自动联播、分享、空降提交、举报、顶栏设置与视频信息统计。 */
+/** 顶栏右端的三个点：投屏、切换线路、黑听、定时关闭、自动播放、自动连播、分享、空降提交、举报、顶栏设置与视频信息统计。 */
 @Composable
 internal fun PlayerMoreMenu(
     onShare: (() -> Unit)?,

@@ -168,11 +168,7 @@ class VideoViewModel(
             interactionDelegate.loadUpFollowers(detail.upMid)
             loadRelated()
         }
-        loadPlayback(
-            qn = settings.defaultQuality.value,
-            cid = targetCid,
-            notifyDowngrade = false,
-        )
+        loadPlayback(qn = settings.defaultQuality.value, cid = targetCid, notifyDowngrade = false)
     }
 
     fun selectPart(index: Int, positionMs: Long) {
@@ -181,23 +177,28 @@ class VideoViewModel(
         if (part.cid == _state.value.selectedCid) return
         initialResumeSettled = true
         _state.update { it.copy(selectedPartIndex = index, selectedCid = part.cid) }
-        loadPlayback(
-            qn = _state.value.requestedQuality,
-            cid = part.cid,
-            notifyDowngrade = false,
-            positionMs = 0L,
-        )
+        loadPlayback(qn = _state.value.requestedQuality, cid = part.cid, notifyDowngrade = false, positionMs = 0L)
     }
 
     fun playNextPart(loop: Boolean = false): Boolean {
-        val detail = _state.value.detail ?: return false
+        val pages = _state.value.detail?.pages ?: return false
         val rawNext = _state.value.selectedPartIndex + 1
-        val nextIndex = if (loop && detail.pages.size > 1) rawNext % detail.pages.size else rawNext
-        val nextPart = detail.pages.getOrNull(nextIndex) ?: return false
+        val nextIndex = if (loop && pages.size > 1) rawNext % pages.size else rawNext
+        return playPartAt(nextIndex)
+    }
+
+    fun playPartByCid(cid: Long): Boolean {
+        if (cid <= 0L || cid == _state.value.selectedCid) return false
+        val index = _state.value.detail?.pages?.indexOfFirst { it.cid == cid } ?: -1
+        return playPartAt(index)
+    }
+
+    private fun playPartAt(index: Int): Boolean {
+        val nextPart = _state.value.detail?.pages?.getOrNull(index) ?: return false
         initialResumeSettled = true
         _state.update {
             it.copy(
-                selectedPartIndex = nextIndex,
+                selectedPartIndex = index,
                 selectedCid = nextPart.cid,
                 message = "即将播放 P${nextPart.index} ${nextPart.title}".trim(),
             )
@@ -248,12 +249,7 @@ class VideoViewModel(
     fun selectQuality(qn: Int, positionMs: Long) {
         val current = _state.value
         if (qn == current.activeQuality || current.selectedCid <= 0) return
-        loadPlayback(
-            qn = qn,
-            cid = current.selectedCid,
-            notifyDowngrade = true,
-            positionMs = positionMs,
-        )
+        loadPlayback(qn = qn, cid = current.selectedCid, notifyDowngrade = true, positionMs = positionMs)
     }
 
     /**
@@ -394,7 +390,6 @@ class VideoViewModel(
     }
 
     private companion object {
-        const val DEFAULT_QUALITY = 80
         const val HEARTBEAT_INTERVAL_MS = 15_000L
     }
 }

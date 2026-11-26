@@ -282,14 +282,14 @@ internal fun playerSettingsEntries(
         SettingsEntry(
             id = "auto_next_popup",
             title = "推荐视频连播弹窗",
-            summary = "自动连播且非分批播放时，在右下角弹出下一个推荐视频",
+            summary = "自动连播且非分P或合集连播时，在右下角弹出下一个推荐视频",
             keywords = "自动连播 下一集 连续播放",
         ) { pos ->
             SettingsSwitchRow(
                 checked = autoNextRecommendPopup,
                 onCheckedChange = onAutoNextRecommendPopupChange,
                 title = "推荐视频连播弹窗",
-                summary = "自动连播且非分批播放时，在右下角弹出下一个推荐视频",
+                summary = "自动连播且非分P或合集连播时，在右下角弹出下一个推荐视频",
                 modifier = Modifier.testTag("settings_auto_next_popup"),
                 cardListPosition = pos,
             )
