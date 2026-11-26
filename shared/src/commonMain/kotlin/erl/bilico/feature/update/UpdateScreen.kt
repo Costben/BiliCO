@@ -183,17 +183,23 @@ fun UpdateScreen(
                     checked = acceptPrerelease,
                     onCheckedChange = container.settings::setAcceptPrerelease,
                     modifier = Modifier.testTag("update_prerelease_switch"),
-                    cardListPosition = CardListPosition.Middle,
+                    cardListPosition = if (AppUpdater.supportsInAppUpdate()) {
+                        CardListPosition.Middle
+                    } else {
+                        CardListPosition.Tail
+                    },
                 )
-                PreferenceDivider()
-                SwitchPreference(
-                    title = "应用内更新",
-                    summary = "开启后在应用内多镜像加速下载 APK 并调起安装器；关闭时跳转浏览器下载",
-                    checked = inAppUpdate,
-                    onCheckedChange = container.settings::setInAppUpdate,
-                    modifier = Modifier.testTag("update_in_app_switch"),
-                    cardListPosition = CardListPosition.Tail,
-                )
+                if (AppUpdater.supportsInAppUpdate()) {
+                    PreferenceDivider()
+                    SwitchPreference(
+                        title = "应用内更新",
+                        summary = "开启后在应用内多镜像加速下载 APK 并调起安装器；关闭时跳转浏览器下载",
+                        checked = inAppUpdate,
+                        onCheckedChange = container.settings::setInAppUpdate,
+                        modifier = Modifier.testTag("update_in_app_switch"),
+                        cardListPosition = CardListPosition.Tail,
+                    )
+                }
             }
         }
 
@@ -283,7 +289,11 @@ private fun ReleaseCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TextButton(
-                    text = if (isCurrent) "预览更新弹窗" else "查看更新弹窗 / 安装",
+                    text = when {
+                        isCurrent -> "预览更新弹窗"
+                        AppUpdater.supportsInAppUpdate() -> "查看更新弹窗 / 安装"
+                        else -> "查看更新说明"
+                    },
                     onClick = onPreview,
                     modifier = Modifier.testTag("changelog_preview_${release.version}"),
                 )

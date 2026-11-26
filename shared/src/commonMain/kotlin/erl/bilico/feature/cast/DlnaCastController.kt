@@ -6,28 +6,26 @@ import erl.bilico.data.repository.VideoRepository
 import erl.bilico.data.settings.SettingsRepository
 import erl.bilico.platform.PlatformContext
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * iOS 投屏占位控制器：保持与 Android 0.3.14-pre 一致的状态流接口。
+ * 局域网 DLNA 投屏控制器：Android 端提供完整 SSDP 发现、SOAP 控制与本地代理中转，iOS 端提供占位实现。
  */
-class DlnaCastController(
+expect class DlnaCastController(
     context: PlatformContext,
-    private val scope: CoroutineScope,
-    private val client: BiliClient,
-    private val videos: VideoRepository,
-    private val pgc: PgcRepository,
-    private val settings: SettingsRepository,
+    scope: CoroutineScope,
+    client: BiliClient,
+    videos: VideoRepository,
+    pgc: PgcRepository,
+    settings: SettingsRepository,
 ) {
-    private val _state = MutableStateFlow(CastUiState(error = "iOS 暂不支持 DLNA 投屏，请使用系统屏幕镜像或 AirPlay"))
-    val state: StateFlow<CastUiState> = _state.asStateFlow()
+    val isSupported: Boolean
+    val state: StateFlow<CastUiState>
 
-    fun scanDevices() = Unit
-    fun setUseProxy(enabled: Boolean) = Unit
-    fun startCast(device: DlnaDevice, request: CastMediaRequest) = Unit
-    fun togglePlayPause() = Unit
-    fun seekBy(deltaMs: Long) = Unit
-    fun stopCast() = Unit
+    fun scanDevices()
+    fun setUseProxy(enabled: Boolean)
+    fun startCast(device: DlnaDevice, request: CastMediaRequest)
+    fun togglePlayPause()
+    fun seekBy(deltaMs: Long)
+    fun stopCast()
 }

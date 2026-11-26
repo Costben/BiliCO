@@ -9,7 +9,6 @@ import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.currentAppVersionName
 import erl.bilico.platform.currentTimeMillis
 import erl.bilico.platform.ioDispatcher
-import erl.bilico.platform.openExternalUrl
 import erl.bilico.platform.showToast
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -22,9 +21,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+/** 自动检查更新节流间隔：12 小时内已查过则冷启动不再重复请求。 */
 const val UpdateCheckInterval = 12 * 60 * 60 * 1000L
 
 data class UpdateInfo(
@@ -36,12 +35,40 @@ data class UpdateInfo(
     val publishedAt: String = "",
 )
 
+data class DownloadedUpdatePackage(
+    val path: String,
+    val sizeBytes: Long,
+)
+
+expect fun updatePlatformUserAgent(): String
+
+expect fun preferredReleaseAssetExtension(): String
+
+expect fun supportsInAppUpdate(): Boolean
+
+expect fun openPlatformUpdateDownload(context: PlatformContext, info: UpdateInfo)
+
+expect suspend fun downloadPlatformUpdatePackage(
+    context: PlatformContext,
+    url: String,
+    version: String,
+    force: Boolean = false,
+    onProgress: (progress: Float, downloadedBytes: Long, totalBytes: Long) -> Unit,
+): DownloadedUpdatePackage
+
+expect fun installPlatformUpdatePackage(
+    context: PlatformContext,
+    pkg: DownloadedUpdatePackage,
+): Result<Unit>
+
 object AppUpdater {
     private const val REPO = "Costben/BiliCO"
     private const val API = "https://api.github.com/repos/$REPO/releases?per_page=20"
 
     fun currentVersion(context: PlatformContext): String =
         currentAppVersionName(context).removePrefix("v").removePrefix("V")
+
+    fun supportsInAppUpdate(): Boolean = erl.bilico.update.supportsInAppUpdate()
 
     suspend fun latest(
         http: HttpClient,
@@ -57,10 +84,11 @@ object AppUpdater {
         withContext(ioDispatcher) {
             val resp = http.get(API) {
                 header("Accept", "application/vnd.github+json")
-                header("User-Agent", "BiliCO-iOS")
+                header("User-Agent", updatePlatformUserAgent())
             }
             if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}")
             val arr = BiliClient.json.parseToJsonElement(resp.bodyAsText()).jsonArray
+            val preferredExt = preferredReleaseAssetExtension()
             val candidates = ArrayList<UpdateInfo>(arr.size)
             for (el in arr) {
                 val item = el as? JsonObject ?: continue
@@ -71,14 +99,15 @@ object AppUpdater {
                 val prerelease = item["prerelease"]?.jsonPrimitive?.booleanOrNull == true || version.contains('-')
                 if (prerelease && !includePrerelease) continue
                 val assets = item["assets"] as? JsonArray
-                var ipaOrApkUrl: String? = null
-                assets?.forEach { aEl ->
-                    val asset = aEl as? JsonObject ?: return@forEach
-                    val name = asset["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    val url = asset["browser_download_url"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    if ((name.endsWith(".ipa", ignoreCase = true) || name.endsWith(".apk", ignoreCase = true)) && url.isNotEmpty()) {
-                        if (ipaOrApkUrl == null || name.endsWith(".ipa", ignoreCase = true)) {
-                            ipaOrApkUrl = url
+                var assetUrl: String? = null
+                if (assets != null) {
+                    for (aEl in assets) {
+                        val asset = aEl as? JsonObject ?: continue
+                        val name = asset["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                        val url = asset["browser_download_url"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                        if (name.endsWith(preferredExt, ignoreCase = true) && url.isNotEmpty()) {
+                            assetUrl = url
+                            break
                         }
                     }
                 }
@@ -88,7 +117,7 @@ object AppUpdater {
                 candidates += UpdateInfo(
                     version = version,
                     notes = item["body"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty(),
-                    apkUrl = ipaOrApkUrl,
+                    apkUrl = assetUrl,
                     pageUrl = pageUrl,
                     prerelease = prerelease,
                     publishedAt = item["published_at"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty(),
@@ -98,9 +127,30 @@ object AppUpdater {
         }
 
     fun openDownload(context: PlatformContext, info: UpdateInfo) {
-        openExternalUrl(context, info.pageUrl)
+        openPlatformUpdateDownload(context, info)
     }
 
+    suspend fun downloadPackage(
+        context: PlatformContext,
+        url: String,
+        version: String,
+        force: Boolean = false,
+        onProgress: (progress: Float, downloadedBytes: Long, totalBytes: Long) -> Unit,
+    ): DownloadedUpdatePackage = downloadPlatformUpdatePackage(
+        context = context,
+        url = url,
+        version = version,
+        force = force,
+        onProgress = onProgress,
+    )
+
+    fun installPackage(context: PlatformContext, pkg: DownloadedUpdatePackage): Result<Unit> =
+        installPlatformUpdatePackage(context, pkg)
+
+    /**
+     * 先比主版本数字段；数字一样时正式版高于预发布版（`0.1.2 > 0.1.2-pre`），
+     * 两个预发布版之间按后缀字典序比较。
+     */
     fun compareVersion(a: String, b: String): Int {
         val (aCore, aPre) = splitPre(a)
         val (bCore, bPre) = splitPre(b)
@@ -124,6 +174,10 @@ object AppUpdater {
     }
 }
 
+/**
+ * 进程级更新状态持有者（挂在 AppContainer.updater 上）：
+ * 统一管理「检查更新中」状态、待展示的更新弹窗及更新日志预览。
+ */
 class AppUpdateManager(
     private val context: PlatformContext,
     private val settings: SettingsRepository,
