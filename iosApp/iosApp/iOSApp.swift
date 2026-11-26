@@ -23,14 +23,6 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         config.delegateClass = SceneDelegate.self
         return config
     }
-
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        print("DIAG|swift|didBecomeActive")
-    }
-
-    func applicationWillResignActive(_ application: UIApplication) {
-        print("DIAG|swift|willResignActive")
-    }
 }
 
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -88,27 +80,6 @@ final class BiliCoRootViewController: UIViewController {
         NotificationCenter.default.removeObserver(self)
     }
 
-    private var lastLayoutTrace = ""
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        let trace = "rootLayout bounds=\(view.bounds.size) safe=\(view.safeAreaInsets) " +
-            "orient=\(view.window?.windowScene?.interfaceOrientation.rawValue ?? -1) " +
-            "bars=\(systemBarsVisible) mask=\(orientationMask.rawValue)"
-        if trace != lastLayoutTrace {
-            lastLayoutTrace = trace
-            print("DIAG|swift|\(trace)")
-        }
-    }
-
-    override func viewWillTransition(
-        to size: CGSize,
-        with coordinator: UIViewControllerTransitionCoordinator
-    ) {
-        super.viewWillTransition(to: size, with: coordinator)
-        print("DIAG|swift|willTransition size=\(size)")
-    }
-
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
         orientationMask
     }
@@ -150,10 +121,7 @@ final class BiliCoRootViewController: UIViewController {
             default: []
             }
             if maskChanged || !nextMask.contains(currentBit) {
-                print("DIAG|swift|requestGeometry mask=\(nextMask.rawValue) cur=\(windowScene.interfaceOrientation.rawValue)")
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: nextMask)) { error in
-                    print("DIAG|swift|geometryError \(error.localizedDescription)")
-                }
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: nextMask))
             }
         }
     }

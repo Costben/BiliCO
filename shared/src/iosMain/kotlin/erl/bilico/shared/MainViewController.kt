@@ -2,7 +2,6 @@ package erl.bilico.shared
 
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeUIViewController
-import erl.bilico.debug.diag
 import platform.UIKit.UIViewController
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -13,6 +12,5 @@ fun MainViewController(): UIViewController = ComposeUIViewController(
         parallelRendering = false
     },
 ) {
-    diag("boot") { "compose content" }
     BiliCoApp()
 }

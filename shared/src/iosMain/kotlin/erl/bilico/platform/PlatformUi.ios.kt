@@ -1,97 +1,33 @@
 package erl.bilico.platform
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.ShaderBrush
-import androidx.compose.ui.graphics.asComposeImageBitmap
-import androidx.compose.ui.graphics.asComposeShader
-import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.UIKitView
-import erl.bilico.debug.diag
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
 import kotlin.math.atan2
-import kotlinx.cinterop.BetaInteropApi
-import kotlinx.cinterop.CValue
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ObjCSignatureOverride
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.readValue
-import kotlinx.cinterop.useContents
-import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.*
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.outputVolume
-import platform.CoreGraphics.CGAffineTransformMakeScale
-import platform.CoreGraphics.CGImageRelease
-import platform.CoreGraphics.CGRectMake
-import platform.CoreGraphics.CGRectZero
-import platform.MediaPlayer.MPVolumeView
-import platform.UIKit.UIControlEventValueChanged
-import platform.UIKit.UISlider
-import platform.Foundation.NSTimer
-import platform.CoreImage.CIContext
-import platform.CoreImage.CIFilter
-import platform.CoreImage.createCGImage
-import platform.CoreImage.filterWithName
+import platform.CoreGraphics.*
+import platform.CoreImage.*
 import platform.CoreMotion.CMMotionManager
-import platform.Foundation.NSBundle
-import platform.Foundation.NSData
-import platform.Foundation.NSHTTPCookie
-import platform.Foundation.NSHTTPCookieDomain
-import platform.Foundation.NSHTTPCookieName
-import platform.Foundation.NSHTTPCookiePath
-import platform.Foundation.NSHTTPCookieValue
-import platform.Foundation.NSNotificationCenter
-import platform.Foundation.NSNumber
-import platform.Foundation.NSOperationQueue
-import platform.Foundation.NSProcessInfo
-import platform.Foundation.NSString
-import platform.Foundation.NSURL
-import platform.Foundation.NSURLRequest
-import platform.Foundation.NSUTF8StringEncoding
-import platform.Foundation.create
-import platform.Foundation.dataUsingEncoding
-import platform.Foundation.setValue
-import platform.PhotosUI.PHPickerConfiguration
-import platform.PhotosUI.PHPickerFilter
-import platform.PhotosUI.PHPickerResult
-import platform.PhotosUI.PHPickerViewController
-import platform.PhotosUI.PHPickerViewControllerDelegateProtocol
-import platform.UIKit.UIActivityViewController
-import platform.UIKit.UIApplication
-import platform.UIKit.UIImage
-import platform.UIKit.UIImagePNGRepresentation
-import platform.UIKit.UIImageWriteToSavedPhotosAlbum
-import platform.UIKit.UIInterfaceOrientationMaskAllButUpsideDown
-import platform.UIKit.UIInterfaceOrientationMaskLandscape
-import platform.UIKit.UIInterfaceOrientationMaskLandscapeLeft
-import platform.UIKit.UIInterfaceOrientationMaskLandscapeRight
-import platform.UIKit.UIInterfaceOrientationMaskPortrait
-import platform.UIKit.UIPasteboard
-import platform.UIKit.UIWindow
-import platform.UIKit.UIWindowScene
-import platform.UIKit.UIWindowSceneGeometryPreferencesIOS
-import platform.WebKit.WKHTTPCookieStore
-import platform.WebKit.WKNavigation
-import platform.WebKit.WKNavigationDelegateProtocol
-import platform.WebKit.WKWebView
-import platform.WebKit.WKWebViewConfiguration
+import platform.Foundation.*
+import platform.MediaPlayer.MPVolumeView
+import platform.Photos.*
+import platform.PhotosUI.*
+import platform.UIKit.*
+import platform.WebKit.*
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
@@ -111,36 +47,69 @@ actual fun openExternalUrl(context: PlatformContext, url: String) {
     }
 }
 
+private fun findKeyWindow(): UIWindow? {
+    val windows = UIApplication.sharedApplication.windows
+    return windows.firstOrNull { (it as? UIWindow)?.isKeyWindow() == true } as? UIWindow
+        ?: UIApplication.sharedApplication.keyWindow
+        ?: windows.firstOrNull() as? UIWindow
+}
+
+private fun topViewController(): UIViewController? {
+    var top = findKeyWindow()?.rootViewController ?: return null
+    while (true) {
+        val presented = top.presentedViewController ?: break
+        top = presented
+    }
+    return top
+}
+
+@OptIn(ExperimentalForeignApi::class)
 actual fun shareText(context: PlatformContext, text: String, title: String) {
     dispatch_async(dispatch_get_main_queue()) {
-        val window = UIApplication.sharedApplication.windows.firstOrNull {
-            (it as? UIWindow)?.isKeyWindow() == true
-        } as? UIWindow ?: UIApplication.sharedApplication.keyWindow
-        val root = window?.rootViewController ?: return@dispatch_async
+        val presenter = topViewController() ?: return@dispatch_async
         val controller = UIActivityViewController(
             activityItems = listOf(text),
             applicationActivities = null,
         )
-        root.presentViewController(controller, animated = true, completion = null)
+        controller.popoverPresentationController?.let { popover ->
+            val anchorView = presenter.view
+            popover.sourceView = anchorView
+            val (w, h) = anchorView.bounds.useContents { size.width to size.height }
+            popover.sourceRect = CGRectMake(w / 2.0, h / 2.0, 1.0, 1.0)
+            popover.permittedArrowDirections = 0uL
+        }
+        presenter.presentViewController(controller, animated = true, completion = null)
     }
 }
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 actual suspend fun saveImageBytesToPhotos(context: PlatformContext, bytes: ByteArray): Result<Unit> =
     runCatching {
-        val data = bytes.usePinned { pinned ->
-            NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
-        }
+        val data = bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) }
         val image = UIImage.imageWithData(data) ?: error("图片解码失败")
-        suspendCancellableCoroutine<Unit> { cont ->
-            dispatch_async(dispatch_get_main_queue()) {
-                UIImageWriteToSavedPhotosAlbum(image, null, null, null)
-                if (cont.isActive) cont.resume(Unit)
+        val authStatus = suspendCancellableCoroutine<Long> { cont ->
+            PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelAddOnly) { status ->
+                if (cont.isActive) cont.resume(status)
             }
+        }
+        if (authStatus != PHAuthorizationStatusAuthorized && authStatus != PHAuthorizationStatusLimited) {
+            error("未授予相册写入权限")
+        }
+        suspendCancellableCoroutine<Unit> { cont ->
+            PHPhotoLibrary.sharedPhotoLibrary().performChanges(
+                changeBlock = { PHAssetChangeRequest.creationRequestForAssetFromImage(image) },
+                completionHandler = { success, error ->
+                    if (!cont.isActive) return@performChanges
+                    if (success) cont.resume(Unit)
+                    else cont.resumeWithException(
+                        IllegalStateException(error?.localizedDescription?.takeIf { it.isNotBlank() } ?: "保存到相册失败"),
+                    )
+                },
+            )
         }
     }
 
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 actual fun generateQrCodeBitmap(content: String, sizePx: Int): ImageBitmap? {
     if (content.isBlank() || sizePx <= 0) return null
     val nsString = NSString.create(string = content)
@@ -176,12 +145,11 @@ actual fun keepScreenOn(context: PlatformContext, enabled: Boolean) {
 }
 
 actual fun readScreenBrightness(): Float =
-    platform.UIKit.UIScreen.mainScreen.brightness.toFloat().coerceIn(0.02f, 1f)
+    UIScreen.mainScreen.brightness.toFloat().coerceIn(0.02f, 1f)
 
 actual fun writeScreenBrightness(value: Float) {
-    diag("ui") { "writeBrightness $value" }
     dispatch_async(dispatch_get_main_queue()) {
-        platform.UIKit.UIScreen.mainScreen.brightness = value.coerceIn(0.02f, 1f).toDouble()
+        UIScreen.mainScreen.brightness = value.coerceIn(0.02f, 1f).toDouble()
     }
 }
 
@@ -190,13 +158,6 @@ private object IosSystemVolumeBridge {
     private var volumeView: MPVolumeView? = null
     private var detachTimer: NSTimer? = null
     private var latestTargetVolume: Float? = null
-
-    private fun keyWindow(): UIWindow? {
-        val windows = UIApplication.sharedApplication.windows
-        return windows.firstOrNull { (it as? UIWindow)?.isKeyWindow() == true } as? UIWindow
-            ?: UIApplication.sharedApplication.keyWindow
-            ?: windows.firstOrNull() as? UIWindow
-    }
 
     private fun ensureAttached(): UISlider? {
         val view = volumeView ?: MPVolumeView(
@@ -207,7 +168,7 @@ private object IosSystemVolumeBridge {
             userInteractionEnabled = false
             volumeView = this
         }
-        val window = keyWindow()
+        val window = findKeyWindow()
         if (window != null && view.superview !== window) {
             view.removeFromSuperview()
             window.addSubview(view)
@@ -278,55 +239,43 @@ private object IosSystemVolumeBridge {
 actual fun readSystemVolume(): Float = IosSystemVolumeBridge.read()
 
 actual fun writeSystemVolume(value: Float) {
-    diag("ui") { "writeSystemVolume $value" }
     IosSystemVolumeBridge.write(value)
 }
 
 actual val useNativeFullscreenRotation: Boolean = true
 
-actual fun setScreenOrientation(context: PlatformContext, orientation: PlatformOrientation) {
-    diag("ui") { "setScreenOrientation $orientation" }
+private fun postNotification(name: String, key: String, value: NSNumber) {
     dispatch_async(dispatch_get_main_queue()) {
-        val mask = when (orientation) {
-            PlatformOrientation.Portrait -> UIInterfaceOrientationMaskPortrait
-            PlatformOrientation.Landscape -> UIInterfaceOrientationMaskLandscape
-            PlatformOrientation.LandscapeLeft -> UIInterfaceOrientationMaskLandscapeLeft
-            PlatformOrientation.LandscapeRight -> UIInterfaceOrientationMaskLandscapeRight
-            PlatformOrientation.Unspecified -> UIInterfaceOrientationMaskAllButUpsideDown
-        }
         NSNotificationCenter.defaultCenter.postNotificationName(
-            aName = "BiliCoOrientationChanged",
+            aName = name,
             `object` = null,
-            userInfo = mapOf("mask" to NSNumber(unsignedLong = mask)),
+            userInfo = mapOf(key to value),
         )
     }
+}
+
+actual fun setScreenOrientation(context: PlatformContext, orientation: PlatformOrientation) {
+    val mask = when (orientation) {
+        PlatformOrientation.Portrait -> UIInterfaceOrientationMaskPortrait
+        PlatformOrientation.Landscape -> UIInterfaceOrientationMaskLandscape
+        PlatformOrientation.LandscapeLeft -> UIInterfaceOrientationMaskLandscapeLeft
+        PlatformOrientation.LandscapeRight -> UIInterfaceOrientationMaskLandscapeRight
+        PlatformOrientation.Unspecified -> UIInterfaceOrientationMaskAllButUpsideDown
+    }
+    postNotification("BiliCoOrientationChanged", "mask", NSNumber(unsignedLong = mask))
 }
 
 actual fun setSystemBarsVisible(context: PlatformContext, visible: Boolean) {
-    diag("ui") { "setSystemBarsVisible $visible" }
-    dispatch_async(dispatch_get_main_queue()) {
-        NSNotificationCenter.defaultCenter.postNotificationName(
-            aName = "BiliCoSystemBarsChanged",
-            `object` = null,
-            userInfo = mapOf("visible" to NSNumber(bool = visible)),
-        )
-    }
+    postNotification("BiliCoSystemBarsChanged", "visible", NSNumber(bool = visible))
 }
 
 actual fun setStatusBarDarkIcons(context: PlatformContext, darkIcons: Boolean?) {
-    diag("ui") { "setStatusBarDarkIcons $darkIcons" }
-    dispatch_async(dispatch_get_main_queue()) {
-        val styleValue = when (darkIcons) {
-            true -> 1
-            false -> 0
-            null -> -1
-        }
-        NSNotificationCenter.defaultCenter.postNotificationName(
-            aName = "BiliCoStatusBarStyleChanged",
-            `object` = null,
-            userInfo = mapOf("darkIcons" to NSNumber(int = styleValue)),
-        )
+    val styleValue = when (darkIcons) {
+        true -> 1
+        false -> 0
+        null -> -1
     }
+    postNotification("BiliCoStatusBarStyleChanged", "darkIcons", NSNumber(int = styleValue))
 }
 
 actual fun currentAppVersionCode(context: PlatformContext): Long {
@@ -420,34 +369,37 @@ actual fun BiliWebView(
     onLoadingChanged: (Boolean) -> Unit,
     modifier: Modifier,
 ) {
+    val currentOnCookiesChanged = rememberUpdatedState(onCookiesChanged)
+    val currentOnUrlChanged = rememberUpdatedState(onUrlChanged)
+    val currentOnTitleChanged = rememberUpdatedState(onTitleChanged)
+    val currentOnLoadingChanged = rememberUpdatedState(onLoadingChanged)
     val delegate = remember {
         object : NSObject(), WKNavigationDelegateProtocol {
             private fun collectCookies(webView: WKWebView) {
-                webView.URL?.absoluteString?.let(onUrlChanged)
-                webView.title?.let(onTitleChanged)
+                webView.URL?.absoluteString?.let { currentOnUrlChanged.value(it) }
+                webView.title?.let { currentOnTitleChanged.value(it) }
                 val store: WKHTTPCookieStore = webView.configuration.websiteDataStore.httpCookieStore
                 store.getAllCookies { list ->
                     val map = LinkedHashMap<String, String>()
                     list?.forEach { raw ->
                         val cookie = raw as? NSHTTPCookie ?: return@forEach
-                        val domain = cookie.domain.lowercase()
-                        if (domain.endsWith("bilibili.com")) {
+                        if (cookie.domain.lowercase().endsWith("bilibili.com")) {
                             map[cookie.name] = cookie.value
                         }
                     }
-                    if (map.isNotEmpty()) onCookiesChanged(map)
+                    if (map.isNotEmpty()) currentOnCookiesChanged.value(map)
                 }
             }
 
             @ObjCSignatureOverride
             override fun webView(webView: WKWebView, didStartProvisionalNavigation: WKNavigation?) {
-                onLoadingChanged(true)
-                webView.URL?.absoluteString?.let(onUrlChanged)
+                currentOnLoadingChanged.value(true)
+                webView.URL?.absoluteString?.let { currentOnUrlChanged.value(it) }
             }
 
             @ObjCSignatureOverride
             override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) {
-                onLoadingChanged(false)
+                currentOnLoadingChanged.value(false)
                 collectCookies(webView)
             }
         }
@@ -457,24 +409,39 @@ actual fun BiliWebView(
         factory = {
             val config = WKWebViewConfiguration()
             val store = config.websiteDataStore.httpCookieStore
-            initialCookies.forEach { (name, value) ->
-                if (name.isNotBlank() && value.isNotBlank()) {
-                    val props: Map<Any?, *> = mapOf(
-                        NSHTTPCookieName to name,
-                        NSHTTPCookieValue to value,
-                        NSHTTPCookieDomain to ".bilibili.com",
-                        NSHTTPCookiePath to "/",
-                    )
-                    NSHTTPCookie.cookieWithProperties(props)?.let { c ->
-                        store.setCookie(c, completionHandler = null)
+            val cookiesToSet = initialCookies.mapNotNull { (name, value) ->
+                if (name.isBlank() || value.isBlank()) return@mapNotNull null
+                val props: Map<Any?, *> = mapOf(
+                    NSHTTPCookieName to name,
+                    NSHTTPCookieValue to value,
+                    NSHTTPCookieDomain to ".bilibili.com",
+                    NSHTTPCookiePath to "/",
+                )
+                NSHTTPCookie.cookieWithProperties(props)
+            }
+            val webView = WKWebView(frame = CGRectZero.readValue(), configuration = config).apply {
+                customUserAgent = userAgent
+                navigationDelegate = delegate
+            }
+            val targetUrl = NSURL.URLWithString(url)
+            if (targetUrl != null) {
+                if (cookiesToSet.isEmpty()) {
+                    webView.loadRequest(NSURLRequest.requestWithURL(targetUrl))
+                } else {
+                    var remaining = cookiesToSet.size
+                    cookiesToSet.forEach { cookie ->
+                        store.setCookie(cookie) {
+                            dispatch_async(dispatch_get_main_queue()) {
+                                remaining--
+                                if (remaining == 0) {
+                                    webView.loadRequest(NSURLRequest.requestWithURL(targetUrl))
+                                }
+                            }
+                        }
                     }
                 }
             }
-            WKWebView(frame = CGRectZero.readValue(), configuration = config).apply {
-                customUserAgent = userAgent
-                navigationDelegate = delegate
-                NSURL.URLWithString(url)?.let { loadRequest(NSURLRequest.requestWithURL(it)) }
-            }
+            webView
         },
         modifier = modifier,
     )
@@ -515,7 +482,6 @@ actual fun rememberDeviceOrientationSide(mode: Int): Int {
             } else if (pendingTarget == target) {
                 pendingTicks++
                 if (pendingTicks >= 2) {
-                    diag("ui") { "deviceSide $side -> $target (ax=$ax ay=$ay deg=${angleDeg.toInt()})" }
                     side = target
                     pendingTarget = null
                     pendingTicks = 0
@@ -530,41 +496,78 @@ actual fun rememberDeviceOrientationSide(mode: Int): Int {
     return side
 }
 
+private fun ByteArray.matchesBytes(offset: Int, vararg expected: Int): Boolean =
+    size >= offset + expected.size && expected.indices.all { i -> (this[offset + i].toInt() and 0xFF) == expected[i] }
+
+private val HEIC_BRANDS = setOf("heic", "heix", "hevc", "hevx", "mif1", "msf1", "heif")
+
+private fun detectImageMimeAndExt(bytes: ByteArray, typeIds: List<String>): Pair<String, String> {
+    when {
+        bytes.matchesBytes(0, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) -> return "image/png" to "png"
+        bytes.matchesBytes(0, 0x47, 0x49, 0x46, 0x38) -> return "image/gif" to "gif"
+        bytes.matchesBytes(0, 0x52, 0x49, 0x46, 0x46) && bytes.matchesBytes(8, 0x57, 0x45, 0x42, 0x50) ->
+            return "image/webp" to "webp"
+        bytes.size >= 12 && bytes.matchesBytes(4, 0x66, 0x74, 0x79, 0x70) &&
+            bytes.copyOfRange(8, 12).decodeToString().lowercase() in HEIC_BRANDS ->
+            return "image/heic" to "heic"
+        bytes.matchesBytes(0, 0xFF, 0xD8, 0xFF) -> return "image/jpeg" to "jpg"
+    }
+    val lowered = typeIds.map { it.lowercase() }
+    return when {
+        lowered.any { "png" in it } -> "image/png" to "png"
+        lowered.any { "webp" in it } -> "image/webp" to "webp"
+        lowered.any { "gif" in it } -> "image/gif" to "gif"
+        lowered.any { "heic" in it || "heif" in it } -> "image/heic" to "heic"
+        else -> "image/jpeg" to "jpg"
+    }
+}
+
 @OptIn(ExperimentalForeignApi::class)
 @Composable
 actual fun rememberPhotoPicker(
     maxSelection: Int,
     onPicked: (List<PickedPhotoData>) -> Unit,
 ): () -> Unit {
-    val callback = remember { arrayOfNulls<(List<PickedPhotoData>) -> Unit>(1) }
-    callback[0] = onPicked
+    val currentOnPicked = rememberUpdatedState(onPicked)
     val delegate = remember {
         object : NSObject(), PHPickerViewControllerDelegateProtocol {
             override fun picker(picker: PHPickerViewController, didFinishPicking: List<*>) {
                 picker.dismissViewControllerAnimated(true, completion = null)
                 val results = didFinishPicking.filterIsInstance<PHPickerResult>()
                 if (results.isEmpty()) return
-                val collected = ArrayList<PickedPhotoData>()
+                val collected = arrayOfNulls<PickedPhotoData>(results.size)
                 var remaining = results.size
                 results.forEachIndexed { idx, res ->
                     val provider = res.itemProvider
+                    val suggestedName = provider.suggestedName?.trim()?.takeIf { it.isNotEmpty() }
+                    val typeIds = provider.registeredTypeIdentifiers.filterIsInstance<String>()
                     provider.loadDataRepresentationForTypeIdentifier("public.image") { data, _ ->
-                        if (data != null && data.length > 0uL) {
+                        val item = if (data != null && data.length > 0uL) {
                             val bytes = ByteArray(data.length.toInt())
                             bytes.usePinned { pinned ->
                                 memcpy(pinned.addressOf(0), data.bytes, data.length)
                             }
-                            collected += PickedPhotoData(
+                            val (mime, ext) = detectImageMimeAndExt(bytes, typeIds)
+                            val fileName = when {
+                                suggestedName == null -> "image_$idx.$ext"
+                                suggestedName.contains('.') -> suggestedName
+                                else -> "$suggestedName.$ext"
+                            }
+                            PickedPhotoData(
                                 id = "${randomUuid()}-$idx",
-                                fileName = "image_$idx.jpg",
-                                mime = "image/jpeg",
+                                fileName = fileName,
+                                mime = mime,
                                 bytes = bytes,
                             )
+                        } else {
+                            null
                         }
-                        remaining--
-                        if (remaining == 0 && collected.isNotEmpty()) {
-                            dispatch_async(dispatch_get_main_queue()) {
-                                callback[0]?.invoke(collected.toList())
+                        dispatch_async(dispatch_get_main_queue()) {
+                            if (item != null) collected[idx] = item
+                            remaining--
+                            if (remaining == 0) {
+                                val out = collected.filterNotNull()
+                                if (out.isNotEmpty()) currentOnPicked.value(out)
                             }
                         }
                     }
@@ -580,10 +583,7 @@ actual fun rememberPhotoPicker(
             }
             val picker = PHPickerViewController(configuration = config)
             picker.delegate = delegate
-            val window = UIApplication.sharedApplication.windows.firstOrNull {
-                (it as? UIWindow)?.isKeyWindow() == true
-            } as? UIWindow ?: UIApplication.sharedApplication.keyWindow
-            window?.rootViewController?.presentViewController(picker, animated = true, completion = null)
+            topViewController()?.presentViewController(picker, animated = true, completion = null)
         }
     }
 }

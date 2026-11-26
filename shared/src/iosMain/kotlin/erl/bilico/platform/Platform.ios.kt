@@ -1,12 +1,12 @@
 package erl.bilico.platform
 
-import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CoroutineDispatcher
@@ -16,30 +16,32 @@ import platform.Foundation.NSCalendarUnitDay
 import platform.Foundation.NSCalendarUnitMonth
 import platform.Foundation.NSCalendarUnitYear
 import platform.Foundation.NSCachesDirectory
-import platform.Foundation.NSData
-import platform.Foundation.NSSearchPathForDirectoriesInDomains
-import platform.Foundation.NSUserDomainMask
-import platform.Foundation.NSDataCompressionAlgorithmZlib
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateComponents
 import platform.Foundation.NSDateFormatter
 import platform.Foundation.NSLocale
 import platform.Foundation.NSLock
 import platform.Foundation.NSNumber
-import platform.Foundation.NSURL
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURLComponents
 import platform.Foundation.NSURLQueryItem
 import platform.Foundation.NSUUID
 import platform.Foundation.NSUserDefaults
-import platform.Foundation.create
+import platform.Foundation.NSUserDomainMask
 import platform.Foundation.dateWithTimeIntervalSince1970
-import platform.Foundation.decompressedDataUsingAlgorithm
 import platform.Foundation.timeIntervalSince1970
 import platform.WebKit.WKWebsiteDataStore
+import platform.darwin.COMPRESSION_BROTLI
+import platform.darwin.COMPRESSION_STATUS_END
+import platform.darwin.COMPRESSION_STATUS_OK
+import platform.darwin.COMPRESSION_STREAM_DECODE
+import platform.darwin.COMPRESSION_STREAM_FINALIZE
+import platform.darwin.compression_stream
+import platform.darwin.compression_stream_destroy
+import platform.darwin.compression_stream_init
+import platform.darwin.compression_stream_process
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
-import platform.posix.memcpy
-import platform.zlib.Z_FINISH
 import platform.zlib.Z_OK
 import platform.zlib.Z_STREAM_END
 import platform.zlib.inflate
@@ -73,8 +75,20 @@ actual fun epochYear(epochSeconds: Long): Int {
 
 actual fun epochDayIndex(epochSeconds: Long): Long {
     val date = NSDate.dateWithTimeIntervalSince1970(epochSeconds.toDouble())
-    val startOfDay = NSCalendar.currentCalendar.startOfDayForDate(date)
-    return (startOfDay.timeIntervalSince1970 / 86400.0).toLong()
+    val cal = NSCalendar.currentCalendar
+    val year = cal.component(NSCalendarUnitYear, fromDate = date).toInt()
+    val month = cal.component(NSCalendarUnitMonth, fromDate = date).toInt()
+    val day = cal.component(NSCalendarUnitDay, fromDate = date).toInt()
+    return daysFromCivil(year, month, day)
+}
+
+private fun daysFromCivil(year: Int, month: Int, day: Int): Long {
+    val y = (if (month <= 2) year - 1 else year).toLong()
+    val era = (if (y >= 0L) y else y - 399L) / 400L
+    val yoe = y - era * 400L
+    val doy = (153L * (month + if (month > 2) -3 else 9) + 2L) / 5L + day - 1L
+    val doe = yoe * 365L + yoe / 4L - yoe / 100L + doy
+    return era * 146097L + doe - 719468L
 }
 
 actual fun todayDate(): SimpleDate {
@@ -121,8 +135,7 @@ actual fun addDaysToDate(year: Int, month: Int, day: Int, deltaDays: Int): Simpl
 actual fun parseUrlComponents(url: String): ParsedUrl? {
     val comps = NSURLComponents.componentsWithString(url) ?: return null
     val queryMap = LinkedHashMap<String, String>()
-    val items = comps.queryItems as? List<*>
-    items?.forEach { raw ->
+    comps.queryItems?.forEach { raw ->
         val item = raw as? NSURLQueryItem ?: return@forEach
         val name = item.name
         val value = item.value ?: ""
@@ -149,7 +162,7 @@ actual fun decompressZlib(data: ByteArray): ByteArray {
     if (data.isEmpty()) return ByteArray(0)
     memScoped {
         val stream = alloc<z_stream>()
-        val retInit = inflateInit_(stream.ptr, zlibVersion()?.toKString(), kotlinx.cinterop.sizeOf<z_stream>().toInt())
+        val retInit = inflateInit_(stream.ptr, zlibVersion()?.toKString(), sizeOf<z_stream>().toInt())
         if (retInit != Z_OK) return ByteArray(0)
         try {
             val outChunks = ArrayList<ByteArray>()
@@ -188,7 +201,59 @@ actual fun decompressZlib(data: ByteArray): ByteArray {
     }
 }
 
-actual fun decompressBrotli(data: ByteArray): ByteArray = ByteArray(0)
+private const val MAX_BROTLI_DECOMPRESSED_BYTES = 16 * 1024 * 1024
+
+@OptIn(ExperimentalForeignApi::class)
+actual fun decompressBrotli(data: ByteArray): ByteArray {
+    if (data.isEmpty()) return ByteArray(0)
+    memScoped {
+        val stream = alloc<compression_stream>()
+        val initStatus = compression_stream_init(
+            stream.ptr,
+            COMPRESSION_STREAM_DECODE,
+            COMPRESSION_BROTLI,
+        )
+        if (initStatus != COMPRESSION_STATUS_OK) return ByteArray(0)
+        try {
+            val outChunks = ArrayList<ByteArray>()
+            val chunkSize = 8192
+            val outBuf = ByteArray(chunkSize)
+            var total = 0
+            var status = COMPRESSION_STATUS_OK
+            data.usePinned { inPinned ->
+                stream.src_ptr = inPinned.addressOf(0).reinterpret()
+                stream.src_size = data.size.toULong()
+                do {
+                    val prevSrcSize = stream.src_size
+                    outBuf.usePinned { outPinned ->
+                        stream.dst_ptr = outPinned.addressOf(0).reinterpret()
+                        stream.dst_size = chunkSize.toULong()
+                        status = compression_stream_process(stream.ptr, COMPRESSION_STREAM_FINALIZE.toInt())
+                    }
+                    val have = chunkSize - stream.dst_size.toInt()
+                    if (have > 0) {
+                        total += have
+                        if (total > MAX_BROTLI_DECOMPRESSED_BYTES) return ByteArray(0)
+                        outChunks += outBuf.copyOf(have)
+                    }
+                    if (status == COMPRESSION_STATUS_OK && have == 0 && stream.src_size == prevSrcSize) {
+                        return ByteArray(0)
+                    }
+                } while (status == COMPRESSION_STATUS_OK)
+            }
+            if (status != COMPRESSION_STATUS_END) return ByteArray(0)
+            val result = ByteArray(total)
+            var offset = 0
+            for (chunk in outChunks) {
+                chunk.copyInto(result, offset)
+                offset += chunk.size
+            }
+            return result
+        } finally {
+            compression_stream_destroy(stream.ptr)
+        }
+    }
+}
 
 actual fun clearWebCookies() {
     dispatch_async(dispatch_get_main_queue()) {
