@@ -11,6 +11,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.request
+import io.ktor.http.DEFAULT_PORT
 import io.ktor.http.HttpHeaders
 import io.ktor.http.URLProtocol
 import io.ktor.http.encodedPath
@@ -76,9 +77,10 @@ class BiliClient(
     private val passportAllowlistPlugin = createClientPlugin("QrAuthAllowlist") {
         onRequest { request, _ ->
             val url = request.url
+            val effectivePort = if (url.port == DEFAULT_PORT) url.protocol.defaultPort else url.port
             val allowed = url.protocol == URLProtocol.HTTPS &&
-                (url.port == 443 || url.port == URLProtocol.HTTPS.defaultPort) &&
-                when (url.host) {
+                effectivePort == URLProtocol.HTTPS.defaultPort &&
+                when (url.host.lowercase()) {
                     "api.bilibili.com" -> url.encodedPath == "/x/web-interface/nav"
                     "passport.bilibili.com" -> url.encodedPath in setOf(
                         "/x/passport-login/web/qrcode/generate",
