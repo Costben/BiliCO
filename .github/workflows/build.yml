@@ -83,7 +83,6 @@ jobs:
           } >> gradle.properties
 
       - name: Decode Android keystore (optional)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         working-directory: BiliCO
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -91,13 +90,18 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > bilico-release.jks
-          cat > keystore.properties <<EOF
-          storeFile=bilico-release.jks
-          storePassword=$ANDROID_STORE_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          keyPassword=$ANDROID_KEY_PASSWORD
-          EOF
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > bilico-release.jks
+            cat > keystore.properties <<EOF
+            storeFile=bilico-release.jks
+            storePassword=$ANDROID_STORE_PASSWORD
+            keyAlias=$ANDROID_KEY_ALIAS
+            keyPassword=$ANDROID_KEY_PASSWORD
+            EOF
+            sed -i 's/^            //' keystore.properties
+          else
+            echo "ANDROID_KEYSTORE_BASE64 not set; falling back to debug signing."
+          fi
 
       - name: Assemble Android Release APK
         working-directory: BiliCO
