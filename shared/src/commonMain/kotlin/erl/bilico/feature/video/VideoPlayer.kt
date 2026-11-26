@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -133,6 +135,7 @@ internal fun VideoPlayer(
     danmakuComposer: (@Composable (onFocusChange: (Boolean) -> Unit) -> Unit)? = null,
     danmakuActions: DanmakuActionCallbacks? = null,
     seekPreview: SeekPreviewController? = null,
+    onScreenLockedChange: ((Boolean) -> Unit)? = null,
 ) {
     val container = LocalAppContainer.current
     val platformContext = LocalPlatformContext.current
@@ -201,6 +204,19 @@ internal fun VideoPlayer(
     }
 
     val effectiveLocked = fullscreen && !inPipMode && screenLock.locked
+    val stageLockObserver = LocalStageScreenLockObserver.current
+    val currentOnScreenLockedChange by rememberUpdatedState(onScreenLockedChange)
+    val currentStageLockObserver by rememberUpdatedState(stageLockObserver)
+    LaunchedEffect(effectiveLocked) {
+        currentOnScreenLockedChange?.invoke(effectiveLocked)
+        currentStageLockObserver?.invoke(effectiveLocked)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            currentOnScreenLockedChange?.invoke(false)
+            currentStageLockObserver?.invoke(false)
+        }
+    }
     val showChrome = !inPipMode && !effectiveLocked && (controlsVisible || errorMessage != null)
     LaunchedEffect(fullscreen, showChrome) {
         if (!showChrome) activeMenu = PlayerPopupMenu.NONE
@@ -429,10 +445,11 @@ internal fun VideoPlayer(
             }
 
             if (fullscreen && !inPipMode) {
+                val lockStartPad = rememberScreenLockStartPad(horizontalBarPad)
                 PlayerScreenLockButton(
                     visible = if (effectiveLocked) screenLock.hintVisible else (showChrome && activeMenu == PlayerPopupMenu.NONE && !composerFocused),
                     locked = effectiveLocked,
-                    startPad = horizontalBarPad,
+                    startPad = lockStartPad,
                     onToggleLock = {
                         if (hapticEnabled) haptic(CouiHapticEffect.Short)
                         if (screenLock.locked) {

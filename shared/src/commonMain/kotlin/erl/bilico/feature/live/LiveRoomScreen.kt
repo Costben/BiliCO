@@ -113,14 +113,15 @@ fun LiveRoomScreen(
     }
 
     var videoAspect by remember(roomId) { mutableFloatStateOf(0f) }
-    val fsController = rememberPlayerFullscreenController(
-        videoAspect = videoAspect,
-        autoRotateMode = autoRotateMode,
-        inPipMode = inPipMode,
-    )
+    var screenLocked by remember { mutableStateOf(false) }
+    val fsController = rememberPlayerFullscreenController(videoAspect, autoRotateMode, inPipMode || screenLocked)
     val fullscreen = fsController.fullscreen
     val deviceSide = fsController.deviceSide
     val applyFullscreen = fsController.applyFullscreen
+    val onScreenLockedChange: (Boolean) -> Unit = { locked ->
+        if (screenLocked && !locked && fullscreen && !inPipMode && deviceSide == 0) applyFullscreen(true)
+        screenLocked = locked
+    }
 
     var danmakuSettingsDialogVisible by remember { mutableStateOf(false) }
     var castDialogVisible by remember { mutableStateOf(false) }
@@ -313,7 +314,7 @@ fun LiveRoomScreen(
         consumedDanmakuSeq = state.danmakuSeq
     }
 
-    PlatformBackHandler(enabled = fullscreen) { applyFullscreen(false) }
+    PlatformBackHandler(enabled = fullscreen && !screenLocked) { applyFullscreen(false) }
 
     val castStreamUrl = remember(state.playback, candidateIndex) {
         val list = state.playback?.candidates.orEmpty()
@@ -383,6 +384,8 @@ fun LiveRoomScreen(
         darkMode = darkMode,
         onExitFullscreen = { applyFullscreen(false) },
         videoAspect = videoAspect,
+        screenLocked = screenLocked,
+        onScreenLockedChange = onScreenLockedChange,
         playerContent = {
             val returnHome = LocalStageReturnHome.current ?: { nav.popToMain() }
             val captureStageBackdrop = BlurEffectsEnabled && fullscreen
@@ -429,24 +432,16 @@ fun LiveRoomScreen(
                     viewModel.toggleOnlyAudio()
                     liveMessage = if (!state.onlyAudio) "已开启黑听（仅播放音频）" else "已恢复视频画面"
                 },
-                onSelectLine = if (!state.playback?.streams.isNullOrEmpty()) {
-                    { lineDialogVisible = true }
-                } else {
-                    null
-                },
+                onSelectLine = if (!state.playback?.streams.isNullOrEmpty()) ({ lineDialogVisible = true }) else null,
                 superChatCount = state.superChatHistory.size,
                 onSuperChatsClick = { scDrawerVisible = true },
                 audioOnlyOverlay = { LiveAudioOnlyOverlay(detail = state.detail) },
                 danmakuEnabled = danmakuEnabled,
                 onToggleDanmaku = { container.settings.setDanmakuEnabled(!danmakuEnabled) },
                 onDanmakuSettingsClick = { danmakuSettingsDialogVisible = true },
-                onEnterPip = if (canEnterPip(context)) { { enterPipNow(context) } } else null,
+                onEnterPip = if (canEnterPip(context)) ({ enterPipNow(context) }) else null,
                 onHome = returnHome,
-                onCast = if (castStreamUrl.isNotBlank()) {
-                    { castDialogVisible = true }
-                } else {
-                    null
-                },
+                onCast = if (castStreamUrl.isNotBlank()) ({ castDialogVisible = true }) else null,
                 danmakuComposer = { onFocusChange ->
                     FullscreenDanmakuComposer(
                         draft = danmakuDraft,

@@ -167,15 +167,20 @@ fun VideoScreen(
         ?: state.detail?.aspectFor(state.selectedCid)?.takeIf { it > 0f }
         ?: state.source?.aspect?.takeIf { it > 0f }
         ?: 0f
+    var screenLocked by remember { mutableStateOf(false) }
     val fsController = rememberPlayerFullscreenController(
         videoAspect = effectiveVideoAspect,
         autoRotateMode = autoRotateMode,
-        inPipMode = inPipMode,
+        inPipMode = inPipMode || screenLocked,
         orientationEnabled = stageReady,
     )
     val fullscreen = fsController.fullscreen
     val deviceSide = fsController.deviceSide
     val applyFullscreen = fsController.applyFullscreen
+    val onScreenLockedChange: (Boolean) -> Unit = { locked ->
+        if (screenLocked && !locked && fullscreen && !inPipMode && deviceSide == 0) applyFullscreen(true)
+        screenLocked = locked
+    }
     val detailPager = rememberPagerState(
         initialPage = if (commentRootId > 0L || commentTargetId > 0L || commentMatchText.isNotBlank()) 1 else 0,
         pageCount = { DETAIL_PAGES.size },
@@ -330,7 +335,7 @@ fun VideoScreen(
         }
     }
 
-    PlatformBackHandler(enabled = fullscreen) { applyFullscreen(false) }
+    PlatformBackHandler(enabled = fullscreen && !screenLocked) { applyFullscreen(false) }
 
     val message = state.message
     if (message != null) {
@@ -402,6 +407,8 @@ fun VideoScreen(
         portraitResizable = true,
         playing = playIntent,
         surfaceViewPlayer = hdrSurface,
+        screenLocked = screenLocked,
+        onScreenLockedChange = onScreenLockedChange,
         canExpand = {
             val list = when {
                 replyThread.root != null -> replyListState

@@ -254,11 +254,7 @@ actual val useNativeFullscreenRotation: Boolean = true
 
 private fun postNotification(name: String, key: String, value: NSNumber) {
     dispatch_async(dispatch_get_main_queue()) {
-        NSNotificationCenter.defaultCenter.postNotificationName(
-            aName = name,
-            `object` = null,
-            userInfo = mapOf(key to value),
-        )
+        NSNotificationCenter.defaultCenter.postNotificationName(name, null, mapOf(key to value))
     }
 }
 
@@ -272,6 +268,18 @@ actual fun setScreenOrientation(context: PlatformContext, orientation: PlatformO
         PlatformOrientation.Unspecified -> UIInterfaceOrientationMaskAllButUpsideDown
     }
     postNotification("BiliCoOrientationChanged", "mask", NSNumber(unsignedLong = mask))
+}
+
+actual fun currentWindowLandscapeOrientation(context: PlatformContext): PlatformOrientation? {
+    val scenes = UIApplication.sharedApplication.connectedScenes.filterIsInstance<UIWindowScene>()
+    val sceneOrientation = findKeyWindow()?.windowScene?.interfaceOrientation
+        ?: scenes.firstOrNull { it.activationState == UISceneActivationStateForegroundActive }?.interfaceOrientation
+        ?: scenes.firstOrNull()?.interfaceOrientation
+    return when (sceneOrientation) {
+        UIInterfaceOrientationLandscapeRight -> PlatformOrientation.LandscapeRight
+        UIInterfaceOrientationLandscapeLeft -> PlatformOrientation.LandscapeLeft
+        else -> null
+    }
 }
 
 actual fun setSystemBarsVisible(context: PlatformContext, visible: Boolean) {
@@ -345,13 +353,7 @@ actual fun Modifier.chipTabCausticLight(): Modifier {
             uniform("in_corner", cornerPx)
             uniform("in_bottom", bottom)
             uniform("in_sdf", sdf)
-            uniform(
-                "in_color",
-                ChipTabCausticDark.red,
-                ChipTabCausticDark.green,
-                ChipTabCausticDark.blue,
-                ChipTabCausticDark.alpha,
-            )
+            uniform("in_color", ChipTabCausticDark.red, ChipTabCausticDark.green, ChipTabCausticDark.blue, ChipTabCausticDark.alpha)
             uniform("in_background", background.red, background.green, background.blue)
         }
         drawRect(

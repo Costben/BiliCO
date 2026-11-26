@@ -74,6 +74,8 @@ internal fun VideoFullscreenStage(
     canExpand: () -> Boolean = { true },
     videoAspect: Float = 0f,
     surfaceViewPlayer: Boolean = false,
+    screenLocked: Boolean = false,
+    onScreenLockedChange: ((Boolean) -> Unit)? = null,
 ) {
     val context = LocalPlatformContext.current
     val windowLandscape = LocalScreenConfig.current.isLandscape
@@ -109,12 +111,13 @@ internal fun VideoFullscreenStage(
     }
 
     var preferredSide by remember { mutableIntStateOf(1) }
-    if (landscapeSide != 0) preferredSide = landscapeSide
+    if (!screenLocked && landscapeSide != 0) preferredSide = landscapeSide
 
     val progress = remember { Animatable(if (fullscreen) 1f else 0f) }
     val angle = remember { Animatable(sideToDegrees(preferredSide)) }
     val reorient = remember { Animatable(0f) }
     val frameHolder = rememberStageFrameHolder()
+    val currentOnScreenLockedChange by rememberUpdatedState(onScreenLockedChange)
 
     StageWindowAttributesEffect(context)
     StagePlatformWindowAttributesEffect()
@@ -137,9 +140,19 @@ internal fun VideoFullscreenStage(
         }
     }
 
+    StageScreenLockOrientationEffect(
+        fullscreen = fullscreen,
+        screenLocked = screenLocked,
+        portraitStage = portraitStage,
+        angle = angle,
+        context = context,
+        onSyncLockedSide = { preferredSide = it },
+    )
+
     StageOrientationTransitionEffect(
         fullscreen = fullscreen,
         portraitStage = portraitStage,
+        screenLocked = screenLocked,
         progress = progress,
         angle = angle,
         frameHolder = frameHolder,
@@ -156,6 +169,7 @@ internal fun VideoFullscreenStage(
         windowLandscape = windowLandscape,
         portraitStage = portraitStage,
         surfaceViewPlayer = surfaceViewPlayer,
+        screenLocked = screenLocked,
         progress = progress,
         angle = angle,
         reorient = reorient,
@@ -377,6 +391,7 @@ internal fun VideoFullscreenStage(
                         LocalStagePlayerVisible provides playerVisible,
                         LocalPlayerSurfaceAlpha provides playerAlphaProvider,
                         LocalStageReturnHome provides returnHome,
+                        LocalStageScreenLockObserver provides currentOnScreenLockedChange,
                     ) {
                         playerContent()
                         StageFrozenFrame(frameHolder)

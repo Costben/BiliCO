@@ -24,6 +24,7 @@ import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.view.Surface
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -215,6 +216,21 @@ actual fun setScreenOrientation(context: PlatformContext, orientation: PlatformO
             PlatformOrientation.LandscapeLeft -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
             PlatformOrientation.Unspecified -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
+    }
+}
+
+actual fun currentWindowLandscapeOrientation(context: PlatformContext): PlatformOrientation? {
+    val activity = AndroidPlatformBridge.currentActivity() ?: return null
+    val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        activity.display?.rotation
+    } else {
+        @Suppress("DEPRECATION")
+        activity.windowManager?.defaultDisplay?.rotation
+    }
+    return when (rotation) {
+        Surface.ROTATION_90 -> PlatformOrientation.LandscapeRight
+        Surface.ROTATION_270 -> PlatformOrientation.LandscapeLeft
+        else -> null
     }
 }
 

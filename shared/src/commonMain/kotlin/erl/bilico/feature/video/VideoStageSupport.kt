@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.PlatformOrientation
+import erl.bilico.platform.currentWindowLandscapeOrientation
 import erl.bilico.platform.setScreenOrientation
 import erl.bilico.platform.setSystemBarsVisible
 import erl.bilico.platform.useEdgeSwipeBackOverlay
@@ -75,19 +76,56 @@ internal fun BoxScope.CollapsedBarSlot(
 }
 
 @Composable
+internal fun StageScreenLockOrientationEffect(
+    fullscreen: Boolean,
+    screenLocked: Boolean,
+    portraitStage: Boolean,
+    angle: Animatable<Float, AnimationVector1D>,
+    context: PlatformContext,
+    onSyncLockedSide: (Int) -> Unit,
+) {
+    LaunchedEffect(fullscreen, screenLocked, context) {
+        if (!fullscreen || !screenLocked) return@LaunchedEffect
+        val lockedOrientation = if (portraitStage) {
+            PlatformOrientation.Portrait
+        } else {
+            currentWindowLandscapeOrientation(context)
+                ?: degreesToLandscapeOrientation(angle.value)
+        }
+        when (lockedOrientation) {
+            PlatformOrientation.LandscapeLeft -> {
+                angle.snapTo(-90f)
+                onSyncLockedSide(-1)
+            }
+            PlatformOrientation.LandscapeRight -> {
+                angle.snapTo(90f)
+                onSyncLockedSide(1)
+            }
+            else -> Unit
+        }
+        setScreenOrientation(context, lockedOrientation)
+    }
+}
+
+@Composable
 internal fun LandscapeFlipEffect(
     landscapeSide: Int,
     fullscreen: Boolean,
     windowLandscape: Boolean,
     portraitStage: Boolean,
     surfaceViewPlayer: Boolean,
+    screenLocked: Boolean,
     progress: Animatable<Float, AnimationVector1D>,
     angle: Animatable<Float, AnimationVector1D>,
     reorient: Animatable<Float, AnimationVector1D>,
     context: PlatformContext,
     frameHolder: StageFrameHolder,
 ) {
-    LaunchedEffect(landscapeSide, fullscreen, windowLandscape, portraitStage, surfaceViewPlayer) {
+    LaunchedEffect(landscapeSide, fullscreen, windowLandscape, portraitStage, surfaceViewPlayer, screenLocked) {
+        if (screenLocked) {
+            reorient.snapTo(0f)
+            return@LaunchedEffect
+        }
         if (useNativeFullscreenRotation) {
             reorient.snapTo(0f)
             if (!portraitStage && fullscreen && landscapeSide != 0) {
@@ -130,6 +168,7 @@ internal fun LandscapeFlipEffect(
 internal fun StageOrientationTransitionEffect(
     fullscreen: Boolean,
     portraitStage: Boolean,
+    screenLocked: Boolean,
     progress: Animatable<Float, AnimationVector1D>,
     angle: Animatable<Float, AnimationVector1D>,
     frameHolder: StageFrameHolder,
@@ -139,7 +178,8 @@ internal fun StageOrientationTransitionEffect(
     surfaceViewPlayer: () -> Boolean,
     onSyncStatusBar: () -> Unit,
 ) {
-    LaunchedEffect(fullscreen, portraitStage, context) {
+    LaunchedEffect(fullscreen, portraitStage, screenLocked, context) {
+        if (fullscreen && screenLocked) return@LaunchedEffect
         if (useNativeFullscreenRotation && !portraitStage) {
             if (fullscreen) {
                 val targetDegrees = sideDegrees()

@@ -130,14 +130,19 @@ fun PgcScreen(
     val effectiveVideoAspect = playerVideoAspect.takeIf { it > 0f }
         ?: state.source?.aspect?.takeIf { it > 0f }
         ?: 0f
+    var screenLocked by remember { mutableStateOf(false) }
     val fsController = rememberPlayerFullscreenController(
         videoAspect = effectiveVideoAspect,
         autoRotateMode = autoRotateMode,
-        inPipMode = inPipMode,
+        inPipMode = inPipMode || screenLocked,
     )
     val fullscreen = fsController.fullscreen
     val deviceSide = fsController.deviceSide
     val applyFullscreen = fsController.applyFullscreen
+    val onScreenLockedChange: (Boolean) -> Unit = { locked ->
+        if (screenLocked && !locked && fullscreen && !inPipMode && deviceSide == 0) applyFullscreen(true)
+        screenLocked = locked
+    }
     val routeTransition = LocalRouteTransition.current
     val blurActive by remember(routeTransition) {
         derivedStateOf {
@@ -296,7 +301,7 @@ fun PgcScreen(
         }
     }
 
-    PlatformBackHandler(enabled = fullscreen) { applyFullscreen(false) }
+    PlatformBackHandler(enabled = fullscreen && !screenLocked) { applyFullscreen(false) }
 
     var danmakuActionMessage by remember { mutableStateOf<String?>(null) }
     val message = danmakuActionMessage ?: state.message
@@ -386,6 +391,8 @@ fun PgcScreen(
         portraitResizable = true,
         playing = isPlaying || isBuffering,
         surfaceViewPlayer = hdrSurface,
+        screenLocked = screenLocked,
+        onScreenLockedChange = onScreenLockedChange,
         canExpand = {
             val list = when {
                 replyThread.root != null -> replyListState

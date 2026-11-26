@@ -11,8 +11,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -24,12 +27,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.icon.COUIIcons
@@ -37,6 +44,30 @@ import io.github.suqi8.coui.kmp.icon.extended.Lock
 import io.github.suqi8.coui.kmp.icon.extended.Unlock
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
+
+internal val LocalStageScreenLockObserver = staticCompositionLocalOf<((Boolean) -> Unit)?> { null }
+
+/**
+ * 计算锁屏按钮起始边距：在横屏全屏下自动避让 Android 前置挖孔/刘海与 iOS 灵动岛安全区，
+ * 无挖孔侧仍保持 [baseStartPad]，挖孔侧在安全区外额外保留 16dp 呼吸间距。
+ */
+@Composable
+internal fun rememberScreenLockStartPad(baseStartPad: Dp): Dp {
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val cutoutStartPx = if (layoutDirection == LayoutDirection.Ltr) {
+        WindowInsets.displayCutout.getLeft(density, layoutDirection)
+    } else {
+        WindowInsets.displayCutout.getRight(density, layoutDirection)
+    }
+    val safeStartPx = if (layoutDirection == LayoutDirection.Ltr) {
+        WindowInsets.safeDrawing.getLeft(density, layoutDirection)
+    } else {
+        WindowInsets.safeDrawing.getRight(density, layoutDirection)
+    }
+    val edgeInset = with(density) { maxOf(cutoutStartPx, safeStartPx).toDp() }
+    return maxOf(baseStartPad, edgeInset + 16.dp)
+}
 
 @Stable
 internal class PlayerScreenLockState {

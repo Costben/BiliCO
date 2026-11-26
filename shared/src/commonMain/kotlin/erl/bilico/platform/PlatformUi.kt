@@ -170,6 +170,9 @@ expect val useNativeFullscreenRotation: Boolean
 
 expect fun setScreenOrientation(context: PlatformContext, orientation: PlatformOrientation)
 
+/** 查询当前窗口实际所处的横屏方向（LandscapeRight / LandscapeLeft）；非横屏或无法获取时返回 null。 */
+expect fun currentWindowLandscapeOrientation(context: PlatformContext): PlatformOrientation?
+
 expect fun setSystemBarsVisible(context: PlatformContext, visible: Boolean)
 
 expect fun setStatusBarDarkIcons(context: PlatformContext, darkIcons: Boolean?)
