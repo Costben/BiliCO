@@ -31,10 +31,11 @@ private const val TAG = "BiliPlayer"
 actual class BiliPlayer actual constructor(context: PlatformContext) {
     internal val avPlayer: AVPlayer = AVPlayer().apply {
         automaticallyWaitsToMinimizeStalling = true
+        audiovisualBackgroundPlaybackPolicy = AVPlayerAudiovisualBackgroundPlaybackPolicyContinuesIfPossible
         muted = false
         volume = 1f
     }
-    private var audioPlayer: AVPlayer? = null
+    internal var audioPlayer: AVPlayer? = null
     private var videoOutput: AVPlayerItemVideoOutput? = null
     private var hlsLoader: DashHlsResourceLoader? = null
     private var localHttpServer: LocalMediaHttpServer? = null
@@ -554,7 +555,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
                         audioPlayer?.play()
                         audioPlayer?.rate = desiredSpeed
                     }
-                } else if (avPlayer.timeControlStatus == AVPlayerTimeControlStatusPaused) {
+                } else if (avPlayer.timeControlStatus == AVPlayerTimeControlStatusPaused && !IosMediaSession.isTransitioningToBackground()) {
                     // PiP 浮窗、控制中心或耳机断开由系统暂停时同步期望态，避免被轮询强行恢复播放。
                     desiredPlayWhenReady = false
                 }

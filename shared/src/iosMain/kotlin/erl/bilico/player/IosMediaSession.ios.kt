@@ -1,9 +1,11 @@
 package erl.bilico.player
 
+import erl.bilico.data.network.BILI_USER_AGENT
 import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.dlFileUriToPath
 import erl.bilico.platform.logDebug
 import erl.bilico.platform.logWarn
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
@@ -12,22 +14,25 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
+import platform.AVFAudio.AVAudioSessionModeDefault
 import platform.AVFAudio.AVAudioSessionModeMoviePlayback
 import platform.AVFAudio.setActive
-import platform.AVFoundation.AVPlayerLayer
-import platform.AVFoundation.rate
+import platform.AVFoundation.*
 import platform.AVKit.AVPictureInPictureController
 import platform.AVKit.AVPictureInPictureControllerDelegateProtocol
 import platform.Foundation.NSData
 import platform.Foundation.NSError
+import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSTimer
 import platform.Foundation.NSURL
+import platform.Foundation.NSURLRequestUseProtocolCachePolicy
 import platform.Foundation.NSURLSession
-import platform.Foundation.dataTaskWithURL
+import platform.Foundation.dataTaskWithRequest
 import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.setValue
 import platform.MediaPlayer.MPChangePlaybackPositionCommandEvent
 import platform.MediaPlayer.MPMediaItemArtwork
 import platform.MediaPlayer.MPMediaItemPropertyArtist
@@ -39,16 +44,27 @@ import platform.MediaPlayer.MPNowPlayingInfoPropertyDefaultPlaybackRate
 import platform.MediaPlayer.MPNowPlayingInfoPropertyElapsedPlaybackTime
 import platform.MediaPlayer.MPNowPlayingInfoPropertyIsLiveStream
 import platform.MediaPlayer.MPNowPlayingInfoPropertyPlaybackRate
+import platform.MediaPlayer.MPNowPlayingPlaybackStatePaused
+import platform.MediaPlayer.MPNowPlayingPlaybackStatePlaying
+import platform.MediaPlayer.MPNowPlayingPlaybackStateStopped
 import platform.MediaPlayer.MPRemoteCommandCenter
 import platform.MediaPlayer.MPRemoteCommandHandlerStatusCommandFailed
 import platform.MediaPlayer.MPRemoteCommandHandlerStatusSuccess
 import platform.MediaPlayer.MPSkipIntervalCommandEvent
+import platform.UIKit.UIApplication
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
+import platform.UIKit.UIApplicationWillResignActiveNotification
 import platform.UIKit.UIImage
+import platform.UIKit.beginReceivingRemoteControlEvents
+import platform.darwin.DISPATCH_TIME_NOW
+import platform.darwin.NSEC_PER_SEC
 import platform.darwin.NSObject
+import platform.darwin.dispatch_after
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
+import platform.darwin.dispatch_time
 
 /**
  * iOS 系统媒体会话与画中画管理器：
@@ -57,7 +73,7 @@ import platform.darwin.dispatch_get_main_queue
  * 3. 遵循 iOS 原生协同规范：进入画中画浮窗时由系统接管浮窗并隐藏灵动岛胶囊，纯后台听音（关闭自动 PiP 或黑听）
  *    时自动解绑视频层维持后台音频并展示灵动岛胶囊与封面声波。
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal object IosMediaSession {
     private const val TAG = "IosMediaSession"
 
@@ -66,6 +82,9 @@ internal object IosMediaSession {
     private var activePlayer: BiliPlayer? = null
     private var activeLayer: AVPlayerLayer? = null
     private var detachedLayerForBg: AVPlayerLayer? = null
+    private var videoTracksDisabledForBg = false
+    private var wasPlayingBeforeBackground = false
+    private var transitioningToBackground = false
     private var pipController: AVPictureInPictureController? = null
     private var pipDelegate: PipDelegate? = null
     private var pipActive = false
@@ -86,6 +105,9 @@ internal object IosMediaSession {
         PlaybackBridge.onSessionStop = { onSessionStop() }
         PlaybackBridge.isPlatformPipActive = { pipActive || pipStarting }
 
+        dispatch_async(dispatch_get_main_queue()) {
+            UIApplication.sharedApplication.beginReceivingRemoteControlEvents()
+        }
         setupRemoteCommands()
         observeAppLifecycle()
     }
@@ -93,6 +115,8 @@ internal object IosMediaSession {
     fun isPipSupported(): Boolean = AVPictureInPictureController.isPictureInPictureSupported()
 
     fun isPipActiveOrStarting(): Boolean = pipActive || pipStarting
+
+    fun isTransitioningToBackground(): Boolean = transitioningToBackground
 
     fun attachPlayerLayer(player: BiliPlayer, layer: AVPlayerLayer) {
         install()
@@ -158,6 +182,8 @@ internal object IosMediaSession {
     private fun onSessionStart() {
         dispatch_async(dispatch_get_main_queue()) {
             sessionActive = true
+            UIApplication.sharedApplication.beginReceivingRemoteControlEvents()
+            PlaybackBridge.activePlayer?.setBackgroundPlaybackAllowed(PlaybackBridge.backgroundPlayEnabled)
             ensurePlaybackAudioSession()
             startRefreshTimer()
             refreshNowPlayingOnMain()
@@ -167,7 +193,9 @@ internal object IosMediaSession {
     private fun onSessionPromote() {
         dispatch_async(dispatch_get_main_queue()) {
             sessionActive = true
-            ensurePlaybackAudioSession()
+            UIApplication.sharedApplication.beginReceivingRemoteControlEvents()
+            PlaybackBridge.activePlayer?.setBackgroundPlaybackAllowed(PlaybackBridge.backgroundPlayEnabled)
+            ensurePlaybackAudioSession(audioOnlyMode = !pipActive && !pipStarting)
             startRefreshTimer()
             refreshNowPlayingOnMain()
         }
@@ -176,8 +204,11 @@ internal object IosMediaSession {
     private fun onSessionStop() {
         dispatch_async(dispatch_get_main_queue()) {
             sessionActive = false
+            wasPlayingBeforeBackground = false
             stopRefreshTimer()
-            MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = null
+            val center = MPNowPlayingInfoCenter.defaultCenter()
+            center.playbackState = MPNowPlayingPlaybackStateStopped
+            center.nowPlayingInfo = null
         }
     }
 
@@ -258,6 +289,13 @@ internal object IosMediaSession {
     private fun observeAppLifecycle() {
         val nc = NSNotificationCenter.defaultCenter
         nc.addObserverForName(
+            UIApplicationWillResignActiveNotification,
+            null,
+            NSOperationQueue.mainQueue,
+        ) { _ ->
+            handleWillResignActive()
+        }
+        nc.addObserverForName(
             UIApplicationDidEnterBackgroundNotification,
             null,
             NSOperationQueue.mainQueue,
@@ -271,41 +309,91 @@ internal object IosMediaSession {
         ) { _ ->
             handleWillEnterForeground()
         }
+        nc.addObserverForName(
+            UIApplicationDidBecomeActiveNotification,
+            null,
+            NSOperationQueue.mainQueue,
+        ) { _ ->
+            handleWillEnterForeground()
+        }
+    }
+
+    private fun handleWillResignActive() {
+        val player = PlaybackBridge.activePlayer ?: activePlayer ?: return
+        wasPlayingBeforeBackground = player.isPlaying || player.playWhenReady
+        player.setBackgroundPlaybackAllowed(PlaybackBridge.backgroundPlayEnabled)
+        syncAutoPipFlag()
+        if (wasPlayingBeforeBackground && PlaybackBridge.backgroundPlayEnabled) {
+            transitioningToBackground = true
+            sessionActive = true
+            refreshNowPlayingOnMain(forcePlayingState = true)
+        }
     }
 
     private fun handleDidEnterBackground() {
         val player = PlaybackBridge.activePlayer ?: activePlayer ?: return
         val inPip = pipActive || pipStarting || pipController?.isPictureInPictureActive() == true
         if (inPip) {
+            transitioningToBackground = false
             refreshNowPlayingOnMain()
             return
         }
-        val shouldKeepBgAudio = PlaybackBridge.backgroundPlayEnabled && (player.isPlaying || player.playWhenReady)
-        if (!shouldKeepBgAudio) return
+        val shouldKeepBgAudio = PlaybackBridge.backgroundPlayEnabled &&
+            (wasPlayingBeforeBackground || player.isPlaying || player.playWhenReady)
+        if (!shouldKeepBgAudio) {
+            transitioningToBackground = false
+            return
+        }
 
-        // Apple QA1668：非 PiP 场景进后台时需暂时从 AVPlayerLayer 解绑 AVPlayer，
-        // 避免系统因视频层不可见而强制暂停播放；随后刷新 Now Playing 由系统自动上灵动岛与锁屏。
+        // 关闭视频轨 + 解绑 AVPlayerLayer：后台系统会回收 VideoToolbox 硬件视频解码器，
+        // 仅保留音频轨才能避免缓冲播完 2~5 秒后被系统停播，同时触发原生灵动岛媒体胶囊与锁屏播控。
+        transitioningToBackground = true
+        player.setBackgroundPlaybackAllowed(true)
+        player.setBackgroundVideoTracksEnabled(false)
+        videoTracksDisabledForBg = true
         val layer = activeLayer
         if (layer != null && layer.player === player.avPlayer) {
             layer.player = null
             detachedLayerForBg = layer
         }
-        ensurePlaybackAudioSession()
+        ensurePlaybackAudioSession(audioOnlyMode = true)
         if (player.avPlayer.rate == 0f) {
+            player.avPlayer.play()
+            player.avPlayer.rate = player.speed
             player.play()
         }
         sessionActive = true
-        refreshNowPlayingOnMain()
+        startRefreshTimer()
+        refreshNowPlayingOnMain(forcePlayingState = true)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (1L * NSEC_PER_SEC.toLong())), dispatch_get_main_queue()) {
+            transitioningToBackground = false
+            if (videoTracksDisabledForBg && PlaybackBridge.backgroundPlayEnabled && player.avPlayer.rate == 0f && player.playWhenReady) {
+                ensurePlaybackAudioSession(audioOnlyMode = true)
+                player.avPlayer.play()
+                player.avPlayer.rate = player.speed
+            }
+            if (sessionActive) refreshNowPlayingOnMain()
+        }
     }
 
     private fun handleWillEnterForeground() {
-        val layer = detachedLayerForBg
+        transitioningToBackground = false
+        wasPlayingBeforeBackground = false
         val player = activePlayer ?: PlaybackBridge.activePlayer
+        if (videoTracksDisabledForBg && player != null) {
+            player.setBackgroundVideoTracksEnabled(true)
+            videoTracksDisabledForBg = false
+        }
+        val layer = detachedLayerForBg
         if (layer != null && player != null) {
             layer.player = player.avPlayer
             detachedLayerForBg = null
+            rebuildPipController(layer)
         }
-        if (sessionActive) refreshNowPlayingOnMain()
+        if (sessionActive) {
+            ensurePlaybackAudioSession(audioOnlyMode = false)
+            refreshNowPlayingOnMain()
+        }
     }
 
     private fun startRefreshTimer() {
@@ -320,9 +408,11 @@ internal object IosMediaSession {
         refreshTimer = null
     }
 
-    private fun refreshNowPlayingOnMain() {
+    private fun refreshNowPlayingOnMain(forcePlayingState: Boolean = false) {
         val player = PlaybackBridge.activePlayer ?: activePlayer ?: run {
-            MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = null
+            val center = MPNowPlayingInfoCenter.defaultCenter()
+            center.playbackState = MPNowPlayingPlaybackStateStopped
+            center.nowPlayingInfo = null
             return
         }
         val title = PlaybackBridge.activeTitle.ifBlank { "BiliCO" }
@@ -333,7 +423,7 @@ internal object IosMediaSession {
         val durationSec = player.duration.coerceAtLeast(0L) / 1000.0
         val elapsedSec = player.currentPosition.coerceAtLeast(0L) / 1000.0
         val isLive = durationSec <= 0.0
-        val playingNow = player.isPlaying || player.playWhenReady
+        val playingNow = forcePlayingState || player.isPlaying || player.playWhenReady
         val rate = if (playingNow) player.speed.toDouble() else 0.0
 
         val info = mutableMapOf<Any?, Any?>()
@@ -349,7 +439,9 @@ internal object IosMediaSession {
         if (artworkUrl.isNotBlank() && artworkUrl == cachedArtworkUrl) {
             cachedArtwork?.let { info[MPMediaItemPropertyArtwork] = it }
         }
-        MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = info
+        val center = MPNowPlayingInfoCenter.defaultCenter()
+        center.nowPlayingInfo = info
+        center.playbackState = if (playingNow) MPNowPlayingPlaybackStatePlaying else MPNowPlayingPlaybackStatePaused
     }
 
     private fun ensureArtworkLoaded(url: String) {
@@ -366,12 +458,24 @@ internal object IosMediaSession {
             loadingArtworkUrl = ""
             return
         }
-        val normalized = if (url.startsWith("//")) "https:$url" else url
+        val normalized = when {
+            url.startsWith("//") -> "https:$url"
+            url.startsWith("http://", ignoreCase = true) -> "https://${url.removePrefix("http://").removePrefix("HTTP://")}"
+            else -> url
+        }
         val nsUrl = NSURL.URLWithString(normalized) ?: run {
             loadingArtworkUrl = ""
             return
         }
-        NSURLSession.sharedSession.dataTaskWithURL(nsUrl) { data, _, _ ->
+        val req = NSMutableURLRequest(
+            uRL = nsUrl,
+            cachePolicy = NSURLRequestUseProtocolCachePolicy,
+            timeoutInterval = 10.0,
+        ).apply {
+            setValue("https://www.bilibili.com/", forHTTPHeaderField = "Referer")
+            setValue(BILI_USER_AGENT, forHTTPHeaderField = "User-Agent")
+        }
+        NSURLSession.sharedSession.dataTaskWithRequest(req) { data, _, err ->
             val img = data?.let { UIImage(data = it) }
             dispatch_async(dispatch_get_main_queue()) {
                 if (loadingArtworkUrl == url) loadingArtworkUrl = ""
@@ -379,20 +483,23 @@ internal object IosMediaSession {
                     cachedArtworkUrl = url
                     cachedArtwork = MPMediaItemArtwork(boundsSize = img.size) { _ -> img }
                     if (sessionActive) refreshNowPlayingOnMain()
+                } else if (err != null) {
+                    logWarn(TAG, "artwork load failed: ${err.localizedDescription}")
                 }
             }
         }.resume()
     }
 
-    internal fun ensurePlaybackAudioSession() {
+    internal fun ensurePlaybackAudioSession(audioOnlyMode: Boolean = false) {
         runCatching {
             memScoped {
                 val session = AVAudioSession.sharedInstance()
                 val err = alloc<ObjCObjectVar<NSError?>>()
-                var ok = session.setCategory(AVAudioSessionCategoryPlayback, AVAudioSessionModeMoviePlayback, 0u, err.ptr)
+                val mode = if (audioOnlyMode) AVAudioSessionModeDefault else AVAudioSessionModeMoviePlayback
+                val ok = session.setCategory(AVAudioSessionCategoryPlayback, mode, 0u, err.ptr)
                 if (!ok) {
                     err.value = null
-                    session.setCategory(AVAudioSessionCategoryPlayback, platform.AVFAudio.AVAudioSessionModeDefault, 0u, err.ptr)
+                    session.setCategory(AVAudioSessionCategoryPlayback, AVAudioSessionModeDefault, 0u, err.ptr)
                 }
                 val actErr = alloc<ObjCObjectVar<NSError?>>()
                 session.setActive(true, error = actErr.ptr)
@@ -450,4 +557,23 @@ internal object IosMediaSession {
             restoreUserInterfaceForPictureInPictureStopWithCompletionHandler(true)
         }
     }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun BiliPlayer.setBackgroundVideoTracksEnabled(enabled: Boolean) {
+    avPlayer.currentItem?.tracks?.forEach { raw ->
+        val track = raw as? AVPlayerItemTrack ?: return@forEach
+        if (track.assetTrack?.mediaType == AVMediaTypeVideo) track.enabled = enabled
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun BiliPlayer.setBackgroundPlaybackAllowed(allowed: Boolean) {
+    val policy = if (allowed) {
+        AVPlayerAudiovisualBackgroundPlaybackPolicyContinuesIfPossible
+    } else {
+        AVPlayerAudiovisualBackgroundPlaybackPolicyPauses
+    }
+    avPlayer.audiovisualBackgroundPlaybackPolicy = policy
+    audioPlayer?.audiovisualBackgroundPlaybackPolicy = policy
 }

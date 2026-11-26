@@ -313,7 +313,7 @@ fun BindPlaybackSession(
             if (event == Lifecycle.Event.ON_STOP) {
                 if (!PlaybackBridge.isOwner(sessionOwner)) return@LifecycleEventObserver
                 if (!currentInPipMode.value && !PlaybackBridge.isPlatformPipActive()) {
-                    if (currentBackgroundPlay.value && player.isPlaying) {
+                    if (currentBackgroundPlay.value && (player.isPlaying || player.playWhenReady)) {
                         PlaybackBridge.onSessionPromote?.invoke()
                     } else if (player.isPlaying) {
                         player.pause()
