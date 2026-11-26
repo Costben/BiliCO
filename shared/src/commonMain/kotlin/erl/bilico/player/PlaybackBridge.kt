@@ -46,6 +46,13 @@ object PlaybackBridge {
     var onSessionStop: (() -> Unit)? = null
 
     @Volatile
+    var isPlatformPipActive: () -> Boolean = { false }
+
+    @Volatile
+    var backgroundPlayEnabled: Boolean = true
+        private set
+
+    @Volatile
     var activePlayer: BiliPlayer? = null
         private set
 
@@ -97,6 +104,7 @@ object PlaybackBridge {
         artworkUrl: String,
         isPlaying: Boolean,
         autoPip: Boolean,
+        backgroundPlay: Boolean = true,
         owner: Any? = null,
     ) {
         activeOwner = owner
@@ -105,6 +113,7 @@ object PlaybackBridge {
         activeSubtitle = subtitle
         activeArtworkUrl = artworkUrl
         autoPipEnabled = autoPip
+        backgroundPlayEnabled = backgroundPlay
         currentTitle = title
         currentSubtitle = subtitle
         currentArtworkUrl = artworkUrl
@@ -284,7 +293,7 @@ fun BindPlaybackSession(
     val currentInPipMode = rememberUpdatedState(inPipMode)
     val poppingOut = routeEntry?.exiting == true && !routeEntry.minimizingToOrb
 
-    LaunchedEffect(activeSession, player, title, subtitle, artworkUrl, isPlaying, effectiveAutoPip, poppingOut) {
+    LaunchedEffect(activeSession, player, title, subtitle, artworkUrl, isPlaying, backgroundPlay, effectiveAutoPip, poppingOut) {
         if (!activeSession || poppingOut) return@LaunchedEffect
         PlaybackBridge.bind(
             player = player,
@@ -293,6 +302,7 @@ fun BindPlaybackSession(
             artworkUrl = artworkUrl,
             isPlaying = isPlaying,
             autoPip = effectiveAutoPip,
+            backgroundPlay = backgroundPlay,
             owner = sessionOwner,
         )
         PlaybackBridge.onSessionStart?.invoke()
@@ -302,7 +312,7 @@ fun BindPlaybackSession(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
                 if (!PlaybackBridge.isOwner(sessionOwner)) return@LifecycleEventObserver
-                if (!currentInPipMode.value) {
+                if (!currentInPipMode.value && !PlaybackBridge.isPlatformPipActive()) {
                     if (currentBackgroundPlay.value && player.isPlaying) {
                         PlaybackBridge.onSessionPromote?.invoke()
                     } else if (player.isPlaying) {

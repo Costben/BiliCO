@@ -12,7 +12,6 @@ import platform.AVFoundation.*
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMake
 import platform.CoreMedia.CMTimeMakeWithSeconds
-import platform.Foundation.NSError
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSTimer
@@ -38,6 +37,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
     private var audioPlayer: AVPlayer? = null
     private var videoOutput: AVPlayerItemVideoOutput? = null
     private var hlsLoader: DashHlsResourceLoader? = null
+    private var localHttpServer: LocalMediaHttpServer? = null
     private val hlsLoaderQueue = dispatch_queue_create("erl.bilico.dash.hls", null)
     private var probingDashHls = false
     private var released = false
@@ -58,6 +58,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
     // 用换源代数去重：setMedia / 清空源各推一代，一代只报一次。
     private var mediaGeneration = 0
     private var readyReportedGeneration = -1
+    private var startedReportedGeneration = -1
     private var audioReadyReportedGeneration = -1
     private var failedReportedGeneration = -1
     private var failedReportedForAudioGeneration = -1
@@ -242,21 +243,18 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         detachObservers()
         videoOutput = null
         hlsLoader = null
+        localHttpServer?.stop()
+        localHttpServer = null
         avPlayer.pause()
         avPlayer.replaceCurrentItemWithPlayerItem(null)
         clearAudioPlayer()
     }
 
-    private fun clearAudioPlayer() {
-        audioPlayer?.pause()
-        audioPlayer?.replaceCurrentItemWithPlayerItem(null)
-    }
+    private fun clearAudioPlayer() { audioPlayer?.pause(); audioPlayer?.replaceCurrentItemWithPlayerItem(null) }
 
     private fun detachObservers() {
-        endObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
-        endObserver = null
-        failedObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
-        failedObserver = null
+        endObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }; endObserver = null
+        failedObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }; failedObserver = null
     }
 
     private fun attachItemObservers(item: AVPlayerItem, generation: Int) {
@@ -326,6 +324,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
             return
         }
         hlsLoader = playback.loader
+        localHttpServer = playback.localServer
         clearAudioPlayer()
         installPrimaryItem(playback.item, generation, playWhenReady, controlAudioPlayer = false)
     }
@@ -338,6 +337,19 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         playWhenReady: Boolean,
     ) {
         if (generation != mediaGeneration) return
+        val localDirect = buildLocalDirectPlayback(videoUrl, audioUrl)
+        if (localDirect != null) {
+            localHttpServer = localDirect.localServer
+            if (localDirect.audioItem != null) {
+                val ap = audioPlayer ?: AVPlayer().also { it.automaticallyWaitsToMinimizeStalling = true; audioPlayer = it }
+                applyVolume(ap)
+                ap.replaceCurrentItemWithPlayerItem(localDirect.audioItem)
+            } else {
+                clearAudioPlayer()
+            }
+            installPrimaryItem(localDirect.videoItem, generation, playWhenReady, controlAudioPlayer = localDirect.audioItem != null)
+            return
+        }
         val item = buildDirectPlayerItem(videoUrl, isAudio = false, headers = headers) ?: run {
             notifyError("无效的视频地址")
             return
@@ -404,6 +416,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         dispatch_async(dispatch_get_main_queue()) {
             avPlayer.seekToTime(target)
             audioPlayer?.seekToTime(target)
+            IosMediaSession.refreshNowPlaying()
         }
     }
 
@@ -533,12 +546,21 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
                 audioPlayer?.seekToTime(target)
             }
             if (desiredPlayWhenReady && avPlayer.rate == 0f && lastReportedState != PlayerStates.STATE_ENDED) {
-                avPlayer.play()
-                avPlayer.rate = desiredSpeed
-                if (audioItem?.status == AVPlayerItemStatusReadyToPlay) {
-                    audioPlayer?.play()
-                    audioPlayer?.rate = desiredSpeed
+                if (startedReportedGeneration != mediaGeneration) {
+                    startedReportedGeneration = mediaGeneration
+                    avPlayer.play()
+                    avPlayer.rate = desiredSpeed
+                    if (audioItem?.status == AVPlayerItemStatusReadyToPlay) {
+                        audioPlayer?.play()
+                        audioPlayer?.rate = desiredSpeed
+                    }
+                } else if (avPlayer.timeControlStatus == AVPlayerTimeControlStatusPaused) {
+                    // PiP 浮窗、控制中心或耳机断开由系统暂停时同步期望态，避免被轮询强行恢复播放。
+                    desiredPlayWhenReady = false
                 }
+            } else if (avPlayer.rate > 0f) {
+                startedReportedGeneration = mediaGeneration
+                if (!desiredPlayWhenReady) desiredPlayWhenReady = true
             }
             // 黑屏看门狗：ReadyToPlay 后超过 3s 仍无有效视频分辨率（如 AV1 不可解码），自动换线/换编码。
             if (!isLiveMedia && readyAtMs > 0L && nowMs - readyAtMs > 3_000L &&
@@ -557,6 +579,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         if (playing != lastReportedPlaying) {
             lastReportedPlaying = playing
             listeners.toList().forEach { it.onIsPlayingChanged(playing) }
+            IosMediaSession.refreshNowPlaying()
         }
         notifyPlayIntentIfChanged()
         val dims = videoSize
@@ -567,28 +590,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         }
     }
 
-    private fun ensureAudioSession() {
-        runCatching {
-            memScoped {
-                val session = AVAudioSession.sharedInstance()
-                val catErr = alloc<ObjCObjectVar<NSError?>>()
-                var okCat = session.setCategory(AVAudioSessionCategoryPlayback, AVAudioSessionModeMoviePlayback, 0u, catErr.ptr)
-                if (!okCat) {
-                    catErr.value = null
-                    okCat = session.setCategory(AVAudioSessionCategoryPlayback, AVAudioSessionModeDefault, 0u, catErr.ptr)
-                }
-                val actErr = alloc<ObjCObjectVar<NSError?>>()
-                val okAct = session.setActive(true, error = actErr.ptr)
-                val msg = "audioSession okCat=$okCat catErr=${catErr.value?.localizedDescription ?: "none"} okAct=$okAct actErr=${actErr.value?.localizedDescription ?: "none"} cat=${session.category ?: "?"} mode=${session.mode ?: "?"}"
-                if (okCat && okAct) logDebug(TAG, msg) else logWarn(TAG, msg)
-            }
-        }.onFailure {
-            logWarn(TAG, "audioSession err=${it.message ?: "unknown"}", it)
-        }
-    }
+    private fun ensureAudioSession() = IosMediaSession.ensurePlaybackAudioSession()
 
-    private fun notifyError(msg: String) {
-        logWarn(TAG, "error msg=$msg")
-        listeners.toList().forEach { it.onPlayerError(msg) }
-    }
+    private fun notifyError(msg: String) { logWarn(TAG, "error msg=$msg"); listeners.toList().forEach { it.onPlayerError(msg) } }
 }

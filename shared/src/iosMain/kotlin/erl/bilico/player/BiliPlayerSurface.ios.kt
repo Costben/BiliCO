@@ -1,6 +1,7 @@
 package erl.bilico.player
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -106,6 +107,12 @@ actual fun BiliPlayerSurface(
 ) {
     val playerLayer = remember(player) {
         AVPlayerLayer.playerLayerWithPlayer(player.avPlayer)
+    }
+    DisposableEffect(player, playerLayer) {
+        IosMediaSession.attachPlayerLayer(player, playerLayer)
+        onDispose {
+            IosMediaSession.detachPlayerLayer(playerLayer)
+        }
     }
     val alphaProvider = LocalPlayerSurfaceAlpha.current
     UIKitView(

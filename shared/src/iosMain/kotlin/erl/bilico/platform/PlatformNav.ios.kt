@@ -1,6 +1,8 @@
 package erl.bilico.platform
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import erl.bilico.player.IosMediaSession
 import kotlinx.coroutines.flow.Flow
 
 actual val useEdgeSwipeBackOverlay: Boolean = true
@@ -17,13 +19,21 @@ actual fun PlatformBackActionHandler(
     onBack: () -> Unit,
 ) = Unit
 
-actual fun canEnterPip(context: PlatformContext): Boolean = false
+actual fun canEnterPip(context: PlatformContext): Boolean = IosMediaSession.isPipSupported()
 
-actual fun enterPipNow(context: PlatformContext): Boolean = false
+actual fun enterPipNow(context: PlatformContext): Boolean = IosMediaSession.startPipNow()
 
 @Composable
 actual fun SyncPictureInPictureParams(
     activePlayback: Boolean,
     isPlaying: Boolean,
     autoPip: Boolean,
-) = Unit
+) {
+    LaunchedEffect(activePlayback, isPlaying, autoPip) {
+        IosMediaSession.updatePipParams(
+            activePlayback = activePlayback,
+            isPlaying = isPlaying,
+            autoPip = autoPip,
+        )
+    }
+}

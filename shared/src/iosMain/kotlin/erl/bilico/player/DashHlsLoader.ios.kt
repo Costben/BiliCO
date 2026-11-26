@@ -1,6 +1,5 @@
 package erl.bilico.player
 
-import erl.bilico.platform.dlFileLength
 import erl.bilico.platform.dlFileUriToPath
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -52,8 +51,15 @@ internal sealed interface DashHlsProbeOutcome {
 }
 
 internal data class VirtualHlsPlayback(
-    val loader: DashHlsResourceLoader,
+    val loader: DashHlsResourceLoader?,
     val item: AVPlayerItem,
+    val localServer: LocalMediaHttpServer? = null,
+)
+
+internal data class LocalDirectPlayback(
+    val videoItem: AVPlayerItem,
+    val audioItem: AVPlayerItem?,
+    val localServer: LocalMediaHttpServer,
 )
 
 private data class Fmp4SidxLocation(
@@ -399,15 +405,51 @@ internal fun buildHlsMediaPlaylist(mediaUrl: String, index: Fmp4SidxIndex): Stri
     }
 }
 
-internal fun buildHlsMasterPlaylist(generation: Int): String = buildString {
+internal fun buildHlsMasterPlaylist(videoPlaylistUrl: String, audioPlaylistUrl: String): String = buildString {
     append("#EXTM3U\n")
     append("#EXT-X-VERSION:7\n")
     append("#EXT-X-INDEPENDENT-SEGMENTS\n")
-    append("#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"Audio\",DEFAULT=YES,AUTOSELECT=YES,URI=\"bilicohls://gen-")
-    append(generation)
-    append("/audio.m3u8\"\n")
+    append("#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"Audio\",DEFAULT=YES,AUTOSELECT=YES,URI=\"")
+    append(audioPlaylistUrl).append("\"\n")
     append("#EXT-X-STREAM-INF:BANDWIDTH=4000000,AUDIO=\"aud\"\n")
-    append("bilicohls://gen-").append(generation).append("/video.m3u8\n")
+    append(videoPlaylistUrl).append('\n')
+}
+
+@OptIn(ExperimentalForeignApi::class)
+internal fun buildLocalDirectPlayback(
+    videoUrl: String,
+    audioUrl: String?,
+): LocalDirectPlayback? {
+    val localVideoPath = if (videoUrl.startsWith("file://", ignoreCase = true)) dlFileUriToPath(videoUrl) else null
+    val localAudioPath = if (!audioUrl.isNullOrBlank() && audioUrl.startsWith("file://", ignoreCase = true)) {
+        dlFileUriToPath(audioUrl)
+    } else {
+        null
+    }
+    if (localVideoPath == null && localAudioPath == null) return null
+    val diskFiles = buildMap {
+        if (localVideoPath != null) put("/video.mp4", "video/mp4" to localVideoPath)
+        if (localAudioPath != null) put("/audio.m4a", "audio/mp4" to localAudioPath)
+    }
+    val server = LocalMediaHttpServer.start(diskFiles = diskFiles) ?: return null
+    val vNsUrl = if (localVideoPath != null) NSURL.URLWithString(server.urlFor("/video.mp4")) else resolvePlayerNsUrl(videoUrl)
+    if (vNsUrl == null) {
+        server.stop()
+        return null
+    }
+    val vItem = AVPlayerItem.playerItemWithAsset(AVURLAsset.URLAssetWithURL(vNsUrl, options = emptyMap<Any?, Any>())).apply {
+        preferredForwardBufferDuration = 5.0
+    }
+    val aItem = if (localAudioPath != null) {
+        NSURL.URLWithString(server.urlFor("/audio.m4a"))?.let { aUrl ->
+            AVPlayerItem.playerItemWithAsset(AVURLAsset.URLAssetWithURL(aUrl, options = emptyMap<Any?, Any>())).apply {
+                preferredForwardBufferDuration = 5.0
+            }
+        }
+    } else {
+        null
+    }
+    return LocalDirectPlayback(videoItem = vItem, audioItem = aItem, localServer = server)
 }
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
@@ -429,26 +471,56 @@ internal fun buildVirtualHlsPlayback(
     } else {
         null
     }
-    val playlistVideoUrl = if (localVideoPath != null) "bilicohls://gen-$generation/video.m4s" else videoUrl
-    val playlistAudioUrl = if (hasAudio) {
-        if (localAudioPath != null) "bilicohls://gen-$generation/audio.m4s" else activeAudioUrl
+
+    // 本地离线缓存统一经 127.0.0.1 回环 HTTP Range 服务提供 HLS v7 fMP4，彻底避开 AVAssetResourceLoader 自定义协议报错。
+    if (localVideoPath != null || localAudioPath != null) {
+        val diskFiles = buildMap {
+            if (localVideoPath != null) put("/video.m4s", "video/mp4" to localVideoPath)
+            if (localAudioPath != null) put("/audio.m4s", "audio/mp4" to localAudioPath)
+        }
+        val videoMediaUrl = if (localVideoPath != null) "video.m4s" else videoUrl
+        val audioMediaUrl = if (hasAudio) {
+            if (localAudioPath != null) "audio.m4s" else activeAudioUrl
+        } else {
+            null
+        }
+        val videoPlaylist = buildHlsMediaPlaylist(videoMediaUrl, videoIndex)
+        val audioPlaylist = if (hasAudio && audioMediaUrl != null) {
+            buildHlsMediaPlaylist(audioMediaUrl, activeAudioIndex)
+        } else {
+            null
+        }
+        val masterPlaylist = if (hasAudio) buildHlsMasterPlaylist("video.m3u8", "audio.m3u8") else null
+        val memFiles = buildMap {
+            put("/video.m3u8", "application/vnd.apple.mpegurl" to videoPlaylist.encodeToByteArray())
+            if (audioPlaylist != null) put("/audio.m3u8", "application/vnd.apple.mpegurl" to audioPlaylist.encodeToByteArray())
+            if (masterPlaylist != null) put("/master.m3u8", "application/vnd.apple.mpegurl" to masterPlaylist.encodeToByteArray())
+        }
+        val server = LocalMediaHttpServer.start(memoryFiles = memFiles, diskFiles = diskFiles) ?: return null
+        val entryPath = if (hasAudio) "/master.m3u8" else "/video.m3u8"
+        val entryUrl = NSURL.URLWithString(server.urlFor(entryPath)) ?: run {
+            server.stop()
+            return null
+        }
+        val asset = AVURLAsset.URLAssetWithURL(entryUrl, options = emptyMap<Any?, Any>())
+        val item = AVPlayerItem.playerItemWithAsset(asset).apply {
+            preferredForwardBufferDuration = 10.0
+        }
+        return VirtualHlsPlayback(loader = null, item = item, localServer = server)
+    }
+
+    val videoPlaylist = buildHlsMediaPlaylist(videoUrl, videoIndex)
+    val audioPlaylist = if (hasAudio) buildHlsMediaPlaylist(activeAudioUrl, activeAudioIndex) else null
+    val masterPlaylist = if (hasAudio) {
+        buildHlsMasterPlaylist("bilicohls://gen-$generation/video.m3u8", "bilicohls://gen-$generation/audio.m3u8")
     } else {
         null
     }
-    val videoPlaylist = buildHlsMediaPlaylist(playlistVideoUrl, videoIndex)
-    val audioPlaylist = if (hasAudio && playlistAudioUrl != null) {
-        buildHlsMediaPlaylist(playlistAudioUrl, activeAudioIndex)
-    } else {
-        null
-    }
-    val masterPlaylist = if (hasAudio) buildHlsMasterPlaylist(generation) else null
 
     val loader = DashHlsResourceLoader(
         masterData = masterPlaylist?.toUtf8NSData(),
         videoData = videoPlaylist.toUtf8NSData(),
         audioData = audioPlaylist?.toUtf8NSData(),
-        localVideoPath = localVideoPath,
-        localAudioPath = localAudioPath,
     )
     val entryUrlString = if (hasAudio) {
         "bilicohls://gen-$generation/master.m3u8"
@@ -456,7 +528,7 @@ internal fun buildVirtualHlsPlayback(
         "bilicohls://gen-$generation/video.m3u8"
     }
     val entryUrl = NSURL.URLWithString(entryUrlString) ?: return null
-    val options: Map<Any?, *> = if (localVideoPath == null && headers.isNotEmpty()) {
+    val options: Map<Any?, *> = if (headers.isNotEmpty()) {
         mapOf("AVURLAssetHTTPHeaderFieldsKey" to headers)
     } else {
         emptyMap<Any?, Any>()
@@ -474,8 +546,6 @@ internal class DashHlsResourceLoader(
     private val masterData: NSData?,
     private val videoData: NSData,
     private val audioData: NSData?,
-    private val localVideoPath: String? = null,
-    private val localAudioPath: String? = null,
 ) : NSObject(), AVAssetResourceLoaderDelegateProtocol {
 
     override fun resourceLoader(
@@ -483,12 +553,6 @@ internal class DashHlsResourceLoader(
         shouldWaitForLoadingOfRequestedResource: AVAssetResourceLoadingRequest,
     ): Boolean {
         val path = shouldWaitForLoadingOfRequestedResource.request.URL?.path ?: return false
-        if (path == "/video.m4s" || path == "/audio.m4s") {
-            val filePath = if (path == "/video.m4s") localVideoPath else localAudioPath
-            if (filePath.isNullOrBlank()) return false
-            val mime = if (path == "/video.m4s") "video/mp4" else "audio/mp4"
-            return serveLocalMediaFile(filePath, mime, shouldWaitForLoadingOfRequestedResource)
-        }
         val data = when (path) {
             "/master.m3u8" -> masterData
             "/video.m3u8" -> videoData
@@ -498,7 +562,7 @@ internal class DashHlsResourceLoader(
 
         val totalLen = data.length.toLong()
         shouldWaitForLoadingOfRequestedResource.contentInformationRequest?.apply {
-            contentType = "application/vnd.apple.mpegurl"
+            contentType = "public.m3u-playlist"
             contentLength = totalLen
             byteRangeAccessSupported = true
         }
@@ -520,59 +584,6 @@ internal class DashHlsResourceLoader(
             }
         }
         shouldWaitForLoadingOfRequestedResource.finishLoading()
-        return true
-    }
-
-    private fun serveLocalMediaFile(
-        filePath: String,
-        mimeType: String,
-        loadingRequest: AVAssetResourceLoadingRequest,
-    ): Boolean {
-        fun failRequest(): Boolean {
-            loadingRequest.finishLoadingWithError(
-                NSError.errorWithDomain("BiliCoDashHls", code = -1L, userInfo = null),
-            )
-            return true
-        }
-
-        val totalLen = dlFileLength(filePath)
-        if (totalLen <= 0L) return failRequest()
-        loadingRequest.contentInformationRequest?.apply {
-            contentType = mimeType
-            contentLength = totalLen
-            byteRangeAccessSupported = true
-        }
-        loadingRequest.dataRequest?.let { dataReq ->
-            val offset = dataReq.requestedOffset.coerceIn(0L, totalLen)
-            val maxAvail = (totalLen - offset).coerceAtLeast(0L)
-            var remaining = if (dataReq.requestsAllDataToEndOfResource) {
-                maxAvail
-            } else {
-                minOf(dataReq.requestedLength.coerceAtLeast(0L), maxAvail)
-            }
-            if (remaining > 0L) {
-                val fp = fopen(filePath, "rb") ?: return failRequest()
-                try {
-                    if (fseeko(fp, offset, SEEK_SET) != 0) return failRequest()
-                    val chunkBuf = ByteArray(128 * 1024)
-                    while (remaining > 0L) {
-                        val toRead = minOf(remaining, chunkBuf.size.toLong()).toInt()
-                        val read = chunkBuf.usePinned { pinned ->
-                            fread(pinned.addressOf(0), 1uL, toRead.toULong(), fp).toInt()
-                        }
-                        if (read <= 0) break
-                        val nsChunk = chunkBuf.usePinned { pinned ->
-                            NSData.create(bytes = pinned.addressOf(0), length = read.toULong())
-                        }
-                        dataReq.respondWithData(nsChunk)
-                        remaining -= read.toLong()
-                    }
-                } finally {
-                    fclose(fp)
-                }
-            }
-        }
-        loadingRequest.finishLoading()
         return true
     }
 }
