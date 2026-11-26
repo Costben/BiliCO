@@ -200,6 +200,43 @@ internal val TopBarSponsorIcon: ImageVector by lazy {
     )
 }
 
+internal val TopBarSleepTimerIcon: ImageVector by lazy {
+    unifiedStrokeIcon(
+        name = "TopBarSleepTimer",
+        paths = listOf(
+            "M9.7,4.4H14.3",
+            circlePath(12f, 13.4f, 6.2f),
+            "M12,13.4L14.5,10.9",
+        ),
+    )
+}
+
+internal val TopBarAutoPlayIcon: ImageVector by lazy {
+    unifiedStrokeIcon(
+        name = "TopBarAutoPlay",
+        paths = listOf(
+            "M19.48,10.68A7.6,7.6 0 1,1 17.37,6.63",
+            "M17.8,4.5L17.37,6.63L15.2,7.05",
+            "M10.1,8.9L15.5,12L10.1,15.1Z",
+        ),
+    )
+}
+
+internal val TopBarAutoPlayOffIcon: ImageVector by lazy {
+    unifiedStrokeIcon(
+        name = "TopBarAutoPlayOff",
+        paths = listOf(
+            "M19.48,10.68A7.6,7.6 0 0,1 18.89,15.21",
+            "M15.21,18.89A7.6,7.6 0 0,1 5.11,8.79",
+            "M8.79,5.11A7.6,7.6 0 0,1 17.37,6.63",
+            "M17.8,4.5L17.37,6.63L15.2,7.05",
+            "M13.4,10.8L15.5,12L15.0,12.3",
+            "M10.1,12.8V15.1L11.6,14.2",
+            "M4.8,4.8L19.2,19.2",
+        ),
+    )
+}
+
 internal val TopBarMoreIcon: ImageVector by lazy {
     unifiedStrokeIcon(
         name = "TopBarMore",

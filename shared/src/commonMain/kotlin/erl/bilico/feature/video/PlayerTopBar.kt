@@ -23,11 +23,8 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,12 +36,15 @@ import erl.bilico.player.SleepTimerState
 import erl.bilico.ui.components.PiliGlyph
 import erl.bilico.ui.components.PiliIcon
 import erl.bilico.ui.components.TopBarAudioOnlyIcon
+import erl.bilico.ui.components.TopBarAutoPlayIcon
+import erl.bilico.ui.components.TopBarAutoPlayOffIcon
 import erl.bilico.ui.components.TopBarBackIcon
 import erl.bilico.ui.components.TopBarCastIcon
 import erl.bilico.ui.components.TopBarHomeIcon
 import erl.bilico.ui.components.TopBarMoreIcon
 import erl.bilico.ui.components.TopBarPipIcon
 import erl.bilico.ui.components.TopBarShareIcon
+import erl.bilico.ui.components.TopBarSleepTimerIcon
 import erl.bilico.ui.components.TopBarSponsorIcon
 import erl.bilico.ui.components.TopBarStatsIcon
 import erl.bilico.ui.components.TopBarWatchLaterIcon
@@ -52,8 +52,6 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Notes
-import io.github.suqi8.coui.kmp.icon.extended.Play
-import io.github.suqi8.coui.kmp.icon.extended.Timer
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -109,43 +107,6 @@ private fun PlayerTopBarGlyphButton(
     }
 }
 
-/** 详情页自动播放圆形图标：开启态为圆形播控框，关闭态叠加斜杠以便直观区分。 */
-@Composable
-private fun AutoPlayCircleGlyph(
-    enabled: Boolean,
-    tint: Color,
-    contentDescription: String? = null,
-    modifier: Modifier = Modifier,
-    size: Dp = 20.dp,
-) {
-    Box(
-        modifier = modifier
-            .size(size)
-            .border(1.6.dp, tint, CircleShape)
-            .drawWithContent {
-                drawContent()
-                if (!enabled) {
-                    val inset = this.size.minDimension * 0.16f
-                    drawLine(
-                        color = tint,
-                        start = Offset(inset, inset),
-                        end = Offset(this.size.width - inset, this.size.height - inset),
-                        strokeWidth = 1.6.dp.toPx(),
-                        cap = StrokeCap.Round,
-                    )
-                }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = COUIIcons.Play,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(size * 0.56f),
-            tint = tint,
-        )
-    }
-}
-
 /** 顶栏定时关闭按钮：未开启时为标准图标，倒计时或播完停止生效时展示紧凑胶囊徽标。 */
 @Composable
 private fun PlayerTopBarSleepTimerButton(
@@ -153,7 +114,7 @@ private fun PlayerTopBarSleepTimerButton(
     onClick: () -> Unit,
 ) {
     if (!state.isActive) {
-        PlayerTopBarIconButton(COUIIcons.Timer, "定时关闭", onClick)
+        PlayerTopBarIconButton(TopBarSleepTimerIcon, "定时关闭", onClick)
         return
     }
     val primary = COUITheme.colorScheme.primary
@@ -176,7 +137,7 @@ private fun PlayerTopBarSleepTimerButton(
             horizontalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Icon(
-                imageVector = COUIIcons.Timer,
+                imageVector = TopBarSleepTimerIcon,
                 contentDescription = state.label?.let { "定时关闭：$it" } ?: "定时关闭",
                 modifier = Modifier.size(15.dp),
                 tint = primary,
@@ -202,21 +163,12 @@ private fun PlayerTopBarAutoPlayButton(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val tint = if (enabled) COUITheme.colorScheme.primary else Color.White.copy(alpha = 0.45f)
-    Box(
-        modifier = Modifier
-            .size(width = LocalTopBarButtonWidth.current, height = LocalTopBarButtonHeight.current)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        AutoPlayCircleGlyph(
-            enabled = enabled,
-            tint = tint,
-            contentDescription = if (enabled) "关闭详情页自动播放" else "开启详情页自动播放",
-            size = 20.dp,
-        )
-    }
+    PlayerTopBarIconButton(
+        icon = if (enabled) TopBarAutoPlayIcon else TopBarAutoPlayOffIcon,
+        label = if (enabled) "关闭详情页自动播放" else "开启详情页自动播放",
+        onClick = onClick,
+        tint = if (enabled) COUITheme.colorScheme.primary else Color.White.copy(alpha = 0.45f),
+    )
 }
 
 /** 每个顶栏按钮的图形，设置页里也用它做行首图标；全套统一 1.80dp 线性与同等视觉占框。 */
@@ -239,23 +191,16 @@ internal fun PlayerTopBarItemIcon(
         PlayerTopBarItem.PIP -> TopBarPipIcon
         PlayerTopBarItem.STATS -> TopBarStatsIcon
         PlayerTopBarItem.SPONSOR -> TopBarSponsorIcon
-        PlayerTopBarItem.SLEEP_TIMER -> COUIIcons.Timer
-        PlayerTopBarItem.DETAIL_AUTO_PLAY -> null
+        PlayerTopBarItem.SLEEP_TIMER -> TopBarSleepTimerIcon
+        PlayerTopBarItem.DETAIL_AUTO_PLAY -> TopBarAutoPlayIcon
         PlayerTopBarItem.MORE -> TopBarMoreIcon
     }
-    when {
-        vector != null -> Icon(vector, null, modifier.size(size), tint)
-        item == PlayerTopBarItem.DETAIL_AUTO_PLAY -> AutoPlayCircleGlyph(
-            enabled = true,
-            tint = tint,
-            modifier = modifier,
-            size = size,
-        )
-        else -> {
-            val glyph = if (item == PlayerTopBarItem.DANMAKU_SETTINGS) PiliGlyph.DmSettings else PiliGlyph.DmOn
-            Box(modifier.size(size), contentAlignment = Alignment.Center) {
-                PiliIcon(glyph, null, size = size * 0.80f, tint = tint)
-            }
+    if (vector != null) {
+        Icon(vector, null, modifier.size(size), tint)
+    } else {
+        val glyph = if (item == PlayerTopBarItem.DANMAKU_SETTINGS) PiliGlyph.DmSettings else PiliGlyph.DmOn
+        Box(modifier.size(size), contentAlignment = Alignment.Center) {
+            PiliIcon(glyph, null, size = size * 0.80f, tint = tint)
         }
     }
 }

@@ -102,7 +102,7 @@ enum class PlayerTopBarItem(
     ),
     DETAIL_AUTO_PLAY(
         id = "detailAutoPlay",
-        label = "自动播放",
+        label = "详情页自动播放",
         summary = "开关进入详情页时是否自动起播",
         modes = BOTH_MODES,
     ),
