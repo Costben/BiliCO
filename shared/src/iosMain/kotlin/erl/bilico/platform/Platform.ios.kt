@@ -19,6 +19,7 @@ import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateComponents
 import platform.Foundation.NSDateFormatter
+import platform.Foundation.NSHTTPCookie
 import platform.Foundation.NSLocale
 import platform.Foundation.NSLock
 import platform.Foundation.NSNumber
@@ -258,17 +259,18 @@ actual fun decompressBrotli(data: ByteArray): ByteArray {
 actual fun clearWebCookies() {
     dispatch_async(dispatch_get_main_queue()) {
         val store = WKWebsiteDataStore.defaultDataStore()
-        store.fetchDataRecordsOfTypes(WKWebsiteDataStore.allWebsiteDataTypes()) { records ->
-            @Suppress("UNCHECKED_CAST")
-            val typed = records as? List<Any> ?: return@fetchDataRecordsOfTypes
-            if (typed.isNotEmpty()) {
-                store.removeDataOfTypes(
-                    WKWebsiteDataStore.allWebsiteDataTypes(),
-                    forDataRecords = typed,
-                    completionHandler = {},
-                )
+        val cookieStore = store.httpCookieStore
+        cookieStore.getAllCookies { list ->
+            list?.forEach { raw ->
+                val cookie = raw as? NSHTTPCookie ?: return@forEach
+                cookieStore.deleteCookie(cookie, completionHandler = null)
             }
         }
+        store.removeDataOfTypes(
+            WKWebsiteDataStore.allWebsiteDataTypes(),
+            modifiedSince = NSDate.dateWithTimeIntervalSince1970(0.0),
+            completionHandler = {},
+        )
     }
 }
 
