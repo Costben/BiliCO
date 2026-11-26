@@ -246,7 +246,7 @@ internal fun VideoDetailSection(
                 .reportTopBarBottom(detailBarBounds),
             containerColor = pageBg,
             backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,
-            materialBackdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop else null,
+            materialBackdrop = if (BlurEffectsEnabled) barMaterialBackdrop else null,
             // 模糊与渐隐都收在栏的下沿，不往下多铺一截去糊正文第一行。
             extraHeight = 0.dp,
             topInset = firstRowHeight,
@@ -263,7 +263,7 @@ internal fun VideoDetailSection(
                 onDraftChange = onDanmakuDraftChange,
                 onComposingChange = onDanmakuComposingChange,
                 onSend = onSendDanmaku,
-                backdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
+                backdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
             )
         }
 

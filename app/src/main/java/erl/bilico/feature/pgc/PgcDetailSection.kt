@@ -152,7 +152,7 @@ internal fun PgcDetailSection(
                 .reportTopBarBottom(detailBarBounds),
             containerColor = pageBg,
             backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,
-            materialBackdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop else null,
+            materialBackdrop = if (BlurEffectsEnabled) barMaterialBackdrop else null,
             // 与视频详情页一致：模糊与渐隐都收在栏的下沿。
             extraHeight = 0.dp,
             topInset = firstRowHeight,
@@ -169,7 +169,7 @@ internal fun PgcDetailSection(
                 onDraftChange = onDanmakuDraftChange,
                 onComposingChange = onDanmakuComposingChange,
                 onSend = onSendDanmaku,
-                backdrop = if (BlurEffectsEnabled && barBlurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
+                backdrop = if (BlurEffectsEnabled && blurActive) barMaterialBackdrop ?: detailLayerBackdrop else null,
             )
         }
 

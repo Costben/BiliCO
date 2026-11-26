@@ -403,30 +403,31 @@ internal fun DetailBarGlassSurface(
         }
     }
 
-    val materialModifier = if (blurEnabled) {
-        val targetBackdrop = backdrop!!
-        Modifier
-            .layoutId("material")
-            .fillMaxSize()
-            .then(if (materialBackdrop != null) Modifier.layerBackdrop(materialBackdrop) else Modifier)
-            .progressiveTextureBlur(
-                backdrop = targetBackdrop,
-                shape = RectangleShape,
-                blurRadius = engineBlurRadiusDp,
-                gradient = ProgressiveBlur(
-                    angle = 90f,
-                    startFraction = blurStartFraction,
-                    endFraction = 1.00f,
-                    curve = blurCurve,
-                ),
-            )
-            .background(gradientBrush)
-    } else {
-        Modifier
-            .layoutId("material")
-            .fillMaxSize()
-            .background(gradientBrush)
-    }
+    // 即使在列表顶部暂未开启渐进模糊，也保持 materialBackdrop 常驻录制：
+    // 顶部折叠栏的 4 颗圆形按钮和切换栏胶囊持续采样它，摘掉录制层会让它们在回到顶部时发灰。
+    val recordMaterial = BlurEffectsEnabled && isBlurEnabled() && materialBackdrop != null
+    val materialModifier = Modifier
+        .layoutId("material")
+        .fillMaxSize()
+        .then(if (recordMaterial) Modifier.layerBackdrop(materialBackdrop) else Modifier)
+        .then(
+            if (blurEnabled) {
+                Modifier.progressiveTextureBlur(
+                    backdrop = backdrop,
+                    shape = RectangleShape,
+                    blurRadius = engineBlurRadiusDp,
+                    gradient = ProgressiveBlur(
+                        angle = 90f,
+                        startFraction = blurStartFraction,
+                        endFraction = 1.00f,
+                        curve = blurCurve,
+                    ),
+                )
+            } else {
+                Modifier
+            },
+        )
+        .background(gradientBrush)
 
     Layout(
         content = {
