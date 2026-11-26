@@ -208,7 +208,8 @@ class LiveRepository(
         runCatching {
             buvid.ensure()
             val response = api.liveRoomDetail(roomId)
-            val room = response.data?.roomInfo
+            val data = response.data
+            val room = data?.roomInfo
             if (response.code == 0 && room != null) {
                 val resolvedId = room.roomId.takeIf { it > 0L } ?: roomId
                 return@runCatching LiveRoomDetail(
@@ -218,12 +219,12 @@ class LiveRepository(
                     cover = Formatters.normalizeImageUrl(
                         listOf(room.cover, room.keyframe).firstOrNull { it.isNotBlank() },
                     ),
-                    anchorName = response.data?.anchorInfo?.baseInfo?.uname.orEmpty(),
+                    anchorName = data.anchorInfo?.baseInfo?.uname.orEmpty(),
                     anchorFace = Formatters.normalizeImageUrl(
-                        response.data?.anchorInfo?.baseInfo?.face,
+                        data.anchorInfo?.baseInfo?.face,
                     ),
-                    anchorOfficialType = response.data?.anchorInfo?.officialInfo?.resolvedType() ?: -1,
-                    anchorOfficialDesc = response.data?.anchorInfo?.officialInfo?.resolvedDesc().orEmpty(),
+                    anchorOfficialType = data.anchorInfo?.officialInfo?.resolvedType() ?: -1,
+                    anchorOfficialDesc = data.anchorInfo?.officialInfo?.resolvedDesc().orEmpty(),
                     online = room.online,
                     description = room.description,
                     areaName = room.areaName,

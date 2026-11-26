@@ -186,9 +186,10 @@ fun PgcScreen(
         if (initialSize.width > 0 && initialSize.height > 0) {
             playerVideoAspect = initialSize.width.toFloat() / initialSize.height.toFloat()
         }
+        val updatePlaying: (Boolean) -> Unit = { isPlaying = it }
         val listener = object : BiliPlayerListener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                updatePlaying(isPlaying)
             }
 
             override fun onVideoSizeChanged(width: Int, height: Int) {
@@ -197,11 +198,11 @@ fun PgcScreen(
                 }
             }
 
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                isBuffering = playbackState == PlayerStates.STATE_BUFFERING
-                if (playbackState == PlayerStates.STATE_READY) {
+            override fun onPlaybackStateChanged(state: Int) {
+                isBuffering = state == PlayerStates.STATE_BUFFERING
+                if (state == PlayerStates.STATE_READY) {
                     viewModel.markPlaybackStarted()
-                } else if (playbackState == PlayerStates.STATE_ENDED) {
+                } else if (state == PlayerStates.STATE_ENDED) {
                     viewModel.flushHeartbeat(player.duration.coerceAtLeast(0L) / 1000, container.scope)
                     when (playbackEndMode) {
                         PlaybackEndMode.OFF -> Unit

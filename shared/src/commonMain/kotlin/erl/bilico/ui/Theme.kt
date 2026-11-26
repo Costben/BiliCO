@@ -91,7 +91,7 @@ internal fun hueCycleArgb(hue: Float, dark: Boolean): Int {
     } else {
         // 浅色模式下黄绿到青段天然亮度偏高，平滑压低明度保证白底文字与链接可读。
         val delta = (wrapped - 110f).coerceIn(-80f, 80f)
-        val penalty = ((cos((delta / 80f * kotlin.math.PI).toDouble()) + 1.0) * 0.5).toFloat()
+        val penalty = ((cos(delta / 80f * kotlin.math.PI) + 1.0) * 0.5).toFloat()
         0.88f - 0.18f * penalty
     }
     return hsvToArgb(wrapped, saturation, value)

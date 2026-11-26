@@ -292,10 +292,10 @@ class NavState {
         } else {
             null
         }
-        val sameVideoPlayer = route is Route.Video && prevMinimized?.route is Route.Video
+        val prevVideoRoute = prevMinimized?.route as? Route.Video
+        val sameVideoPlayer = route is Route.Video && prevVideoRoute != null
         // 点的就是球里那一条：什么都不用停，播放器接着放，新页拿到的还是同一台。
-        val sameBvid = sameVideoPlayer &&
-            (route as Route.Video).bvid == (prevMinimized!!.route as Route.Video).bvid
+        val sameBvid = sameVideoPlayer && route.bvid == prevVideoRoute.bvid
         if (prevMinimized != null && !sameBvid) {
             if (sameVideoPlayer) {
                 // 同一台播放器接着用：只瞬间静音（0 次 Binder），旧片源等新页落位再停。

@@ -7,6 +7,10 @@ plugins {
 }
 
 kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
     android {
         compileSdk {
             version = release(37) {
@@ -24,6 +28,7 @@ kotlin {
         target.binaries.framework {
             baseName = "shared"
             isStatic = true
+            binaryOption("bundleId", "erl.bilico.shared")
         }
     }
 

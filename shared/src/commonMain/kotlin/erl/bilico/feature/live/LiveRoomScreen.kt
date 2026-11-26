@@ -206,9 +206,10 @@ fun LiveRoomScreen(
         if (initialSize.width > 0 && initialSize.height > 0) {
             videoAspect = initialSize.width.toFloat() / initialSize.height.toFloat()
         }
+        val updatePlaying: (Boolean) -> Unit = { isPlaying = it }
         val listener = object : BiliPlayerListener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                updatePlaying(isPlaying)
             }
 
             override fun onVideoSizeChanged(width: Int, height: Int) {

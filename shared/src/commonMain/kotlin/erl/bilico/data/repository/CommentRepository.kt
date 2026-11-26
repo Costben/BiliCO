@@ -477,12 +477,12 @@ class CommentRepository(
         val cardImg = Formatters.normalizeImageUrl(card?.image)
         val fan = card?.fan
         val sailing = if (cardImg.isNotBlank()) {
-            val isFan = (fan?.isFan ?: 0) == 1 && !fan?.numDesc.isNullOrBlank()
+            val activeFan = fan?.takeIf { it.isFan == 1 && it.numDesc.isNotBlank() }
             CommentSailing(
                 imageUrl = cardImg,
-                numPrefix = if (isFan) fan?.numPrefix.orEmpty().ifBlank { "NO." } else "",
-                numDesc = if (isFan) fan?.numDesc.orEmpty() else "",
-                fanColorHex = if (isFan) fan?.color.orEmpty() else "",
+                numPrefix = if (activeFan != null) activeFan.numPrefix.ifBlank { "NO." } else "",
+                numDesc = activeFan?.numDesc.orEmpty(),
+                fanColorHex = activeFan?.color.orEmpty(),
             )
         } else {
             null

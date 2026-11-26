@@ -181,14 +181,14 @@ fun DynamicDetailScreen(
         val focusId = commentState?.focusRootId ?: 0L
         if (focusId > 0L && !commentState?.items.isNullOrEmpty()) {
             listState.animateScrollToItem(1)
-            commentViewModel?.consumeFocusTarget()
+            commentViewModel.consumeFocusTarget()
         }
     }
 
     LaunchedEffect(commentState?.pendingReplyDialog) {
         val pending = commentState?.pendingReplyDialog ?: return@LaunchedEffect
         replyThread.open(pending.first, pending.second)
-        commentViewModel?.consumeReplyDialog()
+        commentViewModel.consumeReplyDialog()
     }
     LaunchedEffect(listState, commentViewModel) {
         val vm = commentViewModel ?: return@LaunchedEffect
