@@ -319,12 +319,18 @@ internal fun CouiStagePopupMenu(
     }
 
     val showAbove = alignment == Alignment.BottomEnd || alignment == Alignment.BottomStart
+    val isRightAligned = alignment == Alignment.TopEnd || alignment == Alignment.BottomEnd
+    val shrinkTransformOrigin = TransformOrigin(
+        pivotFractionX = if (isRightAligned) 1f else 0f,
+        pivotFractionY = if (showAbove) 1f else 0f,
+    )
     val motion = ListPopupDefaults.GravityMotion
-    val gravityPath = remember(popupContentSize, showAbove) {
+    val gravityPath = remember(popupContentSize, showAbove, isRightAligned) {
+        val xSign = if (isRightAligned) 1f else -1f
         val start = when {
             popupContentSize == IntSize.Zero -> Offset(0f, if (showAbove) 48f else -48f)
-            showAbove -> Offset(popupContentSize.width * 0.25f, popupContentSize.height * 0.45f)
-            else -> Offset(popupContentSize.width * 0.35f, -popupContentSize.height * 0.5f)
+            showAbove -> Offset(popupContentSize.width * 0.25f * xSign, popupContentSize.height * 0.45f)
+            else -> Offset(popupContentSize.width * 0.35f * xSign, -popupContentSize.height * 0.5f)
         }
         BezierGravityPathMath.controlPoints(
             start = start,
@@ -334,11 +340,13 @@ internal fun CouiStagePopupMenu(
             p2T = motion.p2T,
         )
     }
-    val subGravityPath = remember(subContentSize) {
+    val subGravityPath = remember(subContentSize, showAbove, isRightAligned) {
+        val xSign = if (isRightAligned) 1f else -1f
+        val ySign = if (showAbove) 1f else -1f
         val start = if (subContentSize == IntSize.Zero) {
-            Offset(0f, -32f)
+            Offset(0f, 32f * ySign)
         } else {
-            Offset(subContentSize.width * 0.2f, -subContentSize.height * 0.3f)
+            Offset(subContentSize.width * 0.2f * xSign, subContentSize.height * 0.3f * ySign)
         }
         BezierGravityPathMath.controlPoints(
             start = start,
@@ -349,9 +357,14 @@ internal fun CouiStagePopupMenu(
         )
     }
 
-    val primarySubProgress = subFraction.value
     val activeTrigger = displayedSubmenuIndex?.let { items.getOrNull(it) }
     val activeChildren = activeTrigger?.children.orEmpty()
+    val anchorPadding = Modifier.padding(
+        top = if (showAbove) 48.dp else topMargin,
+        bottom = bottomMargin,
+        end = endMargin,
+    )
+    val entryPivotX = if (isRightAligned) 0.88f else 0.12f
 
     BiliCoTheme(darkMode = 2) {
         Box(
@@ -375,76 +388,79 @@ internal fun CouiStagePopupMenu(
                     }
                 ),
         ) {
+            // 主菜单与子菜单各自独立按 alignment 锚定到舞台角点，避免子菜单挂载/卸载时
+            // 因宽度或高度差异改变共享容器尺寸而导致主菜单位置跳动；缩放也固定在锚定角点。
             Box(
                 modifier = Modifier
                     .align(alignment)
-                    .padding(
-                        top = if (showAbove) 48.dp else topMargin,
-                        bottom = bottomMargin,
-                        end = endMargin,
-                    ),
-            ) {
-                Box(
-                    modifier = Modifier.graphicsLayer {
-                        val s = lerp(1f, 0.9f, primarySubProgress)
+                    .then(anchorPadding)
+                    .graphicsLayer {
+                        val p = subFraction.value
+                        val s = lerp(1f, 0.9f, p)
                         scaleX = s
                         scaleY = s
-                        alpha = lerp(1f, 0.45f, primarySubProgress)
+                        transformOrigin = shrinkTransformOrigin
+                        alpha = lerp(1f, 0.45f, p)
                     },
-                ) {
-                    ListPopupContent(
-                        popupContentSize = popupContentSize,
-                        onPopupContentSizeChange = { popupContentSize = it },
-                        fractionProgress = { fractionProgress.value },
-                        alphaProgress = { alphaProgress.value },
-                        pathProgress = { pathProgress.value },
-                        gravityPath = gravityPath,
-                        popupLayoutPosition = PopupLayoutPosition(
-                            showBelow = !showAbove,
-                            showAbove = showAbove,
-                            isRightAligned = true,
-                        ),
-                        localTransformOrigin = if (showAbove) TransformOrigin(0.88f, 1f) else TransformOrigin(0.88f, 0f),
-                        enableGlass = BlurEffectsEnabled,
-                        interactionEnabled = show && expandedSubmenuIndex == null,
-                        modifier = Modifier.heightIn(max = maxHeight),
-                        content = {
-                            CompositionLocalProvider(LocalDismissState provides onDismiss) {
-                                MenuPopupBody(
-                                    items = items,
-                                    groupKey = "stage_menu",
-                                    headerContent = headerContent,
-                                    scrollTrigger = show,
-                                    onItemSelected = { item ->
-                                        val idx = items.indexOf(item)
-                                        if (!item.children.isNullOrEmpty() && idx >= 0) {
-                                            expandedSubmenuIndex = idx
-                                        } else {
-                                            item.onClick()
-                                            if (!item.keepOpen) onDismiss()
-                                        }
-                                    },
-                                )
-                            }
-                        },
-                    )
-                    if (expandedSubmenuIndex != null) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .pointerInput(Unit) {
-                                    detectTapGestures(onTap = { expandedSubmenuIndex = null })
+            ) {
+                ListPopupContent(
+                    popupContentSize = popupContentSize,
+                    onPopupContentSizeChange = { popupContentSize = it },
+                    fractionProgress = { fractionProgress.value },
+                    alphaProgress = { alphaProgress.value },
+                    pathProgress = { pathProgress.value },
+                    gravityPath = gravityPath,
+                    popupLayoutPosition = PopupLayoutPosition(
+                        showBelow = !showAbove,
+                        showAbove = showAbove,
+                        isRightAligned = isRightAligned,
+                    ),
+                    localTransformOrigin = TransformOrigin(entryPivotX, if (showAbove) 1f else 0f),
+                    enableGlass = BlurEffectsEnabled,
+                    interactionEnabled = show && expandedSubmenuIndex == null,
+                    modifier = Modifier.heightIn(max = maxHeight),
+                    content = {
+                        CompositionLocalProvider(LocalDismissState provides onDismiss) {
+                            MenuPopupBody(
+                                items = items,
+                                groupKey = "stage_menu",
+                                headerContent = headerContent,
+                                scrollTrigger = show,
+                                onItemSelected = { item ->
+                                    val idx = items.indexOf(item)
+                                    if (!item.children.isNullOrEmpty() && idx >= 0) {
+                                        expandedSubmenuIndex = idx
+                                    } else {
+                                        item.onClick()
+                                        if (!item.keepOpen) onDismiss()
+                                    }
                                 },
-                        )
-                    }
-                }
-
-                if (activeTrigger != null && activeChildren.isNotEmpty()) {
-                    val subSelectedIndex = remember(activeChildren) { activeChildren.indexOfFirst { it.selected } }
-                    val subSelectedModifier = rememberSelectedScrollModifier(
-                        selectedIndex = subSelectedIndex,
-                        trigger = displayedSubmenuIndex,
+                            )
+                        }
+                    },
+                )
+                if (expandedSubmenuIndex != null) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures(onTap = { expandedSubmenuIndex = null })
+                            },
                     )
+                }
+            }
+
+            if (activeTrigger != null && activeChildren.isNotEmpty()) {
+                val subSelectedIndex = remember(activeChildren) { activeChildren.indexOfFirst { it.selected } }
+                val subSelectedModifier = rememberSelectedScrollModifier(
+                    selectedIndex = subSelectedIndex,
+                    trigger = displayedSubmenuIndex,
+                )
+                Box(
+                    modifier = Modifier
+                        .align(alignment)
+                        .then(anchorPadding),
+                ) {
                     ListPopupContent(
                         popupContentSize = subContentSize,
                         onPopupContentSizeChange = { subContentSize = it },
@@ -453,15 +469,18 @@ internal fun CouiStagePopupMenu(
                         pathProgress = { subFraction.value },
                         gravityPath = subGravityPath,
                         popupLayoutPosition = PopupLayoutPosition(
-                            showBelow = true,
-                            showAbove = false,
-                            isRightAligned = true,
+                            showBelow = !showAbove,
+                            showAbove = showAbove,
+                            isRightAligned = isRightAligned,
                         ),
-                        localTransformOrigin = TransformOrigin(0.88f, 0.25f),
+                        localTransformOrigin = TransformOrigin(entryPivotX, if (showAbove) 0.75f else 0.25f),
                         enableGlass = BlurEffectsEnabled,
                         interactionEnabled = show && expandedSubmenuIndex != null,
                         modifier = Modifier
-                            .padding(top = 12.dp)
+                            .padding(
+                                top = if (showAbove) 0.dp else 12.dp,
+                                bottom = if (showAbove) 12.dp else 0.dp,
+                            )
                             .widthIn(min = 212.dp)
                             .heightIn(max = maxHeight),
                         content = {
