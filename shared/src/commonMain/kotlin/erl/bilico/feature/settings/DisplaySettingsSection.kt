@@ -13,9 +13,6 @@ import androidx.compose.ui.unit.dp
 import erl.bilico.data.settings.CoverAspect
 import erl.bilico.data.settings.FeedPreferences
 import erl.bilico.ui.accentColorSummary
-import io.github.suqi8.coui.kmp.preference.ArrowPreference
-import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
-import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 设置页「显示」分组条目，包含主题配色、信息流排版与页面返回动效。 */
@@ -54,7 +51,7 @@ internal fun displaySettingsEntries(
             title = "深色模式",
             keywords = "暗黑 浅色 夜间 跟随系统 主题 dark night light mode",
         ) { pos ->
-            OverlayDropdownPreference(
+            SettingsDropdownRow(
                 items = DARK_MODE_OPTIONS,
                 selectedIndex = darkMode.coerceIn(0, DARK_MODE_OPTIONS.lastIndex),
                 title = "深色模式",
@@ -69,7 +66,7 @@ internal fun displaySettingsEntries(
             summary = accentSummary,
             keywords = "强调色 颜色 配色 Jeb 粉色 彩虹 自定义 theme accent color rainbow",
         ) { pos ->
-            ArrowPreference(
+            SettingsArrowRow(
                 title = "主题色",
                 summary = accentSummary,
                 endActions = {
@@ -93,7 +90,7 @@ internal fun displaySettingsEntries(
             summary = "将强调色应用到话题、@提及、网址与回复链接等文本",
             keywords = "强调色 话题 @ 链接 颜色 评论 动态 link url topic mention",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = accentHyperlink,
                 onCheckedChange = onAccentHyperlinkChange,
                 title = "超链接应用主题色",
@@ -108,7 +105,7 @@ internal fun displaySettingsEntries(
             summary = "切换「我的」页面各入口左侧图标的配色方案",
             keywords = "彩色 黑白 强调色 ColorOS 图标 主题色 icon color",
         ) { pos ->
-            OverlayDropdownPreference(
+            SettingsDropdownRow(
                 items = ME_ICON_COLOR_OPTIONS,
                 selectedIndex = meIconColorMode.coerceIn(0, ME_ICON_COLOR_OPTIONS.lastIndex),
                 title = "「我的」页图标颜色",
@@ -124,7 +121,7 @@ internal fun displaySettingsEntries(
             summary = "推荐流卡片的封面裁切比例",
             keywords = "16:9 4:3 推荐 封面 裁切",
         ) { pos ->
-            OverlayDropdownPreference(
+            SettingsDropdownRow(
                 items = COVER_ASPECT_OPTIONS,
                 selectedIndex = coverAspect.code.coerceIn(0, COVER_ASPECT_OPTIONS.lastIndex),
                 title = "封面比例",
@@ -140,7 +137,7 @@ internal fun displaySettingsEntries(
             summary = "推荐页面每行显示的视频列数",
             keywords = "单列 双列 首页 排版 网格",
         ) { pos ->
-            OverlayDropdownPreference(
+            SettingsDropdownRow(
                 items = FEED_COLUMN_OPTIONS,
                 selectedIndex = (feedColumns - FeedPreferences.MIN_COLUMNS)
                     .coerceIn(0, FEED_COLUMN_OPTIONS.lastIndex),
@@ -157,7 +154,7 @@ internal fun displaySettingsEntries(
             summary = "搜索框下的热搜词条以双列网格显示，关闭后为单列排布",
             keywords = "搜索 热搜 词条 网格 列表 双列 单列 排版",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = searchHotGrid,
                 onCheckedChange = onSearchHotGridChange,
                 title = "热搜网格布局",
@@ -172,7 +169,7 @@ internal fun displaySettingsEntries(
             summary = "搜索视频结果以双列网格显示，也可在搜索结果页随时切换",
             keywords = "搜索 结果 视频 网格 列表 双列 单列 排版",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = searchResultGrid,
                 onCheckedChange = onSearchResultGridChange,
                 title = "搜索结果网格布局",
@@ -187,7 +184,7 @@ internal fun displaySettingsEntries(
             summary = "每次下拉刷新推荐流时拉取的视频数",
             keywords = "推荐 数量 刷新",
         ) { pos ->
-            OverlayDropdownPreference(
+            SettingsDropdownRow(
                 items = FEED_REFRESH_COUNT_LABELS,
                 selectedIndex = FeedPreferences.REFRESH_COUNT_OPTIONS
                     .indexOf(feedRefreshCount)
@@ -207,7 +204,7 @@ internal fun displaySettingsEntries(
             summary = homeTabsSummary,
             keywords = "标签 排序 热门 排行 番剧 影视 直播",
         ) { pos ->
-            ArrowPreference(
+            SettingsArrowRow(
                 title = "首页分类",
                 summary = homeTabsSummary,
                 modifier = Modifier.testTag("settings_home_tabs"),
@@ -221,7 +218,7 @@ internal fun displaySettingsEntries(
             summary = "在视频详情页操作栏显示点踩",
             keywords = "不喜欢 点踩 操作栏",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = showVideoDislike,
                 onCheckedChange = onShowVideoDislikeChange,
                 title = "显示点踩按钮",
@@ -236,7 +233,7 @@ internal fun displaySettingsEntries(
             summary = "退回卡片时保留轻压回弹效果",
             keywords = "转场 动画 卡片 回弹",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = returnBounce,
                 onCheckedChange = onReturnBounceChange,
                 title = "返回动画回弹",
@@ -251,7 +248,7 @@ internal fun displaySettingsEntries(
             summary = "侧滑返回时跟随手指偏移，缩回卡片或融合球时顺着甩出方向回缩",
             keywords = "预测返回 手势 侧滑 融合球 动画",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = predictiveBackFollow,
                 onCheckedChange = onPredictiveBackFollowChange,
                 title = "返回跟手轨迹",

@@ -1,8 +1,14 @@
 package erl.bilico.feature.settings
 
-import erl.bilico.platform.PlatformBackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -11,23 +17,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import erl.bilico.platform.LocalPlatformContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.SingletonImageLoader
-import erl.bilico.platform.currentAppVersionName
 import erl.bilico.data.util.Formatters
 import erl.bilico.di.AppContainer
+import erl.bilico.platform.LocalPlatformContext
+import erl.bilico.platform.PlatformBackHandler
+import erl.bilico.platform.currentAppVersionName
+import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
-import erl.bilico.ui.components.EmptyState
-import erl.bilico.ui.components.SecondaryPage
 import erl.bilico.ui.components.SectionTitle
-import io.github.suqi8.coui.kmp.preference.ArrowPreference
-import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
-import io.github.suqi8.coui.kmp.preference.SwitchPreference
+import erl.bilico.ui.components.navBottomPadding
+import erl.bilico.ui.glassBarContentTop
+import erl.bilico.ui.layerBackdropIf
+import erl.bilico.ui.pageContainerColor
+import erl.bilico.ui.pinnedHeight
+import io.github.suqi8.coui.kmp.basic.BindScrollToTop
+import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
+import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.basic.rememberTopAppBarSearchState
+import io.github.suqi8.coui.kmp.basic.topAppBarSearchContent
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
 @Composable
@@ -39,7 +56,12 @@ fun SettingsScreen(
     val coilContext = coil3.compose.LocalPlatformContext.current
     val appVersionName = remember(context) { currentAppVersionName(context) }
     val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
+    val pageColor = pageContainerColor()
+    val backdrop = rememberLayerBackdrop()
+    val topBarHeight = pinnedHeight(TopAppBarDefaults.SmallTopAppBarCenterHeight)
+    val mainListState = rememberLazyListState()
+    val searchListState = rememberLazyListState()
+
     val darkMode by container.settings.darkMode.collectAsStateWithLifecycle()
     val accentColor by container.settings.accentColor.collectAsStateWithLifecycle()
     val accentHyperlink by container.settings.accentHyperlink.collectAsStateWithLifecycle()
@@ -104,11 +126,16 @@ fun SettingsScreen(
     var cacheCleared by remember { mutableIntStateOf(0) }
 
     val trimmedQuery = searchQuery.trim()
-    val searchTerms = remember(trimmedQuery) { parseSearchTerms(trimmedQuery) }
+    val inSearchResults = trimmedQuery.isNotEmpty()
+    val searchTerms = remember(trimmedQuery) { parseSettingsSearchTerms(trimmedQuery) }
+    val searchTransition = rememberTopAppBarSearchState(active = inSearchResults)
+
+    val activeListState = if (inSearchResults) searchListState else mainListState
+    BindScrollToTop(activeListState)
 
     LaunchedEffect(trimmedQuery) {
-        if (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0) {
-            listState.scrollToItem(0)
+        if (inSearchResults && (searchListState.firstVisibleItemIndex != 0 || searchListState.firstVisibleItemScrollOffset != 0)) {
+            searchListState.scrollToItem(0)
         }
     }
 
@@ -131,7 +158,8 @@ fun SettingsScreen(
         add(
             SettingsGroupSection(
                 key = "display",
-                title = "显示",
+                title = SettingsGroup.Display.title,
+                group = SettingsGroup.Display,
                 entries = displaySettingsEntries(
                     darkMode = darkMode,
                     accentColor = accentColor,
@@ -165,7 +193,8 @@ fun SettingsScreen(
         add(
             SettingsGroupSection(
                 key = "player",
-                title = "播放器",
+                title = SettingsGroup.Player.title,
+                group = SettingsGroup.Player,
                 entries = playerSettingsEntries(
                     quality = quality,
                     cdnOption = cdnOption,
@@ -209,7 +238,8 @@ fun SettingsScreen(
         add(
             SettingsGroupSection(
                 key = "sponsor",
-                title = "空降助手",
+                title = SettingsGroup.Sponsor.title,
+                group = SettingsGroup.Sponsor,
                 entries = sponsorSettingsEntries(
                     enabled = sponsorBlockEnabled,
                     skipMode = sponsorSkipMode,
@@ -228,14 +258,15 @@ fun SettingsScreen(
         add(
             SettingsGroupSection(
                 key = "danmaku",
-                title = "弹幕",
+                title = SettingsGroup.Danmaku.title,
+                group = SettingsGroup.Danmaku,
                 entries = listOf(
                     SettingsEntry(
                         id = "danmaku",
                         title = "弹幕",
                         keywords = "开关 显示 隐藏",
                     ) { pos ->
-                        SwitchPreference(
+                        SettingsSwitchRow(
                             checked = danmakuEnabled,
                             onCheckedChange = container.settings::setDanmakuEnabled,
                             title = "弹幕",
@@ -249,7 +280,7 @@ fun SettingsScreen(
                         summary = "不透明度 · 字号 · 显示区域 · 类型屏蔽 · 速度",
                         keywords = "描边 字体 行高 合并 重复 彩色",
                     ) { pos ->
-                        ArrowPreference(
+                        SettingsArrowRow(
                             title = "弹幕设置",
                             modifier = Modifier.testTag("settings_danmaku_detail"),
                             summary = "不透明度 · 字号 · 显示区域 · 类型屏蔽 · 速度",
@@ -263,7 +294,7 @@ fun SettingsScreen(
                         summary = "开启后，直播间点击弹幕时在 +1 右侧显示 @+1",
                         keywords = "直播 粉丝牌 +1",
                     ) { pos ->
-                        SwitchPreference(
+                        SettingsSwitchRow(
                             checked = advancedPlusOne,
                             onCheckedChange = container.settings::setAdvancedPlusOne,
                             title = "高级+1",
@@ -278,8 +309,9 @@ fun SettingsScreen(
         add(
             SettingsGroupSection(
                 key = "block",
-                title = "内容过滤与屏蔽",
+                title = SettingsGroup.Block.title,
                 showDividers = true,
+                group = SettingsGroup.Block,
                 entries = listOf(
                     SettingsEntry(
                         id = "feed_source",
@@ -287,7 +319,7 @@ fun SettingsScreen(
                         summary = "切换首页推荐为 App 端或网页端；云端黑名单与「我不想看」偏好按当前账号同步",
                         keywords = "App 网页 推荐 接口",
                     ) { pos ->
-                        OverlayDropdownPreference(
+                        SettingsDropdownRow(
                             items = FEED_SOURCE_OPTIONS,
                             selectedIndex = feedSource.coerceIn(0, FEED_SOURCE_OPTIONS.lastIndex),
                             title = "推荐信息流来源",
@@ -303,7 +335,7 @@ fun SettingsScreen(
                         summary = "关键词、UP 主、黑名单、视频与推荐过滤",
                         keywords = "正则 时长 播放量 点赞率 过滤",
                     ) { pos ->
-                        ArrowPreference(
+                        SettingsArrowRow(
                             title = "屏蔽管理",
                             summary = "关键词、UP 主、黑名单、视频与推荐过滤",
                             cardListPosition = pos,
@@ -316,8 +348,9 @@ fun SettingsScreen(
         add(
             SettingsGroupSection(
                 key = "storage",
-                title = "存储",
+                title = SettingsGroup.Storage.title,
                 showDividers = true,
+                group = SettingsGroup.Storage,
                 entries = listOf(
                     SettingsEntry(
                         id = "downloads",
@@ -325,7 +358,7 @@ fun SettingsScreen(
                         summary = downloadSummary,
                         keywords = "下载 视频 空间 占用",
                     ) { pos ->
-                        ArrowPreference(
+                        SettingsArrowRow(
                             title = "离线缓存",
                             modifier = Modifier.testTag("settings_downloads"),
                             summary = downloadSummary,
@@ -339,7 +372,7 @@ fun SettingsScreen(
                         summary = cacheSummary,
                         keywords = "清理 缓存 图片 磁盘 cache clear storage",
                     ) { pos ->
-                        ArrowPreference(
+                        SettingsArrowRow(
                             title = "清除图片缓存",
                             modifier = Modifier.testTag("settings_cache"),
                             summary = cacheSummary,
@@ -360,8 +393,9 @@ fun SettingsScreen(
         add(
             SettingsGroupSection(
                 key = "update",
-                title = "更新",
+                title = SettingsGroup.Update.title,
                 showDividers = true,
+                group = SettingsGroup.Update,
                 entries = updateSettingsEntries(
                     versionName = appVersionName,
                     checkingUpdate = container.updater.checkingUpdate,
@@ -379,7 +413,8 @@ fun SettingsScreen(
         add(
             SettingsGroupSection(
                 key = "about",
-                title = "关于",
+                title = SettingsGroup.About.title,
+                group = SettingsGroup.About,
                 entries = listOf(
                     SettingsEntry(
                         id = "about",
@@ -387,7 +422,7 @@ fun SettingsScreen(
                         summary = "v$appVersionName",
                         keywords = "开源 仓库 致谢 版本",
                     ) { pos ->
-                        ArrowPreference(
+                        SettingsArrowRow(
                             title = "关于 BiliCO",
                             modifier = Modifier.testTag("settings_about"),
                             summary = "v$appVersionName",
@@ -408,67 +443,84 @@ fun SettingsScreen(
             add(
                 SettingsGroupSection(
                     key = "account",
-                    title = "账号",
+                    title = SettingsGroup.Account.title,
+                    group = SettingsGroup.Account,
                     entries = accountEntries,
                 ),
             )
         }
     }
 
-    val filteredGroups = if (searchTerms.isEmpty()) {
-        groups
-    } else {
-        groups.mapNotNull { group ->
-            val scored = group.entries
-                .mapNotNull { entry ->
-                    val score = entry.matchScore(group.title, searchTerms)
-                    if (score > 0) entry to score else null
-                }
-                .sortedByDescending { it.second }
-            if (scored.isEmpty()) {
-                null
-            } else {
-                group.copy(entries = scored.map { it.first }) to scored.first().second
-            }
-        }
-            .sortedByDescending { it.second }
-            .map { it.first }
-    }
+    val filteredGroups = filterSettingsGroups(groups, searchTerms)
 
-    SecondaryPage(
-        title = "设置",
-        onBack = nav::pop,
-        listState = listState,
-        topBar = {
+    Box(Modifier.fillMaxSize().background(pageColor)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .layerBackdropIf(BlurEffectsEnabled, backdrop)
+                .background(pageColor),
+        ) {
+            if (searchTransition.isContentVisible) {
+                LazyColumn(
+                    state = mainListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .topAppBarSearchContent(searchTransition)
+                        .scrollEndHaptic(),
+                    contentPadding = PaddingValues(
+                        start = 12.dp,
+                        top = glassBarContentTop(topBarHeight, 10.dp),
+                        end = 12.dp,
+                        bottom = 24.dp + navBottomPadding(),
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val shownHeaders = HashSet<String>()
+                    groups.forEach { group ->
+                        if (shownHeaders.add(group.headerGroupKey)) {
+                            val isFirstHeader = shownHeaders.size == 1
+                            item(key = "${group.headerGroupKey}-title") {
+                                SectionTitle(
+                                    text = group.title,
+                                    topPadding = if (isFirstHeader) 4.dp else 14.dp,
+                                )
+                            }
+                        }
+                        item(key = group.key) {
+                            SettingsGroupCard(
+                                entries = group.entries,
+                                showDividers = group.showDividers,
+                            )
+                        }
+                    }
+                }
+            }
+
+            SettingsSearchResultsLayer(
+                visible = inSearchResults,
+                query = trimmedQuery,
+                terms = searchTerms,
+                filteredGroups = filteredGroups,
+                parentTitle = "设置",
+                listState = searchListState,
+                topBarHeight = topBarHeight,
+            )
+        }
+
+        CompositionLocalProvider(
+            LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
+            LocalEdgeToEdge provides true,
+        ) {
             SettingsSearchTopBar(
+                title = "设置",
                 query = searchQuery,
                 expanded = searchExpanded,
                 onQueryChange = { searchQuery = it },
                 onExpandedChange = { searchExpanded = it },
                 onBack = nav::pop,
-                listState = listState,
+                listState = activeListState,
+                modifier = Modifier.align(Alignment.TopCenter),
             )
-        },
-    ) {
-        if (filteredGroups.isEmpty()) {
-            item(key = "search-empty") {
-                EmptyState("未找到与「$trimmedQuery」相关的设置")
-            }
-        } else {
-            filteredGroups.forEachIndexed { index, group ->
-                item(key = "${group.key}-title") {
-                    SectionTitle(
-                        text = group.title,
-                        topPadding = if (index == 0) 4.dp else 14.dp,
-                    )
-                }
-                item(key = group.key) {
-                    SettingsGroupCard(
-                        entries = group.entries,
-                        showDividers = group.showDividers,
-                    )
-                }
-            }
         }
     }
 

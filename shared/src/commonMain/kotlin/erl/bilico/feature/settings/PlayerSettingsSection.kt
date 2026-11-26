@@ -10,10 +10,6 @@ import erl.bilico.data.settings.StatsOverlayPreferences
 import erl.bilico.feature.video.rememberDraftIntSliderState
 import io.github.suqi8.coui.kmp.basic.DropdownEntry
 import io.github.suqi8.coui.kmp.basic.DropdownItem
-import io.github.suqi8.coui.kmp.preference.ArrowPreference
-import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
-import io.github.suqi8.coui.kmp.preference.SliderPreference
-import io.github.suqi8.coui.kmp.preference.SwitchPreference
 
 /** 设置页「播放器」分组条目，包含播放画质、后台/画中画、手势交互、顶栏/浮窗与自动连播。 */
 internal fun playerSettingsEntries(
@@ -86,7 +82,7 @@ internal fun playerSettingsEntries(
                     },
                 )
             }
-            OverlayDropdownPreference(
+            SettingsDropdownRow(
                 entry = qualityEntry,
                 title = "默认清晰度",
                 summary = qualitySummary.ifEmpty { null },
@@ -100,7 +96,7 @@ internal fun playerSettingsEntries(
             summary = cdnLabel,
             keywords = "CDN PCDN 节点 镜像 缓冲 加载",
         ) { pos ->
-            ArrowPreference(
+            SettingsArrowRow(
                 title = "播放线路",
                 modifier = Modifier.testTag("settings_cdn"),
                 summary = cdnLabel,
@@ -114,7 +110,7 @@ internal fun playerSettingsEntries(
             summary = "返回上一级时缩到底栏融合球继续播放",
             keywords = "融合球 小窗 音频 后台",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = inAppBackgroundPlay,
                 onCheckedChange = onInAppBackgroundPlayChange,
                 title = "应用内后台播放",
@@ -129,7 +125,7 @@ internal fun playerSettingsEntries(
             summary = "切到桌面或其他应用时继续播放",
             keywords = "锁屏 听视频 音频 后台",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = backgroundPlay,
                 onCheckedChange = onBackgroundPlayChange,
                 title = "应用外后台播放",
@@ -143,7 +139,7 @@ internal fun playerSettingsEntries(
             title = "自动画中画",
             keywords = "PiP 小窗 悬浮窗 后台",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = autoPip,
                 onCheckedChange = onAutoPipChange,
                 title = "自动画中画",
@@ -156,7 +152,7 @@ internal fun playerSettingsEntries(
             title = "自动横屏",
             keywords = "旋转 重力 方向 全屏 竖屏",
         ) { pos ->
-            OverlayDropdownPreference(
+            SettingsDropdownRow(
                 items = AUTO_ROTATE_OPTIONS,
                 selectedIndex = autoRotateMode.coerceIn(0, AUTO_ROTATE_OPTIONS.lastIndex),
                 title = "自动横屏",
@@ -187,7 +183,7 @@ internal fun playerSettingsEntries(
             title = "手势调节亮度与音量",
             keywords = "滑动 声音 屏幕亮度 手势",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = gestureVolBright,
                 onCheckedChange = onGestureVolBrightChange,
                 title = "手势调节亮度与音量",
@@ -200,7 +196,7 @@ internal fun playerSettingsEntries(
             title = "全屏切换提示",
             keywords = "全屏 提示 手势 上滑 下滑",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = fullscreenGestureHint,
                 onCheckedChange = onFullscreenGestureHintChange,
                 title = "全屏切换提示",
@@ -213,7 +209,7 @@ internal fun playerSettingsEntries(
             title = "手势震动",
             keywords = "触感 振动 反馈",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = gestureHaptic,
                 onCheckedChange = onGestureHapticChange,
                 title = "手势震动",
@@ -227,7 +223,7 @@ internal fun playerSettingsEntries(
             summary = "设置全屏与竖屏时顶栏显示哪些按钮",
             keywords = "按钮 排序 投屏 画中画 顶部栏",
         ) { pos ->
-            ArrowPreference(
+            SettingsArrowRow(
                 title = "播放器顶栏",
                 summary = "设置全屏与竖屏时顶栏显示哪些按钮",
                 modifier = Modifier.testTag("settings_player_top_bar"),
@@ -241,7 +237,7 @@ internal fun playerSettingsEntries(
             summary = statsSummary,
             keywords = "帧率 码率 编码 分辨率 主机 缓冲 调试",
         ) { pos ->
-            ArrowPreference(
+            SettingsArrowRow(
                 title = "统计信息浮窗",
                 summary = statsSummary,
                 modifier = Modifier.testTag("settings_stats_overlay"),
@@ -255,7 +251,7 @@ internal fun playerSettingsEntries(
             summary = "播放或拖动视频进度条时显示锥形光效",
             keywords = "光效 ColorOS 进度条",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = playerConicLight,
                 onCheckedChange = onPlayerConicLightChange,
                 title = "进度条光感",
@@ -270,7 +266,7 @@ internal fun playerSettingsEntries(
             summary = "自动连播且非分批播放时，在右下角弹出下一个推荐视频",
             keywords = "自动连播 下一集 连续播放",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = autoNextRecommendPopup,
                 onCheckedChange = onAutoNextRecommendPopupChange,
                 title = "推荐视频连播弹窗",
@@ -291,7 +287,7 @@ internal fun playerSettingsEntries(
                     AutoNextPreferences.MAX_COUNTDOWN_SECONDS,
                 ),
             )
-            SliderPreference(
+            SettingsSliderRow(
                 value = sliderState.draftValue,
                 onValueChange = { sliderState.draftValue = it },
                 onValueChangeFinished = { sliderState.commit(onAutoNextCountdownSecondsChange) },

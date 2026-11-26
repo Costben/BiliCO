@@ -4,8 +4,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import erl.bilico.data.model.Account
 import erl.bilico.data.session.StoredSession
-import io.github.suqi8.coui.kmp.preference.ArrowPreference
-import io.github.suqi8.coui.kmp.preference.SwitchPreference
 
 internal fun updateSettingsEntries(
     versionName: String,
@@ -27,7 +25,7 @@ internal fun updateSettingsEntries(
             summary = updateSummary,
             keywords = "新版本 升级 版本号",
         ) { pos ->
-            ArrowPreference(
+            SettingsArrowRow(
                 title = "检查更新",
                 modifier = Modifier.testTag("settings_update"),
                 summary = updateSummary,
@@ -41,7 +39,7 @@ internal fun updateSettingsEntries(
             summary = "检查更新页面 · 历史版本与发布说明",
             keywords = "版本记录 发布说明 changelog",
         ) { pos ->
-            ArrowPreference(
+            SettingsArrowRow(
                 title = "更新日志",
                 modifier = Modifier.testTag("settings_changelog"),
                 summary = "检查更新页面 · 历史版本与发布说明",
@@ -54,7 +52,7 @@ internal fun updateSettingsEntries(
             title = "自动检查更新",
             keywords = "启动 检查 版本",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = autoCheckUpdate,
                 onCheckedChange = onAutoCheckUpdateChange,
                 title = "自动检查更新",
@@ -67,7 +65,7 @@ internal fun updateSettingsEntries(
             title = "接收预发布版本",
             keywords = "测试版 beta pre 内测",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = acceptPrerelease,
                 onCheckedChange = onAcceptPrereleaseChange,
                 title = "接收预发布版本",
@@ -80,7 +78,7 @@ internal fun updateSettingsEntries(
             title = "应用内更新",
             keywords = "下载 安装 APK",
         ) { pos ->
-            SwitchPreference(
+            SettingsSwitchRow(
                 checked = inAppUpdate,
                 onCheckedChange = onInAppUpdateChange,
                 title = "应用内更新",
@@ -107,7 +105,7 @@ internal fun accountSettingsEntries(
                 summary = summary,
                 keywords = "多账号 换号 登录",
             ) { pos ->
-                ArrowPreference(
+                SettingsArrowRow(
                     title = "切换账号",
                     modifier = Modifier.testTag("settings_switch_account"),
                     summary = summary,
@@ -125,7 +123,7 @@ internal fun accountSettingsEntries(
                 summary = account.name,
                 keywords = "注销 登出 账号",
             ) { pos ->
-                ArrowPreference(
+                SettingsArrowRow(
                     title = "退出登录",
                     modifier = Modifier.testTag("settings_logout"),
                     summary = account.name,
