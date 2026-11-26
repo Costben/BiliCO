@@ -23,6 +23,7 @@ jobs:
   android:
     name: Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout BiliCO
         uses: actions/checkout@v7
@@ -92,13 +93,8 @@ jobs:
         run: |
           if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > bilico-release.jks
-            cat > keystore.properties <<EOF
-            storeFile=bilico-release.jks
-            storePassword=$ANDROID_STORE_PASSWORD
-            keyAlias=$ANDROID_KEY_ALIAS
-            keyPassword=$ANDROID_KEY_PASSWORD
-            EOF
-            sed -i 's/^            //' keystore.properties
+            printf 'storeFile=bilico-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+              "$ANDROID_STORE_PASSWORD" "$ANDROID_KEY_ALIAS" "$ANDROID_KEY_PASSWORD" > keystore.properties
           else
             echo "ANDROID_KEYSTORE_BASE64 not set; falling back to debug signing."
           fi
@@ -124,6 +120,7 @@ jobs:
   ios:
     name: iOS IPA
     runs-on: macos-26
+    timeout-minutes: 60
     steps:
       - name: Checkout BiliCO
         uses: actions/checkout@v7
@@ -148,6 +145,7 @@ jobs:
 
       - name: Show Xcode environment
         run: |
+          sysctl hw.ncpu hw.memsize
           xcodebuild -version
           xcodebuild -showsdks
 
@@ -184,9 +182,13 @@ jobs:
         run: |
           {
             echo ""
-            echo "org.gradle.jvmargs=-Xmx6g -XX:+UseG1GC -Dfile.encoding=UTF-8"
-            echo "kotlin.daemon.jvmargs=-Xmx6g -XX:+UseG1GC -Dfile.encoding=UTF-8"
-            echo "kotlin.native.jvmArgs=-Xmx6g"
+            echo "org.gradle.daemon=false"
+            echo "org.gradle.console=plain"
+            echo "org.gradle.configuration-cache=false"
+            echo "org.gradle.workers.max=2"
+            echo "org.gradle.jvmargs=-Xmx3g -XX:+UseG1GC -Dfile.encoding=UTF-8"
+            echo "kotlin.daemon.jvmargs=-Xmx2g -XX:+UseG1GC -Dfile.encoding=UTF-8"
+            echo "kotlin.native.jvmArgs=-Xmx4g"
           } >> gradle.properties
 
       - name: Build iOS Release app & package unsigned IPA
