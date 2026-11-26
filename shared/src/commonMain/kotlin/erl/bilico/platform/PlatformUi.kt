@@ -58,6 +58,10 @@ val LocalBackDispatcher = staticCompositionLocalOf<BackDispatcher?> { null }
 
 @Composable
 fun PlatformBackHandler(enabled: Boolean = true, onBack: () -> Unit) {
+    if (!useEdgeSwipeBackOverlay) {
+        PlatformBackActionHandler(enabled = enabled, onBack = onBack)
+        return
+    }
     val dispatcher = LocalBackDispatcher.current ?: return
     val currentEnabled = remember { mutableStateOf(enabled) }.apply { value = enabled }
     val currentOnBack = remember { mutableStateOf(onBack) }.apply { value = onBack }

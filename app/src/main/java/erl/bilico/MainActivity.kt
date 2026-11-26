@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
-import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -27,8 +26,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import erl.bilico.platform.AndroidPlatformBridge
-import erl.bilico.platform.BackDispatcher
 import erl.bilico.platform.PlatformContext
+import erl.bilico.platform.handleAndroidPipUserLeaveHint
 import erl.bilico.player.LocalInPipMode
 import erl.bilico.player.PlaybackBridge
 import erl.bilico.ui.BiliCoRoot
@@ -41,7 +40,6 @@ class MainActivity : ComponentActivity() {
 
     private var inPipMode by mutableStateOf(false)
     private var pendingVideoTarget by mutableStateOf<String?>(null)
-    private val backDispatcher = BackDispatcher()
 
     private val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
         inPipMode = info.isInPictureInPictureMode
@@ -66,19 +64,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         voteHighRefreshRate()
         addOnPictureInPictureModeChangedListener(pipListener)
-
-        onBackPressedDispatcher.addCallback(
-            this,
-            object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() {
-                    if (!backDispatcher.dispatch()) {
-                        isEnabled = false
-                        onBackPressedDispatcher.onBackPressed()
-                        isEnabled = true
-                    }
-                }
-            },
-        )
 
         val filter = IntentFilter().apply {
             addAction(PlaybackBridge.ACTION_TOGGLE_PLAY)
@@ -131,7 +116,6 @@ class MainActivity : ComponentActivity() {
                     ScrollToTopHost {
                         BiliCoRoot(
                             container = container,
-                            externalBackDispatcher = backDispatcher,
                             pendingVideoTarget = pendingVideoTarget,
                             onPendingVideoHandled = { pendingVideoTarget = null },
                         )
@@ -182,6 +166,11 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             window.decorView.requestedFrameRate = HIGH_REFRESH_RATE
         }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        handleAndroidPipUserLeaveHint(this)
     }
 
     override fun onDestroy() {
