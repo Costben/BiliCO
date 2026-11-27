@@ -48,6 +48,7 @@ import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Add
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 
@@ -58,10 +59,15 @@ internal fun CoinDialog(
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var pickedCount by remember { mutableStateOf<Int?>(null) }
     PlayerModalHost(
         inlineInStage = false,
-        onDismiss = onDismiss,
+        onDismiss = {
+            val count = pickedCount
+            if (count != null) onSelect(count) else onDismiss()
+        },
     ) {
+        val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -78,7 +84,10 @@ internal fun CoinDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = enabled) { onSelect(count) }
+                        .clickable(enabled = enabled) {
+                            pickedCount = count
+                            dismiss()
+                        }
                         .padding(horizontal = 20.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -123,10 +132,16 @@ internal fun FavoriteFolderDialog(
     val delIds = (initialIds - selectedIds).toList()
     val hasChanges = addIds.isNotEmpty() || delIds.isNotEmpty()
 
+    var pendingConfirm by remember { mutableStateOf<Triple<List<Long>, List<Long>, Boolean>?>(null) }
     PlayerModalHost(
         inlineInStage = false,
-        onDismiss = { if (!submitting) onDismiss() },
+        onDismiss = {
+            val result = pendingConfirm
+            if (result != null) onConfirm(result.first, result.second, result.third) else onDismiss()
+        },
+        canDismiss = { !submitting },
     ) {
+        val dismiss = LocalDismissState.current ?: onDismiss
         if (creating && onCreateFolder != null) {
             CreateFavoriteFolderContent(
                 title = newTitle,
@@ -273,17 +288,16 @@ internal fun FavoriteFolderDialog(
                 ) {
                     TextButton(
                         text = "取消",
-                        onClick = onDismiss,
+                        onClick = dismiss,
                         modifier = Modifier.weight(1f),
                     )
                     TextButton(
                         text = "完成",
                         onClick = {
                             if (hasChanges) {
-                                onConfirm(addIds, delIds, selectedIds.isNotEmpty())
-                            } else {
-                                onDismiss()
+                                pendingConfirm = Triple(addIds, delIds, selectedIds.isNotEmpty())
                             }
+                            dismiss()
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.textButtonColorsPrimary(),

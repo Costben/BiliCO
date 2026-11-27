@@ -180,7 +180,8 @@ fun ReportDialog(
 
     PlayerModalHost(
         inlineInStage = inlineInStage,
-        onDismiss = { if (!submitting) onDismiss() },
+        onDismiss = onDismiss,
+        canDismiss = { !submitting },
         maxWidth = 420.dp,
     ) {
         val dismiss = LocalDismissState.current ?: onDismiss
@@ -471,7 +472,7 @@ fun ReportDialog(
                             submitting = false
                             result.onSuccess {
                                 showToast(context, "举报成功")
-                                onDismiss()
+                                dismiss()
                             }.onFailure { err ->
                                 showToast(context, err.message ?: "举报失败")
                             }

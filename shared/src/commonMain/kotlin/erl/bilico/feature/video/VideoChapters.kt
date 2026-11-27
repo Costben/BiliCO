@@ -20,7 +20,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +42,7 @@ import erl.bilico.ui.components.CoverImage
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlin.math.roundToInt
 
@@ -304,10 +308,17 @@ internal fun ChapterDialog(
     val thumbW = with(density) { 72.dp.roundToPx() }
     val thumbH = with(density) { 40.dp.roundToPx() }
 
+    var pendingChapter by remember { mutableStateOf<VideoChapter?>(null) }
+
     PlayerModalHost(
         inlineInStage = inlineInStage,
-        onDismiss = onDismiss,
+        onDismiss = {
+            val picked = pendingChapter
+            pendingChapter = null
+            if (picked != null) onSelectChapter(picked) else onDismiss()
+        },
     ) {
+        val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -337,7 +348,10 @@ internal fun ChapterDialog(
                             .background(
                                 if (active) COUITheme.colorScheme.pressBackground else Color.Transparent,
                             )
-                            .clickable { onSelectChapter(chapter) }
+                            .clickable {
+                                pendingChapter = chapter
+                                dismiss()
+                            }
                             .padding(horizontal = 20.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),

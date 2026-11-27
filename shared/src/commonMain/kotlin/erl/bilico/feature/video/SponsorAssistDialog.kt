@@ -14,7 +14,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,9 +55,14 @@ internal fun SponsorAssistDialog(
     val sorted = remember(segments) {
         segments.sortedWith(compareBy({ it.startMs }, { it.endMs }))
     }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     PlayerModalHost(
         inlineInStage = inlineInStage,
-        onDismiss = onDismiss,
+        onDismiss = {
+            val action = pendingAction
+            pendingAction = null
+            if (action != null) action() else onDismiss()
+        },
         horizontalPadding = if (inlineInStage) 12.dp else 24.dp,
         cornerRadius = 24.dp,
         maxWidth = 440.dp,
@@ -124,7 +132,13 @@ internal fun SponsorAssistDialog(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     sorted.forEach { segment ->
-                        SegmentRow(segment = segment, onClick = { onJump(segment) })
+                        SegmentRow(
+                            segment = segment,
+                            onClick = {
+                                pendingAction = { onJump(segment) }
+                                dismiss()
+                            },
+                        )
                     }
                 }
             }
@@ -140,7 +154,10 @@ internal fun SponsorAssistDialog(
                             .fillMaxWidth()
                             .clip(COUISmoothCapsuleShape)
                             .background(scheme.surfaceContainer)
-                            .clickable(onClick = onSubmit)
+                            .clickable {
+                                pendingAction = onSubmit
+                                dismiss()
+                            }
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

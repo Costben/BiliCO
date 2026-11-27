@@ -104,11 +104,10 @@ internal fun SponsorSubmitDialog(
     PlayerModalHost(
         inlineInStage = inlineInStage,
         onDismiss = {
-            if (!submitting) {
-                syncDraft()
-                onDismiss()
-            }
+            syncDraft()
+            onDismiss()
         },
+        canDismiss = { !submitting },
         horizontalPadding = if (inlineInStage) 12.dp else 24.dp,
         cornerRadius = 24.dp,
         maxWidth = 440.dp,

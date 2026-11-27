@@ -65,36 +65,52 @@ private const val STAGE_MODAL_EXIT_MS = 150
 internal fun PlayerModalHost(
     inlineInStage: Boolean,
     onDismiss: () -> Unit,
+    canDismiss: () -> Boolean = { true },
     horizontalPadding: Dp = 24.dp,
     cornerRadius: Dp = 28.dp,
     maxWidth: Dp = 420.dp,
     content: @Composable () -> Unit,
 ) {
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    val currentCanDismiss by rememberUpdatedState(canDismiss)
     if (!inlineInStage) {
         val colors = COUITheme.colorScheme
         val textStyles = COUITheme.textStyles
         val dimens = COUITheme.dimens
         var show by remember { mutableStateOf(false) }
+        var settled by remember { mutableStateOf(false) }
+        val requestDismiss: () -> Unit = remember {
+            {
+                if (currentCanDismiss()) show = false
+            }
+        }
         LaunchedEffect(Unit) { show = true }
         OverlayDialog(
             show = show,
             outsideMargin = DpSize(16.dp, 8.dp),
             maxWidth = maxWidth + 32.dp,
             cornerRadius = cornerRadius,
-            onDismissRequest = onDismiss,
+            onDismissRequest = requestDismiss,
+            onDismissFinished = {
+                if (!settled) {
+                    settled = true
+                    currentOnDismiss()
+                }
+            },
         ) {
             COUITheme(colors = colors, textStyles = textStyles, dimens = dimens) {
-                content()
+                CompositionLocalProvider(LocalDismissState provides requestDismiss) {
+                    content()
+                }
             }
         }
     } else {
         val progress = remember { Animatable(0f, visibilityThreshold = 0.0001f) }
         var exiting by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
-        val currentOnDismiss by rememberUpdatedState(onDismiss)
         val requestDismiss: () -> Unit = remember {
             {
-                if (!exiting) {
+                if (!exiting && currentCanDismiss()) {
                     exiting = true
                     scope.launch {
                         progress.animateTo(

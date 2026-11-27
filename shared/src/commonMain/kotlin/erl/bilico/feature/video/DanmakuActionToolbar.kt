@@ -47,6 +47,7 @@ import erl.bilico.data.repository.DanmakuRepository
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalDismissState
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -294,10 +295,16 @@ private fun DanmakuReportDialog(
     onSelectReason: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var pendingReason by remember { mutableStateOf<Int?>(null) }
     PlayerModalHost(
         inlineInStage = inlineInStage,
-        onDismiss = onDismiss,
+        onDismiss = {
+            val code = pendingReason
+            pendingReason = null
+            if (code != null) onSelectReason(code) else onDismiss()
+        },
     ) {
+        val dismiss = LocalDismissState.current ?: onDismiss
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -319,7 +326,10 @@ private fun DanmakuReportDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelectReason(code) }
+                            .clickable {
+                                pendingReason = code
+                                dismiss()
+                            }
                             .padding(horizontal = 20.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {

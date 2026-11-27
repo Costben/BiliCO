@@ -146,7 +146,7 @@ internal fun LiveStreamDialog(
                                                         .clip(SquircleShape(8.dp))
                                                         .clickable(enabled = !isCurrUrl) {
                                                             onSelect(LiveStreamSelection(si, fi, ci, ui))
-                                                            onDismiss()
+                                                            dismiss()
                                                         }
                                                         .padding(start = 48.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                                                     verticalAlignment = Alignment.CenterVertically,
