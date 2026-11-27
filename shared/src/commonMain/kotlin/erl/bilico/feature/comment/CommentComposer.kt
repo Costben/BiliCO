@@ -29,13 +29,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.layout.layout
 import erl.bilico.platform.LocalPlatformContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -88,7 +90,7 @@ fun CommentComposerSheet(
     val nav = LocalNavState.current
     val focusRequester = remember { FocusRequester() }
 
-    var show by remember { mutableStateOf(false) }
+    var show by remember { mutableStateOf(true) }
     var field by remember { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
     var panel by remember { mutableStateOf(ComposerPanel.None) }
     var packages by remember { mutableStateOf<List<CommentEmotePackage>>(emptyList()) }
@@ -166,11 +168,9 @@ fun CommentComposerSheet(
     }
 
     LaunchedEffect(Unit) {
-        show = true
-        launch { loadEmotes(force = false) }
-        delay(80)
-        runCatching { focusRequester.requestFocus() }
-        keyboard?.show()
+        // 等面板与键盘入场落位后再拉表情包，避免首次打开时解析表情列表触发中途重组。
+        delay(350)
+        loadEmotes(force = false)
     }
 
     LaunchedEffect(managingEmotes) {
@@ -276,10 +276,7 @@ fun CommentComposerSheet(
         }
     }
 
-    val density = LocalDensity.current
-    val imeBottom = with(density) { WindowInsets.ime.getBottom(density).toDp() }
-    val keyboardGapProgress = (imeBottom / KEYBOARD_GAP_RANGE).coerceIn(0f, 1f)
-    val bottomGap = PANEL_BOTTOM_INSET + (KEYBOARD_BOTTOM_INSET - PANEL_BOTTOM_INSET) * keyboardGapProgress
+    val imeInsets = WindowInsets.ime
 
     fun dismiss() {
         focusManager.clearFocus(force = true)
@@ -290,12 +287,19 @@ fun CommentComposerSheet(
     OverlayBottomSheet(
         show = show && !managingEmotes,
         showDragHandle = false,
-        insideMargin = DpSize(PANEL_SIDE_INSET, bottomGap),
+        insideMargin = DpSize(PANEL_SIDE_INSET, KEYBOARD_BOTTOM_INSET),
         panelPaddingBottom = 0.dp,
         defaultWindowInsetsPadding = false,
         onDismissRequest = { dismiss() },
         onDismissFinished = { if (!managingEmotes) onDismiss() },
     ) {
+        LaunchedEffect(Unit) {
+            if (runCatching { focusRequester.requestFocus() }.isFailure) {
+                withFrameNanos { }
+                runCatching { focusRequester.requestFocus() }
+            }
+            keyboard?.show()
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -488,6 +492,16 @@ fun CommentComposerSheet(
                 text = if (uploading) "上传中…" else submitLabel,
                 enabled = (field.text.isNotBlank() || (allowBlankWithPictures && pictures.isNotEmpty())) && !uploading,
                 onClick = { submit() },
+            )
+            // 布局期读取软键盘高度，键盘关闭时补足底部留白、弹起时归零，避免每帧触发面板重组。
+            Spacer(
+                Modifier.layout { _, _ ->
+                    val imePx = imeInsets.getBottom(this)
+                    val rangePx = KEYBOARD_GAP_RANGE.roundToPx().coerceAtLeast(1)
+                    val progress = (imePx.toFloat() / rangePx).coerceIn(0f, 1f)
+                    val extraPx = (PANEL_BOTTOM_INSET - KEYBOARD_BOTTOM_INSET).toPx()
+                    layout(0, (extraPx * (1f - progress)).roundToInt().coerceAtLeast(0)) {}
+                },
             )
         }
     }
