@@ -32,6 +32,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Pause
 import io.github.suqi8.coui.kmp.icon.extended.Play
+import io.github.suqi8.coui.kmp.icon.extended.Refresh
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 播放器底部控件栏（章节条、进度条、播放/时间、全屏弹幕输入框与右侧功能按钮）。 */
@@ -60,6 +61,7 @@ internal fun BoxScope.PlayerBottomChrome(
     onComposerFocusedChange: (Boolean) -> Unit,
     onScrubPositionChange: (Long?) -> Unit,
     onPlayPause: () -> Unit,
+    onRefresh: (() -> Unit)? = null,
     onSeek: (Long) -> Unit,
     subtitleLabel: String?,
     speed: Float,
@@ -144,9 +146,18 @@ internal fun BoxScope.PlayerBottomChrome(
                     iconPadding = if (fullscreen) 9.dp else 7.dp,
                 )
                 if (liveMode) {
+                    if (onRefresh != null) {
+                        PlayerIconButton(
+                            icon = COUIIcons.Refresh,
+                            label = "刷新直播",
+                            onClick = onRefresh,
+                            buttonSize = if (fullscreen) 40.dp else 36.dp,
+                            iconPadding = if (fullscreen) 9.dp else 7.dp,
+                        )
+                    }
                     Text(
                         text = statusText.orEmpty(),
-                        modifier = Modifier.padding(start = 6.dp),
+                        modifier = Modifier.padding(start = if (onRefresh != null) 4.dp else 6.dp),
                         style = COUITheme.textStyles.footnote2,
                         color = Color.White,
                     )

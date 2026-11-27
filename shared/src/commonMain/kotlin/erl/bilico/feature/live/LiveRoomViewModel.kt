@@ -7,9 +7,6 @@ import androidx.lifecycle.viewModelScope
 import erl.bilico.data.live.LiveDanmakuClient
 import erl.bilico.data.live.LiveDanmakuState
 import erl.bilico.data.live.mergeSuperChatHistory
-import erl.bilico.data.model.LiveDanmakuMessage
-import erl.bilico.data.model.LivePlayback
-import erl.bilico.data.model.LiveRoomDetail
 import erl.bilico.data.model.LiveStreamSelection
 import erl.bilico.data.model.LiveSuperChat
 import erl.bilico.data.repository.BlockSnapshot
@@ -23,50 +20,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import io.ktor.client.HttpClient
-
-sealed interface LiveChatEntry {
-    val seq: Long
-
-    data class Danmaku(
-        override val seq: Long,
-        val message: LiveDanmakuMessage,
-    ) : LiveChatEntry
-
-    data class SuperChat(
-        override val seq: Long,
-        val sc: LiveSuperChat,
-    ) : LiveChatEntry
-}
-
-data class LiveRoomUiState(
-    val detail: LiveRoomDetail? = null,
-    val playback: LivePlayback? = null,
-    val isLoading: Boolean = true,
-    val error: String? = null,
-    val isPlaybackLoading: Boolean = false,
-    val playbackError: String? = null,
-    val requestedQuality: Int = 10000,
-    val activeQuality: Int = 0,
-    val lineSelection: LiveStreamSelection = LiveStreamSelection(),
-    val onlyAudio: Boolean = false,
-    /** 每次成功取流/手动切线路加一：让播放器重新 prepare。 */
-    val playbackGeneration: Int = 0,
-    /** 聊天区混合条目（普通弹幕 + SC），每条带单调递增稳定 seq。 */
-    val chatEntries: List<LiveChatEntry> = emptyList(),
-    /** 弹幕机专用的实时弹幕队列与累计计数。 */
-    val danmaku: List<LiveDanmakuMessage> = emptyList(),
-    val danmakuSeq: Long = 0L,
-    /** 当前仍未过期的醒目留言列表，按最新在前排列。 */
-    val activeSuperChats: List<LiveSuperChat> = emptyList(),
-    /** 本场直播累计收到的所有 SC（不随时间过期或弹幕上限丢失），用于统计与回放。 */
-    val superChatHistory: List<LiveSuperChat> = emptyList(),
-    val fullscreenSuperChat: LiveSuperChat? = null,
-    val fullscreenSuperChatEndSec: Long = 0L,
-    val fullscreenSuperChatIsReplay: Boolean = false,
-    val nowSec: Long = currentTimeMillis() / 1000L,
-    val danmakuState: LiveDanmakuState = LiveDanmakuState.Idle,
-    val danmakuError: String? = null,
-)
 
 class LiveRoomViewModel(
     private val repository: LiveRepository,
@@ -82,6 +35,7 @@ class LiveRoomViewModel(
 
     private val danmakuClient = LiveDanmakuClient(viewModelScope, http)
     private var playbackJob: Job? = null
+    private var danmakuJob: Job? = null
     private val blockedMids = HashSet<Long>()
     private val blockedTexts = HashSet<String>()
     private var nextChatSeq = 1L
@@ -270,6 +224,35 @@ class LiveRoomViewModel(
         }
     }
 
+    /** 手动刷新直播间：重新拉取直播流并重连弹幕，同时静默更新直播间信息。 */
+    fun reconnect() {
+        val current = _state.value
+        val detail = current.detail
+        if (detail == null) {
+            load()
+            return
+        }
+        val realRoomId = detail.roomId.takeIf { it > 0L } ?: roomId
+        if (detail.isLive) {
+            loadPlayback(current.requestedQuality, current.onlyAudio)
+            connectDanmaku(realRoomId)
+        }
+        viewModelScope.launch {
+            repository.detail(roomId).onSuccess { fresh ->
+                val freshRealId = fresh.roomId.takeIf { it > 0L } ?: roomId
+                _state.update { it.copy(detail = fresh) }
+                if (fresh.isLive) {
+                    loadOnlineRankCount(freshRealId, fresh.uid)
+                    loadSuperChats(freshRealId)
+                    if (!detail.isLive) {
+                        loadPlayback(_state.value.requestedQuality, _state.value.onlyAudio)
+                        connectDanmaku(freshRealId)
+                    }
+                }
+            }
+        }
+    }
+
     fun replaySuperChat(sc: LiveSuperChat) {
         val now = currentTimeMillis() / 1000L
         _state.update {
@@ -313,7 +296,10 @@ class LiveRoomViewModel(
         (mid > 0L && mid in blockedMids) || text.trim() in blockedTexts || blockSnapshotProvider().matchesDanmaku(text)
 
     private fun connectDanmaku(realRoomId: Long) {
-        viewModelScope.launch {
+        danmakuJob?.cancel()
+        danmakuClient.disconnect()
+        _state.update { it.copy(danmakuState = LiveDanmakuState.Connecting, danmakuError = null) }
+        danmakuJob = viewModelScope.launch {
             repository.danmakuServer(realRoomId)
                 .onSuccess { server ->
                     _state.update { it.copy(danmakuError = null) }

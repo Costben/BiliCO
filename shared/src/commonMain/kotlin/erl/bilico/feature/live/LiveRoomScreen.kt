@@ -133,7 +133,7 @@ fun LiveRoomScreen(
     var scDrawerVisible by remember { mutableStateOf(false) }
     var danmakuDraft by rememberSaveable(roomId) { mutableStateOf("") }
 
-    var isPlaying by remember { mutableStateOf(false) }
+    var isPlaying by remember(player) { mutableStateOf(player.isPlaying) }
     var isBuffering by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
     var errorEvent by remember { mutableStateOf<String?>(null) }
@@ -431,6 +431,13 @@ fun LiveRoomScreen(
                 inPipMode = inPipMode,
                 liveMode = true,
                 statusText = if (state.onlyAudio) "黑听中" else state.statusText(),
+                onRefreshLive = {
+                    refetched = 0
+                    playerError = null
+                    errorEvent = null
+                    viewModel.reconnect()
+                    liveMessage = "正在重连直播间与弹幕"
+                },
                 audioOnly = state.onlyAudio,
                 onToggleAudioOnly = {
                     viewModel.toggleOnlyAudio()
@@ -578,21 +585,6 @@ fun LiveRoomScreen(
     if (!fullscreen) {
         RenderLiveDialogs(inlineInStage = false)
     }
-}
-
-private fun LiveRoomUiState.statusText(): String {
-    val detail = detail ?: return ""
-    if (!detail.isLive) return "未开播"
-    return if (playback == null) "加载中" else "直播中"
-}
-
-private fun LiveRoomUiState.qualityLabel(): String? {
-    val playback = playback ?: return null
-    val label = playback.qualities
-        .firstOrNull { it.quality == activeQuality }
-        ?.label
-        ?.takeIf { it.isNotBlank() }
-    return label ?: activeQuality.takeIf { it > 0 }?.let { "${it}P" }
 }
 
 private const val MAX_OVERLAY_DANMAKU = 600

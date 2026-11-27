@@ -120,6 +120,7 @@ internal fun VideoPlayer(
     longPressSpeedMode: LongPressSpeedMode = LongPressSpeedMode.FIXED,
     liveMode: Boolean = false,
     statusText: String? = null,
+    onRefreshLive: (() -> Unit)? = null,
     audioOnly: Boolean = false,
     onToggleAudioOnly: (() -> Unit)? = null,
     onSelectLine: (() -> Unit)? = null,
@@ -518,8 +519,7 @@ internal fun VideoPlayer(
                     if (pos != null) seekPreview?.ensureLoaded(pos, durationMs)
                     scrubbingPositionMs = pos
                 },
-                onPlayPause = onPlayPause,
-                onSeek = onSeek,
+                onPlayPause = onPlayPause, onRefresh = onRefreshLive, onSeek = onSeek,
                 subtitleLabel = subtitleLabel,
                 speed = speed,
                 qualityLabel = qualityLabel,
