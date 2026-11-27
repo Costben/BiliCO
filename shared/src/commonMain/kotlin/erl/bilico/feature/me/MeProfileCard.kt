@@ -3,6 +3,7 @@ package erl.bilico.feature.me
 import erl.bilico.platform.formatFixedDecimal
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,8 +68,11 @@ internal fun ProfileCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(SquircleShape(12.dp))
-                    .clickable(onClick = onOpenSpace),
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onOpenSpace,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val avatarUrl = remember(account.face) {
