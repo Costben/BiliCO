@@ -49,6 +49,7 @@ import erl.bilico.feature.watchlater.WatchLaterScreen
 import erl.bilico.platform.LocalScreenConfig
 import erl.bilico.platform.ScreenConfig
 import erl.bilico.ui.components.InAppWebScreen
+import io.github.suqi8.coui.kmp.basic.LocalTransitionFastGlass
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 
 @Composable
@@ -110,7 +111,7 @@ internal fun RouteLayer(
                     isTop || belowTop -> -topProgress() * widthPx / RouteParallaxDivisor
                     else -> 0f
                 }
-                if (progress() < 1f || topProgress() < 1f) {
+                if (entry === slideDriver && progress() < 1f) {
                     shape = cornerShape
                     clip = true
                 } else {
@@ -156,6 +157,7 @@ internal fun RouteLayer(
         LocalNavEntry provides entry,
         LocalScreenConfig provides layerConfig,
         LocalNavigationEventDispatcherOwner provides routeDispatcherOwner,
+        LocalTransitionFastGlass provides (platformReduceExitRouteBlur && !entry.expand && (entry.exiting || entry.animating)),
     ) {
         val bypassExitSnapshot = entry.hasSurfaceView || entry.route.isPlayback()
         val slideDriverIndex = if (slideDriver != null) nav.stack.indexOf(slideDriver) else -1

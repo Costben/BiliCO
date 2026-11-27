@@ -75,6 +75,7 @@ import io.github.suqi8.coui.kmp.anim.COUIOutEase
 import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformBottomBarMaterialEnabled
+import io.github.suqi8.coui.kmp.basic.LocalTransitionFastGlass
 import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.basic.rememberSearchResultsTransitionState
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -254,9 +255,17 @@ fun MainShell(nav: NavState, container: AppContainer) {
         }
     }
 
+    val context = LocalPlatformContext.current
     Box(Modifier.fillMaxSize()) {
-        // Layer 1: 页面主内容。搜索面板完全不透明覆盖时跳过重绘底层首页/顶栏/底栏，大幅降低搜索页滚动 GPU 开销。
-        CompositionLocalProvider(LocalTopBarBounds provides topBarBounds) {
+        // Layer 1~3：首页内容 + 常态顶栏 + 悬浮底栏。搜索面板展开/收起过渡期间冻结为单张快照，
+        // 避免底层首页与上层搜索面板 5 层模糊管线同帧并发导致 iOS 展开/退出掉帧。
+        ExitSnapshotHost(
+            exiting = feedPanelCovering && !searchFullyCovered,
+            hasSurfaceView = false,
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                // Layer 1: 页面主内容。搜索面板完全不透明覆盖时跳过重绘底层首页/顶栏/底栏，大幅降低搜索页滚动 GPU 开销。
+                CompositionLocalProvider(LocalTopBarBounds provides topBarBounds) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -353,7 +362,6 @@ fun MainShell(nav: NavState, container: AppContainer) {
         }
 
         // Layer 3: 悬浮底部导航栏（在搜索面板之下，展开时被面板盖住）
-        val context = LocalPlatformContext.current
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) backdrop else null,
             LocalPlatformBottomBarMaterialEnabled provides false,
@@ -389,6 +397,8 @@ fun MainShell(nav: NavState, container: AppContainer) {
                         .drawWithContent { if (!searchFullyCovered) drawContent() }
                         .then(if (feedPanelCovering) Modifier.clearAndSetSemantics {} else Modifier),
                 )
+            }
+        }
             }
         }
 
@@ -434,6 +444,7 @@ fun MainShell(nav: NavState, container: AppContainer) {
                 null
             },
             LocalEdgeToEdge provides true,
+            LocalTransitionFastGlass provides (platformReduceExitRouteBlur && feedPanelCovering && !searchExpanded),
         ) {
             PinnedBarDensity {
                 val searchBarDensity = LocalDensity.current

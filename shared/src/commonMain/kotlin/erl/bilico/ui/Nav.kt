@@ -227,6 +227,9 @@ class NavState {
             }
         }
         val entry = NavEntry(route, origin, initialProgress = 0f, initialFade = 0f)
+        if (!entry.expand && host != null) {
+            entry.animating = true
+        }
         stack.add(entry)
         entry.origin?.let {
             it.recording = true
@@ -328,6 +331,7 @@ class NavState {
         }
         val wasPreviewing = entry.previewing
         entry.exiting = true
+        entry.belowFrozen = true
         val scope = host
         if (scope == null) {
             entry.origin?.recording = false

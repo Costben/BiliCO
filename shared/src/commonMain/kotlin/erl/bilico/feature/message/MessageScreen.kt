@@ -64,6 +64,7 @@ import io.github.suqi8.coui.kmp.basic.ChipTabGroup
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.LocalPlatformAppBarMaterialEnabled
+import io.github.suqi8.coui.kmp.basic.LocalTransitionFastGlass
 import io.github.suqi8.coui.kmp.basic.SearchResultContainer
 import io.github.suqi8.coui.kmp.basic.SearchResultContainerDefaults
 import io.github.suqi8.coui.kmp.basic.SearchResultsRiseTrigger
@@ -162,7 +163,7 @@ fun MessageScreen(
                 .fillMaxSize()
                 .layerBackdropIf(BlurEffectsEnabled, layerBackdrop)
                 .background(pageColor),
-            beyondViewportPageCount = 1,
+            beyondViewportPageCount = if (LocalTransitionFastGlass.current) 0 else 1,
         ) { index ->
             ScrollToTopPage(active = index == pagerState.settledPage) {
                 val kind = MESSAGE_TABS[index].kind
