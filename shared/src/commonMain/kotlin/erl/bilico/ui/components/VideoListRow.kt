@@ -106,8 +106,8 @@ internal fun LibraryVideoRow(
 }
 
 /**
- * 卡片里的内容本身，不带 Card 和点击：稍后再看要在外面套 COUI 的通知滑动盒，
- * 卡片的材质与内边距由外面那层负责。
+ * 卡片里的内容本身，不带 Card 和点击：稍后再看、收藏夹等页面在外面套 COUI 融合左滑卡片
+ * （`SwipeRevealBox`），卡片材质与内边距由外面那层负责。
  */
 @Composable
 fun LibraryVideoBody(

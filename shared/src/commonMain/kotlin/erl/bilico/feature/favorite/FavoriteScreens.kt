@@ -65,11 +65,13 @@ import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.NotificationSwipeBox
+import io.github.suqi8.coui.kmp.basic.SwipeRevealAction
+import io.github.suqi8.coui.kmp.basic.SwipeRevealBox
+import io.github.suqi8.coui.kmp.basic.SwipeRevealDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
-import io.github.suqi8.coui.kmp.basic.rememberNotificationSwipeState
+import io.github.suqi8.coui.kmp.basic.rememberSwipeRevealState
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.ChevronForward
 import io.github.suqi8.coui.kmp.icon.extended.Delete
@@ -77,14 +79,6 @@ import io.github.suqi8.coui.kmp.icon.extended.SelectAll
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-
-/**
- * [NotificationSwipeBox] 卡片的圆角。库里写死成 16dp、曲线权重 1.1
- * （`NotificationSwipeDefaults.CardCornerRadius` / `CONIC_CORNER_WEIGHT`），封面要跟它同心，
- * 只能在这里按同样的数收。
- */
-private val SwipeCardCornerRadius = 16.dp
-private const val SwipeCardCornerWeight = 1.1f
 
 @Composable
 fun FavoriteFoldersScreen(
@@ -355,28 +349,34 @@ fun FavoriteFolderScreen(
         ) { index ->
             val video = state.items[index]
             val selected = video.bvid in selectedBvids
-            val swipe = rememberNotificationSwipeState()
+            val swipe = rememberSwipeRevealState()
+            val cardCornerRadius = COUITheme.dimens.card.cornerRadius
+            val swipeStyle = SwipeRevealDefaults.cardStyle(
+                cornerRadius = cardCornerRadius,
+                cornerWeight = CardDefaults.Weight,
+                containerColor = CardDefaults.defaultColors().color,
+            )
             LaunchedEffect(swipe.isRevealed) {
                 if (swipe.isRevealed) openKey = video.bvid
             }
             LaunchedEffect(openKey, selectionMode) {
                 if ((selectionMode || openKey != video.bvid) && swipe.isRevealed) swipe.close()
             }
-            NotificationSwipeBox(
-                onSettings = null,
-                onDismiss = {
-                    viewModel.remove(video) { msg ->
-                        showToast(context, msg)
-                    }
-                },
-                settingsIcon = null,
-                dismissIcon = null,
+            SwipeRevealBox(
+                actions = listOf(
+                    SwipeRevealAction(
+                        description = "删除收藏的视频",
+                        onClick = {
+                            viewModel.remove(video) { msg ->
+                                showToast(context, msg)
+                            }
+                        },
+                    ),
+                ),
                 state = swipe,
                 enabled = !selectionMode,
-                minHeight = 0.dp,
-                containerColor = CardDefaults.defaultColors().color,
+                style = swipeStyle,
                 dismissOnFullSwipe = true,
-                dismissDescription = "删除收藏的视频",
                 // 划走结束时滑动盒会先把卡片弹回原位，默认淡出是在那之后才播的，看起来像闪回来再往下淡掉。
                 // 被删的这条直接拿掉；后面的条目仍按默认弹簧上移补位。
                 modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
@@ -409,8 +409,8 @@ fun FavoriteFolderScreen(
                     LibraryVideoBody(
                         video = video,
                         modifier = Modifier.fillMaxWidth(),
-                        coverCornerRadius = SwipeCardCornerRadius,
-                        coverCornerWeight = SwipeCardCornerWeight,
+                        coverCornerRadius = cardCornerRadius,
+                        coverCornerWeight = CardDefaults.Weight,
                     )
                 }
             }

@@ -39,27 +39,23 @@ import erl.bilico.ui.components.SecondaryPage
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.NotificationSwipeBox
+import io.github.suqi8.coui.kmp.basic.SwipeRevealAction
+import io.github.suqi8.coui.kmp.basic.SwipeRevealBox
+import io.github.suqi8.coui.kmp.basic.SwipeRevealDefaults
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
-import io.github.suqi8.coui.kmp.basic.rememberNotificationSwipeState
+import io.github.suqi8.coui.kmp.basic.rememberSwipeRevealState
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Pin
 import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.icon.extended.Sort
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-/**
- * [io.github.suqi8.coui.kmp.basic.NotificationSwipeBox] 卡片的圆角。库里写死成 16dp、
- * 曲线权重 1.1，封面要跟它同心，只能在这里按同样的数收。
- */
-private val SwipeCardCornerRadius = 16.dp
-private const val SwipeCardCornerWeight = 1.1f
 
 /** 稍后再看的排列方式。接口只按收藏顺序给，切换排序都在本地做。 */
 enum class WatchLaterSort(val label: String) {
@@ -328,35 +324,45 @@ fun WatchLaterScreen(
             contentType = { "watch-later" },
         ) { index ->
             val video = state.items[index]
-            val swipe = rememberNotificationSwipeState()
+            val swipe = rememberSwipeRevealState()
+            val cardCornerRadius = COUITheme.dimens.card.cornerRadius
+            val swipeStyle = SwipeRevealDefaults.cardStyle(
+                cornerRadius = cardCornerRadius,
+                cornerWeight = CardDefaults.Weight,
+                containerColor = CardDefaults.defaultColors().color,
+            )
             LaunchedEffect(swipe.isRevealed) {
                 if (swipe.isRevealed) openKey = video.bvid
             }
             LaunchedEffect(openKey) {
                 if (openKey != video.bvid && swipe.isRevealed) swipe.close()
             }
-            NotificationSwipeBox(
-                onSettings = {
-                    viewModel.pinToTop(video)
-                    scope.launch { swipe.close() }
-                },
-                settingsIcon = COUIIcons.Pin,
-                onDismiss = { viewModel.remove(video) },
-                dismissIcon = null,
+            SwipeRevealBox(
+                actions = listOf(
+                    SwipeRevealAction(
+                        icon = COUIIcons.Pin,
+                        description = "置顶",
+                        onClick = {
+                            viewModel.pinToTop(video)
+                            scope.launch { swipe.close() }
+                        },
+                    ),
+                    SwipeRevealAction(
+                        description = "删除",
+                        onClick = { viewModel.remove(video) },
+                    ),
+                ),
                 state = swipe,
-                minHeight = 0.dp,
-                containerColor = CardDefaults.defaultColors().color,
+                style = swipeStyle,
                 dismissOnFullSwipe = true,
-                settingsDescription = "置顶",
-                dismissDescription = "删除",
                 // 划走结束时滑动盒会先把卡片弹回原位，默认淡出是在那之后才播的，看起来像闪回来再往下淡掉。
                 // 被删的这条直接拿掉；后面的条目仍按默认弹簧上移补位。
                 modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
             ) {
                 LibraryVideoBody(
                     video = video,
-                    coverCornerRadius = SwipeCardCornerRadius,
-                    coverCornerWeight = SwipeCardCornerWeight,
+                    coverCornerRadius = cardCornerRadius,
+                    coverCornerWeight = CardDefaults.Weight,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {

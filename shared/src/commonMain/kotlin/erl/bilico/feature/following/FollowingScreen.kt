@@ -50,11 +50,13 @@ import erl.bilico.ui.components.TopBarTextButton
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.NotificationSwipeBox
+import io.github.suqi8.coui.kmp.basic.SwipeRevealAction
+import io.github.suqi8.coui.kmp.basic.SwipeRevealBox
+import io.github.suqi8.coui.kmp.basic.SwipeRevealDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
-import io.github.suqi8.coui.kmp.basic.rememberNotificationSwipeState
+import io.github.suqi8.coui.kmp.basic.rememberSwipeRevealState
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Delete
 import io.github.suqi8.coui.kmp.icon.extended.SelectAll
@@ -194,29 +196,34 @@ fun FollowingScreen(
         ) { index ->
             val user = state.items[index]
             val selected = user.mid in selectedMids
-            val swipe = rememberNotificationSwipeState()
+            val swipe = rememberSwipeRevealState()
+            val swipeStyle = SwipeRevealDefaults.cardStyle(
+                cornerRadius = COUITheme.dimens.card.cornerRadius,
+                cornerWeight = CardDefaults.Weight,
+                containerColor = CardDefaults.defaultColors().color,
+            )
             LaunchedEffect(swipe.isRevealed) {
                 if (swipe.isRevealed) openKey = user.mid
             }
             LaunchedEffect(openKey, selectionMode) {
                 if ((selectionMode || openKey != user.mid) && swipe.isRevealed) swipe.close()
             }
-            NotificationSwipeBox(
-                onSettings = null,
-                onDismiss = {
-                    if (openKey == user.mid) openKey = null
-                    viewModel.unfollow(user) { msg ->
-                        showToast(context, msg)
-                    }
-                },
-                settingsIcon = null,
-                dismissIcon = null,
+            SwipeRevealBox(
+                actions = listOf(
+                    SwipeRevealAction(
+                        description = "取消关注",
+                        onClick = {
+                            if (openKey == user.mid) openKey = null
+                            viewModel.unfollow(user) { msg ->
+                                showToast(context, msg)
+                            }
+                        },
+                    ),
+                ),
                 state = swipe,
                 enabled = !selectionMode,
-                minHeight = 0.dp,
-                containerColor = CardDefaults.defaultColors().color,
+                style = swipeStyle,
                 dismissOnFullSwipe = true,
-                dismissDescription = "取消关注",
                 // 划走结束时滑动盒会先把卡片弹回原位，默认淡出是在那之后才播的，看起来像闪回来再往下淡掉。
                 // 被删的这条直接拿掉；后面的条目仍按默认弹簧上移补位。
                 modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),

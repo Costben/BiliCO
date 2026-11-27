@@ -38,9 +38,11 @@ import erl.bilico.ui.components.TopBarTextButton
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.HighlightedIconButton
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.NotificationSwipeBox
+import io.github.suqi8.coui.kmp.basic.SwipeRevealAction
+import io.github.suqi8.coui.kmp.basic.SwipeRevealBox
+import io.github.suqi8.coui.kmp.basic.SwipeRevealDefaults
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
-import io.github.suqi8.coui.kmp.basic.rememberNotificationSwipeState
+import io.github.suqi8.coui.kmp.basic.rememberSwipeRevealState
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Delete
 import io.github.suqi8.coui.kmp.icon.extended.FileDownloads
@@ -49,9 +51,6 @@ import io.github.suqi8.coui.kmp.icon.extended.Play
 import io.github.suqi8.coui.kmp.icon.extended.SelectAll
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.launch
-
-private val SwipeCardCornerRadius = 16.dp
-private const val SwipeCardCornerWeight = 1.1f
 
 @Composable
 fun DownloadsScreen(
@@ -218,7 +217,13 @@ fun DownloadsScreen(
                 key = { "done-${it.id}" },
                 contentType = { "completed-download" },
             ) { task ->
-                val swipe = rememberNotificationSwipeState()
+                val swipe = rememberSwipeRevealState()
+                val cardCornerRadius = COUITheme.dimens.card.cornerRadius
+                val swipeStyle = SwipeRevealDefaults.cardStyle(
+                    cornerRadius = cardCornerRadius,
+                    cornerWeight = CardDefaults.Weight,
+                    containerColor = CardDefaults.defaultColors().color,
+                )
                 LaunchedEffect(swipe.isRevealed) {
                     if (swipe.isRevealed) openKey = task.id
                 }
@@ -235,22 +240,23 @@ fun DownloadsScreen(
                     checkboxTag = "download_check_${task.id}",
                     modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
                 ) {
-                    NotificationSwipeBox(
-                        onSettings = null,
-                        onDismiss = { viewModel.deleteTask(task.id) },
-                        settingsIcon = null,
-                        dismissIcon = null,
+                    SwipeRevealBox(
+                        actions = listOf(
+                            SwipeRevealAction(
+                                description = "删除",
+                                onClick = { viewModel.deleteTask(task.id) },
+                            ),
+                        ),
                         state = swipe,
-                        minHeight = 0.dp,
-                        containerColor = CardDefaults.defaultColors().color,
+                        enabled = !state.selectionMode,
+                        style = swipeStyle,
                         dismissOnFullSwipe = true,
-                        dismissDescription = "删除",
                     ) {
                         CompletedDownloadRow(
                             task = task,
                             coverUrl = container.downloads.localCoverUri(task) ?: task.coverUrl,
-                            coverCornerRadius = SwipeCardCornerRadius,
-                            coverCornerWeight = SwipeCardCornerWeight,
+                            coverCornerRadius = cardCornerRadius,
+                            coverCornerWeight = CardDefaults.Weight,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .combinedClickable(
