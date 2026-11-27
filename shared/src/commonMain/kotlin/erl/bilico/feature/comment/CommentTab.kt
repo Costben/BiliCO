@@ -55,6 +55,7 @@ import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.compactNavBarBottomPadding
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.rememberImageOriginScope
 import erl.bilico.ui.reportBottomBarTop
@@ -343,10 +344,11 @@ fun CommentTab(
                     },
                 )
             }
+            val fabBottomInset = minOf(bottomInset, compactNavBarBottomPadding())
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = bottomInset),
+                    .padding(bottom = fabBottomInset),
             ) {
                 PinnedBarDensity {
                     Box(Modifier.fillMaxSize()) {

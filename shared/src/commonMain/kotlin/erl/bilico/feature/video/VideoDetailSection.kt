@@ -36,6 +36,7 @@ import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.Route
 import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.components.LocalCommentSeek
+import erl.bilico.ui.components.compactNavBarBottomPadding
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.reportTopBarBottom
@@ -216,11 +217,12 @@ internal fun VideoDetailSection(
             val showQueueFab = detailPager.currentPage == 0 && nav.playQueue.items.isNotEmpty()
             val showCommentFab = detailPager.currentPage == 1 && (state.detail?.aid ?: 0L) > 0L && replyThread.root == null
             if (showQueueFab || showCommentFab) {
+                val fabBottomInset = minOf(navBarBottom, compactNavBarBottomPadding())
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer { translationY = -detailBottomShiftPx() }
-                        .padding(bottom = navBarBottom),
+                        .padding(bottom = fabBottomInset),
                 ) {
                     PinnedBarDensity {
                         Box(Modifier.fillMaxSize()) {

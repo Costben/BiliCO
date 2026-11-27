@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
@@ -53,8 +54,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.min
 import coil3.compose.AsyncImage
+import erl.bilico.platform.platformUseCompactNavBarInset
 import erl.bilico.ui.LocalRouteIsTop
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
+import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.FullPagePullToRefreshTexts
@@ -403,6 +406,21 @@ const val FullPageRefreshHoldMillis = 200L
 @Composable
 fun navBottomPadding(): Dp =
     WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+/** 底部悬浮按钮 / 输入栏紧凑安全区：iOS 对齐悬浮底栏 8dp，Android 保持系统导航栏高度。 */
+@Composable
+fun compactNavBarBottomPadding(): Dp {
+    val density = LocalDensity.current
+    return if (platformUseCompactNavBarInset) {
+        if (WindowInsets.navigationBars.getBottom(density) > 0) {
+            BottomFloatingNavigationBarDefaults.MenuToScreenNaviDistance
+        } else {
+            0.dp
+        }
+    } else {
+        navBottomPadding()
+    }
+}
 
 /**
  * 搜索输入框内的清空按钮：

@@ -75,6 +75,7 @@ import erl.bilico.ui.reportBottomBarTop
 import erl.bilico.ui.reportTopBarBottom
 import erl.bilico.ui.components.LocalCommentSeek
 import erl.bilico.ui.components.LocalOpenBvid
+import erl.bilico.ui.components.compactNavBarBottomPadding
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.layerBackdropIf
 import erl.bilico.ui.pageContainerColor
@@ -348,7 +349,8 @@ internal fun ReplyDetailPage(
 
     val imeBottom = with(density) { WindowInsets.ime.getBottom(density).toDp() }
     val keyboardGapProgress = (imeBottom / 80.dp).coerceIn(0f, 1f)
-    val navBottom = bottomInset * (1f - keyboardGapProgress)
+    val restingBottomInset = minOf(bottomInset, compactNavBarBottomPadding())
+    val navBottom = restingBottomInset * (1f - keyboardGapProgress)
     val composerBottomPadding = 10.dp + navBottom
     val listBottomPadding = with(density) {
         val measured = bottomStackPx.toDp()
