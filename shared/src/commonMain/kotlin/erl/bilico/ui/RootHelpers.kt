@@ -281,8 +281,10 @@ internal fun ExpandLayer(
                 val p = frameProgress(progress())
                 if (!exiting && p <= 0.0005f) return@drawWithContent
                 drawContent()
-                if (!exiting || entry.minimizingToOrb || platformUsesOffscreenExpandCompositing) return@drawWithContent
-                // iOS Metal 零 saveLayer：直接设置 origin.layer.alpha，避免每帧分配/释放离屏纹理。
+                if (!exiting || entry.minimizingToOrb || platformUsesOffscreenExpandCompositing || !entry.route.isPlayback()) {
+                    return@drawWithContent
+                }
+                // 播放页保留顶层卡片淡入以避开原生 UIKitView 视频表面半透明叠层。
                 val cardAlpha = ((0.24f - p.coerceIn(0f, 1f)) / 0.18f).coerceIn(0f, 1f)
                 if (cardAlpha > 0f) drawCardSnapshot(origin.layer, bounds, alpha = cardAlpha, surface = surface)
             },
@@ -339,17 +341,20 @@ internal fun ExpandLayer(
                 }
             }
         } else {
+            val useBackCardCrossfade = exiting && !entry.minimizingToOrb && !entry.route.isPlayback()
+            fun iosContentAlpha(pClamped: Float): Float = when {
+                !exiting -> enterContentAlpha()
+                useBackCardCrossfade -> 1f - ((0.28f - pClamped) / 0.22f).coerceIn(0f, 1f)
+                else -> 1f
+            }
             Box(
                 Modifier
                     .fillMaxSize()
                     .drawBehind {
                         if (!entry.expand) return@drawBehind
                         val p = frameProgress(progress())
-                        if (exiting) {
-                            if (p < 1f) drawRect(surface)
-                            return@drawBehind
-                        }
-                        val ca = enterContentAlpha()
+                        val pClamped = p.coerceIn(0f, 1f)
+                        val ca = iosContentAlpha(pClamped)
                         if (p < 1f || ca < 0.999f) {
                             drawRect(surface)
                             if (ca < 0.999f) drawCardSnapshot(origin.layer, bounds, alpha = 1f, surface = null)
@@ -366,7 +371,7 @@ internal fun ExpandLayer(
                             return@graphicsLayer
                         }
                         val pClamped = frameProgress(progress()).coerceIn(0f, 1f)
-                        alpha = if (exiting) 1f else enterContentAlpha()
+                        alpha = iosContentAlpha(pClamped)
                         translationY = -statusBarTop * (1f - pClamped)
                     },
             ) {
@@ -475,37 +480,29 @@ internal fun ExitSnapshotHost(
     content: @Composable () -> Unit,
 ) {
     val exitLayer = rememberGraphicsLayer()
-    var snapshotReady by remember { mutableStateOf(false) }
-    if ((!exiting || hasSurfaceView) && snapshotReady) {
-        snapshotReady = false
+    val recordedRef = remember { BooleanArray(1) }
+    val active = exiting && !hasSurfaceView
+    if (!active) {
+        recordedRef[0] = false
     }
     Box(
         Modifier
             .fillMaxSize()
             .then(
-                when {
-                    snapshotReady -> Modifier.drawBehind { drawLayer(exitLayer) }
-                    exiting && !hasSurfaceView -> Modifier.drawWithContent {
-                        exitLayer.record { this@drawWithContent.drawContent() }
+                if (active) {
+                    Modifier.drawWithContent {
+                        if (!recordedRef[0]) {
+                            exitLayer.record { this@drawWithContent.drawContent() }
+                            recordedRef[0] = true
+                        }
                         drawLayer(exitLayer)
-                        snapshotReady = true
                     }
-                    else -> Modifier
+                } else {
+                    Modifier
                 },
             ),
     ) {
-        Box(
-            if (snapshotReady) {
-                Modifier.layout { measurable, constraints ->
-                    measurable.measure(constraints)
-                    layout(0, 0) { }
-                }
-            } else {
-                Modifier.fillMaxSize()
-            },
-        ) {
-            content()
-        }
+        content()
     }
 }
 

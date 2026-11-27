@@ -158,15 +158,20 @@ internal fun RouteLayer(
         LocalNavigationEventDispatcherOwner provides routeDispatcherOwner,
     ) {
         val bypassExitSnapshot = entry.hasSurfaceView || entry.route.isPlayback()
+        val slideDriverIndex = if (slideDriver != null) nav.stack.indexOf(slideDriver) else -1
+        val belowSlideDriver = !isMinimized && index >= 0 && slideDriverIndex > 0 && index == slideDriverIndex - 1
+        val freezeSelf = !bypassExitSnapshot && ((entry.expand && entry.animating) || entry.exiting || entry.previewing)
+        val freezeBelow = belowSlideDriver && !bypassExitSnapshot && slideDriver != null && slideDriver.belowFrozen
+        val freezeSnapshot = freezeSelf || freezeBelow
         Box(layer.then(freezeLayout)) {
             if (entry.hasExpandOrigin || entry.route.isPlayback() || entry.route is Route.Opus) {
                 ExpandLayer(entry, screenCorner, progress, { entry.fade.value }, { entry.offset.value }) {
-                    ExitSnapshotHost(exiting = entry.exiting, hasSurfaceView = bypassExitSnapshot) {
+                    ExitSnapshotHost(exiting = freezeSnapshot, hasSurfaceView = bypassExitSnapshot) {
                         RouteContent(entry.route, nav, container)
                     }
                 }
             } else {
-                ExitSnapshotHost(exiting = entry.exiting, hasSurfaceView = bypassExitSnapshot) {
+                ExitSnapshotHost(exiting = freezeSnapshot, hasSurfaceView = bypassExitSnapshot) {
                     RouteContent(entry.route, nav, container)
                 }
             }

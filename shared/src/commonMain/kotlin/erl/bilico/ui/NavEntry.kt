@@ -27,6 +27,12 @@ class NavEntry(
     /** 返回手势把它拉出去的过程中为 true，还没真的出栈。 */
     var previewing by mutableStateOf(false)
 
+    /** 进退场动画实际播放期间为 true（首帧组合与顶栏对齐完成后置位）。 */
+    var animating by mutableStateOf(false)
+
+    /** 底层页面已准备好冻结为单张静态 GPU 快照时为 true。 */
+    var belowFrozen by mutableStateOf(false)
+
     /** 最小化或从融合球还原期间，临时接管展开/收起锚点，不覆盖卡片原始 origin。 */
     var orbOverrideOrigin by mutableStateOf<ExpandOrigin?>(null)
     var minimizingToOrb by mutableStateOf(false)

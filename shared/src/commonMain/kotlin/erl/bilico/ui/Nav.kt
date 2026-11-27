@@ -83,6 +83,9 @@ class ExpandOrigin(
     /** 拍一下让卡片重画并重录 [layer]。快照取的是点击那一刻的卡片样子。 */
     var refreshKey by mutableIntStateOf(0)
 
+    /** 仅在点击进场与退场瞬间置 true，空闲滚动时跳过每帧离屏录制。 */
+    var recording by mutableStateOf(false)
+
     /** 卡片所在的列表。返回时用它把行挪出浮动栏，落点才不会被栏压住。 */
     var listState: RowScrollState? = null
 
@@ -119,84 +122,16 @@ fun Modifier.expandOrigin(origin: ExpandOrigin): Modifier {
         )
     }
         .drawWithContent {
-            // 读一下 key：请求刷新时这个 draw 失效，就会用卡片此刻的样子重录。
-            origin.refreshKey
-            origin.layer.record { this@drawWithContent.drawContent() }
-            if (visibility?.isHidden(origin, currentEntry) != true) {
-                drawLayer(origin.layer)
+            val hidden = visibility?.isHidden(origin, currentEntry) == true
+            if (origin.recording || hidden) {
+                origin.refreshKey
+                origin.layer.record { this@drawWithContent.drawContent() }
+                if (!hidden) drawLayer(origin.layer)
+            } else {
+                drawContent()
             }
         }
 }
-
-sealed interface Route {
-    data object Main : Route
-    data class Video(
-        val bvid: String,
-        val startSec: Long = 0L,
-        val cid: Long = 0L,
-        val commentRootId: Long = 0L,
-        val commentTargetId: Long = 0L,
-        val commentMatchAuthor: String = "",
-        val commentMatchText: String = "",
-        val offline: Boolean = false,
-        /** 推荐流下发的商业推广（小火箭）内容，只在详情页标题前标注。 */
-        val promoted: Boolean = false,
-    ) : Route
-    data class LiveRoom(val roomId: Long) : Route
-    data class Space(val mid: Long) : Route
-    data class SpaceCollection(val mid: Long, val collectionId: Long, val isSeason: Boolean, val title: String, val total: Int = 0) : Route
-    data object History : Route
-    data object Favorites : Route
-    data class FavoriteFolder(val mediaId: Long, val title: String) : Route
-    data object WatchLater : Route
-    data object Downloads : Route
-    data object Following : Route
-    data object Settings : Route
-    data object StatsOverlaySettings : Route
-    data object BlockManager : Route
-    data object About : Route
-    data class Pgc(
-        val seasonId: Long,
-        val epId: Long = 0L,
-        val startSec: Long = 0L,
-        val offline: Boolean = false,
-    ) : Route
-    data object Messages : Route
-    data object BangumiFollow : Route
-    data object Login : Route
-    data object WebLogin : Route
-    data object WebProfileEdit : Route
-    data class EmoteManager(val url: String) : Route
-    data class WebPage(val url: String, val title: String = "网页") : Route
-    data object Update : Route
-    data class Article(
-        val cvId: Long,
-        val title: String = "",
-        val commentRootId: Long = 0L,
-        val commentTargetId: Long = 0L,
-        val commentMatchAuthor: String = "",
-        val commentMatchText: String = "",
-    ) : Route
-    data class Opus(
-        val dynamicId: String,
-        val title: String = "",
-        val commentRootId: Long = 0L,
-        val commentTargetId: Long = 0L,
-        val commentMatchAuthor: String = "",
-        val commentMatchText: String = "",
-    ) : Route
-    data class Chat(val talkerId: Long, val talkerName: String = "", val talkerFace: String = "") : Route
-    data class Search(val query: String = "") : Route
-}
-
-fun Route.isPlayback(): Boolean = this is Route.Video || this is Route.Pgc || this is Route.LiveRoom
-
-/** 该页面上允许展示或退回右下角播放融合球（排除其他播放页及登录/聊天等独立模态页）。 */
-fun Route.supportsOrbOverlay(): Boolean = this == Route.Main || (
-    !isPlayback() && this !is Route.Chat && this !is Route.Login &&
-        this !is Route.WebLogin && this !is Route.WebProfileEdit &&
-        this !is Route.EmoteManager && this !is Route.WebPage
-    )
 
 val LocalNavState = staticCompositionLocalOf<NavState?> { null }
 
@@ -287,12 +222,15 @@ class NavState {
         }
         val entry = NavEntry(route, origin, initialProgress = 0f, initialFade = 0f)
         stack.add(entry)
+        entry.origin?.let {
+            it.recording = true
+            it.refreshKey++
+        }
         var deferredDiscard: NavEntry? = null
         if (prevMinimized != null) {
             val wasInFlightOrb = prevMinimized !== minimizedEntry
             prevMinimized.minimizingToOrb = false
             if (sameVideoPlayer) {
-                // 这时新页已在栈里，旧页出栈不会再把播放器一起放掉，可以立刻撤掉它的组合。
                 if (wasInFlightOrb) {
                     stack.remove(prevMinimized)
                     prevMinimized.discard()
@@ -300,13 +238,13 @@ class NavState {
                     dismissMinimized(pausePlayback = false)
                 }
             } else {
-                // 跨类型切换要换掉另一台播放器：把释放挪到进场动画之外。
                 if (wasInFlightOrb) stack.remove(prevMinimized) else minimizedEntry = null
                 deferredDiscard = prevMinimized
             }
         }
         val scope = host
         if (scope == null) {
+            entry.origin?.recording = false
             deferredDiscard?.discard()
             return
         }
@@ -314,7 +252,10 @@ class NavState {
             repeat(2) { withFrameNanos { } }
             val expand = entry.expand
             if (!expand) entry.fade.snapTo(1f)
+            if (expand) entry.progress.snapTo(0.002f)
             val millis = if (expand) ExpandEnterMillis else RouteSlideMillis
+            entry.animating = true
+            entry.belowFrozen = true
             try {
                 coroutineScope {
                     launch {
@@ -333,13 +274,13 @@ class NavState {
                     }
                 }
             } finally {
-                // 进场中途被返回或被别的页切走：这一轮静音的旧视频没有被新页接手，
-                // 必须在这里停掉，否则球里那条会静音着在后台继续播。
+                entry.animating = false
+                entry.belowFrozen = false
+                entry.origin?.recording = false
                 if (sameVideoPlayer && !sameBvid && (entry.exiting || stack.lastOrNull() !== entry)) {
                     appContext?.let(PlaybackBridge::stopForRouteSwitch)
                 }
             }
-            // 这时详情页已经把列表盖住了，挪行看不见；返回时卡片已经在栏下方。
             alignCardBelowBar(entry.origin)
             deferredDiscard?.discard()
         }
@@ -369,6 +310,7 @@ class NavState {
         val targetOrb = if (shouldMinimizeOnPop(entry)) minimizeTargetOrigin(entry) else null
         val minimize = targetOrb?.bounds != null
         if (minimize) {
+            targetOrb.recording = true
             targetOrb.refreshKey++
             entry.orbOverrideOrigin = targetOrb
             entry.minimizingToOrb = true
@@ -376,12 +318,14 @@ class NavState {
             if (entry.route.isPlayback()) {
                 appContext?.let(PlaybackBridge::pauseAndStopSession)
             }
-            if (entry.expand) entry.origin?.let { it.refreshKey++ }
+            if (entry.expand) entry.origin?.let { it.recording = true; it.refreshKey++ }
         }
         val wasPreviewing = entry.previewing
         entry.exiting = true
         val scope = host
         if (scope == null) {
+            entry.origin?.recording = false
+            entry.orbOverrideOrigin?.recording = false
             if (minimize) {
                 entry.exiting = false
                 entry.minimizingToOrb = false
@@ -404,44 +348,52 @@ class NavState {
             val remaining = entry.progress.value.coerceIn(0f, 1f)
             val baseRemaining = (baseMillis * remaining).toInt().coerceAtLeast(1)
             val hasFlingOffset = entry.offset.value != Offset.Zero || initialOffsetVelocity != Offset.Zero
-            // 跟手甩出或缩进融合球时留足平滑收尾时长，避免过快骤缩。
             val millis = when {
                 minimize && expand -> maxOf(baseRemaining, 320)
                 expand && hasFlingOffset -> maxOf(baseRemaining, PredictiveBackMotionDefaults.MIN_CARD_FLING_EXIT_MILLIS)
                 else -> baseRemaining
             }
-            coroutineScope {
-                launch {
-                    // 允许回弹时走桌面图标回弹弹簧，缩进融合球走柔和减速曲线。
-                    val bounce = expand && !minimize && returnBounce()
-                    val spec: AnimationSpec<Float> = when {
-                        bounce -> ExpandReturnSpringSpec
-                        minimize && expand -> tween(millis, easing = OrbMinimizeEasing)
-                        else -> tween(millis, easing = ExpandEasing)
-                    }
-                    entry.progress.animateTo(
-                        targetValue = 0f,
-                        animationSpec = spec,
-                        initialVelocity = if (bounce) initialProgressVelocity else 0f,
-                    )
-                }
-                if (expand) {
+            entry.animating = true
+            entry.belowFrozen = true
+            if (!wasPreviewing) withFrameNanos { }
+            try {
+                coroutineScope {
                     launch {
-                        entry.fade.animateTo(
+                        val bounce = expand && !minimize && returnBounce()
+                        val spec: AnimationSpec<Float> = when {
+                            bounce -> ExpandReturnSpringSpec
+                            minimize && expand -> tween(millis, easing = OrbMinimizeEasing)
+                            else -> tween(millis, easing = ExpandEasing)
+                        }
+                        entry.progress.animateTo(
                             targetValue = 0f,
-                            animationSpec = tween(millis, easing = ExpandEasing),
+                            animationSpec = spec,
+                            initialVelocity = if (bounce) initialProgressVelocity else 0f,
                         )
                     }
-                }
-                if (hasFlingOffset) {
-                    launch {
-                        if (minimize && expand) {
-                            entry.offset.animateTo(Offset.Zero, tween(millis, easing = OrbMinimizeEasing))
-                        } else {
-                            entry.returnFlingOffset(initialOffsetVelocity)
+                    if (expand) {
+                        launch {
+                            entry.fade.animateTo(
+                                targetValue = 0f,
+                                animationSpec = tween(millis, easing = ExpandEasing),
+                            )
+                        }
+                    }
+                    if (hasFlingOffset) {
+                        launch {
+                            if (minimize && expand) {
+                                entry.offset.animateTo(Offset.Zero, tween(millis, easing = OrbMinimizeEasing))
+                            } else {
+                                entry.returnFlingOffset(initialOffsetVelocity)
+                            }
                         }
                     }
                 }
+            } finally {
+                entry.animating = false
+                entry.belowFrozen = false
+                entry.origin?.recording = false
+                entry.orbOverrideOrigin?.recording = false
             }
             if (minimize && entry.minimizingToOrb) {
                 finalizeMinimize(entry)
@@ -455,17 +407,28 @@ class NavState {
     fun preparePredictivePop(entry: NavEntry) {
         val targetOrb = if (shouldMinimizeOnPop(entry)) minimizeTargetOrigin(entry) else null
         if (targetOrb?.bounds != null) {
+            targetOrb.recording = true
             targetOrb.refreshKey++
             entry.orbOverrideOrigin = targetOrb
             entry.minimizingToOrb = true
+            entry.belowFrozen = true
         } else if (entry.expand) {
-            entry.origin?.let { it.refreshKey++ }
+            entry.origin?.let { it.recording = true; it.refreshKey++ }
+            host?.launch {
+                alignCardBelowBar(entry.origin)
+                if (entry.previewing && !entry.exiting) entry.belowFrozen = true
+            }
+        } else {
+            entry.belowFrozen = true
         }
     }
 
     fun cancelPredictivePop(entry: NavEntry) {
         entry.previewing = false
         entry.minimizingToOrb = false
+        entry.belowFrozen = false
+        entry.origin?.recording = false
+        entry.orbOverrideOrigin?.recording = false
         entry.orbOverrideOrigin = null
     }
 
@@ -477,7 +440,7 @@ class NavState {
         } else {
             secondaryOrbOrigin ?: orbOrigin
         }
-        origin?.let { it.refreshKey++ }
+        origin?.let { it.recording = true; it.refreshKey++ }
         minimizedEntry = null
         entry.orbOverrideOrigin = origin
         entry.minimizingToOrb = false
@@ -492,23 +455,31 @@ class NavState {
             val expand = entry.expand
             if (!expand) entry.fade.snapTo(1f)
             val millis = if (expand) ExpandEnterMillis else RouteSlideMillis
-            coroutineScope {
-                launch {
-                    entry.progress.animateTo(
-                        targetValue = 1f,
-                        animationSpec = tween(millis, easing = ExpandInEasing),
-                    )
-                }
-                if (expand) {
+            entry.animating = true
+            entry.belowFrozen = true
+            try {
+                coroutineScope {
                     launch {
-                        entry.fade.animateTo(
+                        entry.progress.animateTo(
                             targetValue = 1f,
-                            animationSpec = tween(ExpandEnterMillis, easing = ExpandInEasing),
+                            animationSpec = tween(millis, easing = ExpandInEasing),
                         )
                     }
+                    if (expand) {
+                        launch {
+                            entry.fade.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(ExpandEnterMillis, easing = ExpandInEasing),
+                            )
+                        }
+                    }
                 }
+            } finally {
+                entry.animating = false
+                entry.belowFrozen = false
+                origin?.recording = false
+                entry.orbOverrideOrigin = null
             }
-            entry.orbOverrideOrigin = null
         }
     }
 
@@ -574,6 +545,10 @@ class NavState {
     /** 返回手势已经把进度拉到 0 的条目：直接出栈，不再播一次动画。 */
     fun completePredictivePop(entry: NavEntry) {
         if (stack.lastOrNull() === entry) {
+            entry.animating = false
+            entry.belowFrozen = false
+            entry.origin?.recording = false
+            entry.orbOverrideOrigin?.recording = false
             if (entry.minimizingToOrb) {
                 entry.exiting = false
                 entry.previewing = false

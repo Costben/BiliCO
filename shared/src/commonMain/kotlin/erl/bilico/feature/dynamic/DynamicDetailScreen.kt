@@ -1,16 +1,8 @@
 package erl.bilico.feature.dynamic
 
 import erl.bilico.platform.showToast
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -18,8 +10,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -31,23 +21,26 @@ import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
 import erl.bilico.platform.LocalPlatformContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.data.model.Comment
+import erl.bilico.data.model.CommentSort
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.data.model.DynamicItemUi
 import erl.bilico.data.util.Formatters
@@ -56,23 +49,27 @@ import erl.bilico.feature.comment.BiliCommentItem
 import erl.bilico.feature.comment.CommentComposerSheet
 import erl.bilico.feature.comment.CommentSortTabRow
 import erl.bilico.feature.comment.CommentViewModel
+import erl.bilico.feature.comment.ExitCommentCard
+import erl.bilico.feature.comment.LocalCommentTarget
 import erl.bilico.feature.comment.ReplyDetailOverlay
 import erl.bilico.feature.comment.ReplyThreadController
+import erl.bilico.feature.comment.SortCrossfadeListOverlay
+import erl.bilico.feature.comment.rememberSortCrossfadeTransition
 import erl.bilico.ui.BlurEffectsEnabled
-import erl.bilico.ui.ExpandEasing
 import erl.bilico.ui.LocalImageOriginRowKey
 import erl.bilico.ui.LocalImageOriginScope
+import erl.bilico.ui.LocalRouteTransition
 import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.Route
 import erl.bilico.ui.TopBarBounds
 import erl.bilico.ui.asRowScrollState
-import erl.bilico.player.LocalInPipMode
 import erl.bilico.ui.components.BackIconButton
 import erl.bilico.ui.components.EmptyState
 import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.LoadingState
+import erl.bilico.ui.components.compactNavBarBottomPadding
 import erl.bilico.ui.components.navBottomPadding
 import erl.bilico.ui.glassBarContentTop
 import erl.bilico.ui.layerBackdropIf
@@ -80,23 +77,16 @@ import erl.bilico.ui.pageContainerColor
 import erl.bilico.ui.pinnedHeight
 import erl.bilico.ui.rememberImageOriginScope
 import erl.bilico.ui.rememberListTopBarScrollBehavior
-import erl.bilico.ui.reportBottomBarTop
 import erl.bilico.ui.reportTopBarBottom
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
-import io.github.suqi8.coui.kmp.basic.BottomFloatingAccessoryNavigationBarDefaults
-import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
-import io.github.suqi8.coui.kmp.basic.FloatingActionButton
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
-import io.github.suqi8.coui.kmp.icon.COUIIcons
-import io.github.suqi8.coui.kmp.icon.extended.Send
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -128,12 +118,32 @@ fun DynamicDetailScreen(
     val scope = rememberCoroutineScope()
     val account by container.session.account.collectAsStateWithLifecycle()
     val currentMid = account?.mid ?: container.session.mid()
+    val routeTransition = LocalRouteTransition.current
+    var enterSettled by remember {
+        mutableStateOf(
+            routeTransition == null || (!routeTransition.exiting() && routeTransition.progress() >= 0.999f),
+        )
+    }
+    if (!enterSettled && routeTransition != null) {
+        LaunchedEffect(routeTransition) {
+            while (!routeTransition.exiting() && routeTransition.progress() < 0.999f) {
+                withFrameNanos { }
+            }
+            enterSettled = true
+        }
+    }
 
     LaunchedEffect(cleanId, reloadTrigger) {
-        if (item == null) isLoading = true
+        val seeded = item != null
+        if (!seeded) isLoading = true
         error = null
         container.dynamic.detail(cleanId)
             .onSuccess { fetched ->
+                if (seeded && routeTransition != null) {
+                    while (!routeTransition.exiting() && routeTransition.progress() < 0.999f) {
+                        withFrameNanos { }
+                    }
+                }
                 val current = item
                 item = if (current != null && current.dynamicId == fetched.dynamicId && current.liked != fetched.liked) {
                     fetched.copy(liked = current.liked, likeCount = current.likeCount)
@@ -164,6 +174,21 @@ fun DynamicDetailScreen(
         null
     }
     val commentState = commentViewModel?.state?.collectAsStateWithLifecycle()?.value
+    val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
+    val visibleComments = remember(commentState?.items, blocks, enterSettled) {
+        if (!enterSettled) emptyList()
+        else commentState?.items.orEmpty().mapNotNull { blocks.filterCommentTree(it) }
+    }
+    val listState = rememberLazyListState()
+    val sortTransition = rememberSortCrossfadeTransition(
+        renderedSort = commentState?.renderedSort ?: CommentSort.Hot,
+        items = visibleComments,
+        resetKey = commentOid,
+        scrollIndexProvider = { listState.firstVisibleItemIndex },
+        scrollOffsetProvider = { listState.firstVisibleItemScrollOffset },
+    )
+    var cardHeightPx by remember(cleanId) { mutableIntStateOf(0) }
+    var commentHeaderHeightPx by remember(cleanId) { mutableIntStateOf(0) }
     val replyThread = remember(cleanId) { ReplyThreadController() }
     var composeTarget by remember { mutableStateOf<DynComposeTarget?>(null) }
 
@@ -175,13 +200,13 @@ fun DynamicDetailScreen(
         }
     }
 
-    val listState = rememberLazyListState()
     BindScrollToTop(listState)
-    LaunchedEffect(commentState?.focusRootId, commentState?.items?.size) {
+    LaunchedEffect(commentState?.focusRootId, visibleComments.size, enterSettled) {
         val focusId = commentState?.focusRootId ?: 0L
-        if (focusId > 0L && !commentState?.items.isNullOrEmpty()) {
-            listState.animateScrollToItem(1)
-            commentViewModel.consumeFocusTarget()
+        if (enterSettled && focusId > 0L && visibleComments.isNotEmpty()) {
+            val idx = visibleComments.indexOfFirst { it.id == focusId }
+            listState.animateScrollToItem(if (idx >= 0) 2 + idx else 1)
+            commentViewModel?.consumeFocusTarget()
         }
     }
 
@@ -210,10 +235,19 @@ fun DynamicDetailScreen(
     val rowScrollState = remember(listState) { listState.asRowScrollState() }
     val imageOriginScope = rememberImageOriginScope(listState, topBarBounds)
 
+    val listPadding = PaddingValues(
+        start = 12.dp,
+        top = glassBarContentTop(topBarHeight, 10.dp),
+        end = 12.dp,
+        bottom = 88.dp + navBottomPadding(),
+    )
+    val compactBottomInset = compactNavBarBottomPadding()
+
     Box(Modifier.fillMaxSize().background(pageColor)) {
         CompositionLocalProvider(
             LocalTopBarBounds provides topBarBounds,
             LocalImageOriginScope provides imageOriginScope,
+            LocalCommentTarget provides (commentOid to commentType),
         ) {
             Box(
                 Modifier
@@ -227,13 +261,7 @@ fun DynamicDetailScreen(
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .scrollEndHaptic(),
-                contentPadding = PaddingValues(
-                    start = 12.dp,
-                    top = glassBarContentTop(topBarHeight, 10.dp),
-                    end = 12.dp,
-                    bottom = 88.dp + navBottomPadding(),
-                ),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = listPadding,
             ) {
                 when {
                     currentItem == null && isLoading -> item(key = "loading") {
@@ -253,6 +281,7 @@ fun DynamicDetailScreen(
                             CompositionLocalProvider(LocalImageOriginRowKey provides "dynamic-card") {
                             DynamicCard(
                                 item = currentItem,
+                                modifier = Modifier.onSizeChanged { cardHeightPx = it.height },
                                 isDetail = true,
                                 onOpenUser = { mid -> nav.push(Route.Space(mid)) },
                                 onOpenVideo = { bvid, origin -> nav.push(Route.Video(bvid), origin) },
@@ -304,63 +333,57 @@ fun DynamicDetailScreen(
                         }
 
                         if (commentViewModel != null && commentState != null) {
-                            item(key = "comment-section") {
-                                CompositionLocalProvider(LocalImageOriginRowKey provides "comment-section") {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                            item(key = "comment-header") {
+                                val totalComments = maxOf(commentState.total, currentItem.commentCount)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onSizeChanged { commentHeaderHeightPx = it.height }
+                                        .padding(top = 14.dp, bottom = 2.dp, start = 4.dp, end = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    val totalComments = maxOf(commentState.total, currentItem.commentCount)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(bottom = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = "评论 ${Formatters.formatStat(totalComments.toLong())}",
-                                            style = COUITheme.textStyles.body1,
-                                            fontWeight = FontWeight.Medium,
-                                            modifier = Modifier.weight(1f),
+                                    Text(
+                                        text = "评论 ${Formatters.formatStat(totalComments.toLong())}",
+                                        style = COUITheme.textStyles.body1,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    CommentSortTabRow(
+                                        sort = commentState.sort,
+                                        onSelectSort = commentViewModel::selectSort,
+                                    )
+                                }
+                            }
+
+                            when {
+                                !enterSettled || (commentState.isLoading && sortTransition.currentItems.isEmpty()) ->
+                                    item(key = "comment-loading") { LoadingState() }
+
+                                sortTransition.currentItems.isEmpty() -> item(key = "comment-empty") {
+                                    if (commentState.error != null) {
+                                        ErrorState(
+                                            commentState.error.orEmpty(),
+                                            onRetry = commentViewModel::refresh,
                                         )
-                                        CommentSortTabRow(
-                                            sort = commentState.sort,
-                                            onSelectSort = commentViewModel::selectSort,
-                                        )
+                                    } else {
+                                        EmptyState("还没有评论")
                                     }
+                                }
 
-                                    when {
-                                        commentState.isLoading && commentState.items.isEmpty() ->
-                                            LoadingState()
-
-                                        commentState.items.isEmpty() -> if (commentState.error != null) {
-                                            ErrorState(
-                                                commentState.error.orEmpty(),
-                                                onRetry = commentViewModel::refresh,
-                                            )
-                                        } else {
-                                            EmptyState("还没有评论")
-                                        }
-
-                                        else -> {
-                                            val blocks by container.blocks.snapshot.collectAsStateWithLifecycle()
-                                            val visibleComments = remember(commentState.items, blocks) {
-                                                commentState.items.mapNotNull { blocks.filterCommentTree(it) }
-                                            }
-                                            val sortTransition = erl.bilico.feature.comment.rememberSortCrossfadeTransition(
-                                                renderedSort = commentState.renderedSort,
-                                                items = visibleComments,
-                                                resetKey = commentOid,
-                                            )
-                                            Box(Modifier.fillMaxWidth()) {
-                                            Column(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalArrangement = Arrangement.spacedBy(18.dp),
+                                else -> {
+                                    items(
+                                        items = sortTransition.currentItems,
+                                        key = { it.id },
+                                        contentType = { "dynamic-comment" },
+                                    ) { comment ->
+                                        CompositionLocalProvider(LocalImageOriginRowKey provides comment.id) {
+                                            Card(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 10.dp),
+                                                insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                                onClick = { replyThread.open(comment) },
                                             ) {
-                                                androidx.compose.runtime.CompositionLocalProvider(
-                                                    erl.bilico.feature.comment.LocalCommentTarget provides (commentOid to commentType),
-                                                ) {
-                                                sortTransition.currentItems.forEach { comment ->
                                                 BiliCommentItem(
                                                     comment = comment,
                                                     onLike = {
@@ -384,60 +407,63 @@ fun DynamicDetailScreen(
                                                             composeTarget = DynComposeTarget.Reply(comment)
                                                         }
                                                     },
-                                                    onOpenReplies = {
-                                                        replyThread.open(it)
-                                                    },
+                                                    onOpenReplies = { replyThread.open(it) },
                                                     onOpenUser = { mid -> nav.push(Route.Space(mid)) },
                                                     onOpenImage = { imgs, idx -> imageViewer = imgs to idx },
                                                     currentMid = currentMid,
                                                     onDelete = { commentViewModel.deleteComment(comment) },
                                                     onClick = { replyThread.open(comment) },
                                                 )
-                                                }
-                                                }
-                                                when {
-                                                    commentState.isLoadingMore -> Box(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(40.dp),
-                                                        contentAlignment = Alignment.Center,
-                                                    ) {
-                                                        CircularProgressIndicator(
-                                                            modifier = Modifier.size(18.dp),
-                                                            size = 18.dp,
-                                                        )
-                                                    }
-
-                                                    commentState.isEnd -> Box(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(36.dp),
-                                                        contentAlignment = Alignment.Center,
-                                                    ) {
-                                                        Text(
-                                                            text = "没有更多评论了",
-                                                            style = COUITheme.textStyles.footnote2,
-                                                            color = COUITheme.colorScheme.onSurfaceSecondary,
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                            erl.bilico.feature.comment.SortCrossfadeColumnOverlay(
-                                                exitingComments = sortTransition.exitingItems,
-                                                exitAlpha = sortTransition.exitAlpha,
-                                                oid = commentOid,
-                                                type = commentType,
-                                                currentMid = currentMid,
-                                            )
                                             }
                                         }
                                     }
-                                }
+                                    when {
+                                        commentState.isLoadingMore -> item(key = "comment-more") {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(48.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(18.dp),
+                                                    size = 18.dp,
+                                                )
+                                            }
+                                        }
+
+                                        commentState.isEnd -> item(key = "comment-end") {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(44.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Text(
+                                                    text = "没有更多评论了",
+                                                    style = COUITheme.textStyles.footnote2,
+                                                    color = COUITheme.colorScheme.onSurfaceSecondary,
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+            }
+
+            SortCrossfadeListOverlay(
+                exitingItems = sortTransition.exitingItems,
+                exitAlpha = sortTransition.exitAlpha,
+                exitScrollIndex = sortTransition.exitScrollIndex,
+                exitScrollOffset = sortTransition.exitScrollOffset,
+                contentPadding = listPadding,
+                spacerHeightsPx = listOf(cardHeightPx, commentHeaderHeightPx),
+                key = { "exit-${it.id}" },
+            ) { comment ->
+                ExitCommentCard(comment = comment, currentMid = currentMid)
             }
         }
         }
@@ -467,8 +493,7 @@ fun DynamicDetailScreen(
                     text = toast,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(bottom = 20.dp)
+                        .padding(bottom = 20.dp + compactBottomInset)
                         .clip(SquircleShape(8.dp))
                         .background(Color(0xCC000000))
                         .padding(horizontal = 14.dp, vertical = 8.dp),
@@ -477,69 +502,17 @@ fun DynamicDetailScreen(
                 )
             }
 
-            val ballInteraction = remember { MutableInteractionSource() }
-            val ballPressed by ballInteraction.collectIsPressedAsState()
-            val ballScale = remember { Animatable(1f) }
-            LaunchedEffect(ballPressed) {
-                ballScale.animateTo(
-                    targetValue = if (ballPressed) 0.94f else 1f,
-                    animationSpec = if (ballPressed) {
-                        spring(dampingRatio = 0.55f, stiffness = 1400f)
+            DynamicCommentFab(
+                nav = nav,
+                topBarBounds = topBarBounds,
+                onClick = {
+                    if (!container.session.isLoggedIn()) {
+                        commentViewModel.showMessage("请先登录")
                     } else {
-                        spring(dampingRatio = 0.34f, stiffness = 420f)
-                    },
-                )
-            }
-            val orbVisible = !LocalInPipMode.current && (nav.minimizedEntry != null || nav.isMinimizingToOrb)
-            PinnedBarDensity {
-                val fabLift by animateDpAsState(
-                    targetValue = if (orbVisible) {
-                        BottomFloatingAccessoryNavigationBarDefaults.AccessorySize +
-                            BottomFloatingAccessoryNavigationBarDefaults.SideSpacing
-                    } else {
-                        0.dp
-                    },
-                    animationSpec = tween(durationMillis = 280, easing = ExpandEasing),
-                    label = "dynamicCommentFabLift",
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .navigationBarsPadding(),
-                ) {
-                    FloatingActionButton(
-                        onClick = {
-                            if (!container.session.isLoggedIn()) {
-                                commentViewModel.showMessage("请先登录")
-                            } else {
-                                composeTarget = DynComposeTarget.Main
-                            }
-                        },
-                        interactionSource = ballInteraction,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .offset(y = -fabLift)
-                            .reportBottomBarTop(topBarBounds)
-                            .padding(
-                                end = BottomFloatingAccessoryNavigationBarDefaults.PaddingHorizontal,
-                                bottom = (BottomFloatingNavigationBarDefaults.MinHeightWithoutPaddingVertical -
-                                    BottomFloatingAccessoryNavigationBarDefaults.AccessorySize) / 2,
-                            )
-                            .size(BottomFloatingAccessoryNavigationBarDefaults.AccessorySize)
-                            .graphicsLayer {
-                                scaleX = ballScale.value
-                                scaleY = ballScale.value
-                            },
-                    ) {
-                        Icon(
-                            imageVector = COUIIcons.Send,
-                            contentDescription = "发送评论",
-                            modifier = Modifier.size(24.dp),
-                            tint = COUITheme.colorScheme.onPrimary,
-                        )
+                        composeTarget = DynComposeTarget.Main
                     }
-                }
-            }
+                },
+            )
         }
     }
 
