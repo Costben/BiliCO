@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import erl.bilico.platform.LocalPlatformContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +83,7 @@ fun CommentComposerSheet(
 ) {
     val context = LocalPlatformContext.current
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val nav = LocalNavState.current
     val focusRequester = remember { FocusRequester() }
@@ -214,6 +216,7 @@ fun CommentComposerSheet(
             toast("当前页面暂不支持打开表情管理")
             return
         }
+        focusManager.clearFocus(force = true)
         keyboard?.hide()
         openedEmoteManager = true
         nav.push(Route.EmoteManager(url))
@@ -250,6 +253,8 @@ fun CommentComposerSheet(
         val text = field.text.trim()
         if ((text.isEmpty() && !(allowBlankWithPictures && pictures.isNotEmpty())) || uploading) return
         if (pictures.isEmpty()) {
+            focusManager.clearFocus(force = true)
+            keyboard?.hide()
             onSubmit(text, emptyList(), atMids)
             return
         }
@@ -265,6 +270,8 @@ fun CommentComposerSheet(
                 return@launch
             }
             uploading = false
+            focusManager.clearFocus(force = true)
+            keyboard?.hide()
             onSubmit(text, uploaded, atMids)
         }
     }
@@ -275,6 +282,7 @@ fun CommentComposerSheet(
     val bottomGap = PANEL_BOTTOM_INSET + (KEYBOARD_BOTTOM_INSET - PANEL_BOTTOM_INSET) * keyboardGapProgress
 
     fun dismiss() {
+        focusManager.clearFocus(force = true)
         keyboard?.hide()
         show = false
     }
