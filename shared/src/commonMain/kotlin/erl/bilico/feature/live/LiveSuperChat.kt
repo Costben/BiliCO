@@ -278,41 +278,52 @@ internal fun PlayerSuperChatButton(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = "醒目留言" },
+        modifier = modifier.size(40.dp),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
-                .size(width = 24.dp, height = 18.dp)
-                .border(1.5.dp, Color.White, SquircleShape(5.dp)),
+                .matchParentSize()
+                .clip(CircleShape)
+                .clickable(role = Role.Button, onClick = onClick)
+                .semantics { contentDescription = "醒目留言" },
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = "SC",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                lineHeight = 10.sp,
-            )
+            Box(
+                modifier = Modifier
+                    .size(width = 24.dp, height = 18.dp)
+                    .border(1.5.dp, Color.White, SquircleShape(5.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "SC",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    lineHeight = 10.sp,
+                )
+            }
         }
         if (count > 0) {
-            Text(
-                text = if (count > 99) "99+" else count.toString(),
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                lineHeight = 9.sp,
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 4.dp, end = 2.dp)
+                    .padding(top = 4.dp, end = 1.dp)
                     .clip(CircleShape)
                     .background(COUITheme.colorScheme.primary)
-                    .padding(horizontal = 3.dp, vertical = 0.5.dp),
-            )
+                    .padding(horizontal = 3.5.dp, vertical = 1.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (count > 99) "99+" else count.toString(),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    lineHeight = 9.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
         }
     }
 }
