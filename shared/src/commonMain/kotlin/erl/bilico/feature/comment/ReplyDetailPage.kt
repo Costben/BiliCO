@@ -191,15 +191,11 @@ internal fun ReplyDetailPage(
     val visibleReplies = remember(detailState.items, blocks) {
         detailState.items.mapNotNull { blocks.filterCommentTree(it) }
     }
-    val replySortTransition = rememberSortCrossfadeTransition(
+    val replySortTransition = rememberSortFadeTransition(
         renderedSort = detailState.renderedSort,
         items = visibleReplies,
         resetKey = comment.id,
-        scrollIndexProvider = { listState.firstVisibleItemIndex },
-        scrollOffsetProvider = { listState.firstVisibleItemScrollOffset },
     )
-    var rootHeightPx by remember(comment.id) { mutableIntStateOf(0) }
-    var subHeaderHeightPx by remember(comment.id) { mutableIntStateOf(0) }
     LaunchedEffect(comment) {
         if (comment.id == detailState.rootComment.id) {
             detailState.rootComment = comment
@@ -415,7 +411,7 @@ internal fun ReplyDetailPage(
                 ) {
                     item(key = "root_comment") {
                         CompositionLocalProvider(LocalImageOriginRowKey provides "root_comment") {
-                            Card(Modifier.fillMaxWidth().onSizeChanged { rootHeightPx = it.height }, insideMargin = PaddingValues(12.dp)) {
+                            Card(Modifier.fillMaxWidth(), insideMargin = PaddingValues(12.dp)) {
                                 BiliCommentItem(
                                     comment = detailState.rootComment,
                                     onLike = detailState::toggleRootLike, onDislike = detailState::toggleRootDislike,
@@ -431,7 +427,7 @@ internal fun ReplyDetailPage(
 
                     item(key = "sub_header") {
                         Row(
-                            modifier = Modifier.fillMaxWidth().onSizeChanged { subHeaderHeightPx = it.height }.padding(top = 14.dp, bottom = 2.dp, start = 2.dp, end = 2.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 2.dp, start = 2.dp, end = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
@@ -454,7 +450,13 @@ internal fun ReplyDetailPage(
                                 if (threadUserMids.isEmpty()) reply else reply.copy(mentions = threadUserMids + reply.mentions)
                             }
                             CompositionLocalProvider(LocalImageOriginRowKey provides reply.id) {
-                                Card(Modifier.fillMaxWidth().padding(top = 10.dp), insideMargin = PaddingValues(12.dp)) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp)
+                                        .graphicsLayer { alpha = replySortTransition.itemAlpha() },
+                                    insideMargin = PaddingValues(12.dp),
+                                ) {
                                     BiliCommentItem(
                                         comment = displayReply, onLike = { detailState.toggleLike(reply) }, onDislike = { detailState.toggleDislike(reply) },
                                         onReply = { startReply(reply, itemIndex) }, onOpenUser = onOpenUser,
@@ -471,17 +473,6 @@ internal fun ReplyDetailPage(
                             }
                         }
                     }
-                }
-
-                SortCrossfadeListOverlay(
-                    exitingItems = replySortTransition.exitingItems, exitAlpha = replySortTransition.exitAlpha,
-                    exitScrollIndex = replySortTransition.exitScrollIndex, exitScrollOffset = replySortTransition.exitScrollOffset,
-                    contentPadding = replyListPadding, spacerHeightsPx = listOf(rootHeightPx, subHeaderHeightPx), key = { "exit-${it.id}" },
-                ) { reply ->
-                    val displayReply = remember(reply, threadUserMids) {
-                        if (threadUserMids.isEmpty()) reply else reply.copy(mentions = threadUserMids + reply.mentions)
-                    }
-                    ExitCommentCard(comment = displayReply, currentMid = currentMid, isSubReply = true)
                 }
             }
 

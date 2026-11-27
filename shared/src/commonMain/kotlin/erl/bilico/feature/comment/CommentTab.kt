@@ -26,7 +26,6 @@ import io.github.suqi8.coui.kmp.basic.BottomFloatingNavigationBarDefaults
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -110,14 +108,11 @@ fun CommentTab(
     val visibleComments = remember(state.items, blocks) {
         state.items.mapNotNull { blocks.filterCommentTree(it) }
     }
-    val sortTransition = rememberSortCrossfadeTransition(
+    val sortTransition = rememberSortFadeTransition(
         renderedSort = state.renderedSort,
         items = visibleComments,
         resetKey = "$type-$oid",
-        scrollIndexProvider = { listState.firstVisibleItemIndex },
-        scrollOffsetProvider = { listState.firstVisibleItemScrollOffset },
     )
-    var headerHeightPx by remember { mutableIntStateOf(0) }
     val currentMid = account?.mid ?: container.session.mid()
     val localThreadController = remember { ReplyThreadController() }
     val threadController = replyThreadController ?: localThreadController
@@ -208,7 +203,6 @@ fun CommentTab(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .onSizeChanged { headerHeightPx = it.height }
                                     .padding(bottom = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -230,7 +224,8 @@ fun CommentTab(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 10.dp),
+                                    .padding(top = 10.dp)
+                                    .graphicsLayer { alpha = sortTransition.itemAlpha() },
                                 insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                 onClick = { threadController.open(comment) },
                             ) {
@@ -288,7 +283,8 @@ fun CommentTab(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(48.dp),
+                                        .height(48.dp)
+                                        .graphicsLayer { alpha = sortTransition.itemAlpha() },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
@@ -299,18 +295,6 @@ fun CommentTab(
                                 }
                             }
                         }
-                    }
-
-                    SortCrossfadeListOverlay(
-                        exitingItems = sortTransition.exitingItems,
-                        exitAlpha = sortTransition.exitAlpha,
-                        exitScrollIndex = sortTransition.exitScrollIndex,
-                        exitScrollOffset = sortTransition.exitScrollOffset,
-                        contentPadding = listPadding,
-                        spacerHeightsPx = listOf(headerHeightPx),
-                        key = { "exit-${it.id}" },
-                    ) { comment ->
-                        ExitCommentCard(comment = comment, currentMid = currentMid)
                     }
                 }
             }

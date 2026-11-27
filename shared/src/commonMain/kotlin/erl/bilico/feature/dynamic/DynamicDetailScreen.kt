@@ -32,8 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.onSizeChanged
 import erl.bilico.platform.LocalPlatformContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,12 +49,10 @@ import erl.bilico.feature.comment.BiliCommentItem
 import erl.bilico.feature.comment.CommentComposerSheet
 import erl.bilico.feature.comment.CommentSortTabRow
 import erl.bilico.feature.comment.CommentViewModel
-import erl.bilico.feature.comment.ExitCommentCard
 import erl.bilico.feature.comment.LocalCommentTarget
 import erl.bilico.feature.comment.ReplyDetailOverlay
 import erl.bilico.feature.comment.ReplyThreadController
-import erl.bilico.feature.comment.SortCrossfadeListOverlay
-import erl.bilico.feature.comment.rememberSortCrossfadeTransition
+import erl.bilico.feature.comment.rememberSortFadeTransition
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.LocalImageOriginRowKey
 import erl.bilico.ui.LocalImageOriginScope
@@ -180,15 +178,11 @@ fun DynamicDetailScreen(
         else commentState?.items.orEmpty().mapNotNull { blocks.filterCommentTree(it) }
     }
     val listState = rememberLazyListState()
-    val sortTransition = rememberSortCrossfadeTransition(
+    val sortTransition = rememberSortFadeTransition(
         renderedSort = commentState?.renderedSort ?: CommentSort.Hot,
         items = visibleComments,
         resetKey = commentOid,
-        scrollIndexProvider = { listState.firstVisibleItemIndex },
-        scrollOffsetProvider = { listState.firstVisibleItemScrollOffset },
     )
-    var cardHeightPx by remember(cleanId) { mutableIntStateOf(0) }
-    var commentHeaderHeightPx by remember(cleanId) { mutableIntStateOf(0) }
     val replyThread = remember(cleanId) { ReplyThreadController() }
     var composeTarget by remember { mutableStateOf<DynComposeTarget?>(null) }
 
@@ -281,7 +275,6 @@ fun DynamicDetailScreen(
                             CompositionLocalProvider(LocalImageOriginRowKey provides "dynamic-card") {
                             DynamicCard(
                                 item = currentItem,
-                                modifier = Modifier.onSizeChanged { cardHeightPx = it.height },
                                 isDetail = true,
                                 onOpenUser = { mid -> nav.push(Route.Space(mid)) },
                                 onOpenVideo = { bvid, origin -> nav.push(Route.Video(bvid), origin) },
@@ -338,7 +331,6 @@ fun DynamicDetailScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .onSizeChanged { commentHeaderHeightPx = it.height }
                                         .padding(top = 14.dp, bottom = 2.dp, start = 4.dp, end = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -380,7 +372,8 @@ fun DynamicDetailScreen(
                                             Card(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(top = 10.dp),
+                                                    .padding(top = 10.dp)
+                                                    .graphicsLayer { alpha = sortTransition.itemAlpha() },
                                                 insideMargin = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                                 onClick = { replyThread.open(comment) },
                                             ) {
@@ -436,7 +429,8 @@ fun DynamicDetailScreen(
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .height(44.dp),
+                                                    .height(44.dp)
+                                                    .graphicsLayer { alpha = sortTransition.itemAlpha() },
                                                 contentAlignment = Alignment.Center,
                                             ) {
                                                 Text(
@@ -452,18 +446,6 @@ fun DynamicDetailScreen(
                         }
                     }
                 }
-            }
-
-            SortCrossfadeListOverlay(
-                exitingItems = sortTransition.exitingItems,
-                exitAlpha = sortTransition.exitAlpha,
-                exitScrollIndex = sortTransition.exitScrollIndex,
-                exitScrollOffset = sortTransition.exitScrollOffset,
-                contentPadding = listPadding,
-                spacerHeightsPx = listOf(cardHeightPx, commentHeaderHeightPx),
-                key = { "exit-${it.id}" },
-            ) { comment ->
-                ExitCommentCard(comment = comment, currentMid = currentMid)
             }
         }
         }
