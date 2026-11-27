@@ -282,11 +282,12 @@ fun BindPlaybackSession(
     val lifecycleOwner = LocalLifecycleOwner.current
     val isTop = LocalRouteIsTop.current
     val isMinimized = LocalRouteMinimized.current
-    val activeSession = isTop || isMinimized
+    val routeEntry = LocalNavEntry.current
+    val staysInOrb = isMinimized || routeEntry?.minimizingToOrb == true
+    val activeSession = isTop || staysInOrb
     val effectiveAutoPip = autoPip && isTop
 
     val sessionOwner = remember { Any() }
-    val routeEntry = LocalNavEntry.current
     val navState = LocalNavState.current
     val inPipMode = LocalInPipMode.current
     val currentBackgroundPlay = rememberUpdatedState(backgroundPlay)

@@ -330,6 +330,12 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         installPrimaryItem(playback.item, generation, playWhenReady, controlAudioPlayer = false)
     }
 
+    private fun obtainAudioPlayer(): AVPlayer = audioPlayer ?: AVPlayer().also {
+        it.automaticallyWaitsToMinimizeStalling = true
+        it.audiovisualBackgroundPlaybackPolicy = avPlayer.audiovisualBackgroundPlaybackPolicy
+        audioPlayer = it
+    }
+
     private fun attachDirectMedia(
         generation: Int,
         videoUrl: String,
@@ -342,7 +348,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         if (localDirect != null) {
             localHttpServer = localDirect.localServer
             if (localDirect.audioItem != null) {
-                val ap = audioPlayer ?: AVPlayer().also { it.automaticallyWaitsToMinimizeStalling = true; audioPlayer = it }
+                val ap = obtainAudioPlayer()
                 applyVolume(ap)
                 ap.replaceCurrentItemWithPlayerItem(localDirect.audioItem)
             } else {
@@ -357,10 +363,7 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         }
         if (!audioUrl.isNullOrBlank()) {
             buildDirectPlayerItem(audioUrl, isAudio = true, headers = headers)?.let { aItem ->
-                val ap = audioPlayer ?: AVPlayer().also {
-                    it.automaticallyWaitsToMinimizeStalling = true
-                    audioPlayer = it
-                }
+                val ap = obtainAudioPlayer()
                 applyVolume(ap)
                 ap.replaceCurrentItemWithPlayerItem(aItem)
             }
@@ -425,8 +428,8 @@ actual class BiliPlayer actual constructor(context: PlatformContext) {
         desiredSpeed = speed.coerceIn(0.25f, 4f)
         dispatch_async(dispatch_get_main_queue()) {
             if (desiredPlayWhenReady) {
-                avPlayer.rate = desiredSpeed
-                audioPlayer?.rate = desiredSpeed
+                if (avPlayer.rate != desiredSpeed) avPlayer.rate = desiredSpeed
+                audioPlayer?.let { ap -> if (ap.rate != desiredSpeed) ap.rate = desiredSpeed }
             }
         }
     }

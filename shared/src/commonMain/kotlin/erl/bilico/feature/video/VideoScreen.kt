@@ -126,9 +126,9 @@ fun VideoScreen(
     val context = LocalPlatformContext.current
     val isTop = LocalRouteIsTop.current
     val isMinimized = LocalRouteMinimized.current
-    val isActiveRoute = isTop || isMinimized
     val playbackEntry = LocalNavEntry.current
     val staysInOrb = isMinimized || playbackEntry?.minimizingToOrb == true
+    val isActiveRoute = isTop || staysInOrb
     val player = if (stageReady || isMinimized) rememberPlaybackPlayer("video") { buildConfiguredBiliPlayer(context) } else null
     DisposableEffect(playbackEntry) {
         playbackEntry?.onDiscard = {
