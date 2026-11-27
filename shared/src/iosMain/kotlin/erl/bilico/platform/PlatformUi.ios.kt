@@ -293,12 +293,12 @@ actual fun setStatusBarDarkIcons(context: PlatformContext, darkIcons: Boolean?) 
 
 actual fun currentAppVersionCode(context: PlatformContext): Long {
     val raw = NSBundle.mainBundle.infoDictionary?.get("CFBundleVersion") as? String
-    return raw?.toLongOrNull() ?: 137L
+    return raw?.toLongOrNull() ?: 139L
 }
 
 actual fun currentAppVersionName(context: PlatformContext): String {
     val raw = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String
-    return raw?.ifBlank { null } ?: "0.4.0"
+    return raw?.ifBlank { null } ?: "0.4.1-pre"
 }
 
 private val ChipTabCausticDark = Color(0x33FFFFFF)
