@@ -108,7 +108,11 @@ fun LiveRoomScreen(
     val player = rememberPlaybackPlayer("live-$roomId") { buildConfiguredBiliPlayer(context) }
     val playbackEntry = LocalNavEntry.current
     DisposableEffect(playbackEntry, roomId) {
-        playbackEntry?.onDiscard = { releasePlaybackPlayer("live-$roomId") }
+        playbackEntry?.onDiscard = {
+            val hasOtherSameRoom = nav.stack.any { it !== playbackEntry && (it.route as? Route.LiveRoom)?.roomId == roomId } ||
+                (nav.minimizedEntry != null && nav.minimizedEntry !== playbackEntry && (nav.minimizedEntry?.route as? Route.LiveRoom)?.roomId == roomId)
+            if (!hasOtherSameRoom) releasePlaybackPlayer("live-$roomId")
+        }
         onDispose { }
     }
 

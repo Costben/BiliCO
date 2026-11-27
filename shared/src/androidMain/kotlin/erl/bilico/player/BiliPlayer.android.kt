@@ -11,6 +11,7 @@ import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -281,11 +282,16 @@ actual fun BiliPlayerSurface(
     modifier: Modifier,
 ) {
     val alphaProvider = LocalPlayerSurfaceAlpha.current
+    val ownTextureView = remember(player) { arrayOfNulls<TextureView>(1) }
     DisposableEffect(player) {
         onDispose {
-            player.attachedTextureView?.let { player.exoPlayer.clearVideoTextureView(it) }
-            player.attachedTextureView = null
-            player.attachedAspectLayout = null
+            val owned = ownTextureView[0]
+            ownTextureView[0] = null
+            if (owned != null && player.attachedTextureView === owned) {
+                player.exoPlayer.clearVideoTextureView(owned)
+                player.attachedTextureView = null
+                player.attachedAspectLayout = null
+            }
         }
     }
     AndroidView(
@@ -313,6 +319,7 @@ actual fun BiliPlayerSurface(
             aspectLayout.addView(textureView)
             container.addView(aspectLayout)
             container.tag = aspectLayout to textureView
+            ownTextureView[0] = textureView
             player.attachedAspectLayout = aspectLayout
             player.attachedTextureView = textureView
             val dim = player.videoSize
@@ -335,6 +342,7 @@ actual fun BiliPlayerSurface(
                 aspectLayout.setAspectRatio((dim.width.toFloat() * player.pixelWidthHeightRatio) / dim.height.toFloat())
             }
             if (player.attachedTextureView !== textureView) {
+                ownTextureView[0] = textureView
                 player.attachedAspectLayout = aspectLayout
                 player.attachedTextureView = textureView
                 player.exoPlayer.setVideoTextureView(textureView)
@@ -344,6 +352,9 @@ actual fun BiliPlayerSurface(
         onRelease = { container ->
             @Suppress("UNCHECKED_CAST")
             val (_, textureView) = container.tag as Pair<AspectRatioFrameLayout, TextureView>
+            if (ownTextureView[0] === textureView) {
+                ownTextureView[0] = null
+            }
             if (player.attachedTextureView === textureView) {
                 player.exoPlayer.clearVideoTextureView(textureView)
                 player.attachedTextureView = null

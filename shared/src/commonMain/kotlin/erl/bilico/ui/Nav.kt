@@ -200,6 +200,12 @@ class NavState {
     }
 
     fun push(route: Route, origin: ExpandOrigin? = null) {
+        if (route is Route.LiveRoom && origin == null &&
+            (minimizedEntry?.route as? Route.LiveRoom)?.roomId == route.roomId
+        ) {
+            restoreMinimized()
+            return
+        }
         // 球里那条视频要在这里让位。先停掉会话、把新页压进栈，再决定旧页什么时候释放：
         // 新页还没进栈时就不算「还有别的视频页」，旧页出栈会当场同步 release 播放器，
         // 那一下在真机上要卡三四百毫秒，正好压在手势起手的那一帧上。

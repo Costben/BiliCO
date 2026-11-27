@@ -173,10 +173,6 @@ internal fun ExpandLayer(
 ) {
     val origin = entry.activeOrigin
     val bounds = origin?.bounds
-    if (origin == null || bounds == null) {
-        Box(Modifier.fillMaxSize()) { content() }
-        return
-    }
     val statusBarTop = rememberPlatformStatusBarTopPx()
     val surface = pageContainerColor()
     val exiting = entry.exiting || entry.previewing
@@ -199,12 +195,12 @@ internal fun ExpandLayer(
         Modifier
             .fillMaxSize()
             .drawBehind {
-                if (entry.expand && !exiting && progress() > 0.0005f) {
+                if (entry.expand && origin != null && bounds != null && !exiting && progress() > 0.0005f) {
                     drawRect(Color.Black, alpha = 0.3f * progress())
                 }
             }
             .graphicsLayer {
-                if (!entry.expand) {
+                if (!entry.expand || origin == null || bounds == null) {
                     translationX = 0f
                     translationY = 0f
                     scaleX = 1f
@@ -274,7 +270,7 @@ internal fun ExpandLayer(
                 }
             }
             .drawWithContent {
-                if (!entry.expand) {
+                if (!entry.expand || origin == null || bounds == null) {
                     drawContent()
                     return@drawWithContent
                 }
@@ -294,7 +290,8 @@ internal fun ExpandLayer(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        val transitioning = entry.expand && (exiting || progress() < 1f || enterContentAlpha() < 0.999f)
+                        val transitioning = entry.expand && origin != null && bounds != null &&
+                            (exiting || progress() < 1f || enterContentAlpha() < 0.999f)
                         compositingStrategy = if (transitioning && !entry.hasSurfaceView) {
                             CompositingStrategy.Offscreen
                         } else {
@@ -302,7 +299,7 @@ internal fun ExpandLayer(
                         }
                     }
                     .drawBehind {
-                        if (!entry.expand) return@drawBehind
+                        if (!entry.expand || origin == null || bounds == null) return@drawBehind
                         val p = frameProgress(progress())
                         if (exiting) {
                             if (p < 1f) drawRect(surface)
@@ -316,7 +313,7 @@ internal fun ExpandLayer(
                     }
                     .drawWithContent {
                         drawContent()
-                        if (!entry.expand || !exiting || entry.minimizingToOrb) return@drawWithContent
+                        if (!entry.expand || origin == null || bounds == null || !exiting || entry.minimizingToOrb) return@drawWithContent
                         val cardAlpha = ((0.24f - frameProgress(progress()).coerceIn(0f, 1f)) / 0.18f).coerceIn(0f, 1f)
                         if (cardAlpha > 0f) drawCardSnapshot(origin.layer, bounds, alpha = cardAlpha, surface = surface)
                     },
@@ -325,7 +322,7 @@ internal fun ExpandLayer(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            if (!entry.expand) {
+                            if (!entry.expand || origin == null || bounds == null) {
                                 alpha = 1f
                                 translationY = 0f
                                 return@graphicsLayer
@@ -351,7 +348,7 @@ internal fun ExpandLayer(
                 Modifier
                     .fillMaxSize()
                     .drawBehind {
-                        if (!entry.expand) return@drawBehind
+                        if (!entry.expand || origin == null || bounds == null) return@drawBehind
                         val p = frameProgress(progress())
                         val pClamped = p.coerceIn(0f, 1f)
                         val ca = iosContentAlpha(pClamped)
@@ -365,7 +362,7 @@ internal fun ExpandLayer(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        if (!entry.expand) {
+                        if (!entry.expand || origin == null || bounds == null) {
                             alpha = 1f
                             translationY = 0f
                             return@graphicsLayer
