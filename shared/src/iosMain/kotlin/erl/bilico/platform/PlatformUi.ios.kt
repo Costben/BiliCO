@@ -199,12 +199,12 @@ actual fun rememberPlatformSystemBarsApplier(context: PlatformContext): CouiSyst
 
 actual fun currentAppVersionCode(context: PlatformContext): Long {
     val raw = NSBundle.mainBundle.infoDictionary?.get("CFBundleVersion") as? String
-    return raw?.toLongOrNull() ?: 139L
+    return raw?.toLongOrNull() ?: 140L
 }
 
 actual fun currentAppVersionName(context: PlatformContext): String {
     val raw = NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String
-    return raw?.ifBlank { null } ?: "0.4.1-pre"
+    return raw?.ifBlank { null } ?: "0.4.2-pre"
 }
 
 private val ChipTabCausticDark = Color(0x33FFFFFF)
