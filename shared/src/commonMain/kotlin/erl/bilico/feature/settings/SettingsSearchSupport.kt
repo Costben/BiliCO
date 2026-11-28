@@ -31,6 +31,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.ui.AppBarSurface
+import erl.bilico.ui.rememberAppBarVeiledBackdrop
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import erl.bilico.ui.MeIconPalette
 import erl.bilico.ui.PinnedBarDensity
 import erl.bilico.ui.components.BackIconButton
@@ -328,22 +330,28 @@ internal fun SettingsSearchTopBar(
         val barRowHeight = TopAppBarDefaults.SmallTopAppBarCenterHeight
         val pageBarHeight = statusBarTop + barRowHeight
         Box(modifier.fillMaxWidth()) {
+            val barScrollFraction: () -> Float = {
+                AppBarBlurOverlayDefaults.scrollAlpha(listState.topBarScrollPx(), density)
+            }
+            val barButtonBackdrop = rememberAppBarVeiledBackdrop(
+                containerColor = pageColor,
+                scrollFraction = barScrollFraction,
+            )
             AppBarSurface(
                 modifier = Modifier.fillMaxWidth(),
                 containerColor = pageColor,
-                scrollFraction = {
-                    AppBarBlurOverlayDefaults.scrollAlpha(listState.topBarScrollPx(), density)
-                },
+                scrollFraction = barScrollFraction,
             ) {
                 Box(Modifier.fillMaxWidth().height(pageBarHeight))
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = statusBarTop)
-                    .height(barRowHeight),
-                contentAlignment = Alignment.Center,
-            ) {
+            CompositionLocalProvider(LocalBackdrop provides barButtonBackdrop) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = statusBarTop)
+                        .height(barRowHeight),
+                    contentAlignment = Alignment.Center,
+                ) {
                 TopAppBarSearchBar(
                     query = query,
                     onQueryChange = onQueryChange,
@@ -389,6 +397,7 @@ internal fun SettingsSearchTopBar(
                         }
                     },
                 )
+                }
             }
         }
     }

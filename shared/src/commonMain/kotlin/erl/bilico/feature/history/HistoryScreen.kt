@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,6 +52,7 @@ import erl.bilico.di.AppContainer
 import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.showToast
 import erl.bilico.ui.AppBarSurface
+import erl.bilico.ui.rememberAppBarVeiledBackdrop
 import erl.bilico.ui.LocalRouteIsTop
 import erl.bilico.ui.NavState
 import erl.bilico.ui.Route
@@ -82,6 +84,7 @@ import io.github.suqi8.coui.kmp.basic.TopAppBarSearchBar
 import io.github.suqi8.coui.kmp.basic.couiTopAppBarActionItem
 import io.github.suqi8.coui.kmp.basic.fullPagePullToRefreshColors
 import io.github.suqi8.coui.kmp.basic.rememberFullPagePullToRefreshState
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.More
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
@@ -208,26 +211,33 @@ fun HistoryScreen(
             val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val currentTab = HistoryTab.entries[pagerState.currentPage]
             Box(Modifier.fillMaxWidth()) {
+                val barColor = pageContainerColor()
+                val barScrollFraction: () -> Float = {
+                    pagerTopBarScrollAlpha(pagerState, HistoryTab.entries.size, density) { idx ->
+                        tabListStates[HistoryTab.entries[idx]]?.topBarScrollPx() ?: 0f
+                    }
+                }
+                val barButtonBackdrop = rememberAppBarVeiledBackdrop(
+                    containerColor = barColor,
+                    scrollFraction = barScrollFraction,
+                )
                 AppBarSurface(
                     modifier = Modifier.matchParentSize(),
-                    containerColor = pageContainerColor(),
-                    scrollFraction = {
-                        pagerTopBarScrollAlpha(pagerState, HistoryTab.entries.size, density) { idx ->
-                            tabListStates[HistoryTab.entries[idx]]?.topBarScrollPx() ?: 0f
-                        }
-                    },
+                    containerColor = barColor,
+                    scrollFraction = barScrollFraction,
                 )
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = statusBarTop),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    CompositionLocalProvider(LocalBackdrop provides barButtonBackdrop) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
                         TopAppBarSearchBar(
                             query = state.searchQuery,
                             onQueryChange = viewModel::onSearchQueryChange,
@@ -307,6 +317,7 @@ fun HistoryScreen(
                                 }
                             },
                         )
+                        }
                     }
                     Box(
                         modifier = Modifier

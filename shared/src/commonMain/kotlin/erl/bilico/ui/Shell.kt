@@ -98,7 +98,7 @@ internal val tabTitles = listOf("推荐", "动态", "我的")
  * 分段胶囊轨道左右各留的边距，和下面卡片列表的 12dp 缩进对齐。
  * 列表跟着系统密度走，顶栏钉在 360dp 密度上，所以这是「页面 dp」，用的时候要换算。
  */
-private val CapsuleSideMargin = 12.dp
+internal val CapsuleSideMargin = 12.dp
 
 @Composable
 fun MainShell(nav: NavState, container: AppContainer) {
@@ -436,10 +436,27 @@ fun MainShell(nav: NavState, container: AppContainer) {
         }
 
         // Layer 5: 标题行与展开后的 TopAppBarSearchBar（在最顶层，确保搜索胶囊和“取消”按钮不被面板遮挡）
-        // 搜索面板挂载期间稳定采样 searchBackdrop，避免收起首帧切换 Backdrop 重建 CouiBackdrop。
+        // 搜索面板挂载期间稳定采样 searchBackdrop，避免收起首帧切换 Backdrop 重建 CouiBackdrop；
+        // 常态下给按钮叠加同源顶栏渐隐蒙层，避免深色封面滚过时圆钮比周围毛玻璃顶栏更暗。
+        val titleDensity = LocalDensity.current
+        val titleBarBackdrop = rememberAppBarVeiledBackdrop(
+            containerColor = pageContainerColor(),
+            upstream = backdrop,
+            scrollFraction = {
+                when (tab) {
+                    0 -> pagerTopBarScrollAlpha(feedPager, feedTabs.size, titleDensity) { idx ->
+                        feedTabs.getOrNull(idx)?.let { feedScrollStates.stateFor(it).topBarScrollPx() } ?: 0f
+                    }
+                    1 -> if (account == null) 0f else pagerTopBarScrollAlpha(dynamicPager, DynamicFilters.size, titleDensity) { idx ->
+                        DynamicFilters.getOrNull(idx)?.first?.let(dynamicScrollStates::scrollPxFor) ?: 0f
+                    }
+                    else -> AppBarBlurOverlayDefaults.scrollAlpha(meListState.topBarScrollPx(), titleDensity)
+                }
+            },
+        )
         CompositionLocalProvider(
             LocalBackdrop provides if (BlurEffectsEnabled) {
-                if (feedPanelCovering) searchBackdrop else backdrop
+                if (feedPanelCovering) searchBackdrop else titleBarBackdrop
             } else {
                 null
             },
@@ -503,121 +520,6 @@ fun MainShell(nav: NavState, container: AppContainer) {
     if (inHomeSearchResults) {
         PlatformBackHandler {
             searchViewModel.onQueryChange("")
-        }
-    }
-}
-
-@Composable
-private fun MainBarUnderlay(
-    tab: Int,
-    loggedIn: Boolean,
-    collapsed: () -> Float,
-    feedTabs: List<HomeTabType>,
-    feedTabLabels: List<String>,
-    feedPager: PagerState,
-    feedScrollStates: FeedScrollStates,
-    onSegment: (Int) -> Unit,
-    dynamicPager: PagerState,
-    dynamicScrollStates: DynamicScrollStates,
-    meListState: LazyListState,
-    onDynamicFilter: (Int) -> Unit,
-    onFeedReselect: () -> Unit,
-    onDynamicReselect: () -> Unit,
-    onDoubleTap: () -> Unit,
-    searchExpanded: Boolean,
-    panelCovering: Boolean,
-    bounds: TopBarBounds,
-    modifier: Modifier = Modifier,
-) {
-    val density = LocalDensity.current
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val pageBarHeight = statusBarTop + TitleRowHeight
-    val titleHeightPx = with(density) { TitleRowHeight.toPx() }
-    val doubleTap = Modifier.pointerInput(onDoubleTap) {
-        detectTapGestures(onDoubleTap = { onDoubleTap() })
-    }
-    val feedWeight = animateFloatAsState(if (tab == 0) 1f else 0f, tween(MainTabFadeMillis), label = "mainBarFeedWeight")
-    val dynamicWeight = animateFloatAsState(if (tab == 1) 1f else 0f, tween(MainTabFadeMillis), label = "mainBarDynamicWeight")
-    val meWeight = animateFloatAsState(if (tab == 2) 1f else 0f, tween(MainTabFadeMillis), label = "mainBarMeWeight")
-
-    Box(modifier) {
-        AppBarSurface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset { IntOffset(0, 0) }
-                .then(if (panelCovering) Modifier else Modifier.reportTopBarBottom(bounds)),
-            containerColor = pageContainerColor(),
-            scrollFraction = {
-                val feedAlpha = pagerTopBarScrollAlpha(feedPager, feedTabs.size, density) { idx ->
-                    feedTabs.getOrNull(idx)?.let { feedScrollStates.stateFor(it).topBarScrollPx() } ?: 0f
-                }
-                val dynamicAlpha = if (!loggedIn) 0f else {
-                    pagerTopBarScrollAlpha(dynamicPager, DynamicFilters.size, density) { idx ->
-                        DynamicFilters.getOrNull(idx)?.first?.let(dynamicScrollStates::scrollPxFor) ?: 0f
-                    }
-                }
-                val meAlpha = AppBarBlurOverlayDefaults.scrollAlpha(meListState.topBarScrollPx(), density)
-                (feedWeight.value * feedAlpha +
-                    dynamicWeight.value * dynamicAlpha +
-                    meWeight.value * meAlpha).coerceIn(0f, 1f)
-            },
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(pageBarHeight)
-                    .then(doubleTap),
-            )
-        }
-
-        val capsuleLabels = when (tab) {
-            0 -> feedTabLabels
-            1 -> DynamicFilters.map { it.second }
-            else -> null
-        }
-        if (capsuleLabels != null) {
-            AnimatedVisibility(
-                visible = !searchExpanded || tab != 0,
-                enter = fadeIn(animationSpec = tween(200)),
-                exit = fadeOut(animationSpec = tween(150)),
-            ) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = statusBarTop)
-                        .then(if (panelCovering) Modifier.clearAndSetSemantics {} else Modifier),
-                ) {
-                    Spacer(Modifier.height(TitleRowHeight))
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .graphicsLayer { translationY = -collapsed() * titleHeightPx },
-                        contentAlignment = Alignment.TopCenter,
-                    ) {
-                        val barDensity = LocalDensity.current.density
-                        val pageDensity = barDensity
-                        // 高光块跟着翻页的落点走：拖动越过翻页阈值、或者松手后的惯性还没停，
-                        // 它就开始滑，不等停稳后回写选中态。点标签时 pager 的动画目标也会立刻更新。
-                        val selectedTabIndex = if (tab == 0) feedPager.targetPage else dynamicPager.targetPage
-                        TabRowWithContour(
-                            tabs = capsuleLabels,
-                            selectedTabIndex = selectedTabIndex.coerceIn(0, capsuleLabels.lastIndex),
-                            onTabSelected = if (tab == 0) onSegment else onDynamicFilter,
-                            onTabReselected = when (tab) {
-                                0 -> { _: Int -> onFeedReselect() }
-                                1 -> { _: Int -> onDynamicReselect() }
-                                else -> null
-                            },
-                            commitOnRelease = true,
-                            backdrop = LocalBackdrop.current,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = CapsuleSideMargin * (pageDensity / barDensity)),
-                        )
-                    }
-                }
-            }
         }
     }
 }

@@ -55,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import erl.bilico.di.AppContainer
 import erl.bilico.ui.AppBarSurface
+import erl.bilico.ui.rememberAppBarVeiledBackdrop
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavState
 import erl.bilico.ui.PinnedBarDensity
@@ -300,30 +301,36 @@ fun SpaceScreen(
                 val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val pageBarHeight = statusBarTop + 44.dp
                 Box(Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
+                    val barScrollFraction: () -> Float = {
+                        val activeTab = visibleTabs.getOrNull(pagerState.currentPage)
+                        val tabScrolled = when (activeTab) {
+                            SpaceTab.VIDEOS -> videosListState.topBarScrollPx()
+                            SpaceTab.SEASONS -> collectionsListState.topBarScrollPx()
+                            SpaceTab.DYNAMICS -> dynamicsListState.topBarScrollPx()
+                            SpaceTab.OPUS -> opusGridState.topBarScrollPx()
+                            SpaceTab.LIKES -> likesListState.topBarScrollPx()
+                            null -> 0f
+                        }
+                        val headerScrolled = (-headerOffsetPx).coerceAtLeast(0f)
+                        val scrolled = maxOf(headerScrolled, tabScrolled)
+                        AppBarBlurOverlayDefaults.scrollAlpha(scrolled, barDensity)
+                    }
+                    val barButtonBackdrop = rememberAppBarVeiledBackdrop(
+                        containerColor = pageColor,
+                        scrollFraction = barScrollFraction,
+                    )
                     AppBarSurface(
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = pageColor,
-                        scrollFraction = {
-                            val activeTab = visibleTabs.getOrNull(pagerState.currentPage)
-                            val tabScrolled = when (activeTab) {
-                                SpaceTab.VIDEOS -> videosListState.topBarScrollPx()
-                                SpaceTab.SEASONS -> collectionsListState.topBarScrollPx()
-                                SpaceTab.DYNAMICS -> dynamicsListState.topBarScrollPx()
-                                SpaceTab.OPUS -> opusGridState.topBarScrollPx()
-                                SpaceTab.LIKES -> likesListState.topBarScrollPx()
-                                null -> 0f
-                            }
-                            val headerScrolled = (-headerOffsetPx).coerceAtLeast(0f)
-                            val scrolled = maxOf(headerScrolled, tabScrolled)
-                            AppBarBlurOverlayDefaults.scrollAlpha(scrolled, barDensity)
-                        },
+                        scrollFraction = barScrollFraction,
                     ) {
                         Box(Modifier.fillMaxWidth().height(pageBarHeight))
                     }
-                    Box(
-                        Modifier.fillMaxWidth().padding(top = statusBarTop).height(44.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    CompositionLocalProvider(LocalBackdrop provides barButtonBackdrop) {
+                        Box(
+                            Modifier.fillMaxWidth().padding(top = statusBarTop).height(44.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
                         TopAppBarSearchBar(
                             query = state.searchKeyword,
                             onQueryChange = viewModel::updateKeyword,
@@ -389,6 +396,7 @@ fun SpaceScreen(
                                 }
                             },
                         )
+                    }
                     }
                 }
             }

@@ -21,7 +21,10 @@ import io.github.suqi8.coui.kmp.basic.AppBarBlurOverlayDefaults
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
 import io.github.suqi8.coui.kmp.basic.PinnedScrollBehavior
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.rememberAppBarVeiledBackdrop as couiRememberAppBarVeiledBackdrop
+import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
+import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.layerBackdrop
 import kotlin.math.abs
 
@@ -166,5 +169,24 @@ fun AppBarSurface(
             if (alpha > 0f) drawRect(containerColor, alpha = alpha)
         },
         content = content,
+    )
+}
+
+/**
+ * 为盖在 [AppBarSurface] 上方的兄弟顶栏控件提供带同源渐变蒙层的 [Backdrop]；
+ * 直接复用 COUI 的 `rememberAppBarVeiledBackdrop`（基于 `DelegatingBackdrop` 透传采样保活，零双重模糊）。
+ */
+@Composable
+internal fun rememberAppBarVeiledBackdrop(
+    containerColor: Color = pageContainerColor(),
+    upstream: Backdrop? = LocalBackdrop.current,
+    scrollFraction: () -> Float = { 1f },
+): Backdrop? = if (!BlurEffectsEnabled) {
+    null
+} else {
+    couiRememberAppBarVeiledBackdrop(
+        scrollFraction = scrollFraction,
+        containerColor = containerColor,
+        backdrop = upstream,
     )
 }
