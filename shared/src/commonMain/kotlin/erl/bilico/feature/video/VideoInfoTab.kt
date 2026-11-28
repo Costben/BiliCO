@@ -1,6 +1,12 @@
 package erl.bilico.feature.video
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,8 +28,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import androidx.compose.runtime.LaunchedEffect
@@ -35,14 +40,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import erl.bilico.data.model.FeedVideo
 import erl.bilico.data.model.VideoChapter
@@ -70,15 +73,14 @@ import erl.bilico.ui.components.StarFilledIcon
 import erl.bilico.ui.components.StarOutlineIcon
 import erl.bilico.ui.components.StatLabel
 import erl.bilico.ui.hyperlinkColor
+import io.github.suqi8.coui.kmp.anim.COUIOutEase
 import io.github.suqi8.coui.kmp.basic.BindScrollToTop
-import io.github.suqi8.coui.kmp.basic.ExpandableList
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.icon.COUIIcons
 import io.github.suqi8.coui.kmp.icon.extended.Info
 import io.github.suqi8.coui.kmp.icon.extended.Play
-import kotlinx.coroutines.delay
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
@@ -436,6 +438,10 @@ private fun InfoContent(
                     expanded = collectionExpanded,
                     onExpandedChange = { collectionExpanded = it },
                     selectedIndex = selectedEpisodeIndex,
+                    itemKey = { index ->
+                        val ep = collection.episodes[index]
+                        "${ep.bvid}-${ep.cid}-$index"
+                    },
                 ) { index ->
                     val episode = collection.episodes[index]
                     CollectionRow(
@@ -460,6 +466,7 @@ private fun InfoContent(
                     expanded = partsExpanded,
                     onExpandedChange = { partsExpanded = it },
                     selectedIndex = selectedPartIndex,
+                    itemKey = { index -> "${detail.pages[index].cid}-$index" },
                 ) { index ->
                     PartRow(
                         part = detail.pages[index],
@@ -493,7 +500,11 @@ private fun InfoContent(
     }
 }
 
-/** 合集 / 分P 共用的可折叠选集卡片。 */
+/**
+ * 合集 / 分P 共用的可折叠选集卡片。
+ * 展开区使用限高 [LazyColumn] 按需组合并直接定位到当前选集，避免长合集一次性铺开导致
+ * 高度超过路径命中上限而点击失效、以及展开后整页跳动二次滚动的拖沓感。
+ */
 @Composable
 private fun ExpandableSelectionCard(
     resetKey: Any?,
@@ -502,13 +513,9 @@ private fun ExpandableSelectionCard(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     selectedIndex: Int,
+    itemKey: (Int) -> Any,
     itemContent: @Composable (Int) -> Unit,
 ) {
-    val scrollModifier = rememberExpandedSelectionModifier(
-        resetKey = resetKey,
-        expanded = expanded,
-        selectedIndex = selectedIndex,
-    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -516,23 +523,43 @@ private fun ExpandableSelectionCard(
             .background(COUITheme.colorScheme.surfaceContainer)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        ExpandableList(
-            groupCount = 1,
-            childCount = { count },
-            expandedGroups = if (expanded) setOf(0) else emptySet(),
-            onExpandedGroupsChange = { onExpandedChange(0 in it) },
-            groupContent = { _, isExpanded -> ExpandableSectionHeader(text = title, expanded = isExpanded) },
-        ) { _, index ->
-            Box(
+        ExpandableSectionHeader(
+            text = title,
+            expanded = expanded,
+            modifier = Modifier.clickable(role = Role.Button) { onExpandedChange(!expanded) },
+        )
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(tween(220, easing = COUIOutEase), expandFrom = Alignment.Top) + fadeIn(tween(160)),
+            exit = shrinkVertically(tween(180, easing = COUIOutEase), shrinkTowards = Alignment.Top) + fadeOut(tween(120)),
+        ) {
+            val initialIndex = remember(resetKey, count) {
+                (selectedIndex - 1).coerceIn(0, (count - 1).coerceAtLeast(0))
+            }
+            val selectionListState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
+            LaunchedEffect(selectedIndex) {
+                if (selectedIndex in 0 until count) {
+                    val visible = selectionListState.layoutInfo.visibleItemsInfo
+                    if (visible.isNotEmpty() && visible.none { it.index == selectedIndex }) {
+                        selectionListState.animateScrollToItem((selectedIndex - 1).coerceAtLeast(0))
+                    }
+                }
+            }
+            LazyColumn(
+                state = selectionListState,
                 modifier = Modifier
+                    .fillMaxWidth()
                     .padding(top = 6.dp)
-                    .then(if (index == selectedIndex) scrollModifier else Modifier),
+                    .heightIn(max = SELECTION_LIST_MAX_HEIGHT),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                itemContent(index)
+                items(count = count, key = itemKey) { index -> itemContent(index) }
             }
         }
     }
 }
+
+private val SELECTION_LIST_MAX_HEIGHT = 340.dp
 
 /** 简介下面的标签：按接口给的顺序铺开，点击后以该标签为关键词进入搜索。 */
 @OptIn(ExperimentalLayoutApi::class)
@@ -561,40 +588,4 @@ private fun VideoTagChips(
             )
         }
     }
-}
-
-/** 折叠区块从收起转为展开且当前选集靠后时，等展开动画落位后滚到选中行。 */
-@Composable
-private fun rememberExpandedSelectionModifier(
-    resetKey: Any?,
-    expanded: Boolean,
-    selectedIndex: Int,
-): Modifier {
-    val requester = remember { BringIntoViewRequester() }
-    var rowSize by remember(selectedIndex, resetKey) { mutableStateOf(IntSize.Zero) }
-    var wasExpanded by remember(resetKey) { mutableStateOf(expanded) }
-    val density = LocalDensity.current
-
-    LaunchedEffect(expanded, selectedIndex) {
-        val justExpanded = expanded && !wasExpanded
-        wasExpanded = expanded
-        if (justExpanded && selectedIndex > 2) {
-            delay(430L)
-            if (rowSize.height > 0) {
-                val padPx = with(density) { 96.dp.toPx() }
-                requester.bringIntoView(
-                    Rect(
-                        left = 0f,
-                        top = -padPx,
-                        right = rowSize.width.toFloat().coerceAtLeast(1f),
-                        bottom = rowSize.height.toFloat() + padPx,
-                    ),
-                )
-            }
-        }
-    }
-
-    return Modifier
-        .onSizeChanged { rowSize = it }
-        .bringIntoViewRequester(requester)
 }
