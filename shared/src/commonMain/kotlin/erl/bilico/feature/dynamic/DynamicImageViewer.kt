@@ -64,7 +64,6 @@ import erl.bilico.platform.PlatformBackHandler
 import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.PlatformPredictiveBackHandler
 import erl.bilico.platform.saveImageBytesToPhotos
-import erl.bilico.platform.setSystemBarsVisible
 import erl.bilico.platform.showToast
 import erl.bilico.platform.useEdgeSwipeBackOverlay
 import erl.bilico.ui.ExpandEasing
@@ -73,6 +72,7 @@ import erl.bilico.ui.ImageViewerSession
 import erl.bilico.ui.ImageZoomMillis
 import erl.bilico.ui.LocalImageOrigins
 import erl.bilico.ui.LocalImageViewerHost
+import io.github.suqi8.coui.kmp.utils.CouiSystemBarsEffect
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
@@ -179,7 +179,21 @@ internal fun ImageViewerOverlay(
         onDispose { origins.viewing = null }
     }
 
-    ViewerSystemBars(visible = chrome)
+    CouiSystemBarsEffect(
+        darkStatusBarIcons = false,
+        darkNavigationBarIcons = false,
+        statusBarVisible = chrome,
+        navigationBarVisible = chrome,
+        active = {
+            val d = frame.dismiss
+            val bgAlpha = when {
+                d.exiting -> d.exitBgAlpha.value
+                d.active -> d.currentBgAlpha()
+                else -> progress()
+            }
+            !session.exiting && !d.exiting && bgAlpha >= 0.5f
+        },
+    )
 
     // 拖拽退出动画播放期间拦截返回键，防止重复触发收起。
     PlatformBackHandler(enabled = frame.dismiss.exiting) { }
@@ -415,15 +429,6 @@ private fun ViewerIconButton(
             .padding(9.dp),
         tint = Color.White,
     )
-}
-
-@Composable
-private fun ViewerSystemBars(visible: Boolean) {
-    val context = LocalPlatformContext.current
-    DisposableEffect(context, visible) {
-        setSystemBarsVisible(context, visible)
-        onDispose { setSystemBarsVisible(context, true) }
-    }
 }
 
 private class VerticalViewportShape(

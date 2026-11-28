@@ -64,6 +64,7 @@ import erl.bilico.platform.currentTimeMillis
 import erl.bilico.platform.imageCacheDirectoryPath
 import erl.bilico.platform.openExternalUrl
 import erl.bilico.platform.platformNeedsBackdropHoleFill
+import erl.bilico.platform.rememberPlatformSystemBarsApplier
 import erl.bilico.platform.showToast
 import erl.bilico.platform.useEdgeSwipeBackOverlay
 import erl.bilico.player.LocalInPipMode
@@ -78,6 +79,8 @@ import io.github.suqi8.coui.kmp.blur.LocalBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
 import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.COUIPopupHost
+import io.github.suqi8.coui.kmp.utils.CouiSystemBarsEffect
+import io.github.suqi8.coui.kmp.utils.CouiSystemBarsHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -297,7 +300,27 @@ fun BiliCoRoot(
         LocalLiveRepository provides container.live,
         LocalAppContainer provides container,
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        CouiSystemBarsHost(applier = rememberPlatformSystemBarsApplier(context)) {
+            CouiSystemBarsEffect(
+                darkStatusBarIcons = !dark,
+                darkNavigationBarIcons = !dark,
+                statusBarVisible = true,
+                navigationBarVisible = true,
+            )
+            val inPipRoot = LocalInPipMode.current
+            CouiSystemBarsEffect(
+                darkStatusBarIcons = false,
+                darkNavigationBarIcons = !dark,
+                active = {
+                    val currentTop = nav.stack.lastOrNull { !it.exiting }
+                    currentTop != null &&
+                        currentTop.route.isPlayback() &&
+                        !inPipRoot &&
+                        !currentTop.collapsedBarVisible &&
+                        (!currentTop.previewing || currentTop.progress.value >= 0.5f)
+                },
+            )
+            BoxWithConstraints(Modifier.fillMaxSize()) {
             val density = LocalDensity.current
             val widthPx = constraints.maxWidth.toFloat()
             val widthDp = with(density) { maxWidth.value.toInt() }
@@ -450,15 +473,6 @@ fun BiliCoRoot(
                     isPlaying = PlaybackBridge.currentIsPlaying,
                     autoPip = autoPip,
                 )
-                val wantLightStatusBars = !dark &&
-                    viewerHost.active == null &&
-                    (topEntry == null || !topEntry.route.isPlayback() || inPipMode || topEntry.collapsedBarVisible)
-                SyncStatusBarAppearance(
-                    lightStatusBars = wantLightStatusBars,
-                    dark = dark,
-                    orientation = screenConfig.isLandscape,
-                    syncTick = nav.statusBarSyncTick,
-                )
 
                 val showSecondaryOrb = !inPipMode &&
                     (nav.minimizedEntry != null || nav.isMinimizingToOrb) &&
@@ -499,6 +513,7 @@ fun BiliCoRoot(
                     PlatformToastHost()
                 }
             }
+        }
         }
     }
 }

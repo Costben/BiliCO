@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.utils.CouiSystemBarsApplier
 import kotlinx.coroutines.delay
 
 data class ScreenConfig(
@@ -176,6 +177,9 @@ expect fun currentWindowLandscapeOrientation(context: PlatformContext): Platform
 expect fun setSystemBarsVisible(context: PlatformContext, visible: Boolean)
 
 expect fun setStatusBarDarkIcons(context: PlatformContext, darkIcons: Boolean?)
+
+@Composable
+expect fun rememberPlatformSystemBarsApplier(context: PlatformContext): CouiSystemBarsApplier?
 
 expect fun currentAppVersionCode(context: PlatformContext): Long
 

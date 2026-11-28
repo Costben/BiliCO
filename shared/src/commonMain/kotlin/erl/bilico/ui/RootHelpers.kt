@@ -53,7 +53,6 @@ import erl.bilico.platform.ScreenConfig
 import erl.bilico.platform.platformUsesOffscreenExpandCompositing
 import erl.bilico.platform.rememberPlatformScreenCornerRadius
 import erl.bilico.platform.rememberPlatformStatusBarTopPx
-import erl.bilico.platform.setStatusBarDarkIcons
 import erl.bilico.player.LocalPlayerSurfaceAlpha
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.squircle.SquircleDefaults
@@ -560,20 +559,6 @@ internal suspend fun alignCardBelowBar(origin: ExpandOrigin?) {
         if (state.scrollBy(scrollDelta) == 0f) return
         withFrameNanos { }
         withFrameNanos { }
-    }
-}
-
-@Composable
-internal fun SyncStatusBarAppearance(
-    lightStatusBars: Boolean,
-    dark: Boolean,
-    orientation: Boolean,
-    syncTick: Int,
-) {
-    val context = LocalPlatformContext.current
-    DisposableEffect(context, lightStatusBars, dark, orientation, syncTick) {
-        setStatusBarDarkIcons(context, lightStatusBars)
-        onDispose { }
     }
 }
 

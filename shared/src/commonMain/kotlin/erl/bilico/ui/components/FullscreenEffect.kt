@@ -6,7 +6,7 @@ import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.PlatformOrientation
 import erl.bilico.platform.currentWindowLandscapeOrientation
 import erl.bilico.platform.setScreenOrientation
-import erl.bilico.platform.setSystemBarsVisible
+import io.github.suqi8.coui.kmp.utils.CouiSystemBarsEffect
 
 /** 横屏全屏：切换屏幕方向并隐藏系统栏，锁屏时固定当前单向横屏防止 180° 翻转，退出时恢复。 */
 @Composable
@@ -16,6 +16,14 @@ fun FullscreenEffect(
 ) {
     val context = LocalPlatformContext.current
 
+    CouiSystemBarsEffect(
+        darkStatusBarIcons = false,
+        darkNavigationBarIcons = false,
+        statusBarVisible = false,
+        navigationBarVisible = false,
+        active = { enabled },
+    )
+
     DisposableEffect(enabled, locked) {
         if (enabled) {
             val targetOrientation = if (locked) {
@@ -24,10 +32,8 @@ fun FullscreenEffect(
                 PlatformOrientation.Landscape
             }
             setScreenOrientation(context, targetOrientation)
-            setSystemBarsVisible(context, false)
         } else {
             setScreenOrientation(context, PlatformOrientation.Portrait)
-            setSystemBarsVisible(context, true)
         }
         onDispose { }
     }
@@ -35,7 +41,6 @@ fun FullscreenEffect(
     DisposableEffect(Unit) {
         onDispose {
             setScreenOrientation(context, PlatformOrientation.Unspecified)
-            setSystemBarsVisible(context, true)
         }
     }
 }

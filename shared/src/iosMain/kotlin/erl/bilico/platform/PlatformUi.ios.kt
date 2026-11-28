@@ -2,13 +2,14 @@ package erl.bilico.platform
 
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.UIKitView
 import erl.bilico.ui.LocalRouteIsTop
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.CouiSystemBarsApplier
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
@@ -18,13 +19,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
-import platform.AVFAudio.AVAudioSession
-import platform.AVFAudio.outputVolume
 import platform.CoreGraphics.*
 import platform.CoreImage.*
 import platform.CoreMotion.CMMotionManager
 import platform.Foundation.*
-import platform.MediaPlayer.MPVolumeView
 import platform.Photos.*
 import platform.PhotosUI.*
 import platform.UIKit.*
@@ -48,7 +46,7 @@ actual fun openExternalUrl(context: PlatformContext, url: String) {
     }
 }
 
-private fun findKeyWindow(): UIWindow? {
+internal fun findKeyWindow(): UIWindow? {
     val windows = UIApplication.sharedApplication.windows
     return windows.firstOrNull { (it as? UIWindow)?.isKeyWindow() == true } as? UIWindow
         ?: UIApplication.sharedApplication.keyWindow
@@ -139,123 +137,13 @@ actual fun generateQrCodeBitmap(content: String, sizePx: Int): ImageBitmap? {
     }
 }
 
-actual fun keepScreenOn(context: PlatformContext, enabled: Boolean) {
-    dispatch_async(dispatch_get_main_queue()) {
-        UIApplication.sharedApplication.idleTimerDisabled = enabled
-    }
-}
-
-private var savedIosScreenBrightness: Double? = null
-
-actual fun readScreenBrightness(): Float = UIScreen.mainScreen.brightness.toFloat().coerceIn(0.02f, 1f)
-
-actual fun writeScreenBrightness(value: Float) {
-    dispatch_async(dispatch_get_main_queue()) {
-        if (value < 0f) {
-            savedIosScreenBrightness?.let { UIScreen.mainScreen.brightness = it }
-            savedIosScreenBrightness = null
-        } else {
-            if (savedIosScreenBrightness == null) savedIosScreenBrightness = UIScreen.mainScreen.brightness
-            UIScreen.mainScreen.brightness = value.coerceIn(0.02f, 1f).toDouble()
-        }
-    }
-}
-
-@OptIn(ExperimentalForeignApi::class)
-private object IosSystemVolumeBridge {
-    private var volumeView: MPVolumeView? = null
-    private var detachTimer: NSTimer? = null
-    private var latestTargetVolume: Float? = null
-
-    private fun ensureAttached(): UISlider? {
-        val view = volumeView ?: MPVolumeView(
-            frame = CGRectMake(-2000.0, -2000.0, 1.0, 1.0),
-        ).apply {
-            alpha = 0.01
-            clipsToBounds = true
-            userInteractionEnabled = false
-            volumeView = this
-        }
-        val window = findKeyWindow()
-        if (window != null && view.superview !== window) {
-            view.removeFromSuperview()
-            window.addSubview(view)
-            view.layoutIfNeeded()
-        }
-        return findSlider(view)
-    }
-
-    private fun findSlider(view: platform.UIKit.UIView): UISlider? {
-        view.subviews.forEach { raw ->
-            if (raw is UISlider) return raw
-            if (raw is platform.UIKit.UIView) {
-                findSlider(raw)?.let { return it }
-            }
-        }
-        return null
-    }
-
-    private fun scheduleDetach() {
-        detachTimer?.invalidate()
-        detachTimer = NSTimer.scheduledTimerWithTimeInterval(
-            interval = 1.6,
-            repeats = false,
-            block = { _ ->
-                detachTimer = null
-                latestTargetVolume = null
-                volumeView?.removeFromSuperview()
-            },
-        )
-    }
-
-    fun warmUp() {
-        dispatch_async(dispatch_get_main_queue()) {
-            ensureAttached()
-            scheduleDetach()
-        }
-    }
-
-    fun read(): Float {
-        warmUp()
-        return AVAudioSession.sharedInstance().outputVolume.coerceIn(0f, 1f)
-    }
-
-    fun write(value: Float) {
-        val clamped = value.coerceIn(0f, 1f)
-        latestTargetVolume = clamped
-        dispatch_async(dispatch_get_main_queue()) {
-            val target = latestTargetVolume ?: clamped
-            val slider = ensureAttached()
-            if (slider != null) {
-                slider.setValue(target, animated = false)
-                slider.sendActionsForControlEvents(UIControlEventValueChanged)
-            }
-            // 首次挂载 MPVolumeView 时内部滑块可能在下一帧才完成系统绑定，补一次同步确保第一下拖动生效。
-            dispatch_async(dispatch_get_main_queue()) {
-                val pending = latestTargetVolume ?: return@dispatch_async
-                val s = ensureAttached() ?: return@dispatch_async
-                if (abs(s.value - pending) > 0.005f) {
-                    s.setValue(pending, animated = false)
-                    s.sendActionsForControlEvents(UIControlEventValueChanged)
-                }
-            }
-            scheduleDetach()
-        }
-    }
-}
-
-actual fun readSystemVolume(): Float = IosSystemVolumeBridge.read()
-
-actual fun writeSystemVolume(value: Float) {
-    IosSystemVolumeBridge.write(value)
-}
-
 actual val useNativeFullscreenRotation: Boolean = true
 
 private fun postNotification(name: String, key: String, value: NSNumber) {
-    dispatch_async(dispatch_get_main_queue()) {
+    val post = {
         NSNotificationCenter.defaultCenter.postNotificationName(name, null, mapOf(key to value))
     }
+    if (NSThread.isMainThread) post() else dispatch_async(dispatch_get_main_queue(), post)
 }
 
 actual fun setScreenOrientation(context: PlatformContext, orientation: PlatformOrientation) {
@@ -290,6 +178,24 @@ actual fun setStatusBarDarkIcons(context: PlatformContext, darkIcons: Boolean?) 
     val styleValue = when (darkIcons) { true -> 1; false -> 0; null -> -1 }
     postNotification("BiliCoStatusBarStyleChanged", "darkIcons", NSNumber(int = styleValue))
 }
+
+@Composable
+actual fun rememberPlatformSystemBarsApplier(context: PlatformContext): CouiSystemBarsApplier? =
+    remember(context) {
+        var lastDarkIcons: Boolean? = null
+        var lastVisible: Boolean? = null
+        CouiSystemBarsApplier { style ->
+            if (lastDarkIcons != style.darkStatusBarIcons) {
+                lastDarkIcons = style.darkStatusBarIcons
+                setStatusBarDarkIcons(context, style.darkStatusBarIcons)
+            }
+            val visible = style.statusBarVisible && style.navigationBarVisible
+            if (lastVisible != visible) {
+                lastVisible = visible
+                setSystemBarsVisible(context, visible)
+            }
+        }
+    }
 
 actual fun currentAppVersionCode(context: PlatformContext): Long {
     val raw = NSBundle.mainBundle.infoDictionary?.get("CFBundleVersion") as? String
@@ -341,10 +247,10 @@ actual fun Modifier.chipTabCausticLight(): Modifier {
     val effect = remember { runCatching { RuntimeEffect.makeForShader(CHIP_TAB_CAUSTIC_SKSL) }.getOrNull() }
         ?: return this
     val background = COUITheme.colorScheme.background
-    return drawBehind {
+    return drawWithCache {
         val halfW = size.width / 2f
         val halfH = size.height / 2f
-        if (halfW <= 0f || halfH <= 0f) return@drawBehind
+        if (halfW <= 0f || halfH <= 0f) return@drawWithCache onDrawBehind {}
         val bottom = ChipTabCausticBottomOffset.toPx().toInt().toFloat()
         val sdf = ChipTabCausticSdfWidth.toPx().toInt().toFloat()
         val cornerPx = (size.minDimension / 2f) * 1.41421356f
@@ -356,11 +262,9 @@ actual fun Modifier.chipTabCausticLight(): Modifier {
             uniform("in_color", ChipTabCausticDark.red, ChipTabCausticDark.green, ChipTabCausticDark.blue, ChipTabCausticDark.alpha)
             uniform("in_background", background.red, background.green, background.blue)
         }
-        drawRect(
-            brush = ShaderBrush(builder.makeShader().asComposeShader()),
-            size = Size(size.width, size.height + bottom),
-            blendMode = BlendMode.Plus,
-        )
+        val brush = ShaderBrush(builder.makeShader().asComposeShader())
+        val drawSize = Size(size.width, size.height + bottom)
+        onDrawBehind { drawRect(brush = brush, size = drawSize, blendMode = BlendMode.Plus) }
     }
 }
 
