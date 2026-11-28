@@ -31,6 +31,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -237,7 +238,12 @@ fun DynamicDetailScreen(
     )
     val compactBottomInset = compactNavBarBottomPadding()
 
-    Box(Modifier.fillMaxSize().background(pageColor)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .drawWithContent { if (!replyThread.coverOpaque) drawContent() }
+            .background(pageColor),
+    ) {
         CompositionLocalProvider(
             LocalTopBarBounds provides topBarBounds,
             LocalImageOriginScope provides imageOriginScope,

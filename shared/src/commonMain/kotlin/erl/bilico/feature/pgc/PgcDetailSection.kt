@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import erl.bilico.di.AppContainer
@@ -82,8 +83,8 @@ internal fun PgcDetailSection(
     val statusBarDp = with(LocalDensity.current) { rememberStableStatusBarHeightPx().toDp() }
     val firstRowHeight = statusBarDp + CollapsedBarHeight
     val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + DETAIL_CONTENT_GAP
-    // 与普通视频详情页一致：停在顶部时不启用毛玻璃。
-    val barBlurActive = blurActive && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
+    // 与普通视频详情页一致：停在顶部或楼中楼覆盖时不启用毛玻璃。
+    val barBlurActive = blurActive && replyThread.root == null && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
     LaunchedEffect(barBackdrops, barBlurActive) {
         barBackdrops?.detailScrolled = barBlurActive
     }
@@ -99,6 +100,7 @@ internal fun PgcDetailSection(
             state = detailPager,
             modifier = Modifier
                 .fillMaxSize()
+                .drawWithContent { if (!replyThread.coverOpaque) drawContent() }
                 .layerBackdropIf(BlurEffectsEnabled, detailLayerBackdrop)
                 .background(pageBg),
             beyondViewportPageCount = 0,
@@ -153,6 +155,7 @@ internal fun PgcDetailSection(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
+                .drawWithContent { if (!replyThread.coverOpaque) drawContent() }
                 .reportTopBarBottom(detailBarBounds),
             containerColor = pageBg,
             backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,

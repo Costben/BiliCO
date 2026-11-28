@@ -41,6 +41,7 @@ import io.github.suqi8.coui.kmp.anim.folmeSpring
 import io.github.suqi8.coui.kmp.basic.CapsuleOutlineShape
 import io.github.suqi8.coui.kmp.basic.ChipTabDefaults
 import io.github.suqi8.coui.kmp.basic.GlassChipDefaults
+import io.github.suqi8.coui.kmp.basic.LocalTransitionFastGlass
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.isBlurEnabled
@@ -258,7 +259,7 @@ internal fun Modifier.inputCapsuleGlass(
         shape ?: CapsuleOutlineShape(cornerRadius = cornerRadius, squircleEnabled = squircleEnabled)
     }
     val density = LocalDensity.current
-    val blurActive = BlurEffectsEnabled && isBlurEnabled() && backdrop != null
+    val blurActive = BlurEffectsEnabled && isBlurEnabled() && backdrop != null && !LocalTransitionFastGlass.current
     val blurRadiusDp = remember(density) { with(density) { GlassChipDefaults.BlurRadiusPx.toDp().value } }
     val blurColors = remember(isDark, blurActive) {
         if (blurActive) GlassChipDefaults.blurColors(isDark, fraction = 1f) else null

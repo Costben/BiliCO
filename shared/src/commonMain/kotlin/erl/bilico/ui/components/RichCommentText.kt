@@ -524,22 +524,35 @@ private fun earliestToken(
     includeTimestamp: Boolean,
     mentionNames: List<String>,
 ): MatchedToken? {
-    val candidates = buildList {
-        BiliVideoUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.BiliVideo, it.range, it)) }
-        BiliShortUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.BiliShort, it.range, it)) }
-        BareBvidRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.BareBvid, it.range, it)) }
-        GenericUrlRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.GenericUrl, it.range, it)) }
-        if (includeTimestamp) {
-            TimestampRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.Timestamp, it.range, it)) }
+    var hasAt = false; var hasHash = false; var hasColon = false; var hasDot = false; var hasBv = false
+    for (i in startIndex until segment.length) {
+        when (segment[i]) {
+            '@' -> hasAt = true
+            '#' -> hasHash = true
+            ':', '：' -> hasColon = true
+            '.' -> hasDot = true
+            'B', 'b' -> if (i + 1 < segment.length && (segment[i + 1] == 'V' || segment[i + 1] == 'v')) hasBv = true
         }
-        findEarliestKnownMention(segment, startIndex, mentionNames)?.let { add(MatchedToken(RichTokenKind.Mention, it)) }
-        InlineHighlightRegex.find(segment, startIndex)?.let { add(MatchedToken(RichTokenKind.Mention, it.range, it)) }
     }
-    return candidates.minWithOrNull(
-        compareBy<MatchedToken> { it.range.first }
-            .thenBy { it.kind.ordinal }
-            .thenByDescending { it.range.last - it.range.first },
-    )
+    if (!hasAt && !hasHash && !hasColon && !hasDot && !hasBv) return null
+    var best: MatchedToken? = null
+    fun consider(c: MatchedToken?) {
+        val p = best
+        if (c != null && (p == null || c.range.first < p.range.first ||
+                (c.range.first == p.range.first && (c.kind.ordinal < p.kind.ordinal ||
+                    (c.kind.ordinal == p.kind.ordinal && c.range.last > p.range.last))))
+        ) best = c
+    }
+    if (hasDot && hasBv) consider(BiliVideoUrlRegex.find(segment, startIndex)?.let { MatchedToken(RichTokenKind.BiliVideo, it.range, it) })
+    if (hasColon && hasDot) {
+        consider(BiliShortUrlRegex.find(segment, startIndex)?.let { MatchedToken(RichTokenKind.BiliShort, it.range, it) })
+        consider(GenericUrlRegex.find(segment, startIndex)?.let { MatchedToken(RichTokenKind.GenericUrl, it.range, it) })
+    }
+    if (hasBv) consider(BareBvidRegex.find(segment, startIndex)?.let { MatchedToken(RichTokenKind.BareBvid, it.range, it) })
+    if (includeTimestamp && hasColon) consider(TimestampRegex.find(segment, startIndex)?.let { MatchedToken(RichTokenKind.Timestamp, it.range, it) })
+    if (hasAt && mentionNames.isNotEmpty()) consider(findEarliestKnownMention(segment, startIndex, mentionNames)?.let { MatchedToken(RichTokenKind.Mention, it) })
+    if (hasAt || hasHash) consider(InlineHighlightRegex.find(segment, startIndex)?.let { MatchedToken(RichTokenKind.Mention, it.range, it) })
+    return best
 }
 
 private fun findEarliestKnownMention(

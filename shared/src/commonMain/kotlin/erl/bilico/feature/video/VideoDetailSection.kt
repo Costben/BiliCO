@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -107,7 +108,7 @@ internal fun VideoDetailSection(
     val statusBarDp = with(LocalDensity.current) { rememberStableStatusBarHeightPx().toDp() }
     val firstRowHeight = statusBarDp + CollapsedBarHeight
     val contentTop = firstRowHeight + DETAIL_BAR_HEIGHT + DETAIL_CONTENT_GAP
-    val barBlurActive = blurActive && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
+    val barBlurActive = blurActive && replyThread.root == null && rememberBarScrolled(detailPager.currentPage, infoListState, commentListState)
     LaunchedEffect(barBackdrops, barBlurActive) {
         barBackdrops?.detailScrolled = barBlurActive
     }
@@ -126,6 +127,7 @@ internal fun VideoDetailSection(
                 state = detailPager,
                 modifier = Modifier
                     .fillMaxSize()
+                    .drawWithContent { if (!replyThread.coverOpaque) drawContent() }
                     .layerBackdropIf(BlurEffectsEnabled, detailLayerBackdrop)
                     .background(pageBg),
                 beyondViewportPageCount = 0,
@@ -276,6 +278,7 @@ internal fun VideoDetailSection(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    .drawWithContent { if (!replyThread.coverOpaque) drawContent() }
                     .reportTopBarBottom(detailBarBounds),
                 containerColor = pageBg,
                 backdrop = if (BlurEffectsEnabled && barBlurActive) detailLayerBackdrop else null,

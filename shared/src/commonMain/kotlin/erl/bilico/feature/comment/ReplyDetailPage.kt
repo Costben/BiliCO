@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -62,6 +63,7 @@ import erl.bilico.data.model.DEFAULT_EMOTE_MANAGE_URL
 import erl.bilico.data.model.DynamicImage
 import erl.bilico.di.AppContainer
 import erl.bilico.feature.dynamic.DynamicImageViewer
+import erl.bilico.feature.video.LocalDetailBottomShiftPx
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.ExpandEasing
 import erl.bilico.ui.LocalImageOriginRowKey
@@ -70,6 +72,7 @@ import erl.bilico.ui.LocalNavState
 import erl.bilico.ui.LocalTopBarBounds
 import erl.bilico.ui.Route
 import erl.bilico.ui.TopBarBounds
+import erl.bilico.ui.platformReduceExitRouteBlur
 import erl.bilico.ui.rememberImageOriginScope
 import erl.bilico.ui.reportBottomBarTop
 import erl.bilico.ui.reportTopBarBottom
@@ -83,6 +86,7 @@ import io.github.suqi8.coui.kmp.basic.BindScrollToTop
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.LocalEdgeToEdge
+import io.github.suqi8.coui.kmp.basic.LocalTransitionFastGlass
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.squircle.SquircleShape
@@ -110,6 +114,24 @@ internal fun ReplyDetailOverlay(
 ) {
     var displayedThread by remember { mutableStateOf<Pair<Comment, Long>?>(null) }
     val activeRoot = controller.root
+    var overlaySettled by remember { mutableStateOf(false) }
+    var backDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(activeRoot != null) {
+        if (activeRoot != null) {
+            overlaySettled = false
+            delay(290L)
+            overlaySettled = true
+        } else {
+            overlaySettled = false
+            backDragging = false
+        }
+    }
+    LaunchedEffect(activeRoot != null, overlaySettled, backDragging) {
+        controller.coverOpaque = activeRoot != null && overlaySettled && !backDragging
+    }
+    DisposableEffect(controller) {
+        onDispose { controller.coverOpaque = false }
+    }
     BindScrollToTop(listState, enabled = activeRoot != null)
     if (activeRoot != null) {
         val pool = latestItems.ifEmpty { controller.itemsSnapshot }
@@ -131,26 +153,20 @@ internal fun ReplyDetailOverlay(
     ) {
         val thread = displayedThread ?: return@AnimatedVisibility
         val root = thread.first
-        ReplyDetailPage(
-            container = container,
-            oid = oid,
-            comment = root,
-            type = type,
-            upMid = upMid,
-            initialTargetReplyId = thread.second,
-            listState = listState,
-            topInset = topInset,
-            bottomInset = bottomInset,
-            backEnabled = backEnabled && activeRoot != null,
-            onSubReplyAdded = { created -> controller.onSubReplyAdded?.invoke(root.id, created) },
-            onSubReplyDeleted = { replyId -> controller.onSubReplyDeleted?.invoke(root.id, replyId) },
-            onRootDeleted = {
-                controller.onRootDeleted?.invoke(root.id)
-                controller.close()
-            },
-            onOpenUser = onOpenUser,
-            onClose = controller::close,
-        )
+        CompositionLocalProvider(
+            LocalTransitionFastGlass provides (platformReduceExitRouteBlur && (activeRoot == null || !overlaySettled)),
+        ) {
+            ReplyDetailPage(
+                container = container, oid = oid, comment = root, type = type, upMid = upMid,
+                initialTargetReplyId = thread.second, listState = listState, topInset = topInset,
+                bottomInset = bottomInset, backEnabled = backEnabled && activeRoot != null,
+                onBackDraggingChange = { backDragging = it },
+                onSubReplyAdded = { created -> controller.onSubReplyAdded?.invoke(root.id, created) },
+                onSubReplyDeleted = { replyId -> controller.onSubReplyDeleted?.invoke(root.id, replyId) },
+                onRootDeleted = { controller.onRootDeleted?.invoke(root.id); controller.close() },
+                onOpenUser = onOpenUser, onClose = controller::close,
+            )
+        }
     }
 }
 
@@ -167,6 +183,7 @@ internal fun ReplyDetailPage(
     topInset: Dp = 0.dp,
     bottomInset: Dp = navBottomPadding(),
     backEnabled: Boolean = true,
+    onBackDraggingChange: (Boolean) -> Unit = {},
     onSubReplyAdded: (Comment) -> Unit = {},
     onSubReplyDeleted: (Long) -> Unit = {},
     onRootDeleted: () -> Unit = {},
@@ -275,6 +292,9 @@ internal fun ReplyDetailPage(
         enabled = backEnabled && !emotePanelOpen && imageViewer == null,
         onClose = onClose,
     )
+    LaunchedEffect(backFollow) {
+        snapshotFlow { backFollow.value < 0.999f }.distinctUntilChanged().collect(onBackDraggingChange)
+    }
 
     LaunchedEffect(comment.id) {
         listState.scrollToItem(0)
@@ -370,6 +390,7 @@ internal fun ReplyDetailPage(
 
     val pageBackdrop = rememberLayerBackdrop()
     val overlayBackdrop = if (BlurEffectsEnabled) pageBackdrop else null
+    val detailBottomShiftPx = LocalDetailBottomShiftPx.current
     val scrollRampPx = remember(density) { with(density) { 12.dp.toPx().coerceAtLeast(1f) } }
     val replyBarBounds = remember { TopBarBounds() }
     val imageOriginScope = rememberImageOriginScope(listState, replyBarBounds)
@@ -446,8 +467,8 @@ internal fun ReplyDetailPage(
                     } else {
                         itemsIndexed(replySortTransition.currentItems, key = { _, reply -> reply.id }) { index, reply ->
                             val itemIndex = SUB_REPLY_ITEM_OFFSET + index
-                            val displayReply = remember(reply, threadUserMids) {
-                                if (threadUserMids.isEmpty()) reply else reply.copy(mentions = threadUserMids + reply.mentions)
+                            val displayReply = remember(reply, if ('@' in reply.content) threadUserMids else null) {
+                                mergeThreadMentions(reply, threadUserMids)
                             }
                             CompositionLocalProvider(LocalImageOriginRowKey provides reply.id) {
                                 Card(
@@ -481,6 +502,7 @@ internal fun ReplyDetailPage(
                     text = msg,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .graphicsLayer { translationY = -detailBottomShiftPx() }
                         .padding(bottom = listBottomPadding)
                         .clip(SquircleShape(8.dp))
                         .background(Color(0xCC000000))
@@ -542,7 +564,11 @@ internal fun ReplyDetailPage(
                     }
                 },
                 panelBackground = pageBg, bottomPadding = composerBottomPadding,
-                modifier = Modifier.align(Alignment.BottomCenter).reportBottomBarTop(replyBarBounds).onSizeChanged { bottomStackPx = it.height },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .graphicsLayer { translationY = -detailBottomShiftPx() }
+                    .reportBottomBarTop(replyBarBounds)
+                    .onSizeChanged { bottomStackPx = it.height },
                 backdrop = overlayBackdrop,
             )
         }

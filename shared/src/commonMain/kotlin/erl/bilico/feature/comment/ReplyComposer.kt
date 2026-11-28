@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -48,6 +49,7 @@ import erl.bilico.ui.components.ErrorState
 import erl.bilico.ui.components.inputCapsuleGlass
 import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.LocalToolbarBackdropBlurFraction
+import io.github.suqi8.coui.kmp.basic.LocalTransitionFastGlass
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LocalBackdrop
@@ -191,7 +193,7 @@ internal fun ReplyDetailTopBar(
     topInset: Dp = 0.dp,
 ) {
     val isDark = containerColor.luminance() < 0.5f
-    val blurEnabled = BlurEffectsEnabled && isBlurEnabled() && backdrop != null
+    val blurEnabled = BlurEffectsEnabled && isBlurEnabled() && backdrop != null && !LocalTransitionFastGlass.current
     val density = LocalDensity.current
     val extraHeightPx = with(density) { 14.dp.roundToPx() }
     val engineBlurRadiusDp = remember(density) {
@@ -208,6 +210,9 @@ internal fun ReplyDetailTopBar(
     val materialModifier = Modifier
         .layoutId("material")
         .fillMaxSize()
+        .drawWithContent {
+            if (scrollFraction() > 0.001f) drawContent()
+        }
         .graphicsLayer {
             alpha = scrollFraction().coerceIn(0f, 1f)
             compositingStrategy = CompositingStrategy.Auto

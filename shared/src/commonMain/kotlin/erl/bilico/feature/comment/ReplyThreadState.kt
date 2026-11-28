@@ -30,17 +30,20 @@ class ReplyThreadController {
         private set
     var targetReplyId by mutableLongStateOf(0L)
         private set
+    internal var coverOpaque by mutableStateOf(false)
     internal var itemsSnapshot by mutableStateOf<List<Comment>>(emptyList())
     var onSubReplyAdded: ((Long, Comment) -> Unit)? = null
     var onSubReplyDeleted: ((Long, Long) -> Unit)? = null
     var onRootDeleted: ((Long) -> Unit)? = null
 
     fun open(comment: Comment, targetId: Long = 0L) {
+        coverOpaque = false
         root = comment
         targetReplyId = targetId
     }
 
     fun close() {
+        coverOpaque = false
         root = null
         targetReplyId = 0L
     }
@@ -400,6 +403,19 @@ private fun orderSubReplies(list: List<Comment>, sort: ReplySort): List<Comment>
     ReplySort.Hot -> list.sortedWith(compareByDescending<Comment> { it.like }.thenBy { it.timeSec })
     ReplySort.New -> list.sortedByDescending { it.timeSec }
     ReplySort.Old -> list.sortedBy { it.timeSec }
+}
+
+/** 仅为正文包含 `@` 的子回复补充本楼用户 mid 映射，避免把整楼用户表整份复制到每条回复。 */
+internal fun mergeThreadMentions(reply: Comment, threadUserMids: Map<String, Long>): Comment {
+    if (threadUserMids.isEmpty() || '@' !in reply.content) return reply
+    var merged: MutableMap<String, Long>? = null
+    for ((name, mid) in threadUserMids) {
+        if (name !in reply.mentions && reply.content.contains("@$name")) {
+            if (merged == null) merged = LinkedHashMap(reply.mentions)
+            merged[name] = mid
+        }
+    }
+    return if (merged == null) reply else reply.copy(mentions = merged)
 }
 
 private const val SUB_REPLY_PAGE_SIZE = 20
