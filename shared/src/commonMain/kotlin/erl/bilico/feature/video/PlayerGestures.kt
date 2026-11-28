@@ -39,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import erl.bilico.data.model.VideoChapter
@@ -92,6 +93,7 @@ internal fun PlayerGestureLayer(
     onSeek: (Long) -> Unit,
     onFullscreenChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    topBadgeInset: Dp = 0.dp,
     volumeProvider: () -> Float = { 1f },
     onVolumeChange: (Float) -> Unit = {},
 ) {
@@ -422,6 +424,7 @@ internal fun PlayerGestureLayer(
                 mode = longPressSpeedMode,
                 locked = longPressSpeed.locked,
                 onUnlock = { longPressSpeed.onActiveChange(false) },
+                topInset = topBadgeInset,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         }

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import erl.bilico.ui.components.COUISmoothCapsuleShape
 import io.github.suqi8.coui.kmp.basic.Text
@@ -82,6 +83,7 @@ internal fun LongPressSpeedBadge(
     mode: LongPressSpeedMode,
     locked: Boolean,
     onUnlock: () -> Unit,
+    topInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     val label = when {
@@ -92,7 +94,7 @@ internal fun LongPressSpeedBadge(
     Text(
         text = label,
         modifier = modifier
-            .padding(top = 14.dp)
+            .padding(top = 14.dp + topInset)
             .clip(COUISmoothCapsuleShape)
             .background(Color(0x55000000))
             .then(if (locked) Modifier.clickable(onClick = onUnlock) else Modifier)

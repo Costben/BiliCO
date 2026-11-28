@@ -38,8 +38,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import erl.bilico.platform.LocalPlatformContext
 import erl.bilico.platform.LocalScreenConfig
-import erl.bilico.platform.setSystemBarsVisible
 import erl.bilico.platform.useNativeFullscreenRotation
+import io.github.suqi8.coui.kmp.utils.CouiSystemBarsEffect
 import erl.bilico.player.LocalPlayerSurfaceAlpha
 import erl.bilico.ui.LocalNavEntry
 import erl.bilico.ui.LocalNavState
@@ -127,18 +127,19 @@ internal fun VideoFullscreenStage(
     val nav = LocalNavState.current
     val navEntry = LocalNavEntry.current
     val currentFullscreen by rememberUpdatedState(fullscreen)
+    var stageBarsVisible by remember { mutableStateOf(true) }
+    CouiSystemBarsEffect(
+        darkStatusBarIcons = false,
+        darkNavigationBarIcons = false,
+        statusBarVisible = false,
+        navigationBarVisible = false,
+        active = { !stageBarsVisible && isTop && navEntry?.exiting != true },
+    )
     LaunchedEffect(navEntry, minSlotPx) {
         if (navEntry == null) return@LaunchedEffect
         snapshotFlow { slotHeight.floatValue > 0f && slotHeight.floatValue <= minSlotPx + 0.5f }
             .distinctUntilChanged()
             .collect { collapsed -> navEntry.collapsedBarVisible = collapsed }
-    }
-    DisposableEffect(context, isTop) {
-        onDispose {
-            if (isTop && (currentFullscreen || currentWindowLandscape)) {
-                setSystemBarsVisible(context, true)
-            }
-        }
     }
 
     StageScreenLockOrientationEffect(
@@ -161,6 +162,7 @@ internal fun VideoFullscreenStage(
         windowLandscape = { currentWindowLandscape },
         sideDegrees = { sideToDegrees(preferredSide) },
         surfaceViewPlayer = { currentSurfaceViewPlayer },
+        onSystemBarsVisible = { stageBarsVisible = it },
         onSyncStatusBar = { nav?.requestStatusBarSync() },
     )
 
@@ -178,9 +180,9 @@ internal fun VideoFullscreenStage(
         frameHolder = frameHolder,
     )
 
-    LaunchedEffect(fullscreen, windowLandscape, context) {
+    LaunchedEffect(fullscreen, windowLandscape) {
         if (fullscreen && windowLandscape) {
-            setSystemBarsVisible(context, false)
+            stageBarsVisible = false
         }
     }
 
@@ -276,6 +278,24 @@ internal fun VideoFullscreenStage(
     }
 
     val currentFreezeDetailHeight by rememberUpdatedState(freezeDetailHeight)
+    val danmakuCompensation = remember {
+        StageDanmakuCompensation(
+            activeProvider = {
+                !useNativeFullscreenRotation &&
+                    !currentPortraitStage &&
+                    !currentLandscapeForLayer &&
+                    (!currentSurfaceViewPlayer || frameHolder.frozen) &&
+                    (currentFullscreen || progress.value > 0.0005f)
+            },
+            fullscreenProvider = { currentFullscreen },
+            progressProvider = { progress.value },
+            scaleProvider = {
+                val stageW = stageBox[0]
+                val stageH = stageBox[1]
+                if (stageW > 0 && stageH > 0) stageScale(Size(stageW.toFloat(), stageH.toFloat())) else null
+            },
+        )
+    }
     val detailBottomShiftPx: () -> Float = remember(minSlotPx) {
         {
             if (!portraitResizable || !currentFreezeDetailHeight || currentLandscapeForLayer) {
@@ -408,6 +428,7 @@ internal fun VideoFullscreenStage(
                     }
                     CompositionLocalProvider(
                         LocalStageScale provides stageScale,
+                        LocalStageDanmakuCompensation provides danmakuCompensation,
                         LocalStageOpaquePlayer provides !portraitStage,
                         LocalStageVideoAspect provides aspect,
                         LocalStageFrozenVideo provides frameHolder.frozen,
@@ -489,6 +510,8 @@ internal fun VideoFullscreenStage(
             slotFloor[0] = minSlotPx
             min(portW * 9f / 16f, portH * 0.7f).also { slotMetrics[1] = it }
         }
+        danmakuCompensation.portraitWidthPx = portW
+        danmakuCompensation.portraitHeightPx = videoH.roundToInt().coerceAtLeast(1)
         val detailTop = if (portraitResizable) {
             (videoH - minSlotPx).roundToInt().coerceAtLeast(0)
         } else {

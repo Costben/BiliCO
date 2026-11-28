@@ -221,7 +221,7 @@ internal fun VideoPlayer(
             currentStageLockObserver?.invoke(false)
         }
     }
-    val showChrome = !inPipMode && !effectiveLocked && (controlsVisible || errorMessage != null)
+    val showChrome = !inPipMode && !effectiveLocked && prevFullscreen == fullscreen && (controlsVisible || errorMessage != null)
     LaunchedEffect(fullscreen, showChrome) {
         if (!showChrome) activeMenu = PlayerPopupMenu.NONE
         if (showChrome && !liveMode) seekPreview?.ensureLoaded(positionMsProvider?.invoke() ?: positionMs, durationMs)
@@ -327,12 +327,9 @@ internal fun VideoPlayer(
                 )
             }
 
-            if (audioOnly && audioOnlyOverlay != null) {
-                audioOnlyOverlay()
-            }
-
-            CompositionLocalProvider(LocalDanmakuInteraction provides danmakuInteraction) {
-                overlay()
+            if (audioOnly && audioOnlyOverlay != null) audioOnlyOverlay()
+            Box(Modifier.fillMaxSize().stageDanmakuLayer()) {
+                CompositionLocalProvider(LocalDanmakuInteraction provides danmakuInteraction) { overlay() }
             }
 
             subtitleOverlay(showChrome)
@@ -380,6 +377,7 @@ internal fun VideoPlayer(
                         },
                         onSeek = onSeek,
                         onFullscreenChange = onFullscreenChange,
+                        topBadgeInset = portraitTopPad,
                         volumeProvider = { readSystemVolume() },
                         onVolumeChange = { writeSystemVolume(it) },
                         modifier = Modifier.fillMaxSize(),

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
@@ -13,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -23,6 +25,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
@@ -44,12 +47,12 @@ import erl.bilico.platform.PlatformContext
 import erl.bilico.platform.PlatformOrientation
 import erl.bilico.platform.currentWindowLandscapeOrientation
 import erl.bilico.platform.setScreenOrientation
-import erl.bilico.platform.setSystemBarsVisible
 import erl.bilico.platform.useEdgeSwipeBackOverlay
 import erl.bilico.platform.useNativeFullscreenRotation
 import erl.bilico.player.BiliPlayer
 import erl.bilico.ui.BlurEffectsEnabled
 import erl.bilico.ui.NavEntry
+import erl.bilico.ui.rememberAppBarVeiledBackdrop
 import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
@@ -63,6 +66,54 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 internal val LocalStageScale = staticCompositionLocalOf<(Size) -> Float?> { { null } }
+
+@Stable
+internal class StageDanmakuCompensation(
+    private val activeProvider: () -> Boolean,
+    private val fullscreenProvider: () -> Boolean,
+    private val progressProvider: () -> Float,
+    private val scaleProvider: () -> Float?,
+) {
+    var portraitWidthPx: Int = 0
+    var portraitHeightPx: Int = 0
+
+    fun usePortraitBox(): Boolean {
+        if (!activeProvider()) return false
+        val p = progressProvider()
+        return if (fullscreenProvider()) p < ENTER_DANMAKU_SWITCH_PROGRESS else p <= EXIT_DANMAKU_SWITCH_PROGRESS
+    }
+
+    fun alpha(): Float {
+        if (!activeProvider()) return 1f
+        val p = progressProvider()
+        return if (fullscreenProvider()) {
+            if (p < ENTER_DANMAKU_SWITCH_PROGRESS) {
+                ((ENTER_DANMAKU_SWITCH_PROGRESS - p) / ENTER_DANMAKU_FADE_OUT_SPAN).coerceIn(0f, 1f)
+            } else {
+                ((p - ENTER_DANMAKU_SWITCH_PROGRESS) / ENTER_DANMAKU_FADE_IN_SPAN).coerceIn(0f, 1f)
+            }
+        } else {
+            if (p > EXIT_DANMAKU_SWITCH_PROGRESS) {
+                ((p - EXIT_DANMAKU_SWITCH_PROGRESS) / EXIT_DANMAKU_FADE_OUT_SPAN).coerceIn(0f, 1f)
+            } else {
+                ((EXIT_DANMAKU_SWITCH_PROGRESS - p) / EXIT_DANMAKU_FADE_IN_SPAN).coerceIn(0f, 1f)
+            }
+        }
+    }
+
+    fun currentScale(): Float? = if (activeProvider()) scaleProvider() else null
+
+    private companion object {
+        const val ENTER_DANMAKU_SWITCH_PROGRESS = 0.35f
+        const val ENTER_DANMAKU_FADE_OUT_SPAN = 0.25f
+        const val ENTER_DANMAKU_FADE_IN_SPAN = 0.35f
+        const val EXIT_DANMAKU_SWITCH_PROGRESS = 0.55f
+        const val EXIT_DANMAKU_FADE_OUT_SPAN = 0.35f
+        const val EXIT_DANMAKU_FADE_IN_SPAN = 0.35f
+    }
+}
+
+internal val LocalStageDanmakuCompensation = staticCompositionLocalOf<StageDanmakuCompensation?> { null }
 
 internal val LocalStageOpaquePlayer = staticCompositionLocalOf { true }
 
@@ -191,6 +242,7 @@ internal fun StageOrientationTransitionEffect(
     windowLandscape: () -> Boolean,
     sideDegrees: () -> Float,
     surfaceViewPlayer: () -> Boolean,
+    onSystemBarsVisible: (Boolean) -> Unit,
     onSyncStatusBar: () -> Unit,
 ) {
     LaunchedEffect(fullscreen, portraitStage, screenLocked, context) {
@@ -200,19 +252,19 @@ internal fun StageOrientationTransitionEffect(
                 val targetDegrees = sideDegrees()
                 angle.snapTo(targetDegrees)
                 progress.snapTo(0f)
-                setSystemBarsVisible(context, false)
+                onSystemBarsVisible(false)
                 setScreenOrientation(context, degreesToLandscapeOrientation(targetDegrees))
             } else {
                 angle.snapTo(0f)
                 progress.snapTo(0f)
                 setScreenOrientation(context, PlatformOrientation.Portrait)
-                setSystemBarsVisible(context, true)
+                onSystemBarsVisible(true)
                 onSyncStatusBar()
             }
             return@LaunchedEffect
         }
         if (fullscreen) {
-            setSystemBarsVisible(context, false)
+            onSystemBarsVisible(false)
             if (portraitStage) {
                 angle.snapTo(0f)
                 if (windowLandscape()) {
@@ -263,10 +315,10 @@ internal fun StageOrientationTransitionEffect(
             progress.animateTo(0f, tween(COLOROS_VIDEO_ROTATE_DURATION_MS, easing = ColorOSMoveEase)) {
                 if (!barsShown && value <= SYSTEM_BARS_REVEAL_PROGRESS) {
                     barsShown = true
-                    setSystemBarsVisible(context, true)
+                    onSystemBarsVisible(true)
                 }
             }
-            if (!barsShown) setSystemBarsVisible(context, true)
+            if (!barsShown) onSystemBarsVisible(true)
             onSyncStatusBar()
         }
     }
@@ -291,18 +343,24 @@ private class SolidColorBackdrop(private val color: Color) : Backdrop {
         layerBlock: (GraphicsLayerScope.() -> Unit)?,
         downscaleFactor: Int,
     ) {
-        drawRect(color)
+        val margin = maxOf(size.width, size.height) * 2f + 256f
+        drawRect(
+            color = color,
+            topLeft = Offset(-margin, -margin),
+            size = Size(size.width + margin * 2f, size.height + margin * 2f),
+        )
     }
 }
 
 @Stable
 internal class VideoBarBackdrops(
     val detail: LayerBackdrop?,
+    private val veiledDetail: Backdrop?,
     private val solid: Backdrop,
 ) {
     var detailScrolled by mutableStateOf(false)
     val barMaterial: Backdrop?
-        get() = if (!BlurEffectsEnabled) null else if (detailScrolled) detail else solid
+        get() = if (!BlurEffectsEnabled) null else if (detailScrolled) veiledDetail ?: detail else solid
 }
 
 @Composable
@@ -362,9 +420,14 @@ private fun DrawScope.drawVideoFrameDstOver(frame: ImageBitmap) {
 @Composable
 internal fun rememberVideoBarBackdrops(pageBg: Color): VideoBarBackdrops {
     val detail = if (BlurEffectsEnabled) rememberLayerBackdrop() else null
+    val veiledDetail = rememberAppBarVeiledBackdrop(
+        containerColor = pageBg,
+        upstream = detail,
+        scrollFraction = { 1f },
+    )
     val solid = remember(pageBg) { SolidColorBackdrop(pageBg) }
-    return remember(detail, solid) {
-        VideoBarBackdrops(detail = detail, solid = solid)
+    return remember(detail, veiledDetail, solid) {
+        VideoBarBackdrops(detail = detail, veiledDetail = veiledDetail, solid = solid)
     }
 }
 
@@ -377,6 +440,51 @@ internal fun Modifier.stageCounterScale(): Modifier {
         scaleX = 1f / s
         scaleY = 1f / s
     }
+}
+
+/**
+ * 横竖屏应用内旋转期间保持弹幕以 1:1 屏幕字号渲染，避免退出全屏时弹幕先随舞台缩到约一半、
+ * 停稳后再单帧跳大重排。过渡中点不可见时只切换一次布局尺寸，落地后与竖屏尺寸像素对齐，零跳变。
+ */
+@Composable
+internal fun Modifier.stageDanmakuLayer(): Modifier {
+    val comp = LocalStageDanmakuCompensation.current ?: return this
+    val usePortrait by remember(comp) { derivedStateOf { comp.usePortraitBox() } }
+    return this
+        .layout { measurable, constraints ->
+            if (usePortrait && comp.portraitWidthPx > 0 && comp.portraitHeightPx > 0) {
+                val targetW = comp.portraitWidthPx.coerceAtMost(constraints.maxWidth)
+                val targetH = comp.portraitHeightPx.coerceAtMost(constraints.maxHeight)
+                val placeable = measurable.measure(Constraints.fixed(targetW, targetH))
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    placeable.place((constraints.maxWidth - targetW) / 2, 0)
+                }
+            } else {
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) {
+                    placeable.place(0, 0)
+                }
+            }
+        }
+        .graphicsLayer {
+            alpha = comp.alpha()
+            if (usePortrait) {
+                val s = comp.currentScale()
+                if (s != null && s > 0.01f) {
+                    transformOrigin = TransformOrigin(0.5f, 0f)
+                    scaleX = 1f / s
+                    scaleY = 1f / s
+                } else {
+                    transformOrigin = TransformOrigin.Center
+                    scaleX = 1f
+                    scaleY = 1f
+                }
+            } else {
+                transformOrigin = TransformOrigin.Center
+                scaleX = 1f
+                scaleY = 1f
+            }
+        }
 }
 
 internal const val DEFAULT_VIDEO_ASPECT = 16f / 9f
@@ -446,7 +554,10 @@ internal fun degreesToLandscapeOrientation(degrees: Float): PlatformOrientation 
 internal fun rememberStableStatusBarHeightPx(): Float {
     val density = LocalDensity.current
     var stableTopPx by remember(density) { mutableFloatStateOf(0f) }
-    val liveTop = WindowInsets.statusBars.getTop(density).toFloat()
+    val liveTop = maxOf(
+        WindowInsets.statusBars.getTop(density),
+        WindowInsets.displayCutout.getTop(density),
+    ).toFloat()
     if (liveTop > stableTopPx) stableTopPx = liveTop
     return if (stableTopPx > 0f) {
         stableTopPx
